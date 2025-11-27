@@ -19,6 +19,9 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: true,
   },
 })
+
+// ... (vos autres fonctions getMyProfile, checkEmailExists, etc.) ...
+
 export async function getMyProfile() {
   const { data, error } = await supabase.rpc('get_my_profile')
   if (error) return null
@@ -30,52 +33,28 @@ export async function completeOnboarding(businessRole, bio = null) {
     p_business_role: businessRole,
     p_bio: bio,
   })
-  
   if (error) throw error
   return data
 }
 
 export async function checkEmailExists(email) {
   if (!email) return false
-  
   try {
     const { data, error } = await supabase.rpc('check_email_exists', {
       email_to_check: email
     })
-    
     if (error) return false
-    
     return data === true || data === 'true' || data === 1
   } catch (err) {
     return false
   }
 }
 
-/**
- * Appelle la fonction Edge Function rag-brain de Supabase
- * @param {string} query - La question/requête de l'utilisateur
- * @param {string} verticalId - L'ID de la verticale (requis)
- * @param {object} options - Options supplémentaires
- * @returns {Promise<{data: any, error: Error|null}>}
- */
 export async function callRagBrain(query, verticalId, options = {}) {
   try {
-    // Récupérer la session pour l'authentification
     const { data: { session } } = await supabase.auth.getSession()
-    
-    if (!session) {
-      throw new Error('Utilisateur non authentifié')
-    }
+    if (!session) throw new Error('Utilisateur non authentifié')
 
-    if (!query || query.trim() === '') {
-      throw new Error('La requête ne peut pas être vide')
-    }
-
-    if (!verticalId || verticalId.trim() === '') {
-      throw new Error('L\'ID de la verticale est requis')
-    }
-
-    // Construire le body selon le format attendu par votre Edge Function
     const requestBody = {
       query: query.trim(),
       vertical_id: verticalId.trim(),
@@ -83,7 +62,6 @@ export async function callRagBrain(query, verticalId, options = {}) {
       match_count: options.matchCount || 5
     }
 
-    // Appel à l'Edge Function
     const response = await fetch(
       `${supabaseUrl}/functions/v1/rag-brain`,
       {
@@ -98,32 +76,57 @@ export async function callRagBrain(query, verticalId, options = {}) {
     )
 
     const data = await response.json()
+    if (!response.ok) throw new Error(data.error || `Erreur HTTP: ${response.status}`)
+    if (!data.success && !data.answer) throw new Error(data.error || 'Erreur inconnue')
 
-    if (!response.ok) {
-      // Gérer les erreurs selon le format de votre Edge Function
-      const errorMessage = data.error || `Erreur HTTP: ${response.status}`
-      throw new Error(errorMessage)
-    }
-
-    // Vérifier le format de réponse
-    if (!data.success) {
-      throw new Error(data.error || 'Erreur inconnue de l\'Edge Function')
-    }
-
-    return { 
+    return {
       data: {
-        answer: data.response || data.answer,
+        answer: data.answer,
         sources: data.sources || [],
-        processingTime: data.processing_time_ms || data.metadata?.processing_time_ms
-      }, 
-      error: null 
+        processingTime: data.processing_time_ms
+      },
+      error: null
     }
   } catch (err) {
-    console.error('Erreur lors de l\'appel RAG:', err)
-    return { 
-      data: null, 
-      error: err instanceof Error ? err : new Error(String(err))
-    }
+    console.error('Erreur RAG:', err)
+    return { data: null, error: err }
+  }
+}
+
+/**
+ * Upload un enregistrement audio pour analyse (Compatible OpenAI)
+ * @param {File} file - Le fichier audio avec le bon mime-type
+ * @param {string} title - Titre de la réunion
+ */
+export async function uploadMeetingAudio(file, title = 'Réunion Audio') {
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) throw new Error('Non connecté')
+
+    const formData = new FormData()
+    formData.append('audio', file) // Envoi sous la clé 'audio' (le backend accepte 'file' aussi)
+    formData.append('title', title)
+
+    const response = await fetch(
+      `${supabaseUrl}/functions/v1/process-audio`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'apikey': supabaseAnonKey,
+          // Pas de Content-Type ici, fetch gère le boundary
+        },
+        body: formData,
+      }
+    )
+
+    const result = await response.json()
+    if (!response.ok) throw new Error(result.error || 'Erreur upload audio')
+
+    return result
+  } catch (err) {
+    console.error('Erreur process audio:', err)
+    throw err
   }
 }
 

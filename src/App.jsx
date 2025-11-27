@@ -1,9 +1,9 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
-import { 
-  ProtectedRoute, 
-  OnboardingRoute, 
-  PublicRoute 
+import {
+  ProtectedRoute,
+  OnboardingRoute,
+  PublicRoute
 } from './components/OnboardingGuard';
 
 // Pages
@@ -18,59 +18,60 @@ function App() {
     <BrowserRouter
       future={{
         v7_startTransition: true,
+        v7_relativeSplatPath: true,
       }}
     >
       <AuthProvider>
         <Routes>
           {/* Routes publiques (redirige si déjà connecté) */}
-          <Route 
-            path="/login" 
+          <Route
+            path="/login"
             element={
               <PublicRoute>
                 <Login />
               </PublicRoute>
-            } 
+            }
           />
-          
+
           {/* Route de réinitialisation de mot de passe (publique) */}
-          <Route 
-            path="/reset-password" 
-            element={<ResetPassword />} 
+          <Route
+            path="/reset-password"
+            element={<ResetPassword />}
           />
-          
+
           {/* Route d'onboarding (requiert auth, redirige si déjà onboardé) */}
-          <Route 
-            path="/onboarding" 
+          <Route
+            path="/onboarding"
             element={
               <OnboardingRoute>
                 <Onboarding />
               </OnboardingRoute>
-            } 
+            }
           />
-          
+
           {/* Routes protégées (requiert auth + onboarding complété) */}
-          <Route 
-            path="/dashboard" 
+          <Route
+            path="/dashboard"
             element={
               <ProtectedRoute>
                 <Dashboard />
               </ProtectedRoute>
-            } 
+            }
           />
-          
+
           {/* Route des paramètres (protégée) */}
-          <Route 
-            path="/settings" 
+          <Route
+            path="/settings"
             element={
               <ProtectedRoute>
                 <Settings />
               </ProtectedRoute>
-            } 
+            }
           />
-          
+
           {/* Redirection par défaut */}
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          
+
           {/* 404 - Route non trouvée */}
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

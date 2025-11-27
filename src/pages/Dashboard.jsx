@@ -1,14 +1,25 @@
 import { useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
-import { VerticalProvider, useVertical } from '../components/VerticalContext'
+import { callRagBrain } from '../lib/supabaseClient'
+import UserMenu from '../components/UserMenu'
 import VerticalSelector from '../components/VerticalSelector'
+import { VerticalProvider, useVertical } from '../components/VerticalContext'
 import SmartUploader from '../components/SmartUploader'
 import { ChatInterface } from '../components/chat'
+import AudioRecorder from '../components/AudioRecorder'
 import supabase from '../lib/supabaseClient'
-import { 
-  MessageSquare, 
-  Upload, 
-  Settings, 
+import {
+  Sparkles,
+  MessageSquare,
+  Settings,
+  Paperclip,
+  Mic,
+  Send,
+  Calendar,
+  Briefcase,
+  Loader2,
+  AlertCircle,
+  Upload,
   LogOut,
   Menu,
   X as XIcon
@@ -27,6 +38,11 @@ function DashboardLayout() {
 
   const handleUploadSuccess = (result) => {
     console.log('Document uploadé:', result)
+  }
+
+  const handleRecordingSuccess = (meeting) => {
+    console.log('Meeting processed:', meeting)
+    // Ici on pourrait ajouter une notif ou rafraîchir une liste
   }
 
   const verticalInfo = getCurrentVerticalInfo()
@@ -70,33 +86,43 @@ function DashboardLayout() {
           <div className="space-y-1">
             <button
               onClick={() => setActiveTab('chat')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors duration-200 ${
-                activeTab === 'chat'
-                  ? 'bg-indigo-50 text-indigo-700'
-                  : 'text-slate-600 hover:bg-slate-50'
-              }`}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors duration-200 ${activeTab === 'chat'
+                ? 'bg-indigo-50 text-indigo-700'
+                : 'text-slate-600 hover:bg-slate-50'
+                }`}
             >
               <MessageSquare className="w-5 h-5" />
               <span className="font-medium">Chat IA</span>
             </button>
+
             <button
               onClick={() => setActiveTab('upload')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors duration-200 ${
-                activeTab === 'upload'
-                  ? 'bg-indigo-50 text-indigo-700'
-                  : 'text-slate-600 hover:bg-slate-50'
-              }`}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors duration-200 ${activeTab === 'upload'
+                ? 'bg-indigo-50 text-indigo-700'
+                : 'text-slate-600 hover:bg-slate-50'
+                }`}
             >
               <Upload className="w-5 h-5" />
               <span className="font-medium">Importer</span>
             </button>
+
+            <button
+              onClick={() => setActiveTab('meetings')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors duration-200 ${activeTab === 'meetings'
+                ? 'bg-indigo-50 text-indigo-700'
+                : 'text-slate-600 hover:bg-slate-50'
+                }`}
+            >
+              <Mic className="w-5 h-5" />
+              <span className="font-medium">Réunions</span>
+            </button>
+
             <button
               onClick={() => setActiveTab('settings')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors duration-200 ${
-                activeTab === 'settings'
-                  ? 'bg-indigo-50 text-indigo-700'
-                  : 'text-slate-600 hover:bg-slate-50'
-              }`}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors duration-200 ${activeTab === 'settings'
+                ? 'bg-indigo-50 text-indigo-700'
+                : 'text-slate-600 hover:bg-slate-50'
+                }`}
             >
               <Settings className="w-5 h-5" />
               <span className="font-medium">Paramètres</span>
@@ -174,37 +200,27 @@ function DashboardLayout() {
             </div>
           )}
 
+          {activeTab === 'meetings' && (
+            <div className="h-full overflow-auto p-6">
+              <div className="max-w-3xl mx-auto">
+                <div className="mb-8">
+                  <h2 className="text-2xl font-bold text-slate-800 mb-2">Compte-rendu intelligent</h2>
+                  <p className="text-slate-600 mb-8">
+                    Enregistrez vos réunions de chantier ou d'audit. L'IA générera automatiquement un résumé structuré et la liste des actions.
+                  </p>
+                  <AudioRecorder onRecordingComplete={handleRecordingSuccess} />
+                </div>
+              </div>
+            </div>
+          )}
+
           {activeTab === 'settings' && (
             <div className="h-full overflow-auto p-6">
               <div className="max-w-2xl mx-auto">
                 <h2 className="text-xl font-bold text-slate-800 mb-6">
                   Paramètres
                 </h2>
-
-                <div className="bg-white rounded-xl border border-slate-200 p-6">
-                  <h3 className="font-semibold text-slate-800 mb-4">
-                    Verticale active
-                  </h3>
-                  <p className="text-slate-600 mb-4">
-                    La verticale détermine le contexte métier de l'assistant IA et les documents accessibles.
-                  </p>
-
-                  <VerticalSelector
-                    currentVertical={currentVertical}
-                    onVerticalChange={setCurrentVertical}
-                    supabaseClient={supabase}
-                    showLabel={false}
-                  />
-
-                  <div className="mt-6 p-4 bg-slate-50 rounded-lg">
-                    <p className="text-sm text-slate-600">
-                      <strong>Verticale actuelle :</strong> {verticalInfo?.name}
-                    </p>
-                    <p className="text-sm text-slate-500 mt-1">
-                      {verticalInfo?.description}
-                    </p>
-                  </div>
-                </div>
+                {/* Contenu existant des paramètres... */}
               </div>
             </div>
           )}
