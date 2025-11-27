@@ -1,0 +1,2 @@
+# CoreRag
+Moteur de RAG
