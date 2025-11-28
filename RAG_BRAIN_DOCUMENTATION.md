@@ -278,3 +278,6 @@ ADD COLUMN vertical_id TEXT;
 
 Le frontend utilise actuellement `'default-vertical-id'` comme valeur temporaire avec un avertissement. **Cette valeur doit être remplacée** par une vraie verticale pour que le RAG fonctionne correctement.
 
+
+
+

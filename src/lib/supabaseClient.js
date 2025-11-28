@@ -20,14 +20,6 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 })
 
-// ... (vos autres fonctions getMyProfile, checkEmailExists, etc.) ...
-
-export async function getMyProfile() {
-  const { data, error } = await supabase.rpc('get_my_profile')
-  if (error) return null
-  return data
-}
-
 export async function completeOnboarding(businessRole, bio = null) {
   const { data, error } = await supabase.rpc('complete_onboarding', {
     p_business_role: businessRole,

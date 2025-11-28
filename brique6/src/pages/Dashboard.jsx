@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { callRagBrain } from '../lib/supabaseClient'
+import UserMenu from '../components/UserMenu'
 import VerticalSelector from '../components/VerticalSelector'
 import { VerticalProvider, useVertical } from '../components/VerticalContext'
 import SmartUploader from '../components/SmartUploader'
@@ -8,19 +9,24 @@ import { ChatInterface } from '../components/chat'
 import AudioRecorder from '../components/AudioRecorder'
 import supabase from '../lib/supabaseClient'
 import {
+  Sparkles,
   MessageSquare,
   Settings,
+  Paperclip,
   Mic,
+  Send,
+  Calendar,
+  Briefcase,
+  Loader2,
+  AlertCircle,
   Upload,
   LogOut,
   Menu,
-  X as XIcon,
-  Shield
+  X as XIcon
 } from 'lucide-react'
 
 function DashboardLayout() {
-  const navigate = useNavigate()
-  const { user, profile, signOut, isOrgAdmin, isSuperAdmin } = useAuth()
+  const { user, profile, signOut } = useAuth()
   const { currentVertical, setCurrentVertical, getCurrentVerticalInfo } = useVertical()
 
   const [activeTab, setActiveTab] = useState('chat')
@@ -121,17 +127,6 @@ function DashboardLayout() {
               <Settings className="w-5 h-5" />
               <span className="font-medium">Paramètres</span>
             </button>
-
-            {/* Bouton Administration - visible uniquement pour les admins */}
-            {(isOrgAdmin || isSuperAdmin) && (
-              <button
-                onClick={() => navigate('/admin')}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors duration-200 text-indigo-700 hover:bg-indigo-50 border border-indigo-200"
-              >
-                <Shield className="w-5 h-5" />
-                <span className="font-medium">Administration</span>
-              </button>
-            )}
           </div>
         </nav>
 
@@ -242,3 +237,4 @@ export default function Dashboard() {
     </VerticalProvider>
   )
 }
+

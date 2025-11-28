@@ -4,20 +4,19 @@ import { useAuth } from '../contexts/AuthContext'
 import { 
   ArrowLeft,
   User,
-  Mail,
   Building2,
-  Shield,
   Globe,
   Moon,
   Sun,
   Bell,
   Lock,
-  Sparkles
+  Sparkles,
+  Shield
 } from 'lucide-react'
 
 export default function Settings() {
   const navigate = useNavigate()
-  const { user, profile, organization, signOut } = useAuth()
+  const { user, profile, organization, signOut, isOrgAdmin, isSuperAdmin } = useAuth()
   const [darkMode, setDarkMode] = useState(false)
   const [language, setLanguage] = useState('fr')
   const [notifications, setNotifications] = useState(true)
@@ -113,9 +112,19 @@ export default function Settings() {
                 </dd>
               </div>
             </dl>
-            <button className="mt-4 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors">
-              Gérer l'organisation
-            </button>
+            {(isOrgAdmin || isSuperAdmin) ? (
+              <button 
+                onClick={() => navigate('/admin')}
+                className="mt-4 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors flex items-center gap-2"
+              >
+                <Shield className="w-4 h-4" />
+                Gérer l'organisation
+              </button>
+            ) : (
+              <button className="mt-4 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors">
+                Gérer l'organisation
+              </button>
+            )}
           </div>
 
           {/* Sécurité */}

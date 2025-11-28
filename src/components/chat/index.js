@@ -10,3 +10,6 @@ export { default as ChatInput } from './ChatInput';
 // Export par défaut du container principal
 export { default } from './ChatInterface';
 
+
+
+
