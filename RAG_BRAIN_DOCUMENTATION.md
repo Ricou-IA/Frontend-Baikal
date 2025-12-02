@@ -281,3 +281,9 @@ Le frontend utilise actuellement `'default-vertical-id'` comme valeur temporaire
 
 
 
+
+
+
+
+
+

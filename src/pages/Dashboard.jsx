@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext'
 import VerticalSelector from '../components/VerticalSelector'
 import { VerticalProvider, useVertical } from '../components/VerticalContext'
 import SmartUploader from '../components/SmartUploader'
+import InvoiceUploader from '../components/InvoiceUploader'
 import { ChatInterface } from '../components/chat'
 import AudioRecorder from '../components/AudioRecorder'
 import supabase from '../lib/supabaseClient'
@@ -15,12 +16,13 @@ import {
   LogOut,
   Menu,
   X as XIcon,
-  Shield
+  Shield,
+  Receipt
 } from 'lucide-react'
 
 function DashboardLayout() {
   const navigate = useNavigate()
-  const { user, profile, signOut, isOrgAdmin, isSuperAdmin } = useAuth()
+  const { user, profile, signOut, isOrgAdmin, isSuperAdmin, isImpersonating, stopImpersonating } = useAuth()
   const { currentVertical, setCurrentVertical, getCurrentVerticalInfo } = useVertical()
 
   const [activeTab, setActiveTab] = useState('chat')
@@ -32,6 +34,10 @@ function DashboardLayout() {
 
   const handleUploadSuccess = (result) => {
     console.log('Document uploadé:', result)
+  }
+
+  const handleInvoiceUploadSuccess = (result) => {
+    console.log('Facture uploadée:', result)
   }
 
   const handleRecordingSuccess = (meeting) => {
@@ -101,6 +107,17 @@ function DashboardLayout() {
             </button>
 
             <button
+              onClick={() => setActiveTab('invoices')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors duration-200 ${activeTab === 'invoices'
+                ? 'bg-purple-50 text-purple-700'
+                : 'text-slate-600 hover:bg-slate-50'
+                }`}
+            >
+              <Receipt className="w-5 h-5" />
+              <span className="font-medium">Factures</span>
+            </button>
+
+            <button
               onClick={() => setActiveTab('meetings')}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors duration-200 ${activeTab === 'meetings'
                 ? 'bg-indigo-50 text-indigo-700'
@@ -136,6 +153,19 @@ function DashboardLayout() {
         </nav>
 
         <div className="p-4 border-t border-slate-100">
+          {/* Indicateur d'impersonation */}
+          {isImpersonating && (
+            <div className="mb-3 p-2 bg-amber-50 border border-amber-200 rounded-lg">
+              <p className="text-xs font-medium text-amber-800 mb-1">Mode impersonation actif</p>
+              <button
+                onClick={stopImpersonating}
+                className="text-xs text-amber-700 hover:text-amber-900 underline"
+              >
+                Revenir au profil Super Admin
+              </button>
+            </div>
+          )}
+          
           <div className="flex items-center gap-3 mb-3">
             <div
               className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold"
@@ -200,6 +230,23 @@ function DashboardLayout() {
                   supabaseClient={supabase}
                   defaultVertical={currentVertical || 'audit'}
                   onUpload={handleUploadSuccess}
+                />
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'invoices' && (
+            <div className="h-full overflow-auto p-6">
+              <div className="max-w-2xl mx-auto">
+                <h2 className="text-xl font-bold text-slate-800 mb-2">
+                  Importer une facture
+                </h2>
+                <p className="text-slate-600 mb-6">
+                  Téléchargez vos factures pour traitement et extraction automatique des données.
+                </p>
+                <InvoiceUploader
+                  supabaseClient={supabase}
+                  onUpload={handleInvoiceUploadSuccess}
                 />
               </div>
             </div>

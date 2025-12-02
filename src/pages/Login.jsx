@@ -9,6 +9,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { 
   Mail, 
@@ -35,14 +36,25 @@ export default function Login() {
   const [isRedirecting, setIsRedirecting] = useState(false)
   const wasAuthenticatedRef = useRef(false)
 
-  const { signIn, signUp, signInWithGoogle, resetPassword, loading, error, clearError, isAuthenticated } = useAuth()
+  const { signIn, signUp, signInWithGoogle, resetPassword, loading, error, clearError, isAuthenticated, hasProfile, isOnboarded } = useAuth()
+  const navigate = useNavigate()
 
   useEffect(() => {
     if (isAuthenticated && !wasAuthenticatedRef.current) {
       setIsRedirecting(true)
+      // Redirection explicite après un court délai pour laisser le profil se charger
+      setTimeout(() => {
+        if (hasProfile) {
+          if (!isOnboarded) {
+            navigate('/onboarding', { replace: true })
+          } else {
+            navigate('/dashboard', { replace: true })
+          }
+        }
+      }, 500)
     }
     wasAuthenticatedRef.current = isAuthenticated
-  }, [isAuthenticated])
+  }, [isAuthenticated, hasProfile, isOnboarded, navigate])
   
   useEffect(() => {
     if (!isAuthenticated && isRedirecting) {

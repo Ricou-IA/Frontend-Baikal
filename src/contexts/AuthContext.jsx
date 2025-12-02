@@ -20,6 +20,33 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   
+  // État pour l'impersonation (super_admin uniquement)
+  // Restaurer depuis localStorage si présent
+  const [impersonatedProfile, setImpersonatedProfile] = useState(() => {
+    try {
+      const saved = localStorage.getItem('impersonated_profile')
+      return saved ? JSON.parse(saved) : null
+    } catch {
+      return null
+    }
+  })
+  const [impersonatedOrganization, setImpersonatedOrganization] = useState(() => {
+    try {
+      const saved = localStorage.getItem('impersonated_organization')
+      return saved ? JSON.parse(saved) : null
+    } catch {
+      return null
+    }
+  })
+  const [impersonatedUser, setImpersonatedUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem('impersonated_user')
+      return saved ? JSON.parse(saved) : null
+    } catch {
+      return null
+    }
+  })
+  
   const profileLoadedRef = useRef(false)
   const loadingProfileRef = useRef(false)
   const signingUpRef = useRef(false)
@@ -70,6 +97,41 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
+  // Restaurer l'impersonation depuis localStorage après le chargement du profil
+  useEffect(() => {
+    if (profile && profile.app_role === 'super_admin' && !impersonatedProfile) {
+      try {
+        const savedProfile = localStorage.getItem('impersonated_profile')
+        const savedOrg = localStorage.getItem('impersonated_organization')
+        const savedUser = localStorage.getItem('impersonated_user')
+        
+        if (savedProfile) {
+          const parsedProfile = JSON.parse(savedProfile)
+          const parsedOrg = savedOrg ? JSON.parse(savedOrg) : null
+          const parsedUser = savedUser ? JSON.parse(savedUser) : null
+          
+          setImpersonatedProfile(parsedProfile)
+          setImpersonatedOrganization(parsedOrg)
+          setImpersonatedUser(parsedUser)
+        }
+      } catch (err) {
+        console.error('Erreur lors de la restauration de l\'impersonation:', err)
+        // Nettoyer localStorage en cas d'erreur
+        localStorage.removeItem('impersonated_profile')
+        localStorage.removeItem('impersonated_organization')
+        localStorage.removeItem('impersonated_user')
+      }
+    } else if (profile && profile.app_role !== 'super_admin' && impersonatedProfile) {
+      // Si on n'est plus super_admin, nettoyer l'impersonation
+      localStorage.removeItem('impersonated_profile')
+      localStorage.removeItem('impersonated_organization')
+      localStorage.removeItem('impersonated_user')
+      setImpersonatedProfile(null)
+      setImpersonatedOrganization(null)
+      setImpersonatedUser(null)
+    }
+  }, [profile, impersonatedProfile])
+
   useEffect(() => {
     let mounted = true
     
@@ -105,12 +167,18 @@ export function AuthProvider({ children }) {
           profileLoadedRef.current = false
           loadingProfileRef.current = false
           
-          setTimeout(async () => {
-            if (mounted) {
-              await loadUserProfile(newSession.user.id)
-              setLoading(false)
-            }
-          }, 1000)
+          // Charger le profil immédiatement
+          if (mounted) {
+            loadUserProfile(newSession.user.id).then(() => {
+              if (mounted) {
+                setLoading(false)
+              }
+            }).catch(() => {
+              if (mounted) {
+                setLoading(false)
+              }
+            })
+          }
         } else if (event === 'SIGNED_OUT') {
           setProfile(null)
           setOrganization(null)
@@ -337,18 +405,105 @@ export function AuthProvider({ children }) {
     setError(null)
   }
 
+  // Fonction pour emprunter l'identité d'un utilisateur (super_admin uniquement)
+  const impersonateUser = useCallback(async (targetUserId) => {
+    if (!profile || profile.app_role !== 'super_admin') {
+      throw new Error('Seul le super_admin peut emprunter l\'identité d\'un utilisateur')
+    }
+
+    try {
+      // Charger le profil cible
+      const { data: targetProfile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', targetUserId)
+        .single()
+
+      if (profileError) throw profileError
+
+      // Charger l'organisation si présente
+      let targetOrg = null
+      if (targetProfile.org_id) {
+        const { data: orgData, error: orgError } = await supabase
+          .from('organizations')
+          .select('*')
+          .eq('id', targetProfile.org_id)
+          .single()
+
+        if (!orgError) {
+          targetOrg = orgData
+        }
+      }
+
+      // Créer un objet user simulé à partir du profil
+      const simulatedUser = {
+        id: targetProfile.id,
+        email: targetProfile.email,
+        user_metadata: {
+          full_name: targetProfile.full_name
+        }
+      }
+
+      // Sauvegarder dans localStorage pour persister après rechargement
+      localStorage.setItem('impersonated_profile', JSON.stringify(targetProfile))
+      if (targetOrg) {
+        localStorage.setItem('impersonated_organization', JSON.stringify(targetOrg))
+      } else {
+        localStorage.removeItem('impersonated_organization')
+      }
+      localStorage.setItem('impersonated_user', JSON.stringify(simulatedUser))
+
+      setImpersonatedProfile(targetProfile)
+      setImpersonatedOrganization(targetOrg)
+      setImpersonatedUser(simulatedUser)
+
+      return { success: true }
+    } catch (err) {
+      setError(err.message)
+      return { success: false, error: err.message }
+    }
+  }, [profile])
+
+  // Arrêter l'impersonation
+  const stopImpersonating = useCallback(() => {
+    // Supprimer de localStorage
+    localStorage.removeItem('impersonated_profile')
+    localStorage.removeItem('impersonated_organization')
+    localStorage.removeItem('impersonated_user')
+    
+    setImpersonatedProfile(null)
+    setImpersonatedOrganization(null)
+    setImpersonatedUser(null)
+  }, [])
+
+  // Utiliser le profil emprunté si présent, sinon le profil réel
+  const effectiveProfile = impersonatedProfile || profile
+  const effectiveOrganization = impersonatedOrganization || organization
+  const effectiveUser = impersonatedUser || user
+  const isImpersonating = !!impersonatedProfile
+
+  // Si on est en impersonation, on bypass la vérification d'onboarding
+  // (le super_admin peut tester n'importe quel profil, même s'il n'a pas complété son onboarding)
+  const isOnboarded = isImpersonating 
+    ? true 
+    : !!effectiveProfile?.business_role
+
   const value = {
-    user,
+    user: effectiveUser,
     session,
-    profile,
-    organization,
+    profile: effectiveProfile,
+    organization: effectiveOrganization,
     loading,
     error,
     isAuthenticated: !!session,
-    isOnboarded: !!profile?.business_role,
-    isOrgAdmin: profile?.app_role === 'org_admin' || profile?.app_role === 'super_admin',
-    isSuperAdmin: profile?.app_role === 'super_admin',
-    hasProfile: !!profile,
+    isOnboarded,
+    isOrgAdmin: effectiveProfile?.app_role === 'org_admin' || effectiveProfile?.app_role === 'super_admin',
+    isSuperAdmin: profile?.app_role === 'super_admin', // Toujours basé sur le profil réel, pas emprunté
+    hasProfile: !!effectiveProfile,
+    isImpersonating,
+    realProfile: profile, // Profil réel du super_admin
+    impersonateUser,
+    stopImpersonating,
     signUp,
     signIn,
     signInWithGoogle,

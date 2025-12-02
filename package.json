@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0"
+    "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
+    "seed:test-users": "node scripts/seed-test-users.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

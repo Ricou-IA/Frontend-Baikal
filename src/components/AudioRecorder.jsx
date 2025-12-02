@@ -76,6 +76,41 @@ export default function AudioRecorder({ onRecordingComplete }) {
 
             if (!meeting) throw new Error("Aucune donnée reçue du serveur");
 
+            // 4. Appel N8N depuis le frontend après dépôt dans Storage
+            // Envoi uniquement du transcript de Whisper (pas le résumé) pour éviter de polluer le RAG
+            const n8nWebhookUrl = import.meta.env.VITE_N8N_INGEST_WEBHOOK_URL?.trim();
+            if (n8nWebhookUrl && meeting) {
+                try {
+                    console.log('📤 Envoi signal à N8N pour lancer le workflow (transcript uniquement)...');
+                    const n8nResponse = await fetch(n8nWebhookUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            content: meeting.transcript,  // ✅ Uniquement le transcript de Whisper (pas le résumé)
+                            metadata: {
+                                source: 'meeting_audio',
+                                meeting_id: meeting.id,
+                                title: meeting.title,
+                                audio_path: meeting.audio_path || meeting.audio_url,
+                                transcript_path: meeting.transcript_path,
+                                user_id: meeting.user_id
+                            },
+                            target_verticals: ['default']
+                        })
+                    });
+
+                    if (!n8nResponse.ok) {
+                        console.warn('⚠️ Erreur lors de l\'appel N8N (non bloquant):', n8nResponse.status);
+                    } else {
+                        console.log('✅ Transcript envoyé à N8N pour embedding (RAG)');
+                    }
+                } catch (n8nError) {
+                    console.warn('⚠️ Erreur lors de l\'appel N8N (non bloquant):', n8nError);
+                }
+            }
+
             setResult(meeting);
             if (onRecordingComplete) onRecordingComplete(meeting);
 

@@ -48,6 +48,8 @@ const DEFAULT_ACCEPTED_TYPES = [
   'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'text/csv',
+  'application/vnd.ms-excel',  // XLS (ancien format Excel)
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',  // XLSX (nouveau format Excel)
 ];
 
 const SmartUploader = ({
@@ -115,7 +117,7 @@ const SmartUploader = ({
 
     // Vérification du type
     if (!acceptedTypes.includes(file.type)) {
-      setErrorMessage(`Type de fichier non supporté. Acceptés: PDF, Word, TXT, Markdown, CSV`);
+      setErrorMessage(`Type de fichier non supporté. Acceptés: PDF, Word, Excel, TXT, Markdown, CSV`);
       return false;
     }
 
@@ -159,11 +161,7 @@ const SmartUploader = ({
     setUploadProgress(0);
 
     try {
-      // Étape 1: Lecture du fichier
-      setUploadProgress(10);
-      const fileContent = await readFileContent(selectedFile);
-      
-      // Étape 2: Upload vers Supabase Storage (si configuré)
+      // Upload vers Supabase Storage
       setUploadProgress(30);
       let storageUrl = null;
       
@@ -178,7 +176,7 @@ const SmartUploader = ({
           });
 
         if (storageError) {
-          console.warn('Erreur storage (non bloquante):', storageError.message);
+          throw new Error(`Erreur lors de l'upload: ${storageError.message}`);
         } else {
           // Récupérer l'URL publique
           const { data: { publicUrl } } = supabaseClient
@@ -186,63 +184,38 @@ const SmartUploader = ({
             .from('documents')
             .getPublicUrl(fileName);
           storageUrl = publicUrl;
-        }
-      }
 
-      // Étape 3: Appel à l'API d'ingestion
-      setUploadProgress(50);
-      
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      const uploadWebhookUrl = import.meta.env.VITE_UPLOAD_WEBHOOK_URL?.trim();
-
-      // Récupérer le token d'authentification
-      let accessToken = supabaseAnonKey;
-      if (supabaseClient) {
+          // Récupérer l'utilisateur pour l'envoyer à N8N
         const { data: { session } } = await supabaseClient.auth.getSession();
-        if (session) {
-          accessToken = session.access_token;
-        }
-      }
+          const userId = session?.user?.id;
 
-      setUploadProgress(70);
-
-      const isSupabaseFunction = !uploadWebhookUrl;
-      const endpointUrl = uploadWebhookUrl || `${supabaseUrl}/functions/v1/ingest-api`;
-
-      const requestHeaders = {
-        'Content-Type': 'application/json',
-      };
-
-      if (isSupabaseFunction) {
-        requestHeaders.Authorization = `Bearer ${accessToken}`;
-      }
-
-      const response = await fetch(endpointUrl, {
+          // Appel au webhook N8N pour la vectorisation
+          const n8nIngestWebhookUrl = import.meta.env.VITE_N8N_INGEST_WEBHOOK_URL?.trim();
+          if (userId && n8nIngestWebhookUrl) {
+            setUploadProgress(80);
+            try {
+              await fetch(n8nIngestWebhookUrl, {
         method: 'POST',
-        headers: requestHeaders,
+                headers: {
+                  'Content-Type': 'application/json'
+                },
         body: JSON.stringify({
-          content: fileContent,
-          metadata: {
-            filename: selectedFile.name,
-            fileType: selectedFile.type,
-            fileSize: selectedFile.size,
-            uploadedAt: new Date().toISOString(),
-            storageUrl: storageUrl,
-          },
-          target_verticals: selectedVerticals,
-        }),
-      });
-
-      setUploadProgress(90);
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('Ingest error payload:', errorData);
-        throw new Error(errorData.error || `Erreur serveur (${response.status})`);
+                  filename: selectedFile.name,
+                  path: `documents/${fileName}`,  // Path dans Supabase Storage
+                  user_id: userId,
+                  tag: selectedVerticals[0] || 'default',
+                  target_verticals: selectedVerticals || ['default']
+                })
+              });
+              // Ne pas bloquer si l'appel N8N échoue (non bloquant)
+            } catch (n8nError) {
+              console.warn('Erreur lors de l\'appel N8N (non bloquant):', n8nError);
+            }
+          }
+        }
+      } else {
+        throw new Error('Client Supabase non configuré');
       }
-
-      const result = await response.json();
 
       setUploadProgress(100);
       setUploadStatus('success');
@@ -252,7 +225,7 @@ const SmartUploader = ({
         onUpload({
           file: selectedFile,
           verticals: selectedVerticals,
-          result: result,
+          storageUrl: storageUrl,
         });
       }
 
@@ -266,31 +239,6 @@ const SmartUploader = ({
       setUploadStatus('error');
       setErrorMessage(error.message || 'Erreur lors de l\'upload');
     }
-  };
-
-  // Lecture du contenu du fichier
-  const readFileContent = (file) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      
-      reader.onload = (e) => {
-        // Pour les PDFs, on envoie en base64
-        if (file.type === 'application/pdf') {
-          const base64 = e.target.result.split(',')[1];
-          resolve(`[PDF:BASE64]${base64}`);
-        } else {
-          resolve(e.target.result);
-        }
-      };
-      
-      reader.onerror = () => reject(new Error('Erreur de lecture du fichier'));
-      
-      if (file.type === 'application/pdf') {
-        reader.readAsDataURL(file);
-      } else {
-        reader.readAsText(file);
-      }
-    });
   };
 
   // Reset complet
@@ -358,7 +306,7 @@ const SmartUploader = ({
               </p>
             </div>
             <p className="text-xs text-slate-400">
-              PDF, Word, TXT, Markdown, CSV • Max {maxFileSize} MB
+              PDF, Word, Excel, TXT, Markdown, CSV • Max {maxFileSize} MB
             </p>
           </div>
         )}

@@ -41,22 +41,55 @@ export function useOrganization(orgId) {
         }
 
         try {
-            const { data, error: membersError } = await supabase
+            // Récupérer les membres
+            const { data: membersData, error: membersError } = await supabase
                 .from('organization_members')
-                .select(`
-                    *,
-                    profiles:user_id (
-                        id,
-                        email,
-                        full_name,
-                        avatar_url
-                    )
-                `)
+                .select('*')
                 .eq('org_id', orgId)
                 .order('created_at', { ascending: false });
 
-            if (membersError) throw membersError;
-            setMembers(data || []);
+            if (membersError) {
+                console.error('Erreur lors de la récupération des membres:', membersError);
+                throw membersError;
+            }
+
+            // Si aucun membre, retourner un tableau vide
+            if (!membersData || membersData.length === 0) {
+                setMembers([]);
+                return;
+            }
+
+            // Récupérer les profils pour les membres qui ont un user_id
+            const userIds = membersData
+                .map(m => m.user_id)
+                .filter(id => id !== null);
+
+            let profilesMap = {};
+            if (userIds.length > 0) {
+                const { data: profilesData, error: profilesError } = await supabase
+                    .from('profiles')
+                    .select('id, email, full_name, avatar_url')
+                    .in('id', userIds);
+
+                if (profilesError) {
+                    console.error('Erreur lors de la récupération des profils:', profilesError);
+                    // Continuer même en cas d'erreur sur les profils
+                } else if (profilesData) {
+                    // Créer un map pour accès rapide
+                    profilesMap = profilesData.reduce((acc, profile) => {
+                        acc[profile.id] = profile;
+                        return acc;
+                    }, {});
+                }
+            }
+
+            // Fusionner les membres avec leurs profils
+            const membersWithProfiles = membersData.map(member => ({
+                ...member,
+                profiles: member.user_id ? profilesMap[member.user_id] || null : null
+            }));
+
+            setMembers(membersWithProfiles);
         } catch (err) {
             setError(err.message);
         } finally {
@@ -188,4 +221,5 @@ export function useOrganization(orgId) {
         refresh,
     };
 }
+
 
