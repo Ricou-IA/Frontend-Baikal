@@ -1,0 +1,116 @@
+# Changelog - Refactorisation
+
+## [2.0.0] - 2024-12 - Refactorisation majeure
+
+### ✨ Nouveautés
+
+#### Configuration centralisée (`src/config/`)
+- `constants.js` - Constantes globales (APP_NAME, VERTICALS, ROLES)
+- `routes.js` - Configuration des routes
+- `api.js` - Configuration API et endpoints
+- `messages.js` - Messages utilisateur centralisés
+
+#### Hooks personnalisés (`src/hooks/`)
+- `useAsync` - Gestion des états asynchrones
+- `useLocalStorage` - Persistance localStorage avec sync
+- `useDebounce` / `useThrottle` - Contrôle de fréquence
+- `useForm` - Gestion complète de formulaires
+- `useToast` - Notifications toast
+- `useRAG` - Chat RAG
+- `useErrorHandler` - Gestion centralisée des erreurs
+- `useImpersonation` - Impersonation super_admin
+
+#### Couche services (`src/services/`)
+- `auth.service.js` - Authentification
+- `profile.service.js` - Profils utilisateurs
+- `organization.service.js` - Organisations et membres
+- `rag.service.js` - Chat RAG et conversations
+- `storage.service.js` - Gestion des fichiers
+
+#### Composants UI (`src/components/ui/`)
+- `Button` - Boutons avec variantes
+- `Input` / `Textarea` - Champs de saisie
+- `Card` - Cartes avec slots
+- `Modal` / `ConfirmModal` - Fenêtres modales
+- `Alert` / `AlertInline` / `AlertBanner` - Alertes
+- `Spinner` / `Skeleton` - Chargement
+
+#### Composants Layout (`src/components/layout/`)
+- `Sidebar` - Navigation latérale réutilisable
+- `MobileHeader` - Header mobile
+
+#### Gestion des erreurs (`src/utils/errors.js`)
+- Classes d'erreurs typées (AppError, AuthError, APIError, etc.)
+- Mapping des erreurs Supabase
+- Handler global
+
+#### Contextes
+- `ToastContext` - Système de notifications toast global
+- `ErrorBoundary` - Capture des erreurs React
+
+### 🔄 Modifications
+
+#### AuthContext refactorisé
+- Réduit de ~400 à ~250 lignes
+- Extraction de `useImpersonation`
+- Utilisation des services internes
+- Interface publique inchangée
+
+#### Dashboard refactorisé
+- Réduit de ~300 à ~200 lignes
+- Extraction de `Sidebar` et `MobileHeader`
+- Séparation du contenu par onglet (`TabContent`)
+- Meilleure organisation du code
+
+### 🗑️ Suppressions
+
+- `brique6/` - Dossier fusionné dans le projet principal
+- `.env.local2` - Fichier doublon
+- `project_code_export.json` - Export temporaire
+- `console.log` inutiles supprimés
+
+### 📁 Structure finale
+
+```
+src/
+├── components/
+│   ├── admin/          # 6 fichiers
+│   ├── chat/           # 4 fichiers
+│   ├── layout/         # 3 fichiers (NEW)
+│   ├── ui/             # 7 fichiers (NEW)
+│   └── ErrorBoundary.jsx (NEW)
+├── config/             # 5 fichiers (NEW)
+├── contexts/           # 3 fichiers
+├── hooks/              # 9 fichiers (NEW)
+├── services/           # 6 fichiers (NEW)
+├── utils/              # 3 fichiers (NEW)
+├── pages/              # 6 fichiers
+└── lib/                # 1 fichier
+```
+
+### 🛠️ Améliorations techniques
+
+- Architecture plus modulaire et maintenable
+- Réutilisabilité accrue des composants
+- Gestion d'erreur uniforme
+- Documentation JSDoc complète
+- Séparation des responsabilités
+- Code plus testable
+
+### 📝 Documentation
+
+- `README.md` - Documentation principale
+- `HOOKS.md` - Documentation des hooks
+- `SERVICES.md` - Documentation des services
+- `COMPONENTS.md` - Documentation des composants UI
+- `CHANGELOG.md` - Ce fichier
+
+---
+
+## [1.0.0] - Version initiale
+
+- Implémentation initiale du Core RAG Engine
+- Authentification Supabase
+- Chat RAG multi-verticales
+- Upload de documents
+- Gestion des organisations

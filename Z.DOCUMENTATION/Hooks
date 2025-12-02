@@ -1,0 +1,483 @@
+# Hooks - Documentation
+
+Documentation des hooks personnalisés disponibles dans `src/hooks/`.
+
+---
+
+## useAsync
+
+Gère les états asynchrones avec loading, error et data.
+
+### Import
+
+```jsx
+import { useAsync } from '@/hooks';
+```
+
+### Paramètres
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `asyncFunction` | `Function` | Fonction async à exécuter |
+| `options` | `Object` | Options de configuration |
+
+### Options
+
+| Option | Type | Défaut | Description |
+|--------|------|--------|-------------|
+| `immediate` | `boolean` | `false` | Exécuter au montage |
+| `initialData` | `any` | `null` | Données initiales |
+| `onSuccess` | `Function` | - | Callback en cas de succès |
+| `onError` | `Function` | - | Callback en cas d'erreur |
+
+### Retour
+
+```jsx
+{
+  data,        // Données retournées
+  loading,     // Boolean - en cours de chargement
+  error,       // Erreur éventuelle
+  isIdle,      // Jamais exécuté
+  isSuccess,   // Succès
+  isError,     // Erreur
+  execute,     // Fonction pour exécuter
+  reset,       // Réinitialiser
+  setData,     // Modifier les données
+}
+```
+
+### Exemple
+
+```jsx
+function UserProfile({ userId }) {
+  const { data: user, loading, error, execute } = useAsync(
+    () => fetchUser(userId),
+    { immediate: true }
+  );
+
+  if (loading) return <Spinner />;
+  if (error) return <Alert variant="error">{error.message}</Alert>;
+  
+  return <div>{user.name}</div>;
+}
+```
+
+---
+
+## useLocalStorage
+
+Persiste une valeur dans localStorage avec synchronisation entre onglets.
+
+### Import
+
+```jsx
+import { useLocalStorage } from '@/hooks';
+```
+
+### Paramètres
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `key` | `string` | Clé localStorage |
+| `initialValue` | `any` | Valeur par défaut |
+| `options` | `Object` | Options de sérialisation |
+
+### Retour
+
+```jsx
+[storedValue, setValue, removeValue]
+```
+
+### Exemple
+
+```jsx
+function ThemeSwitcher() {
+  const [theme, setTheme, removeTheme] = useLocalStorage('theme', 'light');
+
+  return (
+    <button onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>
+      Mode {theme}
+    </button>
+  );
+}
+```
+
+---
+
+## useDebounce / useDebouncedCallback / useThrottle
+
+Utilitaires pour limiter la fréquence d'exécution.
+
+### Import
+
+```jsx
+import { useDebounce, useDebouncedCallback, useThrottle } from '@/hooks';
+```
+
+### useDebounce
+
+Debounce une valeur.
+
+```jsx
+const [search, setSearch] = useState('');
+const debouncedSearch = useDebounce(search, 300);
+
+useEffect(() => {
+  if (debouncedSearch) {
+    fetchResults(debouncedSearch);
+  }
+}, [debouncedSearch]);
+```
+
+### useDebouncedCallback
+
+Debounce une fonction callback.
+
+```jsx
+const { callback: debouncedSave, cancel, flush } = useDebouncedCallback(
+  (value) => saveToServer(value),
+  500
+);
+
+// Annuler le debounce
+cancel();
+
+// Exécuter immédiatement
+flush();
+```
+
+### useThrottle
+
+Limite la fréquence de mise à jour.
+
+```jsx
+const throttledValue = useThrottle(scrollPosition, 100);
+```
+
+---
+
+## useForm
+
+Gestion complète de formulaires avec validation.
+
+### Import
+
+```jsx
+import { useForm } from '@/hooks';
+```
+
+### Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `initialValues` | `Object` | Valeurs initiales |
+| `validate` | `Function` | Fonction de validation |
+| `onSubmit` | `Function` | Callback à la soumission |
+| `validateOnChange` | `boolean` | Valider à chaque changement |
+| `validateOnBlur` | `boolean` | Valider au blur |
+
+### Retour
+
+```jsx
+{
+  values,           // Valeurs actuelles
+  errors,           // Erreurs de validation
+  touched,          // Champs touchés
+  isSubmitting,     // En cours de soumission
+  isValid,          // Formulaire valide
+  isDirty,          // Formulaire modifié
+  handleChange,     // Handler onChange
+  handleBlur,       // Handler onBlur
+  handleSubmit,     // Handler onSubmit
+  reset,            // Réinitialiser
+  setValue,         // Définir une valeur
+  setError,         // Définir une erreur
+  getFieldProps,    // Props pour un champ
+  getFieldMeta,     // Métadonnées d'un champ
+}
+```
+
+### Exemple
+
+```jsx
+function LoginForm() {
+  const {
+    values,
+    errors,
+    touched,
+    handleChange,
+    handleBlur,
+    handleSubmit,
+    isSubmitting,
+  } = useForm({
+    initialValues: {
+      email: '',
+      password: '',
+    },
+    validate: (values) => {
+      const errors = {};
+      if (!values.email) errors.email = 'Email requis';
+      if (!values.password) errors.password = 'Mot de passe requis';
+      return errors;
+    },
+    onSubmit: async (values) => {
+      await loginUser(values);
+    },
+  });
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <Input
+        name="email"
+        value={values.email}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        error={touched.email && errors.email}
+      />
+      <Input
+        name="password"
+        type="password"
+        value={values.password}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        error={touched.password && errors.password}
+      />
+      <Button type="submit" loading={isSubmitting}>
+        Connexion
+      </Button>
+    </form>
+  );
+}
+```
+
+---
+
+## useToast
+
+Système de notifications toast.
+
+### Import
+
+```jsx
+import { useToast } from '@/hooks';
+// Ou depuis le contexte
+import { useToast } from '@/contexts/ToastContext';
+```
+
+### Retour
+
+```jsx
+{
+  toasts,      // Liste des toasts actifs
+  addToast,    // Ajouter un toast personnalisé
+  removeToast, // Supprimer un toast
+  clearAll,    // Supprimer tous les toasts
+  success,     // Toast de succès
+  error,       // Toast d'erreur
+  warning,     // Toast de warning
+  info,        // Toast d'info
+}
+```
+
+### Exemple
+
+```jsx
+function SaveButton() {
+  const { success, error } = useToast();
+
+  const handleSave = async () => {
+    try {
+      await saveData();
+      success('Données sauvegardées !');
+    } catch (err) {
+      error('Erreur lors de la sauvegarde');
+    }
+  };
+
+  return <Button onClick={handleSave}>Sauvegarder</Button>;
+}
+```
+
+### Configuration (Provider)
+
+```jsx
+// Dans App.jsx
+import { ToastProvider } from '@/contexts/ToastContext';
+
+function App() {
+  return (
+    <ToastProvider position="top-right" maxToasts={5}>
+      <Router />
+    </ToastProvider>
+  );
+}
+```
+
+---
+
+## useRAG
+
+Hook pour le chat RAG (Retrieval Augmented Generation).
+
+### Import
+
+```jsx
+import { useRAG } from '@/hooks';
+```
+
+### Options
+
+| Option | Type | Défaut | Description |
+|--------|------|--------|-------------|
+| `verticalId` | `string` | `'audit'` | ID de la verticale |
+| `demoMode` | `boolean` | `false` | Mode démo |
+| `onError` | `Function` | - | Callback d'erreur |
+| `onMessageSent` | `Function` | - | Callback après envoi |
+| `onResponseReceived` | `Function` | - | Callback après réponse |
+
+### Retour
+
+```jsx
+{
+  messages,     // Array de messages
+  isLoading,    // En cours de chargement
+  error,        // Erreur éventuelle
+  sendMessage,  // Envoyer un message
+  clearHistory, // Effacer l'historique
+  retry,        // Réessayer
+  cancel,       // Annuler la requête
+  hasMessages,  // A des messages (hors bienvenue)
+  lastMessage,  // Dernier message
+  messageCount, // Nombre de messages
+}
+```
+
+### Exemple
+
+```jsx
+function ChatComponent() {
+  const { messages, isLoading, sendMessage, clearHistory } = useRAG({
+    verticalId: 'audit',
+  });
+
+  const handleSend = async (query) => {
+    await sendMessage(query);
+  };
+
+  return (
+    <div>
+      {messages.map((msg) => (
+        <ChatBubble key={msg.id} message={msg} />
+      ))}
+      <ChatInput onSend={handleSend} disabled={isLoading} />
+      <Button onClick={clearHistory}>Effacer</Button>
+    </div>
+  );
+}
+```
+
+---
+
+## useErrorHandler
+
+Gestion centralisée des erreurs avec intégration toast.
+
+### Import
+
+```jsx
+import { useErrorHandler } from '@/hooks';
+```
+
+### Options
+
+| Option | Type | Défaut | Description |
+|--------|------|--------|-------------|
+| `showToast` | `boolean` | `true` | Afficher un toast |
+| `logErrors` | `boolean` | `true` | Logger les erreurs |
+| `onError` | `Function` | - | Callback personnalisé |
+
+### Retour
+
+```jsx
+{
+  error,              // Erreur courante
+  errorHistory,       // Historique des erreurs
+  hasError,           // Boolean
+  handleError,        // Gérer une erreur
+  clearError,         // Effacer l'erreur
+  withErrorHandling,  // Wrapper async
+  createErrorHandler, // Créer un handler
+}
+```
+
+### Exemple
+
+```jsx
+function DataLoader() {
+  const { handleError, withErrorHandling, error } = useErrorHandler();
+
+  const loadData = async () => {
+    await withErrorHandling(async () => {
+      const data = await fetchData();
+      setData(data);
+    });
+  };
+
+  // Ou manuellement
+  const loadDataManual = async () => {
+    try {
+      const data = await fetchData();
+      setData(data);
+    } catch (err) {
+      handleError(err, { context: 'loadData' });
+    }
+  };
+
+  return error ? <Alert variant="error">{error.message}</Alert> : <Data />;
+}
+```
+
+---
+
+## useImpersonation
+
+Hook pour l'impersonation (super_admin uniquement).
+
+### Import
+
+```jsx
+import { useImpersonation } from '@/hooks';
+```
+
+### Retour
+
+```jsx
+{
+  isImpersonating,         // En mode impersonation
+  impersonatedProfile,     // Profil emprunté
+  impersonatedOrganization,// Organisation empruntée
+  impersonatedUser,        // User emprunté
+  impersonateUser,         // Emprunter une identité
+  stopImpersonating,       // Arrêter l'impersonation
+}
+```
+
+### Exemple
+
+```jsx
+function AdminPanel() {
+  const { isImpersonating, impersonateUser, stopImpersonating } = useImpersonation(profile);
+
+  return (
+    <div>
+      {isImpersonating && (
+        <Alert variant="warning">
+          Mode impersonation actif
+          <Button onClick={stopImpersonating}>Quitter</Button>
+        </Alert>
+      )}
+      <UserList onImpersonate={(userId) => impersonateUser(userId)} />
+    </div>
+  );
+}
+```

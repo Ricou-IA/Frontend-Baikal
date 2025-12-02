@@ -1,0 +1,532 @@
+# Services - Documentation
+
+Documentation de la couche services disponible dans `src/services/`.
+
+Tous les services retournent un objet `{ data, error }` pour une gestion d'erreur uniforme.
+
+---
+
+## authService
+
+Service d'authentification.
+
+### Import
+
+```jsx
+import { authService } from '@/services';
+```
+
+### Méthodes
+
+#### signIn(email, password)
+
+Connexion avec email/mot de passe.
+
+```jsx
+const { data, error } = await authService.signIn('user@example.com', 'password');
+```
+
+#### signUp(email, password, metadata)
+
+Inscription d'un nouvel utilisateur.
+
+```jsx
+const { data, error } = await authService.signUp(
+  'user@example.com',
+  'password',
+  { full_name: 'John Doe' }
+);
+```
+
+#### signOut()
+
+Déconnexion.
+
+```jsx
+const { error } = await authService.signOut();
+```
+
+#### signInWithGoogle(redirectTo)
+
+Connexion OAuth Google.
+
+```jsx
+const { data, error } = await authService.signInWithGoogle(
+  'https://app.example.com/dashboard'
+);
+```
+
+#### resetPassword(email, redirectTo)
+
+Demande de réinitialisation de mot de passe.
+
+```jsx
+const { data, error } = await authService.resetPassword(
+  'user@example.com',
+  'https://app.example.com/reset-password'
+);
+```
+
+#### updatePassword(newPassword)
+
+Mise à jour du mot de passe.
+
+```jsx
+const { data, error } = await authService.updatePassword('newSecurePassword');
+```
+
+#### getSession()
+
+Récupère la session courante.
+
+```jsx
+const { data: { session }, error } = await authService.getSession();
+```
+
+#### getUser()
+
+Récupère l'utilisateur courant.
+
+```jsx
+const { data: { user }, error } = await authService.getUser();
+```
+
+#### onAuthStateChange(callback)
+
+Écoute les changements d'état d'authentification.
+
+```jsx
+const { data: { subscription } } = authService.onAuthStateChange(
+  (event, session) => {
+    console.log('Auth event:', event);
+  }
+);
+
+// Cleanup
+subscription.unsubscribe();
+```
+
+---
+
+## profileService
+
+Service de gestion des profils utilisateurs.
+
+### Import
+
+```jsx
+import { profileService } from '@/services';
+```
+
+### Méthodes
+
+#### getProfile(userId)
+
+Récupère un profil par ID.
+
+```jsx
+const { data: profile, error } = await profileService.getProfile(userId);
+```
+
+#### getProfileWithOrganization(userId)
+
+Récupère un profil avec son organisation.
+
+```jsx
+const { profile, organization, error } = await profileService.getProfileWithOrganization(userId);
+```
+
+#### updateProfile(userId, data)
+
+Met à jour un profil.
+
+```jsx
+const { data, error } = await profileService.updateProfile(userId, {
+  full_name: 'Jane Doe',
+  bio: 'Développeuse senior',
+});
+```
+
+#### completeOnboarding(userId, businessRole, bio, additionalData)
+
+Complète l'onboarding d'un utilisateur.
+
+```jsx
+const { data, error } = await profileService.completeOnboarding(
+  userId,
+  'provider',
+  'Expert en audit'
+);
+```
+
+#### getMyProfile()
+
+Récupère le profil de l'utilisateur connecté (via RPC).
+
+```jsx
+const { data: profile, error } = await profileService.getMyProfile();
+```
+
+#### updateAvatar(userId, avatarUrl)
+
+Met à jour l'avatar.
+
+```jsx
+const { data, error } = await profileService.updateAvatar(userId, 'https://...');
+```
+
+#### getAllProfiles(options)
+
+Récupère tous les profils (admin).
+
+```jsx
+const { data: profiles, error } = await profileService.getAllProfiles({
+  limit: 50,
+  offset: 0,
+  orderBy: 'created_at',
+  ascending: false,
+});
+```
+
+---
+
+## organizationService
+
+Service de gestion des organisations.
+
+### Import
+
+```jsx
+import { organizationService } from '@/services';
+```
+
+### Méthodes
+
+#### getOrganization(orgId)
+
+Récupère une organisation.
+
+```jsx
+const { data: org, error } = await organizationService.getOrganization(orgId);
+```
+
+#### updateOrganization(orgId, data)
+
+Met à jour une organisation.
+
+```jsx
+const { data, error } = await organizationService.updateOrganization(orgId, {
+  name: 'Nouvelle Entreprise',
+});
+```
+
+#### getMembers(orgId)
+
+Récupère les membres d'une organisation avec leurs profils.
+
+```jsx
+const { data: members, error } = await organizationService.getMembers(orgId);
+// members[0].profiles.full_name
+```
+
+#### inviteMember(orgId, email, role)
+
+Invite un nouveau membre.
+
+```jsx
+const { success, error } = await organizationService.inviteMember(
+  orgId,
+  'newuser@example.com',
+  'member' // 'admin' | 'member'
+);
+```
+
+#### revokeMember(memberId)
+
+Révoque un membre.
+
+```jsx
+const { success, error } = await organizationService.revokeMember(memberId);
+```
+
+#### updateMemberRole(memberId, newRole)
+
+Change le rôle d'un membre.
+
+```jsx
+const { success, error } = await organizationService.updateMemberRole(
+  memberId,
+  'admin'
+);
+```
+
+#### getAllOrganizations(options)
+
+Récupère toutes les organisations (super_admin).
+
+```jsx
+const { data: orgs, error } = await organizationService.getAllOrganizations({
+  limit: 100,
+  offset: 0,
+});
+```
+
+#### createOrganization(data)
+
+Crée une nouvelle organisation.
+
+```jsx
+const { data: org, error } = await organizationService.createOrganization({
+  name: 'Ma Société',
+  plan: 'starter',
+});
+```
+
+---
+
+## ragService
+
+Service pour le chat RAG.
+
+### Import
+
+```jsx
+import { ragService } from '@/services';
+```
+
+### Méthodes
+
+#### sendMessage(query, verticalId, options)
+
+Envoie un message au RAG Brain.
+
+```jsx
+const { response, sources, conversationId, error } = await ragService.sendMessage(
+  'Quelle est la procédure d\'audit ?',
+  'audit',
+  { matchThreshold: 0.7, matchCount: 10 }
+);
+```
+
+**Options :**
+
+| Option | Type | Défaut | Description |
+|--------|------|--------|-------------|
+| `matchThreshold` | `number` | `0.5` | Seuil de similarité |
+| `matchCount` | `number` | `5` | Nombre de résultats |
+| `conversationId` | `string` | - | ID de conversation |
+
+#### searchDocuments(query, verticalId, options)
+
+Recherche des documents sans génération.
+
+```jsx
+const { documents, error } = await ragService.searchDocuments(
+  'normes comptables',
+  'audit',
+  { matchCount: 10 }
+);
+```
+
+#### getConversationHistory(userId, options)
+
+Récupère l'historique des conversations.
+
+```jsx
+const { data: conversations, error } = await ragService.getConversationHistory(
+  userId,
+  { limit: 50, verticalId: 'audit' }
+);
+```
+
+#### getConversationMessages(conversationId)
+
+Récupère les messages d'une conversation.
+
+```jsx
+const { data: messages, error } = await ragService.getConversationMessages(conversationId);
+```
+
+#### createConversation(userId, verticalId, title)
+
+Crée une nouvelle conversation.
+
+```jsx
+const { data: conversation, error } = await ragService.createConversation(
+  userId,
+  'audit',
+  'Questions sur les normes'
+);
+```
+
+#### deleteConversation(conversationId)
+
+Supprime une conversation.
+
+```jsx
+const { success, error } = await ragService.deleteConversation(conversationId);
+```
+
+#### getVerticals()
+
+Récupère les verticales disponibles.
+
+```jsx
+const { data: verticals, error } = await ragService.getVerticals();
+```
+
+#### getUserStats(userId)
+
+Récupère les statistiques utilisateur.
+
+```jsx
+const { data: stats, error } = await ragService.getUserStats(userId);
+// { conversationCount, messageCount }
+```
+
+---
+
+## storageService
+
+Service de gestion des fichiers.
+
+### Import
+
+```jsx
+import { storageService, STORAGE_BUCKETS } from '@/services';
+```
+
+### Buckets disponibles
+
+```jsx
+STORAGE_BUCKETS = {
+  DOCUMENTS: 'documents',
+  INVOICES: 'invoices',
+  RECORDINGS: 'project-recordings',
+  AVATARS: 'avatars',
+}
+```
+
+### Méthodes
+
+#### uploadFile(bucket, path, file, options)
+
+Upload un fichier.
+
+```jsx
+const { data, error } = await storageService.uploadFile(
+  STORAGE_BUCKETS.DOCUMENTS,
+  'user123/document.pdf',
+  file,
+  { upsert: false }
+);
+```
+
+#### uploadFileAuto(bucket, file, userId)
+
+Upload avec chemin auto-généré.
+
+```jsx
+const { data, path, error } = await storageService.uploadFileAuto(
+  STORAGE_BUCKETS.DOCUMENTS,
+  file,
+  userId
+);
+// path = "userId/1234567890_document.pdf"
+```
+
+#### getPublicUrl(bucket, path)
+
+Obtient l'URL publique d'un fichier.
+
+```jsx
+const url = storageService.getPublicUrl(STORAGE_BUCKETS.AVATARS, 'user123/avatar.jpg');
+```
+
+#### getSignedUrl(bucket, path, expiresIn)
+
+Obtient une URL signée temporaire.
+
+```jsx
+const { data, error } = await storageService.getSignedUrl(
+  STORAGE_BUCKETS.DOCUMENTS,
+  'user123/private.pdf',
+  3600 // 1 heure
+);
+```
+
+#### deleteFile(bucket, path)
+
+Supprime un fichier.
+
+```jsx
+const { data, error } = await storageService.deleteFile(
+  STORAGE_BUCKETS.DOCUMENTS,
+  'user123/document.pdf'
+);
+```
+
+#### deleteFiles(bucket, paths)
+
+Supprime plusieurs fichiers.
+
+```jsx
+const { data, error } = await storageService.deleteFiles(
+  STORAGE_BUCKETS.DOCUMENTS,
+  ['path1.pdf', 'path2.pdf']
+);
+```
+
+#### listFiles(bucket, folder, options)
+
+Liste les fichiers d'un dossier.
+
+```jsx
+const { data: files, error } = await storageService.listFiles(
+  STORAGE_BUCKETS.DOCUMENTS,
+  'user123/',
+  { limit: 100, offset: 0 }
+);
+```
+
+#### downloadFile(bucket, path)
+
+Télécharge un fichier (retourne un Blob).
+
+```jsx
+const { data: blob, error } = await storageService.downloadFile(
+  STORAGE_BUCKETS.DOCUMENTS,
+  'user123/document.pdf'
+);
+```
+
+#### validateFile(file, options)
+
+Valide un fichier avant upload.
+
+```jsx
+const { valid, error } = storageService.validateFile(file, {
+  maxSize: 20 * 1024 * 1024, // 20 MB
+  acceptedTypes: ['application/pdf', 'image/jpeg'],
+});
+```
+
+#### fileExists(bucket, path)
+
+Vérifie si un fichier existe.
+
+```jsx
+const exists = await storageService.fileExists(
+  STORAGE_BUCKETS.DOCUMENTS,
+  'user123/document.pdf'
+);
+```
+
+#### sanitizeFileName(fileName)
+
+Nettoie un nom de fichier.
+
+```jsx
+const clean = storageService.sanitizeFileName('Mon Fichier (1).pdf');
+// "mon-fichier-1.pdf"
+```

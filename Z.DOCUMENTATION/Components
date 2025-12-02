@@ -1,0 +1,376 @@
+# Composants UI - Documentation
+
+Documentation des composants UI réutilisables dans `src/components/ui/`.
+
+---
+
+## Button
+
+Bouton avec variantes, tailles et états.
+
+### Import
+
+```jsx
+import { Button } from '@/components/ui';
+```
+
+### Props
+
+| Prop | Type | Défaut | Description |
+|------|------|--------|-------------|
+| `variant` | `'primary' \| 'secondary' \| 'danger' \| 'success' \| 'warning' \| 'ghost' \| 'outline' \| 'link'` | `'primary'` | Style du bouton |
+| `size` | `'xs' \| 'sm' \| 'md' \| 'lg' \| 'xl'` | `'md'` | Taille |
+| `disabled` | `boolean` | `false` | Désactivé |
+| `loading` | `boolean` | `false` | Affiche un spinner |
+| `leftIcon` | `ReactNode` | - | Icône à gauche |
+| `rightIcon` | `ReactNode` | - | Icône à droite |
+| `fullWidth` | `boolean` | `false` | Pleine largeur |
+| `type` | `'button' \| 'submit' \| 'reset'` | `'button'` | Type HTML |
+
+### Exemples
+
+```jsx
+// Variantes
+<Button variant="primary">Principal</Button>
+<Button variant="secondary">Secondaire</Button>
+<Button variant="danger">Supprimer</Button>
+<Button variant="ghost">Fantôme</Button>
+<Button variant="outline">Contour</Button>
+
+// Tailles
+<Button size="sm">Petit</Button>
+<Button size="md">Normal</Button>
+<Button size="lg">Grand</Button>
+
+// États
+<Button loading>Chargement...</Button>
+<Button disabled>Désactivé</Button>
+
+// Avec icônes
+<Button leftIcon={<Plus />}>Ajouter</Button>
+<Button rightIcon={<ArrowRight />}>Suivant</Button>
+
+// Pleine largeur
+<Button fullWidth>Valider</Button>
+```
+
+---
+
+## Input
+
+Champ de saisie avec label, erreur et icônes.
+
+### Import
+
+```jsx
+import { Input, Textarea } from '@/components/ui';
+```
+
+### Props (Input)
+
+| Prop | Type | Défaut | Description |
+|------|------|--------|-------------|
+| `label` | `string` | - | Label du champ |
+| `error` | `string` | - | Message d'erreur |
+| `helperText` | `string` | - | Texte d'aide |
+| `leftIcon` | `ReactNode` | - | Icône à gauche |
+| `rightIcon` | `ReactNode` | - | Icône à droite |
+| `size` | `'sm' \| 'md' \| 'lg'` | `'md'` | Taille |
+| `showPasswordToggle` | `boolean` | `false` | Toggle pour password |
+
+### Exemples
+
+```jsx
+// Basique
+<Input 
+  label="Email" 
+  type="email" 
+  placeholder="vous@exemple.com" 
+/>
+
+// Avec erreur
+<Input 
+  label="Email" 
+  error="Email invalide" 
+/>
+
+// Avec icône
+<Input 
+  label="Recherche" 
+  leftIcon={<Search />} 
+/>
+
+// Password avec toggle
+<Input 
+  label="Mot de passe" 
+  type="password" 
+  showPasswordToggle 
+/>
+
+// Avec texte d'aide
+<Input 
+  label="Username" 
+  helperText="Minimum 3 caractères" 
+/>
+
+// Textarea
+<Textarea 
+  label="Description" 
+  rows={4} 
+  placeholder="Décrivez votre projet..." 
+/>
+```
+
+---
+
+## Card
+
+Conteneur avec header, contenu et footer.
+
+### Import
+
+```jsx
+import { 
+  Card, 
+  CardHeader, 
+  CardTitle, 
+  CardDescription, 
+  CardContent, 
+  CardFooter 
+} from '@/components/ui';
+```
+
+### Props (Card)
+
+| Prop | Type | Défaut | Description |
+|------|------|--------|-------------|
+| `padding` | `'none' \| 'sm' \| 'md' \| 'lg'` | `'none'` | Padding interne |
+| `shadow` | `'none' \| 'sm' \| 'md' \| 'lg'` | `'sm'` | Ombre |
+| `bordered` | `boolean` | `true` | Bordure |
+| `hoverable` | `boolean` | `false` | Effet hover |
+
+### Exemples
+
+```jsx
+// Carte complète
+<Card>
+  <CardHeader>
+    <CardTitle>Titre de la carte</CardTitle>
+    <CardDescription>Description optionnelle</CardDescription>
+  </CardHeader>
+  <CardContent>
+    <p>Contenu de la carte...</p>
+  </CardContent>
+  <CardFooter>
+    <Button>Action</Button>
+  </CardFooter>
+</Card>
+
+// Carte simple
+<Card padding="md">
+  <p>Contenu simple</p>
+</Card>
+
+// Carte hoverable
+<Card hoverable>
+  <CardContent>
+    Survolez-moi !
+  </CardContent>
+</Card>
+```
+
+---
+
+## Modal
+
+Fenêtre modale avec overlay.
+
+### Import
+
+```jsx
+import { Modal, ModalFooter, ConfirmModal } from '@/components/ui';
+```
+
+### Props (Modal)
+
+| Prop | Type | Défaut | Description |
+|------|------|--------|-------------|
+| `isOpen` | `boolean` | - | État d'ouverture |
+| `onClose` | `Function` | - | Callback de fermeture |
+| `title` | `string` | - | Titre |
+| `size` | `'sm' \| 'md' \| 'lg' \| 'xl' \| '2xl' \| 'full'` | `'md'` | Taille |
+| `closeOnOverlay` | `boolean` | `true` | Fermer au clic overlay |
+| `closeOnEscape` | `boolean` | `true` | Fermer avec Escape |
+| `showCloseButton` | `boolean` | `true` | Afficher bouton X |
+
+### Exemples
+
+```jsx
+// Modal standard
+const [isOpen, setIsOpen] = useState(false);
+
+<Button onClick={() => setIsOpen(true)}>Ouvrir</Button>
+
+<Modal 
+  isOpen={isOpen} 
+  onClose={() => setIsOpen(false)} 
+  title="Mon Modal"
+>
+  <p>Contenu du modal</p>
+  <ModalFooter>
+    <Button variant="secondary" onClick={() => setIsOpen(false)}>
+      Annuler
+    </Button>
+    <Button onClick={handleConfirm}>Confirmer</Button>
+  </ModalFooter>
+</Modal>
+
+// Modal de confirmation
+<ConfirmModal
+  isOpen={showConfirm}
+  onClose={() => setShowConfirm(false)}
+  onConfirm={handleDelete}
+  title="Supprimer ?"
+  message="Cette action est irréversible."
+  confirmText="Supprimer"
+  variant="danger"
+/>
+```
+
+---
+
+## Alert
+
+Messages d'alerte avec variantes.
+
+### Import
+
+```jsx
+import { Alert, AlertInline, AlertBanner } from '@/components/ui';
+```
+
+### Props (Alert)
+
+| Prop | Type | Défaut | Description |
+|------|------|--------|-------------|
+| `variant` | `'info' \| 'success' \| 'warning' \| 'error'` | `'info'` | Type d'alerte |
+| `title` | `string` | - | Titre |
+| `closable` | `boolean` | `false` | Bouton fermer |
+| `onClose` | `Function` | - | Callback fermeture |
+| `showIcon` | `boolean` | `true` | Afficher l'icône |
+
+### Exemples
+
+```jsx
+// Alertes standard
+<Alert variant="info">Information importante</Alert>
+<Alert variant="success" title="Succès">Opération réussie !</Alert>
+<Alert variant="warning">Attention à ce point</Alert>
+<Alert variant="error">Une erreur est survenue</Alert>
+
+// Alerte fermable
+<Alert variant="info" closable onClose={() => console.log('Fermé')}>
+  Vous pouvez fermer cette alerte
+</Alert>
+
+// Alerte inline (compacte)
+<AlertInline variant="error">Champ requis</AlertInline>
+
+// Bannière pleine largeur
+<AlertBanner variant="warning" closable>
+  Maintenance prévue ce soir à 22h
+</AlertBanner>
+```
+
+---
+
+## Spinner
+
+Indicateurs de chargement.
+
+### Import
+
+```jsx
+import { 
+  Spinner, 
+  SpinnerWithText, 
+  SpinnerCenter, 
+  SpinnerOverlay,
+  PageLoader,
+  Skeleton,
+  SkeletonText,
+  SkeletonAvatar,
+  SkeletonCard,
+} from '@/components/ui';
+```
+
+### Props (Spinner)
+
+| Prop | Type | Défaut | Description |
+|------|------|--------|-------------|
+| `size` | `'xs' \| 'sm' \| 'md' \| 'lg' \| 'xl'` | `'md'` | Taille |
+| `variant` | `'default' \| 'primary' \| 'secondary' \| 'white'` | `'default'` | Couleur |
+
+### Exemples
+
+```jsx
+// Spinner simple
+<Spinner />
+<Spinner size="lg" variant="primary" />
+
+// Avec texte
+<SpinnerWithText text="Chargement..." />
+
+// Centré
+<SpinnerCenter message="Veuillez patienter..." />
+
+// Overlay plein écran
+<SpinnerOverlay message="Traitement en cours..." />
+
+// Page loader
+<PageLoader message="Chargement de l'application..." />
+```
+
+### Skeletons
+
+Placeholders de chargement.
+
+```jsx
+// Skeleton générique
+<Skeleton className="h-4 w-full" />
+
+// Lignes de texte
+<SkeletonText lines={3} />
+
+// Avatar
+<SkeletonAvatar size="lg" />
+
+// Carte complète
+<SkeletonCard />
+```
+
+---
+
+## Utilisation avec cn()
+
+Tous les composants acceptent une prop `className` pour personnaliser les styles :
+
+```jsx
+import { cn } from '@/utils';
+
+<Button className={cn('mt-4', isActive && 'ring-2 ring-primary-500')}>
+  Bouton personnalisé
+</Button>
+```
+
+---
+
+## Accessibilité
+
+Tous les composants sont accessibles :
+
+- Labels et aria-attributes appropriés
+- Navigation au clavier
+- Focus visible
+- Rôles ARIA corrects
+- Support lecteur d'écran

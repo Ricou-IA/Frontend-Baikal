@@ -1,0 +1,264 @@
+# Core RAG Engine - Frontend
+
+Application React/Vite pour le moteur RAG (Retrieval Augmented Generation) multi-verticales.
+
+## 🚀 Démarrage rapide
+
+### Prérequis
+
+- Node.js 18+
+- npm ou yarn
+- Compte Supabase configuré
+
+### Installation
+
+```bash
+# Cloner le projet
+git clone <repo-url>
+cd Frontend
+
+# Installer les dépendances
+npm install
+
+# Configurer les variables d'environnement
+cp .env.example .env.local
+# Éditer .env.local avec vos clés Supabase
+
+# Lancer le développement
+npm run dev
+```
+
+### Variables d'environnement
+
+```env
+# Obligatoires
+VITE_SUPABASE_URL=https://votre-projet.supabase.co
+VITE_SUPABASE_ANON_KEY=votre_anon_key
+
+# Optionnelles
+VITE_N8N_INGEST_WEBHOOK_URL=https://votre-n8n/webhook/ingest
+VITE_N8N_INVOICE_WEBHOOK_URL=https://votre-n8n/webhook/invoice
+VITE_DEMO_MODE=false
+```
+
+## 📁 Structure du projet
+
+```
+src/
+├── components/          # Composants React
+│   ├── admin/          # Composants d'administration
+│   ├── chat/           # Interface de chat RAG
+│   ├── layout/         # Composants de mise en page (Sidebar, Header)
+│   ├── ui/             # Composants UI réutilisables
+│   └── ErrorBoundary.jsx
+│
+├── config/             # Configuration centralisée
+│   ├── index.js        # Export principal
+│   ├── constants.js    # Constantes globales
+│   ├── routes.js       # Configuration des routes
+│   ├── api.js          # Configuration API
+│   └── messages.js     # Messages utilisateur
+│
+├── contexts/           # Contextes React
+│   ├── AuthContext.jsx      # Authentification
+│   ├── ToastContext.jsx     # Notifications toast
+│   └── VerticalContext.jsx  # Gestion des verticales
+│
+├── hooks/              # Hooks personnalisés
+│   ├── useAsync.js          # États asynchrones
+│   ├── useDebounce.js       # Debounce/Throttle
+│   ├── useErrorHandler.js   # Gestion des erreurs
+│   ├── useForm.js           # Gestion de formulaires
+│   ├── useImpersonation.js  # Impersonation (super_admin)
+│   ├── useLocalStorage.js   # Persistance localStorage
+│   ├── useRAG.js            # Chat RAG
+│   └── useToast.js          # Notifications
+│
+├── services/           # Couche services (API)
+│   ├── auth.service.js
+│   ├── profile.service.js
+│   ├── organization.service.js
+│   ├── rag.service.js
+│   └── storage.service.js
+│
+├── utils/              # Utilitaires
+│   ├── cn.js           # Combinaison de classes CSS
+│   └── errors.js       # Gestion des erreurs
+│
+├── pages/              # Pages de l'application
+│   ├── Login.jsx
+│   ├── Dashboard.jsx
+│   ├── Admin.jsx
+│   ├── Settings.jsx
+│   └── Onboarding.jsx
+│
+└── lib/                # Configuration externe
+    └── supabaseClient.js
+```
+
+## 🧩 Composants UI
+
+Bibliothèque de composants réutilisables dans `src/components/ui/` :
+
+| Composant | Description |
+|-----------|-------------|
+| `Button` | Bouton avec variantes (primary, secondary, danger, ghost) |
+| `Input` | Champ de saisie avec label, erreur, icônes |
+| `Textarea` | Zone de texte multi-lignes |
+| `Card` | Carte avec header, content, footer |
+| `Modal` | Fenêtre modale avec overlay |
+| `Alert` | Messages d'alerte (success, error, warning, info) |
+| `Spinner` | Indicateurs de chargement |
+| `Skeleton` | Placeholders de chargement |
+
+### Exemple d'utilisation
+
+```jsx
+import { Button, Input, Card, Alert } from '@/components/ui';
+
+function MyComponent() {
+  return (
+    <Card>
+      <Input label="Email" type="email" error={errors.email} />
+      <Button variant="primary" loading={isLoading}>
+        Envoyer
+      </Button>
+      <Alert variant="success">Opération réussie !</Alert>
+    </Card>
+  );
+}
+```
+
+## 🪝 Hooks personnalisés
+
+### useAsync
+
+Gère les états asynchrones (loading, error, data).
+
+```jsx
+const { data, loading, error, execute } = useAsync(fetchData);
+await execute(params);
+```
+
+### useForm
+
+Gestion complète de formulaires.
+
+```jsx
+const { values, errors, handleChange, handleSubmit } = useForm({
+  initialValues: { email: '' },
+  validate: (values) => ({ email: !values.email ? 'Requis' : null }),
+  onSubmit: async (values) => await saveData(values),
+});
+```
+
+### useDebounce
+
+Debounce d'une valeur.
+
+```jsx
+const debouncedSearch = useDebounce(searchTerm, 300);
+```
+
+### useToast (avec ToastProvider)
+
+Notifications toast.
+
+```jsx
+const { success, error } = useToast();
+success('Sauvegardé !');
+error('Une erreur est survenue');
+```
+
+### useErrorHandler
+
+Gestion centralisée des erreurs.
+
+```jsx
+const { handleError, error } = useErrorHandler();
+try {
+  await riskyOperation();
+} catch (err) {
+  handleError(err);
+}
+```
+
+## 🔐 Authentification
+
+Le contexte `AuthContext` gère :
+
+- Connexion / Inscription
+- OAuth Google
+- Gestion de session
+- Profil utilisateur
+- Organisation
+- Impersonation (super_admin)
+
+```jsx
+const { 
+  user, 
+  profile, 
+  signIn, 
+  signOut, 
+  isAuthenticated,
+  isSuperAdmin 
+} = useAuth();
+```
+
+## 🎨 Verticales
+
+L'application supporte plusieurs verticales métier :
+
+| ID | Nom | Couleur |
+|----|-----|---------|
+| `audit` | Audit | Indigo |
+| `btp` | BTP | Amber |
+| `juridique` | Juridique | Green |
+| `rh` | RH | Pink |
+
+## 📜 Scripts disponibles
+
+```bash
+npm run dev      # Serveur de développement
+npm run build    # Build de production
+npm run preview  # Prévisualiser le build
+npm run lint     # Linter ESLint
+```
+
+## 🛠️ Technologies
+
+- **React 18** - Framework UI
+- **Vite** - Build tool
+- **Tailwind CSS** - Styling
+- **Supabase** - Backend (Auth, Database, Storage, Edge Functions)
+- **Lucide React** - Icônes
+- **React Router** - Routing
+
+## 📝 Conventions
+
+### Nommage
+
+- Composants : `PascalCase.jsx`
+- Hooks : `useCamelCase.js`
+- Services : `camelCase.service.js`
+- Utils : `camelCase.js`
+
+### Imports
+
+```jsx
+// Composants UI
+import { Button, Input } from '@/components/ui';
+
+// Hooks
+import { useAsync, useForm } from '@/hooks';
+
+// Services
+import { authService, profileService } from '@/services';
+
+// Config
+import { APP_NAME, ROUTES } from '@/config';
+```
+
+## 📄 Licence
+
+Propriétaire - Tous droits réservés
