@@ -1,6 +1,7 @@
 // ============================================================================
 // BRIQUE 6 : Page Admin
 // Interface d'administration de l'organisation
+// Inclut : Gestion Légifrance pour SuperAdmin
 // ============================================================================
 
 import React, { useState, useEffect } from 'react';
@@ -15,6 +16,8 @@ import {
     ProfileSwitcher,
     UsersList
 } from '../components/admin';
+// Import du composant Légifrance
+import LegifranceAdmin from '../components/admin/LegifranceAdmin';
 import {
     ArrowLeft,
     Users,
@@ -23,7 +26,8 @@ import {
     Shield,
     AlertCircle,
     Loader2,
-    UserCog
+    UserCog,
+    Scale  // Icône pour Légifrance
 } from 'lucide-react';
 
 /**
@@ -45,13 +49,21 @@ const getTabs = (isSuperAdmin) => {
         }
     ];
 
-    // Ajouter l'onglet Utilisateurs uniquement pour super_admin
+    // Ajouter les onglets SuperAdmin uniquement
     if (isSuperAdmin) {
         baseTabs.push({
             id: 'users',
             label: 'Utilisateurs',
             icon: UserCog,
             description: 'Voir tous les utilisateurs de la plateforme'
+        });
+        
+        // Onglet Légifrance
+        baseTabs.push({
+            id: 'legifrance',
+            label: 'Légifrance',
+            icon: Scale,
+            description: 'Gestion des codes juridiques'
         });
     }
 
@@ -139,9 +151,8 @@ export default function Admin() {
                     </p>
                     <button
                         onClick={() => navigate('/dashboard')}
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                        className="btn-primary w-full"
                     >
-                        <ArrowLeft className="w-4 h-4" />
                         Retour au Dashboard
                     </button>
                 </div>
@@ -152,32 +163,23 @@ export default function Admin() {
     return (
         <div className="min-h-screen bg-slate-50">
             {/* Header */}
-            <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
+            <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex items-center justify-between h-16">
                         <div className="flex items-center gap-4">
                             <button
                                 onClick={() => navigate('/dashboard')}
-                                className="flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors"
+                                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
                             >
                                 <ArrowLeft className="w-5 h-5" />
-                                <span className="hidden sm:inline">Retour</span>
                             </button>
-
-                            <div className="h-6 w-px bg-slate-200" />
-
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center">
-                                    <Settings className="w-5 h-5 text-white" />
-                                </div>
-                                <div>
-                                    <h1 className="font-semibold text-slate-800">
-                                        Administration
-                                    </h1>
-                                    <p className="text-xs text-slate-500">
-                                        {organization?.name || 'Mon Organisation'}
-                                    </p>
-                                </div>
+                            <div>
+                                <h1 className="text-lg font-semibold text-slate-800">
+                                    Administration
+                                </h1>
+                                <p className="text-sm text-slate-500">
+                                    {organization?.name || 'Chargement...'}
+                                </p>
                             </div>
                         </div>
 
@@ -207,7 +209,7 @@ export default function Admin() {
             {/* Navigation par onglets */}
             <div className="bg-white border-b border-slate-200">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <nav className="flex gap-1 -mb-px">
+                    <nav className="flex gap-1 -mb-px overflow-x-auto">
                         {getTabs(isSuperAdmin).map((tab) => {
                             const Icon = tab.icon;
                             const isActive = activeTab === tab.id;
@@ -217,7 +219,7 @@ export default function Admin() {
                                     key={tab.id}
                                     onClick={() => setActiveTab(tab.id)}
                                     className={`
-                                        flex items-center gap-2 px-4 py-4 text-sm font-medium border-b-2 transition-colors
+                                        flex items-center gap-2 px-4 py-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap
                                         ${isActive
                                             ? 'border-indigo-600 text-indigo-600'
                                             : 'border-transparent text-slate-600 hover:text-slate-900 hover:border-slate-300'
@@ -236,33 +238,28 @@ export default function Admin() {
             {/* Contenu principal */}
             <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 {/* Erreur globale */}
-                {error && (
-                    <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
-                        <div className="flex items-center gap-3 text-red-700 mb-2">
-                            <AlertCircle className="w-5 h-5 flex-shrink-0" />
-                            <p className="font-medium">Erreur lors du chargement des données</p>
-                            <button
-                                onClick={refresh}
-                                className="ml-auto text-sm font-medium hover:underline"
-                            >
-                                Réessayer
-                            </button>
-                        </div>
-                        <p className="text-sm text-red-600 mt-2">{error}</p>
-                        {error.includes('permission denied') && isSuperAdmin && (
-                            <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                                <p className="text-sm text-amber-800">
-                                    <strong>💡 Solution :</strong> Exécutez le script SQL{' '}
-                                    <code className="bg-amber-100 px-2 py-1 rounded">supabase/fix_super_admin_rls.sql</code>{' '}
-                                    dans Supabase Dashboard pour corriger les permissions.
-                                </p>
-                            </div>
-                        )}
+                {error && activeTab !== 'legifrance' && (
+                    <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3 text-red-700">
+                        <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                        <p>{error}</p>
+                        <button
+                            onClick={refresh}
+                            className="ml-auto text-sm font-medium hover:underline"
+                        >
+                            Réessayer
+                        </button>
+                    </div>
+                )}
+
+                {/* Loader pour les onglets org-dépendants */}
+                {loading && activeTab !== 'users' && activeTab !== 'legifrance' && (
+                    <div className="flex items-center justify-center py-12">
+                        <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
                     </div>
                 )}
 
                 {/* Vue Membres */}
-                {activeTab === 'members' && (
+                {activeTab === 'members' && !loading && (
                     <MembersList
                         members={members}
                         loading={loading}
@@ -276,7 +273,7 @@ export default function Admin() {
                 )}
 
                 {/* Vue Paramètres Organisation */}
-                {activeTab === 'settings' && (
+                {activeTab === 'settings' && !loading && (
                     <OrganizationSettings
                         organization={organization}
                         loading={loading}
@@ -288,6 +285,11 @@ export default function Admin() {
                 {/* Vue Utilisateurs (uniquement pour super_admin) */}
                 {activeTab === 'users' && isSuperAdmin && (
                     <UsersList />
+                )}
+
+                {/* Vue Légifrance (uniquement pour super_admin) */}
+                {activeTab === 'legifrance' && isSuperAdmin && (
+                    <LegifranceAdmin />
                 )}
             </main>
 
@@ -302,5 +304,3 @@ export default function Admin() {
         </div>
     );
 }
-
-
