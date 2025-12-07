@@ -1,13 +1,14 @@
 /**
- * Prompts - Page de gestion des prompts
+ * Prompts.jsx - Baikal Console
  * ============================================================================
+ * Page de gestion des prompts système.
  * Affichage par sections (type d'agent) avec lignes full width.
  * ============================================================================
  */
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Info, AlertCircle, Edit, Copy, Trash2, Lock } from 'lucide-react';
+import { Plus, Info, AlertCircle, Edit, Copy, Trash2, Lock, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../hooks/useToast';
 import { Button } from '../components/ui/Button';
@@ -25,9 +26,10 @@ import {
   HIERARCHY_EXPLANATION,
 } from '../config/prompts';
 
-/**
- * Toggle switch pour activer/désactiver
- */
+// ============================================================================
+// COMPOSANT TOGGLE SWITCH
+// ============================================================================
+
 function ToggleSwitch({ enabled, onChange, disabled }) {
   return (
     <button
@@ -50,9 +52,10 @@ function ToggleSwitch({ enabled, onChange, disabled }) {
   );
 }
 
-/**
- * Badge de scope
- */
+// ============================================================================
+// COMPOSANT BADGE DE SCOPE
+// ============================================================================
+
 function ScopeBadge({ prompt }) {
   const scope = getPromptScope(prompt);
   
@@ -71,9 +74,10 @@ function ScopeBadge({ prompt }) {
   );
 }
 
-/**
- * Ligne de prompt
- */
+// ============================================================================
+// COMPOSANT LIGNE DE PROMPT
+// ============================================================================
+
 function PromptRow({ prompt, onEdit, onDuplicate, onDelete, onToggleStatus }) {
   const isDefault = isDefaultPrompt(prompt);
   const usageCount = prompt.usage_count || 0;
@@ -152,9 +156,10 @@ function PromptRow({ prompt, onEdit, onDuplicate, onDelete, onToggleStatus }) {
   );
 }
 
-/**
- * Section par type d'agent
- */
+// ============================================================================
+// COMPOSANT SECTION PAR TYPE D'AGENT
+// ============================================================================
+
 function AgentSection({ agentType, prompts, onEdit, onDuplicate, onDelete, onToggleStatus }) {
   const agent = AGENT_TYPES[agentType];
   if (!agent) return null;
@@ -193,10 +198,11 @@ function AgentSection({ agentType, prompts, onEdit, onDuplicate, onDelete, onTog
   );
 }
 
-/**
- * Page principale
- */
-function Prompts() {
+// ============================================================================
+// PAGE PRINCIPALE
+// ============================================================================
+
+function Prompts({ embedded = false }) {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const { success, error: showError } = useToast();
@@ -236,7 +242,7 @@ function Prompts() {
   };
 
   const handleEdit = (prompt) => {
-    navigate(`/prompts/${prompt.id}`);
+    navigate(`/admin/prompts/${prompt.id}`);
   };
 
   const handleDuplicate = async (prompt) => {
@@ -245,7 +251,7 @@ function Prompts() {
       if (dupError) throw dupError;
       setPrompts((prev) => [...prev, data]);
       success(PROMPT_MESSAGES.duplicated);
-      navigate(`/prompts/${data.id}`);
+      navigate(`/admin/prompts/${data.id}`);
     } catch (err) {
       console.error('Error duplicating prompt:', err);
       showError(PROMPT_MESSAGES.duplicateError);
@@ -285,11 +291,11 @@ function Prompts() {
       success(newStatus ? PROMPT_MESSAGES.activated : PROMPT_MESSAGES.deactivated);
     } catch (err) {
       console.error('Error toggling status:', err);
-      showError('Erreur lors du changement de statut');
+      showError(PROMPT_MESSAGES.toggleError);
     }
   };
 
-  // Pas d'accès
+  // Accès refusé
   if (!hasAccess) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
@@ -297,9 +303,11 @@ function Prompts() {
           <CardContent className="text-center py-8">
             <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
             <h2 className="text-xl font-semibold text-slate-900 mb-2">Accès refusé</h2>
-            <p className="text-slate-600">Vous n'avez pas les permissions nécessaires.</p>
-            <Button variant="primary" className="mt-6" onClick={() => navigate('/dashboard')}>
-              Retour au dashboard
+            <p className="text-slate-600 mb-6">
+              Vous n'avez pas les droits pour gérer les prompts.
+            </p>
+            <Button variant="primary" onClick={() => navigate('/admin')}>
+              Retour à l'administration
             </Button>
           </CardContent>
         </Card>
@@ -307,51 +315,56 @@ function Prompts() {
     );
   }
 
-  return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <div className="bg-white border-b border-slate-200">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <h1 className="text-2xl font-bold text-slate-900">Gestion des Prompts</h1>
-              <p className="mt-1 text-sm text-slate-500">Configurez les prompts système des agents RAG</p>
-            </div>
-            <Button
-              variant="primary"
-              leftIcon={<Plus className="w-4 h-4" />}
-              onClick={() => navigate('/prompts/new')}
-            >
-              Nouveau prompt
-            </Button>
+  // Mode embedded (dans Admin.jsx)
+  if (embedded) {
+    return (
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-slate-900">Gestion des Prompts</h2>
+            <p className="text-sm text-slate-500 mt-1">
+              Configurez les prompts système pour chaque type d'agent
+            </p>
           </div>
+          <Button
+            variant="primary"
+            leftIcon={<Plus className="w-4 h-4" />}
+            onClick={() => navigate('/admin/prompts/new')}
+          >
+            Nouveau prompt
+          </Button>
         </div>
-      </div>
 
-      {/* Contenu */}
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Note hiérarchie */}
-        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-3">
-          <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-blue-800">{HIERARCHY_EXPLANATION}</p>
+        {/* Info hiérarchie */}
+        <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-xl">
+          <div className="flex items-start gap-3">
+            <Info className="w-5 h-5 text-indigo-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-indigo-700">
+              <p className="font-medium mb-1">Hiérarchie des prompts</p>
+              <p>{HIERARCHY_EXPLANATION}</p>
+            </div>
+          </div>
         </div>
 
         {/* Erreur */}
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-            {error}
-            <button onClick={loadData} className="ml-2 underline">Réessayer</button>
+          <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3 text-red-700">
+            <AlertCircle className="w-5 h-5 flex-shrink-0" />
+            <p>{error}</p>
+            <button onClick={loadData} className="ml-auto text-sm font-medium hover:underline">
+              Réessayer
+            </button>
           </div>
         )}
 
-        {/* Chargement */}
+        {/* Contenu */}
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Spinner size="lg" />
             <span className="ml-3 text-slate-500">Chargement des prompts...</span>
           </div>
         ) : (
-          /* Sections par agent */
           AGENT_TYPES_SORTED.map((agent) => (
             <AgentSection
               key={agent.id}
@@ -364,7 +377,97 @@ function Prompts() {
             />
           ))
         )}
+
+        {/* Modal suppression */}
+        <ConfirmModal
+          isOpen={deleteModal.isOpen}
+          onClose={() => setDeleteModal({ isOpen: false, prompt: null, loading: false })}
+          onConfirm={confirmDelete}
+          title="Supprimer le prompt"
+          message={PROMPT_MESSAGES.deleteConfirm}
+          confirmText="Supprimer"
+          variant="danger"
+          loading={deleteModal.loading}
+        />
       </div>
+    );
+  }
+
+  // Page complète (standalone)
+  return (
+    <div className="min-h-screen bg-slate-50">
+      {/* Header */}
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => navigate('/admin')}
+                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <div>
+                <h1 className="text-lg font-semibold text-slate-800">Gestion des Prompts</h1>
+                <p className="text-sm text-slate-500">Configuration des prompts système</p>
+              </div>
+            </div>
+
+            <Button
+              variant="primary"
+              leftIcon={<Plus className="w-4 h-4" />}
+              onClick={() => navigate('/admin/prompts/new')}
+            >
+              Nouveau prompt
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      {/* Contenu */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Info hiérarchie */}
+        <div className="mb-8 p-4 bg-indigo-50 border border-indigo-100 rounded-xl">
+          <div className="flex items-start gap-3">
+            <Info className="w-5 h-5 text-indigo-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-indigo-700">
+              <p className="font-medium mb-1">Hiérarchie des prompts</p>
+              <p>{HIERARCHY_EXPLANATION}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Erreur */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3 text-red-700">
+            <AlertCircle className="w-5 h-5 flex-shrink-0" />
+            <p>{error}</p>
+            <button onClick={loadData} className="ml-auto text-sm font-medium hover:underline">
+              Réessayer
+            </button>
+          </div>
+        )}
+
+        {/* Sections par agent */}
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Spinner size="lg" />
+            <span className="ml-3 text-slate-500">Chargement des prompts...</span>
+          </div>
+        ) : (
+          AGENT_TYPES_SORTED.map((agent) => (
+            <AgentSection
+              key={agent.id}
+              agentType={agent.id}
+              prompts={prompts}
+              onEdit={handleEdit}
+              onDuplicate={handleDuplicate}
+              onDelete={handleDeleteClick}
+              onToggleStatus={handleToggleStatus}
+            />
+          ))
+        )}
+      </main>
 
       {/* Modal suppression */}
       <ConfirmModal

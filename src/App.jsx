@@ -1,5 +1,5 @@
 /**
- * App.jsx - Core RAG Engine
+ * App.jsx - Baikal Console
  * ============================================================================
  * Point d'entrée de l'application React.
  * Configure le Router et les Guards de protection des routes.
@@ -25,6 +25,8 @@ import Admin from './pages/Admin';
 import Documents from './pages/Documents';
 import Validation from './pages/Validation';
 import IngestionPremium from './pages/IngestionPremium';
+import Prompts from './pages/Prompts';
+import PromptForm from './pages/PromptForm';
 
 function App() {
   return (
@@ -36,7 +38,11 @@ function App() {
     >
       <AuthProvider>
         <Routes>
-          {/* Routes publiques (redirige si déjà connecté) */}
+          {/* ============================================ */}
+          {/* ROUTES PUBLIQUES */}
+          {/* ============================================ */}
+          
+          {/* Login (redirige si déjà connecté) */}
           <Route
             path="/login"
             element={
@@ -46,13 +52,17 @@ function App() {
             }
           />
 
-          {/* Route de réinitialisation de mot de passe (publique) */}
+          {/* Réinitialisation de mot de passe (publique) */}
           <Route
             path="/reset-password"
             element={<ResetPassword />}
           />
 
-          {/* Route d'onboarding (requiert auth, redirige si déjà onboardé) */}
+          {/* ============================================ */}
+          {/* ROUTES ONBOARDING */}
+          {/* ============================================ */}
+          
+          {/* Onboarding (requiert auth, redirige si déjà onboardé) */}
           <Route
             path="/onboarding"
             element={
@@ -62,7 +72,11 @@ function App() {
             }
           />
 
-          {/* Routes protégées (requiert auth + onboarding complété) */}
+          {/* ============================================ */}
+          {/* ROUTES PROTÉGÉES (auth + onboarding requis) */}
+          {/* ============================================ */}
+          
+          {/* Dashboard utilisateur */}
           <Route
             path="/dashboard"
             element={
@@ -72,7 +86,7 @@ function App() {
             }
           />
 
-          {/* Route des paramètres (protégée) */}
+          {/* Paramètres utilisateur */}
           <Route
             path="/settings"
             element={
@@ -82,7 +96,11 @@ function App() {
             }
           />
 
-          {/* Route Admin (protégée + rôle admin requis) */}
+          {/* ============================================ */}
+          {/* ROUTES ADMIN (auth + onboarding + rôle admin) */}
+          {/* ============================================ */}
+          
+          {/* Admin - Page principale */}
           <Route
             path="/admin"
             element={
@@ -92,7 +110,7 @@ function App() {
             }
           />
 
-          {/* Route Documents (protégée + rôle admin requis) */}
+          {/* Admin - Documents */}
           <Route
             path="/admin/documents"
             element={
@@ -102,7 +120,7 @@ function App() {
             }
           />
 
-          {/* Route Validation (protégée + rôle admin requis) */}
+          {/* Admin - Validation */}
           <Route
             path="/admin/validation"
             element={
@@ -112,7 +130,7 @@ function App() {
             }
           />
 
-          {/* Route Ingestion Premium (protégée + rôle admin requis) */}
+          {/* Admin - Ingestion Premium */}
           <Route
             path="/admin/ingestion"
             element={
@@ -122,11 +140,45 @@ function App() {
             }
           />
 
-          {/* Redirection par défaut */}
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          {/* Admin - Liste des Prompts */}
+          <Route
+            path="/admin/prompts"
+            element={
+              <AdminRoute>
+                <Prompts />
+              </AdminRoute>
+            }
+          />
 
-          {/* 404 - Route non trouvée */}
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          {/* Admin - Nouveau Prompt */}
+          <Route
+            path="/admin/prompts/new"
+            element={
+              <AdminRoute>
+                <PromptForm />
+              </AdminRoute>
+            }
+          />
+
+          {/* Admin - Édition Prompt */}
+          <Route
+            path="/admin/prompts/:id"
+            element={
+              <AdminRoute>
+                <PromptForm />
+              </AdminRoute>
+            }
+          />
+
+          {/* ============================================ */}
+          {/* REDIRECTIONS */}
+          {/* ============================================ */}
+          
+          {/* Redirection racine → /admin */}
+          <Route path="/" element={<Navigate to="/admin" replace />} />
+
+          {/* 404 - Route non trouvée → /admin */}
+          <Route path="*" element={<Navigate to="/admin" replace />} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>

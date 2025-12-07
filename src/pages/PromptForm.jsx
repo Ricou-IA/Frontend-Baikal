@@ -1,5 +1,7 @@
 /**
- * PromptForm - Formulaire de création/édition de prompt
+ * PromptForm.jsx - Baikal Console
+ * ============================================================================
+ * Formulaire de création et édition de prompts système.
  * ============================================================================
  */
 
@@ -27,9 +29,10 @@ import {
   getPromptLengthStatus,
 } from '../config/prompts';
 
-/**
- * Section repliable
- */
+// ============================================================================
+// COMPOSANT SECTION REPLIABLE
+// ============================================================================
+
 function CollapsibleSection({ title, icon: Icon, children, defaultOpen = false }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
@@ -51,9 +54,10 @@ function CollapsibleSection({ title, icon: Icon, children, defaultOpen = false }
   );
 }
 
-/**
- * Indicateur de taille du prompt
- */
+// ============================================================================
+// COMPOSANT INDICATEUR DE TAILLE DU PROMPT
+// ============================================================================
+
 function PromptLengthIndicator({ length }) {
   const status = getPromptLengthStatus(length);
   const percentage = Math.min((length / PROMPT_CONFIG.idealLength) * 100, 100);
@@ -86,9 +90,10 @@ function PromptLengthIndicator({ length }) {
   );
 }
 
-/**
- * Formulaire principal
- */
+// ============================================================================
+// FORMULAIRE PRINCIPAL
+// ============================================================================
+
 function PromptForm() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -235,7 +240,7 @@ function PromptForm() {
       if (result.error) throw result.error;
 
       success(isEditing ? PROMPT_MESSAGES.updated : PROMPT_MESSAGES.created);
-      navigate('/prompts');
+      navigate('/admin/prompts');
     } catch (err) {
       console.error('Error saving:', err);
       showError(isEditing ? PROMPT_MESSAGES.updateError : PROMPT_MESSAGES.createError);
@@ -244,6 +249,7 @@ function PromptForm() {
     }
   };
 
+  // Accès refusé
   if (!hasAccess) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
@@ -251,8 +257,8 @@ function PromptForm() {
           <CardContent className="text-center py-8">
             <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
             <h2 className="text-xl font-semibold text-slate-900 mb-2">Accès refusé</h2>
-            <Button variant="primary" className="mt-6" onClick={() => navigate('/dashboard')}>
-              Retour au dashboard
+            <Button variant="primary" className="mt-6" onClick={() => navigate('/admin')}>
+              Retour à l'administration
             </Button>
           </CardContent>
         </Card>
@@ -260,6 +266,7 @@ function PromptForm() {
     );
   }
 
+  // Chargement
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -284,7 +291,12 @@ function PromptForm() {
       <div className="bg-white border-b border-slate-200">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" leftIcon={<ArrowLeft className="w-4 h-4" />} onClick={() => navigate('/prompts')}>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              leftIcon={<ArrowLeft className="w-4 h-4" />} 
+              onClick={() => navigate('/admin/prompts')}
+            >
               Retour
             </Button>
             <div>
@@ -425,7 +437,7 @@ function PromptForm() {
 
           {/* Actions */}
           <div className="flex items-center justify-end gap-4 pt-4">
-            <Button type="button" variant="secondary" onClick={() => navigate('/prompts')}>
+            <Button type="button" variant="secondary" onClick={() => navigate('/admin/prompts')}>
               Annuler
             </Button>
             <Button type="submit" variant="primary" leftIcon={<Save className="w-4 h-4" />} loading={saving}>

@@ -1,7 +1,10 @@
-// ============================================================================
-// Page Ingestion Premium - Upload enrichi + Sources externes
-// Version 2 : Chargement des référentiels depuis Supabase
-// ============================================================================
+/**
+ * IngestionPremium.jsx - Baikal Console
+ * ============================================================================
+ * Page d'ingestion Premium avec upload enrichi et sources externes.
+ * Permet l'upload de documents avec métadonnées enrichies.
+ * ============================================================================
+ */
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -284,118 +287,101 @@ function UploadZone({ file, onFileSelect, onFileRemove, isDragging, onDragEnter,
                 onChange={(e) => e.target.files?.[0] && onFileSelect(e.target.files[0])}
                 className="hidden"
             />
-            <Upload className={`w-10 h-10 mx-auto mb-3 ${isDragging ? 'text-indigo-500' : 'text-slate-400'}`} />
-            <p className="text-slate-700 font-medium">
-                {isDragging ? 'Déposez le fichier ici' : 'Glissez-déposez ou cliquez pour sélectionner'}
+            <Upload className={`w-10 h-10 mx-auto mb-3 ${isDragging ? 'text-indigo-600' : 'text-slate-400'}`} />
+            <p className="font-medium text-slate-700">
+                {isDragging ? 'Déposez votre fichier ici' : 'Glissez-déposez ou cliquez pour sélectionner'}
             </p>
             <p className="text-sm text-slate-500 mt-1">
-                {ACCEPTED_EXTENSIONS.join(', ')} • Max {MAX_FILE_SIZE_MB} MB
+                PDF, Word, Excel, texte • Max {MAX_FILE_SIZE_MB} MB
             </p>
         </div>
     );
 }
 
 // ============================================================================
-// COMPOSANT FORMULAIRE DE MÉTADONNÉES
+// COMPOSANT FORMULAIRE MÉTADONNÉES
 // ============================================================================
 
 function MetadataForm({ metadata, onChange, errors, categories, loadingCategories }) {
-    const [showAdvanced, setShowAdvanced] = useState(false);
+    const handleChange = (field, value) => {
+        onChange({ ...metadata, [field]: value });
+    };
 
     return (
-        <div className="space-y-5">
+        <div className="space-y-4 pt-4 border-t border-slate-100">
+            <h4 className="font-medium text-slate-800">Métadonnées du document</h4>
+
             {/* Titre */}
             <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Titre du document *</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Titre *</label>
                 <input
                     type="text"
                     value={metadata.title}
-                    onChange={(e) => onChange({ ...metadata, title: e.target.value })}
-                    placeholder="Ex: DTU 31.2 - Construction de maisons à ossature bois"
-                    className={`
-                        w-full px-4 py-2.5 rounded-lg border transition-colors
-                        ${errors?.title ? 'border-red-300 focus:border-red-500' : 'border-slate-300 focus:border-indigo-500'}
-                        focus:outline-none focus:ring-2 focus:ring-indigo-500/20
-                    `}
+                    onChange={(e) => handleChange('title', e.target.value)}
+                    placeholder="Titre du document"
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 />
                 {errors?.title && <p className="text-sm text-red-600 mt-1">{errors.title}</p>}
             </div>
 
             {/* Catégorie */}
             <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Catégorie *</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Catégorie</label>
                 {loadingCategories ? (
-                    <div className="flex items-center gap-2 text-slate-500 py-2">
+                    <div className="flex items-center gap-2 text-slate-500">
                         <Loader2 className="w-4 h-4 animate-spin" />
                         <span className="text-sm">Chargement...</span>
                     </div>
                 ) : (
                     <select
                         value={metadata.category}
-                        onChange={(e) => onChange({ ...metadata, category: e.target.value })}
-                        className={`
-                            w-full px-4 py-2.5 rounded-lg border transition-colors appearance-none bg-white
-                            ${errors?.category ? 'border-red-300' : 'border-slate-300 focus:border-indigo-500'}
-                            focus:outline-none focus:ring-2 focus:ring-indigo-500/20
-                        `}
+                        onChange={(e) => handleChange('category', e.target.value)}
+                        className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                     >
                         <option value="">Sélectionner une catégorie</option>
                         {categories.map((cat) => (
-                            <option key={cat.slug} value={cat.slug}>{cat.label}</option>
+                            <option key={cat.id} value={cat.id}>{cat.name}</option>
                         ))}
                     </select>
                 )}
-                {errors?.category && <p className="text-sm text-red-600 mt-1">{errors.category}</p>}
             </div>
 
             {/* Description */}
             <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Description</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
                 <textarea
                     value={metadata.description}
-                    onChange={(e) => onChange({ ...metadata, description: e.target.value })}
-                    placeholder="Description optionnelle du document..."
+                    onChange={(e) => handleChange('description', e.target.value)}
+                    placeholder="Description optionnelle du document"
                     rows={3}
-                    className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 resize-none"
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
                 />
             </div>
 
-            {/* Options avancées */}
+            {/* Version */}
             <div>
-                <button
-                    type="button"
-                    onClick={() => setShowAdvanced(!showAdvanced)}
-                    className="flex items-center gap-2 text-sm text-slate-600 hover:text-slate-800"
-                >
-                    {showAdvanced ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                    Options avancées
-                </button>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Version</label>
+                <input
+                    type="text"
+                    value={metadata.version}
+                    onChange={(e) => handleChange('version', e.target.value)}
+                    placeholder="ex: 1.0, 2024-01"
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                />
+            </div>
 
-                {showAdvanced && (
-                    <div className="mt-4 p-4 bg-slate-50 rounded-lg space-y-4">
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1.5">Version</label>
-                            <input
-                                type="text"
-                                value={metadata.version}
-                                onChange={(e) => onChange({ ...metadata, version: e.target.value })}
-                                placeholder="Ex: 2024-01, v2.1..."
-                                className="w-full px-4 py-2 rounded-lg border border-slate-300 focus:border-indigo-500 focus:outline-none"
-                            />
-                        </div>
-                        <div className="space-y-3">
-                            <label className="flex items-center gap-3 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={metadata.extractToc}
-                                    onChange={(e) => onChange({ ...metadata, extractToc: e.target.checked })}
-                                    className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
-                                />
-                                <span className="text-sm text-slate-700">Extraire la table des matières</span>
-                            </label>
-                        </div>
-                    </div>
-                )}
+            {/* Option extraction TOC */}
+            <div className="flex items-center gap-3">
+                <input
+                    type="checkbox"
+                    id="extractToc"
+                    checked={metadata.extractToc}
+                    onChange={(e) => handleChange('extractToc', e.target.checked)}
+                    className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
+                />
+                <label htmlFor="extractToc" className="text-sm text-slate-700">
+                    Extraire automatiquement la table des matières
+                </label>
             </div>
         </div>
     );
@@ -440,7 +426,7 @@ export default function IngestionPremium() {
     if (permissions.canUploadVertical) availableLayers.push('vertical');
     if (permissions.canUploadOrg) availableLayers.push('org');
 
-    // Filtrer les sources
+    // Filtrer les sources disponibles
     const availableSources = INGESTION_SOURCES.filter(source => {
         if (source.superAdminOnly && !isSuperAdmin) return false;
         return true;
@@ -497,7 +483,7 @@ export default function IngestionPremium() {
         }
     }, []);
 
-    // Sélection fichier + vérification doublon
+    // Sélection fichier
     const handleFileSelect = async (selectedFile) => {
         if (!ACCEPTED_MIME_TYPES.includes(selectedFile.type)) {
             setErrors({ file: 'Type de fichier non supporté' });
@@ -517,11 +503,15 @@ export default function IngestionPremium() {
             setMetadata(prev => ({ ...prev, title: nameWithoutExt }));
         }
 
+        // Vérification doublon
         setIsCheckingDuplicate(true);
         try {
-            const hash = await documentsService.calculateFileHash(selectedFile);
-            const { isDuplicate, existingFile } = await documentsService.checkDuplicate(hash, profile?.org_id);
-            setDuplicateInfo({ isDuplicate, existingFile, contentHash: hash });
+            const { isDuplicate, existingFile } = await documentsService.checkDuplicate(
+                selectedFile.name,
+                selectedFile.size,
+                profile?.org_id
+            );
+            setDuplicateInfo({ isDuplicate, existingFile });
         } catch (err) {
             console.error('Erreur vérification doublon:', err);
         } finally {
@@ -535,58 +525,46 @@ export default function IngestionPremium() {
         setErrors({});
     };
 
-    // Validation & Upload
+    // Validation et soumission
     const validateForm = () => {
         const newErrors = {};
-        if (activeSource === 'file-upload') {
-            if (!file) newErrors.file = 'Veuillez sélectionner un fichier';
-            if (!selectedVertical) newErrors.vertical = 'Veuillez sélectionner une verticale';
-            if (!metadata.title.trim()) newErrors.title = 'Le titre est obligatoire';
-            if (!metadata.category) newErrors.category = 'La catégorie est obligatoire';
-            if (!selectedLayer) newErrors.layer = 'Sélectionnez une couche de destination';
-        }
+        if (!selectedVertical) newErrors.vertical = 'Veuillez sélectionner une verticale';
+        if (!file) newErrors.file = 'Veuillez sélectionner un fichier';
+        if (!metadata.title.trim()) newErrors.title = 'Le titre est obligatoire';
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
 
     const handleSubmit = async () => {
         if (!validateForm()) return;
+        if (duplicateInfo?.isDuplicate) return;
 
         setIsUploading(true);
         setUploadResult(null);
 
         try {
-            const { path, error: uploadError } = await documentsService.uploadToStorage(file, profile?.id, selectedLayer);
-            if (uploadError) throw uploadError;
-
-            const { error: webhookError } = await documentsService.triggerIngestionWebhook({
-                path,
-                user_id: profile?.id,
-                org_id: profile?.org_id,
+            const { data, error, path } = await documentsService.uploadDocument({
+                file,
                 layer: selectedLayer,
-                status: 'approved',
-                quality_level: 'premium',
-                target_verticals: [selectedVertical],
+                verticalId: selectedVertical,
+                orgId: profile?.org_id,
+                userId: profile?.id,
                 metadata: {
                     title: metadata.title,
                     category: metadata.category,
                     description: metadata.description,
                     version: metadata.version,
-                    extract_toc: metadata.extractToc,
-                    original_filename: file.name,
-                    file_size: file.size,
-                    mime_type: file.type,
-                    content_hash: duplicateInfo?.contentHash,
+                    extractToc: metadata.extractToc,
                 },
+                qualityLevel: 'premium',
+                status: 'approved',
             });
 
-            if (webhookError) {
-                console.warn('Webhook error (non-blocking):', webhookError);
-            }
+            if (error) throw error;
 
             setUploadResult({
                 success: true,
-                message: 'Document ingéré avec succès ! Le traitement est en cours.',
+                message: 'Document uploadé avec succès ! Le traitement est en cours.',
                 path,
             });
 
@@ -616,10 +594,10 @@ export default function IngestionPremium() {
                     <h2 className="text-xl font-semibold text-slate-800 mb-2">Accès restreint</h2>
                     <p className="text-slate-600 mb-6">L'ingestion Premium est réservée aux administrateurs.</p>
                     <button
-                        onClick={() => navigate('/dashboard')}
+                        onClick={() => navigate('/admin')}
                         className="px-6 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
                     >
-                        Retour au Dashboard
+                        Retour à l'administration
                     </button>
                 </div>
             </div>
@@ -635,23 +613,18 @@ export default function IngestionPremium() {
                     <div className="flex items-center justify-between h-16">
                         <div className="flex items-center gap-4">
                             <button
-                                onClick={() => navigate(-1)}
+                                onClick={() => navigate('/admin')}
                                 className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
                             >
                                 <ArrowLeft className="w-5 h-5" />
                             </button>
                             <div>
                                 <h1 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-                                    <Sparkles className="w-5 h-5 text-purple-600" />
+                                    <Sparkles className="w-5 h-5 text-indigo-600" />
                                     Ingestion Premium
                                 </h1>
-                                <p className="text-sm text-slate-500">Documents de haute qualité</p>
+                                <p className="text-sm text-slate-500">Upload enrichi et sources externes</p>
                             </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <span className="px-3 py-1 bg-purple-100 text-purple-700 text-sm font-medium rounded-full">
-                                Qualité Premium
-                            </span>
                         </div>
                     </div>
                 </div>
@@ -778,12 +751,12 @@ export default function IngestionPremium() {
                                                 {isUploading ? (
                                                     <>
                                                         <Loader2 className="w-4 h-4 animate-spin" />
-                                                        Ingestion en cours...
+                                                        Upload en cours...
                                                     </>
                                                 ) : (
                                                     <>
-                                                        <Sparkles className="w-4 h-4" />
-                                                        Ingérer le document
+                                                        <Upload className="w-4 h-4" />
+                                                        Uploader le document
                                                     </>
                                                 )}
                                             </button>
@@ -794,16 +767,17 @@ export default function IngestionPremium() {
                         )}
 
                         {/* Légifrance */}
-                        {activeSource === 'legifrance' && <LegifranceAdmin />}
-
-                        {/* Sources à venir */}
-                        {(activeSource === 'api-externe' || activeSource === 'web-scraping') && (
-                            <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
-                                <Database className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-                                <h3 className="text-lg font-medium text-slate-700 mb-2">Fonctionnalité à venir</h3>
-                                <p className="text-slate-500 max-w-md mx-auto">
-                                    Cette source de données sera disponible prochainement. Contactez-nous pour plus d'informations.
-                                </p>
+                        {activeSource === 'legifrance' && isSuperAdmin && (
+                            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                                <div className="px-6 py-4 border-b border-slate-100 bg-emerald-50">
+                                    <h3 className="font-semibold text-emerald-800 flex items-center gap-2">
+                                        <Scale className="w-5 h-5 text-emerald-600" />
+                                        Légifrance - Codes juridiques
+                                    </h3>
+                                </div>
+                                <div className="p-6">
+                                    <LegifranceAdmin />
+                                </div>
                             </div>
                         )}
                     </div>

@@ -1,7 +1,10 @@
-// ============================================================================
-// Page Documents - Visualisation des couches RAG
-// Interface d'exploration et gestion des documents par couche
-// ============================================================================
+/**
+ * Documents.jsx - Baikal Console
+ * ============================================================================
+ * Page de visualisation des couches RAG.
+ * Interface d'exploration et gestion des documents par couche.
+ * ============================================================================
+ */
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -31,8 +34,6 @@ import {
   AlertCircle,
   Loader2,
   RefreshCw,
-  Filter,
-  Search,
   ChevronRight,
   Upload,
   Eye,
@@ -72,7 +73,6 @@ function LayerCard({ layer, stats, isActive, onClick, canAccess }) {
         ${!canAccess ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
       `}
     >
-      {/* Badge compteur */}
       {stats.total > 0 && (
         <div className={`absolute -top-2 -right-2 px-2 py-0.5 text-xs font-bold text-white rounded-full ${colors.badge}`}>
           {stats.total}
@@ -80,12 +80,10 @@ function LayerCard({ layer, stats, isActive, onClick, canAccess }) {
       )}
 
       <div className="flex items-start gap-4">
-        {/* Icône */}
         <div className={`p-3 rounded-lg ${colors.bg}`}>
           <IconComponent className={`w-6 h-6 ${colors.icon}`} />
         </div>
 
-        {/* Contenu */}
         <div className="flex-1 min-w-0">
           <h3 className={`font-semibold ${isActive ? colors.text : 'text-slate-800'}`}>
             {LAYER_LABELS[layer]}
@@ -94,7 +92,6 @@ function LayerCard({ layer, stats, isActive, onClick, canAccess }) {
             {LAYER_DESCRIPTIONS[layer]}
           </p>
 
-          {/* Stats inline */}
           {stats.total > 0 && (
             <div className="flex items-center gap-3 mt-3 text-xs">
               {stats.approved > 0 && (
@@ -119,7 +116,6 @@ function LayerCard({ layer, stats, isActive, onClick, canAccess }) {
           )}
         </div>
 
-        {/* Chevron */}
         {canAccess && (
           <ChevronRight className={`w-5 h-5 mt-1 ${isActive ? colors.text : 'text-slate-400'}`} />
         )}
@@ -178,12 +174,6 @@ function DocumentsPreview({ documents, isLoading, onViewAll, layer }) {
       <div className="text-center py-12">
         <FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" />
         <p className="text-slate-500">Aucun document dans cette couche</p>
-        <button
-          onClick={() => {/* Navigate to upload */}}
-          className="mt-4 text-sm text-indigo-600 hover:text-indigo-700 font-medium"
-        >
-          Ajouter un document
-        </button>
       </div>
     );
   }
@@ -233,7 +223,6 @@ export default function Documents() {
   const navigate = useNavigate();
   const { profile, organization, isSuperAdmin, isOrgAdmin } = useAuth();
 
-  // États
   const [activeLayer, setActiveLayer] = useState(null);
   const [layerStats, setLayerStats] = useState({
     vertical: { total: 0, pending: 0, approved: 0, rejected: 0, draft: 0 },
@@ -246,18 +235,12 @@ export default function Documents() {
   const [isLoadingDocuments, setIsLoadingDocuments] = useState(false);
   const [error, setError] = useState(null);
 
-  // Permissions
   const userRole = profile?.app_role || 'member';
   const permissions = getPermissions(userRole);
 
-  // Calculs globaux
   const totalDocuments = Object.values(layerStats).reduce((sum, s) => sum + s.total, 0);
   const totalPending = Object.values(layerStats).reduce((sum, s) => sum + s.pending, 0);
   const totalApproved = Object.values(layerStats).reduce((sum, s) => sum + s.approved, 0);
-
-  // ============================================================================
-  // CHARGEMENT DES STATS
-  // ============================================================================
 
   const loadStats = async () => {
     if (!profile?.org_id) return;
@@ -281,10 +264,6 @@ export default function Documents() {
     }
   };
 
-  // ============================================================================
-  // CHARGEMENT DES DOCUMENTS D'UNE COUCHE
-  // ============================================================================
-
   const loadLayerDocuments = async (layer) => {
     if (!profile?.org_id) return;
 
@@ -306,10 +285,6 @@ export default function Documents() {
     }
   };
 
-  // ============================================================================
-  // EFFECTS
-  // ============================================================================
-
   useEffect(() => {
     loadStats();
   }, [profile?.org_id]);
@@ -321,10 +296,6 @@ export default function Documents() {
       setLayerDocuments([]);
     }
   }, [activeLayer]);
-
-  // ============================================================================
-  // HANDLERS
-  // ============================================================================
 
   const handleLayerClick = (layer) => {
     setActiveLayer(activeLayer === layer ? null : layer);
@@ -338,14 +309,10 @@ export default function Documents() {
   };
 
   const handleViewAllDocuments = () => {
-    // TODO: Navigate to full documents list with filter
     navigate(`/admin/documents?layer=${activeLayer}`);
   };
 
-  // ============================================================================
-  // RENDER - Non autorisé
-  // ============================================================================
-
+  // Render - Non autorisé
   if (!isOrgAdmin && !isSuperAdmin) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
@@ -358,20 +325,17 @@ export default function Documents() {
             Vous n'avez pas les droits nécessaires pour accéder à cette page.
           </p>
           <button
-            onClick={() => navigate('/dashboard')}
-            className="btn-primary w-full"
+            onClick={() => navigate('/admin')}
+            className="px-6 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
           >
-            Retour au Dashboard
+            Retour à l'administration
           </button>
         </div>
       </div>
     );
   }
 
-  // ============================================================================
-  // RENDER - Page principale
-  // ============================================================================
-
+  // Render - Page principale
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
@@ -380,7 +344,7 @@ export default function Documents() {
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-4">
               <button
-                onClick={() => navigate('/dashboard')}
+                onClick={() => navigate('/admin')}
                 className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
               >
                 <ArrowLeft className="w-5 h-5" />
@@ -397,7 +361,6 @@ export default function Documents() {
             </div>
 
             <div className="flex items-center gap-3">
-              {/* Bouton Refresh */}
               <button
                 onClick={handleRefresh}
                 disabled={isLoading}
@@ -406,9 +369,8 @@ export default function Documents() {
                 <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
               </button>
 
-              {/* Bouton Upload */}
               <button
-                onClick={() => navigate('/admin/documents/upload')}
+                onClick={() => navigate('/admin/ingestion')}
                 className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
               >
                 <Upload className="w-4 h-4" />
@@ -570,7 +532,7 @@ export default function Documents() {
               </div>
             </div>
             <button
-              onClick={() => navigate('/admin/documents/validation')}
+              onClick={() => navigate('/admin/validation')}
               className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors font-medium"
             >
               Valider maintenant

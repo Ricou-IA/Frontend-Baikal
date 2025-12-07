@@ -1,7 +1,10 @@
-// ============================================================================
-// Page Validation - Workflow d'approbation des documents
-// Interface de validation pour les documents en attente (status = 'pending')
-// ============================================================================
+/**
+ * Validation.jsx - Baikal Console
+ * ============================================================================
+ * Page de validation des documents en attente.
+ * Workflow d'approbation/rejet pour les documents (status = 'pending').
+ * ============================================================================
+ */
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -222,90 +225,48 @@ function PreviewModal({ document, onClose, onApprove, onReject, isProcessing }) 
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+            className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Contenu */}
-        <div className="flex-1 overflow-auto p-6">
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6">
           {/* Métadonnées */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-slate-50 rounded-lg p-3">
-              <p className="text-xs text-slate-500 mb-1">Couche</p>
-              <LayerBadge layer={document.layer} />
-            </div>
-            <div className="bg-slate-50 rounded-lg p-3">
-              <p className="text-xs text-slate-500 mb-1">Qualité</p>
-              <span className={`
-                inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full
-                ${QUALITY_COLORS[document.quality_level]?.bg} ${QUALITY_COLORS[document.quality_level]?.text}
-              `}>
-                {QUALITY_LABELS[document.quality_level]}
+          <div className="flex flex-wrap gap-3 mb-6">
+            <LayerBadge layer={document.layer} />
+            {document.metadata?.category && (
+              <span className="text-xs text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
+                {document.metadata.category}
               </span>
-            </div>
-            <div className="bg-slate-50 rounded-lg p-3">
-              <p className="text-xs text-slate-500 mb-1">Créé le</p>
-              <p className="text-sm font-medium text-slate-700">
-                {new Date(document.created_at).toLocaleDateString('fr-FR')}
-              </p>
-            </div>
-            <div className="bg-slate-50 rounded-lg p-3">
-              <p className="text-xs text-slate-500 mb-1">Par</p>
-              <p className="text-sm font-medium text-slate-700">
-                {document.creator?.display_name || 'Inconnu'}
-              </p>
-            </div>
+            )}
+            <span className="flex items-center gap-1 text-xs text-slate-500">
+              <Calendar className="w-3.5 h-3.5" />
+              {formatRelativeDate(document.created_at)}
+            </span>
           </div>
 
-          {/* Tags */}
-          {document.metadata?.tags?.length > 0 && (
-            <div className="mb-6">
-              <p className="text-xs text-slate-500 mb-2">Tags</p>
-              <div className="flex flex-wrap gap-2">
-                {document.metadata.tags.map((tag, i) => (
-                  <span key={i} className="px-2 py-1 bg-indigo-100 text-indigo-700 text-xs rounded-full">
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Description */}
-          {document.metadata?.description && (
-            <div className="mb-6">
-              <p className="text-xs text-slate-500 mb-2">Description</p>
-              <p className="text-sm text-slate-700 bg-slate-50 rounded-lg p-3">
-                {document.metadata.description}
-              </p>
-            </div>
-          )}
-
           {/* Contenu du document */}
-          <div>
-            <p className="text-xs text-slate-500 mb-2">Aperçu du contenu</p>
-            <div className="bg-slate-50 rounded-lg p-4 max-h-64 overflow-auto">
-              <pre className="text-sm text-slate-700 whitespace-pre-wrap font-sans">
-                {document.content}
-              </pre>
+          <div className="prose prose-slate max-w-none">
+            <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 whitespace-pre-wrap text-sm text-slate-700">
+              {document.content || 'Aucun contenu disponible'}
             </div>
           </div>
 
           {/* Formulaire de rejet */}
           {showRejectForm && (
-            <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+            <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
               <div className="flex items-center gap-2 mb-3">
                 <AlertTriangle className="w-5 h-5 text-red-600" />
-                <p className="font-medium text-red-800">Motif du rejet</p>
+                <h3 className="font-medium text-red-800">Motif du rejet</h3>
               </div>
               <textarea
                 value={rejectReason}
                 onChange={(e) => setRejectReason(e.target.value)}
                 placeholder="Expliquez pourquoi ce document est rejeté..."
+                className="w-full p-3 border border-red-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 resize-none"
                 rows={3}
-                className="w-full px-3 py-2 border border-red-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500/20 resize-none"
               />
               <div className="flex justify-end gap-2 mt-3">
                 <button
@@ -470,7 +431,7 @@ export default function Validation() {
         page: pagination.page,
         pageSize: pagination.pageSize,
         sortBy: 'created_at',
-        sortOrder: 'asc', // Les plus anciens d'abord
+        sortOrder: 'asc',
       });
 
       if (result.error) throw result.error;
@@ -545,7 +506,6 @@ export default function Validation() {
 
       if (!success || approveError) throw approveError || new Error('Échec de l\'approbation');
 
-      // Retirer le document de la liste
       setDocuments(prev => prev.filter(d => d.id !== docId));
       setSelectedIds(prev => {
         const next = new Set(prev);
@@ -554,7 +514,6 @@ export default function Validation() {
       });
       setPagination(prev => ({ ...prev, total: prev.total - 1 }));
 
-      // Fermer la preview si c'était ce document
       if (previewDocument?.id === docId) {
         setPreviewDocument(null);
       }
@@ -586,7 +545,6 @@ export default function Validation() {
 
       if (!success || rejectError) throw rejectError || new Error('Échec du rejet');
 
-      // Retirer le document de la liste
       setDocuments(prev => prev.filter(d => d.id !== docId));
       setSelectedIds(prev => {
         const next = new Set(prev);
@@ -595,7 +553,6 @@ export default function Validation() {
       });
       setPagination(prev => ({ ...prev, total: prev.total - 1 }));
 
-      // Fermer la preview
       setPreviewDocument(null);
 
       setSuccessMessage('Document rejeté');
@@ -624,12 +581,11 @@ export default function Validation() {
         profile?.id
       );
 
-      // Retirer les documents approuvés
       setDocuments(prev => prev.filter(d => !selectedIds.has(d.id)));
       setPagination(prev => ({ ...prev, total: prev.total - count }));
       setSelectedIds(new Set());
 
-      if (errors.length > 0) {
+      if (errors && errors.length > 0) {
         setError(`${count} documents approuvés, ${errors.length} erreurs`);
       } else {
         setSuccessMessage(`${count} document${count > 1 ? 's' : ''} approuvé${count > 1 ? 's' : ''}`);
@@ -659,10 +615,10 @@ export default function Validation() {
             Vous n'avez pas les droits pour valider des documents.
           </p>
           <button
-            onClick={() => navigate('/dashboard')}
+            onClick={() => navigate('/admin')}
             className="px-6 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
           >
-            Retour au Dashboard
+            Retour à l'administration
           </button>
         </div>
       </div>
@@ -681,7 +637,7 @@ export default function Validation() {
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-4">
               <button
-                onClick={() => navigate(-1)}
+                onClick={() => navigate('/admin')}
                 className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
               >
                 <ArrowLeft className="w-5 h-5" />
@@ -722,7 +678,7 @@ export default function Validation() {
               <div className={`
                 w-4 h-4 rounded border-2 flex items-center justify-center
                 ${selectedIds.size === documents.length && documents.length > 0
-                  ? 'bg-indigo-600 border-indigo-600' 
+                  ? 'bg-indigo-600 border-indigo-600'
                   : 'border-slate-300'
                 }
               `}>
@@ -733,8 +689,6 @@ export default function Validation() {
               Tout sélectionner
             </button>
 
-            <div className="w-px h-6 bg-slate-200" />
-
             {/* Filtre par couche */}
             <div className="flex items-center gap-2">
               <Filter className="w-4 h-4 text-slate-400" />
@@ -742,9 +696,9 @@ export default function Validation() {
                 value={filterLayer}
                 onChange={(e) => {
                   setFilterLayer(e.target.value);
-                  setPagination(prev => ({ ...prev, page: 1 }));
+                  setPagination(p => ({ ...p, page: 1 }));
                 }}
-                className="text-sm border-0 bg-transparent text-slate-600 focus:outline-none focus:ring-0 cursor-pointer"
+                className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="">Toutes les couches</option>
                 <option value="vertical">Verticale Métier</option>
@@ -757,7 +711,7 @@ export default function Validation() {
         </div>
       </div>
 
-      {/* Contenu */}
+      {/* Contenu principal */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Messages */}
         {error && (
@@ -779,11 +733,10 @@ export default function Validation() {
 
         {/* Loading */}
         {isLoading ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
           </div>
         ) : documents.length === 0 ? (
-          /* État vide */
           <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
             <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4" />
             <h3 className="text-xl font-semibold text-slate-800 mb-2">
@@ -794,14 +747,13 @@ export default function Validation() {
               vérifiez les autres couches.
             </p>
             <button
-              onClick={() => navigate('/admin/documents')}
+              onClick={() => navigate('/admin')}
               className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
             >
-              Voir tous les documents
+              Retour à l'administration
             </button>
           </div>
         ) : (
-          /* Liste des documents */
           <>
             <div className="space-y-4">
               {documents.map((doc) => (
