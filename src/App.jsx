@@ -1,7 +1,10 @@
-// ============================================================================
-// App.jsx - Baikal Console
-// Routing principal avec les nouvelles pages RAG Layers (Phase 3)
-// ============================================================================
+/**
+ * App.jsx - Core RAG Engine
+ * ============================================================================
+ * Point d'entrée de l'application React.
+ * Configure le Router et les Guards de protection des routes.
+ * ============================================================================
+ */
 
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
@@ -12,28 +15,16 @@ import {
   AdminRoute
 } from './components/OnboardingGuard';
 
-// ============================================================================
-// PAGES - Existantes
-// ============================================================================
+// Pages
 import Login from './pages/Login';
 import ResetPassword from './pages/ResetPassword';
 import Onboarding from './pages/Onboarding';
 import Dashboard from './pages/Dashboard';
 import Settings from './pages/Settings';
 import Admin from './pages/Admin';
-
-// ============================================================================
-// PAGES - RAG Layers (Phase 3)
-// ============================================================================
 import Documents from './pages/Documents';
-import IngestionPremium from './pages/IngestionPremium';
 import Validation from './pages/Validation';
-import Prompts from './pages/Prompts';
-import PromptForm from './pages/PromptForm';
-
-// ============================================================================
-// APP COMPONENT
-// ============================================================================
+import IngestionPremium from './pages/IngestionPremium';
 
 function App() {
   return (
@@ -45,12 +36,7 @@ function App() {
     >
       <AuthProvider>
         <Routes>
-          
-          {/* ================================================================ */}
-          {/* ROUTES PUBLIQUES                                                */}
-          {/* ================================================================ */}
-          
-          {/* Login (redirige si déjà connecté) */}
+          {/* Routes publiques (redirige si déjà connecté) */}
           <Route
             path="/login"
             element={
@@ -60,17 +46,13 @@ function App() {
             }
           />
 
-          {/* Réinitialisation mot de passe (publique) */}
+          {/* Route de réinitialisation de mot de passe (publique) */}
           <Route
             path="/reset-password"
             element={<ResetPassword />}
           />
 
-          {/* ================================================================ */}
-          {/* ROUTES ONBOARDING                                               */}
-          {/* ================================================================ */}
-          
-          {/* Onboarding (requiert auth, redirige si déjà onboardé) */}
+          {/* Route d'onboarding (requiert auth, redirige si déjà onboardé) */}
           <Route
             path="/onboarding"
             element={
@@ -80,11 +62,7 @@ function App() {
             }
           />
 
-          {/* ================================================================ */}
-          {/* ROUTES PROTÉGÉES (auth + onboarding)                            */}
-          {/* ================================================================ */}
-          
-          {/* Dashboard principal */}
+          {/* Routes protégées (requiert auth + onboarding complété) */}
           <Route
             path="/dashboard"
             element={
@@ -94,7 +72,7 @@ function App() {
             }
           />
 
-          {/* Paramètres utilisateur */}
+          {/* Route des paramètres (protégée) */}
           <Route
             path="/settings"
             element={
@@ -104,11 +82,7 @@ function App() {
             }
           />
 
-          {/* ================================================================ */}
-          {/* ROUTES ADMIN (auth + onboarding + rôle admin)                   */}
-          {/* ================================================================ */}
-          
-          {/* Page Admin principale */}
+          {/* Route Admin (protégée + rôle admin requis) */}
           <Route
             path="/admin"
             element={
@@ -118,11 +92,7 @@ function App() {
             }
           />
 
-          {/* ================================================================ */}
-          {/* ROUTES RAG LAYERS - Phase 3 (admin)                             */}
-          {/* ================================================================ */}
-          
-          {/* Visualisation des documents par couche */}
+          {/* Route Documents (protégée + rôle admin requis) */}
           <Route
             path="/admin/documents"
             element={
@@ -132,37 +102,7 @@ function App() {
             }
           />
 
-          {/* Ingestion Premium (upload + sources externes) */}
-          <Route
-            path="/admin/documents/upload"
-            element={
-              <AdminRoute>
-                <IngestionPremium />
-              </AdminRoute>
-            }
-          />
-
-          {/* Alias pour l'ingestion */}
-          <Route
-            path="/admin/ingestion"
-            element={
-              <AdminRoute>
-                <IngestionPremium />
-              </AdminRoute>
-            }
-          />
-
-          {/* Validation des documents en attente */}
-          <Route
-            path="/admin/documents/validation"
-            element={
-              <AdminRoute>
-                <Validation />
-              </AdminRoute>
-            }
-          />
-
-          {/* Alias pour la validation */}
+          {/* Route Validation (protégée + rôle admin requis) */}
           <Route
             path="/admin/validation"
             element={
@@ -172,46 +112,21 @@ function App() {
             }
           />
 
-          {/* Gestion des Prompts RAG */}
+          {/* Route Ingestion Premium (protégée + rôle admin requis) */}
           <Route
-            path="/admin/prompts"
+            path="/admin/ingestion"
             element={
               <AdminRoute>
-                <Prompts />
+                <IngestionPremium />
               </AdminRoute>
             }
           />
 
-          {/* Édition d'un Prompt */}
-          <Route
-            path="/admin/prompts/:id"
-            element={
-              <AdminRoute>
-                <PromptForm />
-              </AdminRoute>
-            }
-          />
-
-          {/* Création d'un nouveau Prompt */}
-          <Route
-            path="/admin/prompts/new"
-            element={
-              <AdminRoute>
-                <PromptForm />
-              </AdminRoute>
-            }
-          />
-
-          {/* ================================================================ */}
-          {/* REDIRECTIONS                                                    */}
-          {/* ================================================================ */}
-          
           {/* Redirection par défaut */}
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
           {/* 404 - Route non trouvée */}
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
-          
         </Routes>
       </AuthProvider>
     </BrowserRouter>
