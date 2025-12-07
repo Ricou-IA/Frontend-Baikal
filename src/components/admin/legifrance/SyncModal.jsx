@@ -1,10 +1,10 @@
 // ============================================================================
 // Composant SyncModal - Modal de synchronisation Légifrance
+// Version 2 : Verticales depuis props (chargées via Supabase)
 // ============================================================================
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../../contexts/AuthContext';
-import { VERTICALS } from '../../../hooks/useLegifrance';
 import {
     X,
     RefreshCw,
@@ -21,16 +21,22 @@ import {
 } from 'lucide-react';
 
 /**
- * Badge de verticale avec couleur
+ * Badge de verticale avec couleur dynamique
  */
 function VerticalBadge({ vertical, selected, onClick, disabled }) {
-    const colors = {
-        emerald: selected ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50',
-        blue: selected ? 'bg-blue-100 text-blue-800 border-blue-300' : 'bg-white text-blue-600 border-blue-200 hover:bg-blue-50',
-        pink: selected ? 'bg-pink-100 text-pink-800 border-pink-300' : 'bg-white text-pink-600 border-pink-200 hover:bg-pink-50',
-        amber: selected ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50',
-        indigo: selected ? 'bg-indigo-100 text-indigo-800 border-indigo-300' : 'bg-white text-indigo-600 border-indigo-200 hover:bg-indigo-50',
-        violet: selected ? 'bg-violet-100 text-violet-800 border-violet-300' : 'bg-white text-violet-600 border-violet-200 hover:bg-violet-50',
+    // Générer les styles basés sur la couleur hex
+    const baseColor = vertical.color || '#6366f1';
+    
+    const selectedStyles = {
+        backgroundColor: `${baseColor}20`,
+        borderColor: `${baseColor}60`,
+        color: baseColor,
+    };
+    
+    const unselectedStyles = {
+        backgroundColor: 'white',
+        borderColor: '#e2e8f0',
+        color: baseColor,
     };
 
     return (
@@ -40,15 +46,17 @@ function VerticalBadge({ vertical, selected, onClick, disabled }) {
             disabled={disabled}
             className={`
                 px-3 py-1.5 rounded-lg border text-sm font-medium transition-all
-                ${colors[vertical.color] || colors.indigo}
-                ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-                ${selected ? 'ring-2 ring-offset-1 ring-opacity-50' : ''}
+                ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:shadow-sm'}
+                ${selected ? 'ring-2 ring-offset-1' : ''}
             `}
-            style={{ '--tw-ring-color': selected ? `var(--${vertical.color}-500)` : 'transparent' }}
+            style={{
+                ...(selected ? selectedStyles : unselectedStyles),
+                '--tw-ring-color': selected ? `${baseColor}40` : 'transparent',
+            }}
         >
             <span className="flex items-center gap-1.5">
                 {selected && <CheckCircle className="w-3.5 h-3.5" />}
-                {vertical.label}
+                {vertical.label || vertical.name}
             </span>
         </button>
     );
@@ -61,13 +69,14 @@ export default function SyncModal({
     isOpen,
     onClose,
     code,
+    verticals = [],
     organizations = [],
     onSync,
     syncing,
     searchOrganizations,
     getOrganizationById,
-    onAddGrant,
-    onRemoveGrant
+    onAddOrgGrant,
+    onRemoveOrgGrant
 }) {
     const { user } = useAuth();
     
@@ -81,10 +90,13 @@ export default function SyncModal({
 
     // Initialiser avec les verticales du code
     useEffect(() => {
-        if (code) {
-            setSelectedVerticals(code.default_verticals || ['legal']);
+        if (code && verticals.length > 0) {
+            const defaultVerts = code.default_verticals || [];
+            // Filtrer pour ne garder que les verticales valides
+            const validVerts = defaultVerts.filter(v => verticals.some(vert => vert.id === v));
+            setSelectedVerticals(validVerts.length > 0 ? validVerts : [verticals[0]?.id].filter(Boolean));
         }
-    }, [code]);
+    }, [code, verticals]);
 
     // Réinitialiser à l'ouverture
     useEffect(() => {
@@ -103,7 +115,6 @@ export default function SyncModal({
     const toggleVertical = (verticalId) => {
         setSelectedVerticals(prev => {
             if (prev.includes(verticalId)) {
-                // Ne pas permettre de tout désélectionner
                 if (prev.length === 1) return prev;
                 return prev.filter(v => v !== verticalId);
             }
@@ -113,11 +124,11 @@ export default function SyncModal({
 
     // Organisations avec grant actuel
     const grantedOrgs = (code.granted_org_ids || [])
-        .map(id => getOrganizationById(id))
+        .map(id => getOrganizationById?.(id))
         .filter(Boolean);
 
     // Résultats de recherche organisations
-    const searchResults = orgSearchTerm.length >= 2
+    const searchResults = orgSearchTerm.length >= 2 && searchOrganizations
         ? searchOrganizations(orgSearchTerm).filter(
             org => !(code.granted_org_ids || []).includes(org.id)
           ).slice(0, 5)
@@ -137,7 +148,6 @@ export default function SyncModal({
         
         if (result.success) {
             setSuccessMessage('Synchronisation lancée ! Le processus peut prendre plusieurs minutes.');
-            // Fermer après un délai
             setTimeout(() => {
                 onClose();
             }, 3000);
@@ -148,7 +158,8 @@ export default function SyncModal({
 
     // Ajouter un grant
     const handleAddGrant = async (orgId) => {
-        const result = await onAddGrant(code.id, orgId);
+        if (!onAddOrgGrant) return;
+        const result = await onAddOrgGrant(code.id, orgId);
         if (result.success) {
             setOrgSearchTerm('');
             setShowOrgSearch(false);
@@ -159,7 +170,8 @@ export default function SyncModal({
 
     // Retirer un grant
     const handleRemoveGrant = async (orgId) => {
-        const result = await onRemoveGrant(code.id, orgId);
+        if (!onRemoveOrgGrant) return;
+        const result = await onRemoveOrgGrant(code.id, orgId);
         if (!result.success) {
             setLocalError(result.error);
         }
@@ -199,51 +211,7 @@ export default function SyncModal({
                     </div>
 
                     {/* Contenu */}
-                    <div className="px-6 py-5 space-y-6 max-h-[70vh] overflow-y-auto">
-                        
-                        {/* Stats actuelles */}
-                        <div className="grid grid-cols-3 gap-4">
-                            <div className="bg-gradient-to-br from-slate-50 to-slate-100 rounded-xl p-4 border border-slate-200">
-                                <div className="flex items-center gap-2 text-slate-500 text-xs font-medium mb-1">
-                                    <Database className="w-3.5 h-3.5" />
-                                    Articles indexés
-                                </div>
-                                <p className="text-2xl font-bold text-slate-800">
-                                    {code.indexed_articles?.toLocaleString() || 0}
-                                    <span className="text-sm font-normal text-slate-400 ml-1">
-                                        / {code.total_articles?.toLocaleString() || '?'}
-                                    </span>
-                                </p>
-                            </div>
-                            <div className="bg-gradient-to-br from-slate-50 to-slate-100 rounded-xl p-4 border border-slate-200">
-                                <div className="flex items-center gap-2 text-slate-500 text-xs font-medium mb-1">
-                                    <Clock className="w-3.5 h-3.5" />
-                                    Dernière sync
-                                </div>
-                                <p className="text-sm font-semibold text-slate-800">
-                                    {code.last_sync_at 
-                                        ? new Date(code.last_sync_at).toLocaleDateString('fr-FR', {
-                                            day: '2-digit',
-                                            month: 'short',
-                                            year: 'numeric',
-                                            hour: '2-digit',
-                                            minute: '2-digit'
-                                          })
-                                        : 'Jamais'
-                                    }
-                                </p>
-                            </div>
-                            <div className="bg-gradient-to-br from-slate-50 to-slate-100 rounded-xl p-4 border border-slate-200">
-                                <div className="flex items-center gap-2 text-slate-500 text-xs font-medium mb-1">
-                                    <Building2 className="w-3.5 h-3.5" />
-                                    Exceptions org
-                                </div>
-                                <p className="text-2xl font-bold text-slate-800">
-                                    {(code.granted_org_ids || []).length}
-                                </p>
-                            </div>
-                        </div>
-
+                    <div className="px-6 py-5 space-y-6">
                         {/* Type de synchronisation */}
                         <div>
                             <label className="block text-sm font-semibold text-slate-700 mb-3">
@@ -298,11 +266,11 @@ export default function SyncModal({
                                             w-10 h-10 rounded-lg flex items-center justify-center
                                             ${syncType === 'full' ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500'}
                                         `}>
-                                            <RefreshCw className="w-5 h-5" />
+                                            <Database className="w-5 h-5" />
                                         </div>
                                         <div>
                                             <p className="font-semibold text-slate-800">Complète</p>
-                                            <p className="text-xs text-slate-500">Ré-indexer tous les articles</p>
+                                            <p className="text-xs text-slate-500">Réindexe tous les articles</p>
                                         </div>
                                     </div>
                                     {syncType === 'full' && (
@@ -316,10 +284,12 @@ export default function SyncModal({
                             {syncType === 'full' && (
                                 <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
                                     <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-                                    <p className="text-xs text-amber-700">
-                                        Une synchronisation complète peut prendre plusieurs heures pour les gros codes 
-                                        et consommer plus de tokens d'embedding.
-                                    </p>
+                                    <div className="text-sm text-amber-700">
+                                        <p className="font-medium">Attention</p>
+                                        <p className="text-xs mt-0.5">
+                                            La synchronisation complète peut prendre plusieurs heures selon la taille du code.
+                                        </p>
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -332,17 +302,21 @@ export default function SyncModal({
                                     (qui verront ce contenu)
                                 </span>
                             </label>
-                            <div className="flex flex-wrap gap-2">
-                                {VERTICALS.map(vertical => (
-                                    <VerticalBadge
-                                        key={vertical.id}
-                                        vertical={vertical}
-                                        selected={selectedVerticals.includes(vertical.id)}
-                                        onClick={() => toggleVertical(vertical.id)}
-                                        disabled={syncing}
-                                    />
-                                ))}
-                            </div>
+                            {verticals.length > 0 ? (
+                                <div className="flex flex-wrap gap-2">
+                                    {verticals.map(vertical => (
+                                        <VerticalBadge
+                                            key={vertical.id}
+                                            vertical={vertical}
+                                            selected={selectedVerticals.includes(vertical.id)}
+                                            onClick={() => toggleVertical(vertical.id)}
+                                            disabled={syncing}
+                                        />
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-sm text-slate-500 italic">Aucune verticale disponible</p>
+                            )}
                         </div>
 
                         {/* Gestion des grants organisations */}
@@ -358,16 +332,16 @@ export default function SyncModal({
                                     type="button"
                                     onClick={() => setShowOrgSearch(!showOrgSearch)}
                                     disabled={syncing}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
                                 >
-                                    <Plus className="w-4 h-4" />
+                                    <Plus className="w-3.5 h-3.5" />
                                     Ajouter
                                 </button>
                             </div>
 
-                            {/* Recherche d'organisation */}
+                            {/* Recherche d'organisations */}
                             {showOrgSearch && (
-                                <div className="mb-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                                <div className="mb-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
                                     <div className="relative">
                                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                                         <input
@@ -375,8 +349,7 @@ export default function SyncModal({
                                             value={orgSearchTerm}
                                             onChange={e => setOrgSearchTerm(e.target.value)}
                                             placeholder="Rechercher une organisation..."
-                                            className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                                            autoFocus
+                                            className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                                         />
                                     </div>
                                     
@@ -386,72 +359,51 @@ export default function SyncModal({
                                                 <button
                                                     key={org.id}
                                                     onClick={() => handleAddGrant(org.id)}
-                                                    className="w-full flex items-center gap-3 p-2 text-left hover:bg-white rounded-lg transition-colors"
+                                                    className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-white rounded-lg transition-colors"
                                                 >
-                                                    <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center">
-                                                        <Building2 className="w-4 h-4 text-indigo-600" />
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="text-sm font-medium text-slate-800 truncate">
-                                                            {org.name}
-                                                        </p>
-                                                        <p className="text-xs text-slate-400 truncate">
-                                                            {org.slug}
-                                                        </p>
-                                                    </div>
-                                                    <Plus className="w-4 h-4 text-indigo-500" />
+                                                    <Building2 className="w-4 h-4 text-slate-400" />
+                                                    <span className="text-slate-700">{org.name}</span>
                                                 </button>
                                             ))}
                                         </div>
                                     )}
                                     
                                     {orgSearchTerm.length >= 2 && searchResults.length === 0 && (
-                                        <p className="mt-2 text-sm text-slate-500 text-center py-2">
+                                        <p className="mt-2 text-xs text-slate-500 text-center py-2">
                                             Aucune organisation trouvée
                                         </p>
                                     )}
                                 </div>
                             )}
 
-                            {/* Liste des organisations avec grant */}
+                            {/* Organisations avec grant */}
                             {grantedOrgs.length > 0 ? (
-                                <div className="space-y-2">
+                                <div className="flex flex-wrap gap-2">
                                     {grantedOrgs.map(org => (
-                                        <div
+                                        <div 
                                             key={org.id}
-                                            className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200"
+                                            className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-lg"
                                         >
-                                            <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center">
-                                                <Building2 className="w-5 h-5 text-emerald-600" />
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <p className="font-medium text-slate-800 truncate">
-                                                    {org.name}
-                                                </p>
-                                                <p className="text-xs text-slate-400">
-                                                    Accès accordé
-                                                </p>
-                                            </div>
+                                            <Building2 className="w-3.5 h-3.5 text-slate-500" />
+                                            <span className="text-sm text-slate-700">{org.name}</span>
                                             <button
-                                                type="button"
                                                 onClick={() => handleRemoveGrant(org.id)}
                                                 disabled={syncing}
-                                                className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                                                title="Retirer l'accès"
+                                                className="p-0.5 text-slate-400 hover:text-red-500 transition-colors"
                                             >
-                                                <Trash2 className="w-4 h-4" />
+                                                <Trash2 className="w-3.5 h-3.5" />
                                             </button>
                                         </div>
                                     ))}
                                 </div>
                             ) : (
-                                <p className="text-sm text-slate-400 italic text-center py-3">
+                                <p className="text-xs text-slate-400 italic">
                                     Aucun accès exceptionnel configuré
                                 </p>
                             )}
                         </div>
 
-                        {/* Messages d'erreur/succès */}
+                        {/* Messages d'erreur et succès */}
                         {localError && (
                             <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700 text-sm">
                                 <AlertTriangle className="w-4 h-4 flex-shrink-0" />

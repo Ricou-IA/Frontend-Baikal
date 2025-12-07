@@ -1,45 +1,87 @@
 // ============================================================================
 // Hook useLegifrance
 // Gestion des données Légifrance pour le SuperAdmin
+// Version 2 : Verticales et Domaines depuis Supabase
 // ============================================================================
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
-// URL de l'Edge Function Supabase (remplace l'appel direct à n8n)
+// URL de l'Edge Function Supabase
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SYNC_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/trigger-legifrance-sync`;
-
-// Verticales disponibles
-export const VERTICALS = [
-    { id: 'legal', label: 'Juridique', color: 'emerald' },
-    { id: 'finance', label: 'Finance', color: 'blue' },
-    { id: 'hr', label: 'Ressources Humaines', color: 'pink' },
-    { id: 'btp', label: 'BTP / Construction', color: 'amber' },
-    { id: 'audit', label: 'Audit & Conformité', color: 'indigo' },
-    { id: 'tax', label: 'Fiscalité', color: 'violet' },
-];
 
 /**
  * Hook principal pour la gestion Légifrance
  */
 export function useLegifrance() {
-    // États
+    // États - Données
     const [codes, setCodes] = useState([]);
+    const [domains, setDomains] = useState([]);
+    const [verticals, setVerticals] = useState([]);
     const [syncJobs, setSyncJobs] = useState([]);
     const [organizations, setOrganizations] = useState([]);
+    
+    // États - UI
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [syncing, setSyncing] = useState(false);
 
-    // Charger les codes juridiques
+    // ========================================================================
+    // CHARGEMENT DES DONNÉES
+    // ========================================================================
+
+    // Charger les verticales depuis Supabase
+    const loadVerticals = useCallback(async () => {
+        try {
+            const { data, error: fetchError } = await supabase
+                .from('verticals')
+                .select('id, name, description, icon, color, sort_order')
+                .eq('is_active', true)
+                .order('sort_order', { ascending: true });
+
+            if (fetchError) throw fetchError;
+            
+            // Mapper pour compatibilité avec l'ancien format
+            const mappedVerticals = (data || []).map(v => ({
+                id: v.id,
+                label: v.name,
+                description: v.description,
+                icon: v.icon,
+                color: v.color || 'indigo',
+            }));
+            
+            setVerticals(mappedVerticals);
+        } catch (err) {
+            console.error('Erreur chargement verticales:', err);
+        }
+    }, []);
+
+    // Charger les domaines Légifrance
+    const loadDomains = useCallback(async () => {
+        try {
+            const { data, error: fetchError } = await supabase
+                .schema('legifrance')
+                .from('code_domains')
+                .select('id, name, description, icon, color, sort_order')
+                .eq('is_active', true)
+                .order('sort_order', { ascending: true });
+
+            if (fetchError) throw fetchError;
+            setDomains(data || []);
+        } catch (err) {
+            console.error('Erreur chargement domaines:', err);
+        }
+    }, []);
+
+    // Charger les codes juridiques avec leur domaine
     const loadCodes = useCallback(async () => {
         try {
             setError(null);
             const { data, error: fetchError } = await supabase
                 .schema('legifrance')
                 .from('codes')
-                .select('*')
+                .select('*, domain:code_domains(id, name, icon, color)')
                 .order('name', { ascending: true });
 
             if (fetchError) throw fetchError;
@@ -72,7 +114,7 @@ export function useLegifrance() {
         }
     }, []);
 
-    // Charger les organisations (pour les grants)
+    // Charger les organisations
     const loadOrganizations = useCallback(async () => {
         try {
             const { data, error: fetchError } = await supabase
@@ -92,6 +134,8 @@ export function useLegifrance() {
         const loadAll = async () => {
             setLoading(true);
             await Promise.all([
+                loadVerticals(),
+                loadDomains(),
                 loadCodes(),
                 loadSyncJobs(),
                 loadOrganizations()
@@ -99,7 +143,11 @@ export function useLegifrance() {
             setLoading(false);
         };
         loadAll();
-    }, [loadCodes, loadSyncJobs, loadOrganizations]);
+    }, [loadVerticals, loadDomains, loadCodes, loadSyncJobs, loadOrganizations]);
+
+    // ========================================================================
+    // ACTIONS SUR LES CODES
+    // ========================================================================
 
     // Mettre à jour un code
     const updateCode = useCallback(async (codeId, updates) => {
@@ -131,8 +179,8 @@ export function useLegifrance() {
     }, [updateCode]);
 
     // Mettre à jour les verticales par défaut
-    const updateCodeVerticals = useCallback(async (codeId, verticals) => {
-        return updateCode(codeId, { default_verticals: verticals });
+    const updateCodeVerticals = useCallback(async (codeId, verticalIds) => {
+        return updateCode(codeId, { default_verticals: verticalIds });
     }, [updateCode]);
 
     // Mettre à jour les grants organisations
@@ -147,13 +195,13 @@ export function useLegifrance() {
         
         const currentGrants = code.granted_org_ids || [];
         if (currentGrants.includes(orgId)) {
-            return { success: false, error: 'Organisation déjà autorisée' };
+            return { success: true };
         }
         
         return updateCodeGrants(codeId, [...currentGrants, orgId]);
     }, [codes, updateCodeGrants]);
 
-    // Retirer un grant organisation
+    // Supprimer un grant organisation
     const removeOrgGrant = useCallback(async (codeId, orgId) => {
         const code = codes.find(c => c.id === codeId);
         if (!code) return { success: false, error: 'Code non trouvé' };
@@ -162,16 +210,18 @@ export function useLegifrance() {
         return updateCodeGrants(codeId, currentGrants.filter(id => id !== orgId));
     }, [codes, updateCodeGrants]);
 
-    // Lancer une synchronisation via Edge Function
-    const triggerSync = useCallback(async (codeId, syncType, targetVerticals, triggeredBy) => {
+    // ========================================================================
+    // SYNCHRONISATION
+    // ========================================================================
+
+    const triggerSync = useCallback(async (codeId, syncType = 'full', targetVerticals = null, triggeredBy = null) => {
         try {
             setSyncing(true);
             setError(null);
 
-            // Récupérer la session pour le token JWT
-            const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-            
-            if (sessionError || !session) {
+            // Récupérer la session
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) {
                 throw new Error('Session expirée. Veuillez vous reconnecter.');
             }
 
@@ -184,7 +234,6 @@ export function useLegifrance() {
 
             console.log('[useLegifrance] Triggering sync via Edge Function:', payload);
 
-            // Appeler l'Edge Function avec le token JWT
             const response = await fetch(SYNC_FUNCTION_URL, {
                 method: 'POST',
                 headers: {
@@ -218,6 +267,10 @@ export function useLegifrance() {
         }
     }, [loadCodes, loadSyncJobs]);
 
+    // ========================================================================
+    // UTILITAIRES
+    // ========================================================================
+
     // Rechercher des organisations
     const searchOrganizations = useCallback((searchTerm) => {
         if (!searchTerm || searchTerm.length < 2) return organizations;
@@ -233,30 +286,73 @@ export function useLegifrance() {
         return organizations.find(org => org.id === orgId);
     }, [organizations]);
 
+    // Obtenir un domaine par ID
+    const getDomainById = useCallback((domainId) => {
+        return domains.find(d => d.id === domainId);
+    }, [domains]);
+
+    // Obtenir les codes d'un domaine
+    const getCodesByDomain = useCallback((domainId) => {
+        return codes.filter(c => c.domain_id === domainId);
+    }, [codes]);
+
+    // Codes groupés par domaine
+    const codesGroupedByDomain = useCallback(() => {
+        const grouped = {};
+        
+        domains.forEach(domain => {
+            grouped[domain.id] = {
+                ...domain,
+                codes: codes.filter(c => c.domain_id === domain.id)
+            };
+        });
+        
+        // Ajouter les codes sans domaine
+        const orphanCodes = codes.filter(c => !c.domain_id);
+        if (orphanCodes.length > 0) {
+            grouped['_other'] = {
+                id: '_other',
+                name: 'Autres',
+                icon: 'folder',
+                color: '#64748b',
+                codes: orphanCodes
+            };
+        }
+        
+        return grouped;
+    }, [domains, codes]);
+
     // Rafraîchir toutes les données
     const refresh = useCallback(async () => {
         setLoading(true);
         await Promise.all([
+            loadVerticals(),
+            loadDomains(),
             loadCodes(),
             loadSyncJobs(),
             loadOrganizations()
         ]);
         setLoading(false);
-    }, [loadCodes, loadSyncJobs, loadOrganizations]);
+    }, [loadVerticals, loadDomains, loadCodes, loadSyncJobs, loadOrganizations]);
+
+    // ========================================================================
+    // RETURN
+    // ========================================================================
 
     return {
         // Données
         codes,
+        domains,
+        verticals,
         syncJobs,
         organizations,
-        verticals: VERTICALS,
         
         // États
         loading,
         error,
         syncing,
         
-        // Actions
+        // Actions codes
         loadCodes,
         loadSyncJobs,
         updateCode,
@@ -266,10 +362,18 @@ export function useLegifrance() {
         addOrgGrant,
         removeOrgGrant,
         triggerSync,
+        
+        // Utilitaires
         searchOrganizations,
         getOrganizationById,
+        getDomainById,
+        getCodesByDomain,
+        codesGroupedByDomain,
         refresh
     };
 }
+
+// Export nommé pour compatibilité
+export const VERTICALS = []; // Déprécié - utiliser verticals du hook
 
 export default useLegifrance;

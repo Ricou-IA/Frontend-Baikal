@@ -1,9 +1,9 @@
 // ============================================================================
 // Composant LegifranceCodesList - Liste des codes juridiques
+// Version 2 : Verticales et Domaines depuis props (chargés via Supabase)
 // ============================================================================
 
 import React, { useState } from 'react';
-import { VERTICALS } from '../../../hooks/useLegifrance';
 import {
     BookOpen,
     RefreshCw,
@@ -20,31 +20,64 @@ import {
     History,
     ToggleLeft,
     ToggleRight,
-    Loader2
+    Loader2,
+    Play,
+    Layers,
+    FolderOpen,
 } from 'lucide-react';
+
+// ============================================================================
+// COMPOSANTS UTILITAIRES
+// ============================================================================
 
 /**
  * Badge de verticale compact
  */
-function VerticalTag({ verticalId }) {
-    const vertical = VERTICALS.find(v => v.id === verticalId);
-    if (!vertical) return null;
+function VerticalTag({ verticalId, verticals = [] }) {
+    const vertical = verticals.find(v => v.id === verticalId);
+    if (!vertical) {
+        return (
+            <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-md border bg-slate-50 text-slate-600 border-slate-200">
+                {verticalId}
+            </span>
+        );
+    }
 
-    const colorClasses = {
-        emerald: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-        blue: 'bg-blue-50 text-blue-700 border-blue-200',
-        pink: 'bg-pink-50 text-pink-700 border-pink-200',
-        amber: 'bg-amber-50 text-amber-700 border-amber-200',
-        indigo: 'bg-indigo-50 text-indigo-700 border-indigo-200',
-        violet: 'bg-violet-50 text-violet-700 border-violet-200',
-    };
+    // Générer les classes de couleur basées sur la couleur hex
+    const bgColor = vertical.color ? `${vertical.color}15` : '#6366f115';
+    const textColor = vertical.color || '#6366f1';
+    const borderColor = vertical.color ? `${vertical.color}30` : '#6366f130';
 
     return (
-        <span className={`
-            inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-md border
-            ${colorClasses[vertical.color] || colorClasses.indigo}
-        `}>
-            {vertical.label}
+        <span 
+            className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-md border"
+            style={{ 
+                backgroundColor: bgColor, 
+                color: textColor, 
+                borderColor: borderColor 
+            }}
+        >
+            {vertical.label || vertical.name}
+        </span>
+    );
+}
+
+/**
+ * Badge de domaine
+ */
+function DomainBadge({ domain }) {
+    if (!domain) return null;
+
+    const bgColor = domain.color ? `${domain.color}15` : '#64748b15';
+    const textColor = domain.color || '#64748b';
+
+    return (
+        <span 
+            className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-md"
+            style={{ backgroundColor: bgColor, color: textColor }}
+        >
+            <FolderOpen className="w-3 h-3" />
+            {domain.name}
         </span>
     );
 }
@@ -90,42 +123,37 @@ function IndexProgressBar({ indexed, total }) {
     const percentage = total > 0 ? Math.round((indexed / total) * 100) : 0;
     
     return (
-        <div className="w-full">
-            <div className="flex items-center justify-between text-xs mb-1">
-                <span className="font-medium text-slate-600">
-                    {indexed?.toLocaleString() || 0} / {total?.toLocaleString() || '?'}
-                </span>
-                <span className="text-slate-400">{percentage}%</span>
-            </div>
-            <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+        <div className="flex items-center gap-2">
+            <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
                 <div 
-                    className={`h-full rounded-full transition-all duration-500 ${
-                        percentage === 100 ? 'bg-emerald-500' : 
-                        percentage > 50 ? 'bg-blue-500' : 
-                        percentage > 0 ? 'bg-amber-500' : 'bg-slate-300'
-                    }`}
+                    className="h-full bg-indigo-500 rounded-full transition-all duration-500"
                     style={{ width: `${percentage}%` }}
                 />
             </div>
+            <span className="text-xs text-slate-500 tabular-nums min-w-[3rem] text-right">
+                {percentage}%
+            </span>
         </div>
     );
 }
 
-/**
- * Carte d'un code juridique
- */
+// ============================================================================
+// COMPOSANT CARTE DE CODE
+// ============================================================================
+
 function CodeCard({ 
     code, 
+    verticals = [],
     onSync, 
     onToggleEnabled, 
-    onViewHistory,
+    onViewHistory, 
     getOrganizationById,
     expanded,
     onToggleExpand,
-    toggling
+    toggling 
 }) {
     const grantedOrgs = (code.granted_org_ids || [])
-        .map(id => getOrganizationById(id))
+        .map(id => getOrganizationById?.(id))
         .filter(Boolean);
 
     return (
@@ -163,14 +191,17 @@ function CodeCard({
                             )}
                         </div>
                         
-                        <p className="text-xs text-slate-400 font-mono mb-2">
-                            {code.id}
-                        </p>
+                        {/* Domaine */}
+                        {code.domain && (
+                            <div className="mb-2">
+                                <DomainBadge domain={code.domain} />
+                            </div>
+                        )}
 
                         {/* Verticales */}
                         <div className="flex flex-wrap gap-1.5">
                             {(code.default_verticals || []).map(v => (
-                                <VerticalTag key={v} verticalId={v} />
+                                <VerticalTag key={v} verticalId={v} verticals={verticals} />
                             ))}
                             {(code.default_verticals || []).length === 0 && (
                                 <span className="text-xs text-slate-400 italic">
@@ -189,11 +220,11 @@ function CodeCard({
                             className={`
                                 flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors
                                 ${code.is_enabled 
-                                    ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' 
+                                    ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' 
                                     : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
                                 }
+                                ${toggling ? 'opacity-50 cursor-wait' : ''}
                             `}
-                            title={code.is_enabled ? 'Désactiver' : 'Activer'}
                         >
                             {toggling ? (
                                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -205,56 +236,57 @@ function CodeCard({
                             {code.is_enabled ? 'Actif' : 'Inactif'}
                         </button>
 
-                        {/* Statut sync */}
+                        {/* Badge sync */}
                         <SyncStatusBadge code={code} />
                     </div>
                 </div>
 
-                {/* Progression indexation */}
+                {/* Stats et actions */}
                 <div className="mt-4 pt-4 border-t border-slate-100">
-                    <div className="flex items-center gap-4">
-                        <div className="flex-1">
-                            <IndexProgressBar 
-                                indexed={code.indexed_articles} 
-                                total={code.total_articles} 
-                            />
+                    {/* Progression */}
+                    <div className="mb-3">
+                        <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
+                            <span>Articles indexés</span>
+                            <span className="tabular-nums">
+                                {(code.indexed_articles || 0).toLocaleString()} / {(code.total_articles || 0).toLocaleString()}
+                            </span>
                         </div>
-                        
-                        {/* Boutons d'action */}
-                        <div className="flex items-center gap-2">
-                            <button
-                                onClick={() => onViewHistory(code)}
-                                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-                                title="Historique des syncs"
-                            >
-                                <History className="w-4 h-4" />
-                            </button>
-                            <button
-                                onClick={() => onSync(code)}
-                                disabled={!code.is_enabled}
-                                className={`
-                                    flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all
-                                    ${code.is_enabled
-                                        ? 'bg-indigo-500 text-white hover:bg-indigo-600 shadow-md shadow-indigo-500/25'
-                                        : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                                    }
-                                `}
-                            >
-                                <RefreshCw className="w-4 h-4" />
-                                Sync
-                            </button>
-                        </div>
+                        <IndexProgressBar 
+                            indexed={code.indexed_articles || 0} 
+                            total={code.total_articles || 0} 
+                        />
+                    </div>
+
+                    {/* Boutons d'action */}
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => onSync(code)}
+                            disabled={!code.is_enabled}
+                            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <Play className="w-3.5 h-3.5" />
+                            Synchroniser
+                        </button>
+                        <button
+                            onClick={() => onViewHistory(code)}
+                            className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                        >
+                            <History className="w-3.5 h-3.5" />
+                            Historique
+                        </button>
                     </div>
                 </div>
+            </div>
 
-                {/* Bouton expand */}
+            {/* Footer expandable - Organisations */}
+            <div className="border-t border-slate-100">
                 {grantedOrgs.length > 0 && (
                     <button
                         onClick={() => onToggleExpand(code.id)}
-                        className="w-full mt-3 flex items-center justify-center gap-2 py-2 text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
+                        className="w-full px-4 py-2 flex items-center justify-center gap-2 text-xs text-slate-500 hover:bg-slate-50 transition-colors"
                     >
                         <Building2 className="w-3.5 h-3.5" />
-                        {grantedOrgs.length} organisation{grantedOrgs.length > 1 ? 's' : ''} avec accès
+                        {grantedOrgs.length} org{grantedOrgs.length > 1 ? 's' : ''} avec accès
                         {expanded ? (
                             <ChevronUp className="w-3.5 h-3.5" />
                         ) : (
@@ -289,11 +321,14 @@ function CodeCard({
     );
 }
 
-/**
- * Composant principal de la liste des codes
- */
+// ============================================================================
+// COMPOSANT PRINCIPAL
+// ============================================================================
+
 export default function LegifranceCodesList({
     codes = [],
+    domains = [],
+    verticals = [],
     loading,
     error,
     onSync,
@@ -305,6 +340,7 @@ export default function LegifranceCodesList({
     // États locaux
     const [searchTerm, setSearchTerm] = useState('');
     const [filterVertical, setFilterVertical] = useState('all');
+    const [filterDomain, setFilterDomain] = useState('all');
     const [filterStatus, setFilterStatus] = useState('all');
     const [expandedCodes, setExpandedCodes] = useState(new Set());
     const [togglingCode, setTogglingCode] = useState(null);
@@ -323,6 +359,11 @@ export default function LegifranceCodesList({
         // Filtre verticale
         if (filterVertical !== 'all') {
             if (!(code.default_verticals || []).includes(filterVertical)) return false;
+        }
+
+        // Filtre domaine
+        if (filterDomain !== 'all') {
+            if (code.domain_id !== filterDomain) return false;
         }
 
         // Filtre statut
@@ -347,7 +388,7 @@ export default function LegifranceCodesList({
         });
     };
 
-    // Handler toggle enabled avec état local
+    // Handler toggle enabled
     const handleToggleEnabled = async (codeId, enabled) => {
         setTogglingCode(codeId);
         await onToggleEnabled(codeId, enabled);
@@ -409,17 +450,32 @@ export default function LegifranceCodesList({
                     />
                 </div>
 
+                {/* Filtre domaine */}
+                <div className="relative">
+                    <FolderOpen className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <select
+                        value={filterDomain}
+                        onChange={e => setFilterDomain(e.target.value)}
+                        className="pl-10 pr-8 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent appearance-none cursor-pointer"
+                    >
+                        <option value="all">Tous domaines</option>
+                        {domains.map(d => (
+                            <option key={d.id} value={d.id}>{d.name}</option>
+                        ))}
+                    </select>
+                </div>
+
                 {/* Filtre verticale */}
                 <div className="relative">
-                    <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <Layers className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                     <select
                         value={filterVertical}
                         onChange={e => setFilterVertical(e.target.value)}
                         className="pl-10 pr-8 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent appearance-none cursor-pointer"
                     >
                         <option value="all">Toutes verticales</option>
-                        {VERTICALS.map(v => (
-                            <option key={v.id} value={v.id}>{v.label}</option>
+                        {verticals.map(v => (
+                            <option key={v.id} value={v.id}>{v.label || v.name}</option>
                         ))}
                     </select>
                 </div>
@@ -449,7 +505,7 @@ export default function LegifranceCodesList({
                     <BookOpen className="w-12 h-12 text-slate-300 mb-4" />
                     <p className="text-slate-500 font-medium">Aucun code trouvé</p>
                     <p className="text-sm text-slate-400 mt-1">
-                        {searchTerm || filterVertical !== 'all' || filterStatus !== 'all'
+                        {searchTerm || filterVertical !== 'all' || filterDomain !== 'all' || filterStatus !== 'all'
                             ? 'Modifiez vos filtres pour voir plus de résultats'
                             : 'Les codes juridiques apparaîtront ici'
                         }
@@ -461,6 +517,7 @@ export default function LegifranceCodesList({
                         <CodeCard
                             key={code.id}
                             code={code}
+                            verticals={verticals}
                             onSync={onSync}
                             onToggleEnabled={handleToggleEnabled}
                             onViewHistory={onViewHistory}

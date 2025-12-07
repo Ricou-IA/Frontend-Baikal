@@ -2,9 +2,6 @@
  * Composants UI - Core RAG Engine
  * ============================================================================
  * Export centralisé de tous les composants UI réutilisables.
- * 
- * @example
- * import { Button, Input, Card, Modal, Alert, Spinner } from '@/components/ui';
  * ============================================================================
  */
 
@@ -13,6 +10,12 @@ export { Button } from './Button';
 
 // Input
 export { Input, Textarea } from './Input';
+
+// Select
+export { Select } from './Select';
+
+// Slider
+export { Slider, SliderWithInput, WeightSlider } from './Slider';
 
 // Card
 export {

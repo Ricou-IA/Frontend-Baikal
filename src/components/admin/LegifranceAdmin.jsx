@@ -2,21 +2,56 @@
 // BRIQUE LÉGIFRANCE : Composant LegifranceAdmin
 // Interface d'administration des codes juridiques Légifrance
 // Accessible uniquement aux SuperAdmin
+// Version 2 : Verticales et Domaines depuis Supabase
 // ============================================================================
 
 import React, { useState } from 'react';
 import { useLegifrance } from '../../hooks/useLegifrance';
 import { LegifranceCodesList, SyncModal, SyncHistoryModal } from './legifrance';
-import { Scale, ExternalLink, Loader2 } from 'lucide-react';
+import { Scale, ExternalLink, Loader2, Database, BookOpen, Layers } from 'lucide-react';
+
+/**
+ * Carte de statistique
+ */
+function StatCard({ label, value, format = 'text', loading, color = 'indigo' }) {
+    const colorClasses = {
+        indigo: 'bg-indigo-50 text-indigo-600',
+        emerald: 'bg-emerald-50 text-emerald-600',
+        blue: 'bg-blue-50 text-blue-600',
+        violet: 'bg-violet-50 text-violet-600',
+    };
+
+    const formatValue = (val, fmt) => {
+        if (loading) return '...';
+        if (fmt === 'number') return val?.toLocaleString() || '0';
+        if (fmt === 'date') {
+            if (!val) return 'Jamais';
+            return new Date(val).toLocaleDateString('fr-FR', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric'
+            });
+        }
+        return val || '0';
+    };
+
+    return (
+        <div className={`p-4 rounded-xl ${colorClasses[color]}`}>
+            <p className="text-xs font-medium opacity-75 mb-1">{label}</p>
+            <p className="text-2xl font-bold">{formatValue(value, format)}</p>
+        </div>
+    );
+}
 
 /**
  * Composant principal d'administration Légifrance
- * À intégrer comme onglet dans la page Admin
  */
 export default function LegifranceAdmin() {
     // Hook de gestion des données
     const {
         codes,
+        domains,
+        verticals,
         organizations,
         loading,
         error,
@@ -55,6 +90,24 @@ export default function LegifranceAdmin() {
         return toggleCodeEnabled(codeId, enabled);
     };
 
+    const handleSync = async (codeId, syncType, targetVerticals) => {
+        const result = await triggerSync(codeId, syncType, targetVerticals);
+        if (result.success) {
+            handleCloseSync();
+        }
+        return result;
+    };
+
+    // Calcul des stats
+    const getLastSyncDate = () => {
+        const syncedCodes = codes.filter(c => c.last_sync_at);
+        if (syncedCodes.length === 0) return null;
+        return syncedCodes.reduce((latest, code) => {
+            const codeDate = new Date(code.last_sync_at);
+            return codeDate > latest ? codeDate : latest;
+        }, new Date(0));
+    };
+
     return (
         <div className="space-y-6">
             {/* Header informatif */}
@@ -72,11 +125,21 @@ export default function LegifranceAdmin() {
                             Les contenus Légifrance sont partagés entre les organisations selon leurs verticales métier.
                         </p>
                         <div className="flex items-center gap-4 mt-4">
-                            <a href="https://www.legifrance.gouv.fr/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium transition-colors">
+                            <a 
+                                href="https://www.legifrance.gouv.fr/" 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium transition-colors"
+                            >
                                 <ExternalLink className="w-3.5 h-3.5" />
                                 Légifrance
                             </a>
-                            <a href="https://piste.gouv.fr/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium transition-colors">
+                            <a 
+                                href="https://piste.gouv.fr/" 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium transition-colors"
+                            >
                                 <ExternalLink className="w-3.5 h-3.5" />
                                 API PISTE
                             </a>
@@ -86,7 +149,7 @@ export default function LegifranceAdmin() {
             </div>
 
             {/* Statistiques rapides */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 <StatCard
                     label="Codes disponibles"
                     value={codes.length}
@@ -99,24 +162,99 @@ export default function LegifranceAdmin() {
                     color="emerald"
                 />
                 <StatCard
-                    label="Articles indexés"
-                    value={codes.reduce((acc, c) => acc + (c.indexed_articles || 0), 0)}
-                    format="number"
+                    label="Domaines"
+                    value={domains.length}
                     loading={loading}
                     color="blue"
                 />
                 <StatCard
-                    label="Dernière sync"
-                    value={getLastSyncDate(codes)}
-                    format="date"
+                    label="Articles indexés"
+                    value={codes.reduce((acc, c) => acc + (c.indexed_articles || 0), 0)}
+                    format="number"
                     loading={loading}
                     color="violet"
                 />
+                <StatCard
+                    label="Dernière sync"
+                    value={getLastSyncDate()}
+                    format="date"
+                    loading={loading}
+                    color="indigo"
+                />
             </div>
+
+            {/* Aperçu des domaines */}
+            {domains.length > 0 && (
+                <div className="bg-white rounded-xl border border-slate-200 p-4">
+                    <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                        <Database className="w-4 h-4 text-slate-400" />
+                        Domaines juridiques
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                        {domains.map(domain => {
+                            const domainCodes = codes.filter(c => c.domain_id === domain.id);
+                            const enabledCount = domainCodes.filter(c => c.is_enabled).length;
+                            
+                            return (
+                                <div 
+                                    key={domain.id}
+                                    className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-lg border border-slate-100"
+                                >
+                                    <span 
+                                        className="w-2 h-2 rounded-full"
+                                        style={{ backgroundColor: domain.color || '#64748b' }}
+                                    />
+                                    <span className="text-sm font-medium text-slate-700">
+                                        {domain.name}
+                                    </span>
+                                    <span className="text-xs text-slate-400">
+                                        {enabledCount}/{domainCodes.length}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {/* Aperçu des verticales */}
+            {verticals.length > 0 && (
+                <div className="bg-white rounded-xl border border-slate-200 p-4">
+                    <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                        <Layers className="w-4 h-4 text-slate-400" />
+                        Verticales métier disponibles
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                        {verticals.map(vertical => (
+                            <div 
+                                key={vertical.id}
+                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg border"
+                                style={{ 
+                                    backgroundColor: `${vertical.color}10`,
+                                    borderColor: `${vertical.color}30`
+                                }}
+                            >
+                                <span 
+                                    className="w-2 h-2 rounded-full"
+                                    style={{ backgroundColor: vertical.color || '#6366f1' }}
+                                />
+                                <span 
+                                    className="text-sm font-medium"
+                                    style={{ color: vertical.color || '#6366f1' }}
+                                >
+                                    {vertical.label || vertical.name}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Liste des codes */}
             <LegifranceCodesList
                 codes={codes}
+                domains={domains}
+                verticals={verticals}
                 loading={loading}
                 error={error}
                 onSync={handleOpenSync}
@@ -127,82 +265,29 @@ export default function LegifranceAdmin() {
             />
 
             {/* Modal de synchronisation */}
-            <SyncModal
-                isOpen={!!syncModalCode}
-                onClose={handleCloseSync}
-                code={syncModalCode}
-                organizations={organizations}
-                onSync={triggerSync}
-                syncing={syncing}
-                searchOrganizations={searchOrganizations}
-                getOrganizationById={getOrganizationById}
-                onAddGrant={addOrgGrant}
-                onRemoveGrant={removeOrgGrant}
-            />
+            {syncModalCode && (
+                <SyncModal
+                    isOpen={!!syncModalCode}
+                    onClose={handleCloseSync}
+                    code={syncModalCode}
+                    verticals={verticals}
+                    organizations={organizations}
+                    onSync={handleSync}
+                    onAddOrgGrant={addOrgGrant}
+                    onRemoveOrgGrant={removeOrgGrant}
+                    searchOrganizations={searchOrganizations}
+                    syncing={syncing}
+                />
+            )}
 
             {/* Modal d'historique */}
-            <SyncHistoryModal
-                isOpen={!!historyModalCode}
-                onClose={handleCloseHistory}
-                code={historyModalCode}
-            />
+            {historyModalCode && (
+                <SyncHistoryModal
+                    isOpen={!!historyModalCode}
+                    onClose={handleCloseHistory}
+                    code={historyModalCode}
+                />
+            )}
         </div>
     );
-}
-
-/**
- * Carte de statistique
- */
-function StatCard({ label, value, format, loading, color = 'slate' }) {
-    const colorClasses = {
-        slate: 'bg-slate-50 border-slate-200',
-        emerald: 'bg-emerald-50 border-emerald-200',
-        blue: 'bg-blue-50 border-blue-200',
-        violet: 'bg-violet-50 border-violet-200'
-    };
-
-    const textColors = {
-        slate: 'text-slate-800',
-        emerald: 'text-emerald-700',
-        blue: 'text-blue-700',
-        violet: 'text-violet-700'
-    };
-
-    const formatValue = () => {
-        if (loading) return <Loader2 className="w-5 h-5 animate-spin text-slate-400" />;
-        if (format === 'number' && typeof value === 'number') {
-            return value.toLocaleString('fr-FR');
-        }
-        if (format === 'date') {
-            return value || 'Jamais';
-        }
-        return value;
-    };
-
-    return (
-        <div className={`p-4 rounded-xl border ${colorClasses[color]}`}>
-            <p className="text-xs font-medium text-slate-500 mb-1">{label}</p>
-            <p className={`text-2xl font-bold ${textColors[color]}`}>
-                {formatValue()}
-            </p>
-        </div>
-    );
-}
-
-/**
- * Obtenir la date de dernière synchronisation
- */
-function getLastSyncDate(codes) {
-    const syncedCodes = codes.filter(c => c.last_sync_at);
-    if (syncedCodes.length === 0) return null;
-
-    const lastSync = syncedCodes.reduce((latest, code) => {
-        const syncDate = new Date(code.last_sync_at);
-        return syncDate > latest ? syncDate : latest;
-    }, new Date(0));
-
-    return lastSync.toLocaleDateString('fr-FR', {
-        day: '2-digit',
-        month: 'short'
-    });
 }

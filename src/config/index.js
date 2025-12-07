@@ -2,11 +2,6 @@
  * Configuration - Core RAG Engine
  * ============================================================================
  * Barrel export pour centraliser tous les imports de configuration.
- * 
- * Usage:
- * import { APP_ROLES, ROUTES, ERROR_MESSAGES } from '@/config';
- * // ou
- * import { APP_ROLES } from '@/config/constants';
  * ============================================================================
  */
 
@@ -21,3 +16,6 @@ export * from './api';
 
 // Messages (erreurs, succès, textes UI)
 export * from './messages';
+
+// Prompts (configuration des prompts d'agents RAG)
+export * from './prompts';
