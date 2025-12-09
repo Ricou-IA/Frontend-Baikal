@@ -25,9 +25,11 @@ import {
     getPermissions,
 } from '../config/rag-layers.config';
 import {
-    Upload,
+    INGESTION_SOURCES,
+    DARK_THEME_COLORS,
+} from '../config/ingestion.config';
+import {
     FileText,
-    Scale,
     Database,
     BookOpen,
     Building2,
@@ -40,8 +42,6 @@ import {
     FileSpreadsheet,
     AlertTriangle,
     Info,
-    Globe,
-    Link2,
     Layers,
     Search,
     Clock,
@@ -49,60 +49,13 @@ import {
 } from 'lucide-react';
 
 // ============================================================================
-// CONFIGURATION DES SOURCES
-// ============================================================================
-
-const INGESTION_SOURCES = [
-    { 
-        id: 'file-upload', 
-        label: 'Upload de fichiers', 
-        description: 'PDF, Word, Excel, texte...', 
-        icon: Upload, 
-        color: 'indigo', 
-        available: true 
-    },
-    { 
-        id: 'legifrance', 
-        label: 'Légifrance', 
-        description: 'Codes juridiques français', 
-        icon: Scale, 
-        color: 'emerald', 
-        available: true, 
-        superAdminOnly: true 
-    },
-    { 
-        id: 'api-externe', 
-        label: 'API Externe', 
-        description: 'Connecteurs personnalisés', 
-        icon: Globe, 
-        color: 'blue', 
-        available: false, 
-        comingSoon: true 
-    },
-    { 
-        id: 'web-scraping', 
-        label: 'Web Scraping', 
-        description: 'Extraction de sites web', 
-        icon: Link2, 
-        color: 'violet', 
-        available: false, 
-        comingSoon: true 
-    },
-];
-
-// ============================================================================
 // COMPOSANT CARTE DE SOURCE
 // ============================================================================
 
 function SourceCard({ source, isActive, onClick, disabled }) {
     const Icon = source.icon;
-    const colorClasses = {
-        indigo: { bg: 'bg-baikal-cyan/20', text: 'text-baikal-cyan', border: 'border-baikal-cyan', activeBg: 'bg-baikal-cyan/10' },
-        emerald: { bg: 'bg-emerald-500/20', text: 'text-emerald-400', border: 'border-emerald-500', activeBg: 'bg-emerald-500/10' },
-        blue: { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500', activeBg: 'bg-blue-500/10' },
-        violet: { bg: 'bg-violet-500/20', text: 'text-violet-400', border: 'border-violet-500', activeBg: 'bg-violet-500/10' },
-    };
-    const colors = colorClasses[source.color] || colorClasses.indigo;
+    // Utilise les couleurs du thème sombre depuis la config partagée
+    const colors = DARK_THEME_COLORS[source.color] || DARK_THEME_COLORS.indigo;
 
     return (
         <button

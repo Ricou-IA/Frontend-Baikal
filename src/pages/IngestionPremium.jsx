@@ -32,10 +32,12 @@ import {
     getPermissions,
 } from '../config/rag-layers.config';
 import {
+    INGESTION_SOURCES,
+    LIGHT_THEME_COLORS,
+} from '../config/ingestion.config';
+import {
     ArrowLeft,
-    Upload,
     FileText,
-    Scale,
     Database,
     BookOpen,
     Building2,
@@ -49,8 +51,6 @@ import {
     AlertTriangle,
     Info,
     Sparkles,
-    Globe,
-    Link2,
     Layers,
     Search,
     Play,
@@ -58,60 +58,13 @@ import {
 } from 'lucide-react';
 
 // ============================================================================
-// CONFIGURATION DES SOURCES
-// ============================================================================
-
-const INGESTION_SOURCES = [
-    { 
-        id: 'file-upload', 
-        label: 'Upload de fichiers', 
-        description: 'PDF, Word, Excel, texte...', 
-        icon: Upload, 
-        color: 'indigo', 
-        available: true 
-    },
-    { 
-        id: 'legifrance', 
-        label: 'Légifrance', 
-        description: 'Codes juridiques français', 
-        icon: Scale, 
-        color: 'emerald', 
-        available: true, 
-        superAdminOnly: true 
-    },
-    { 
-        id: 'api-externe', 
-        label: 'API Externe', 
-        description: 'Connecteurs personnalisés', 
-        icon: Globe, 
-        color: 'blue', 
-        available: false, 
-        comingSoon: true 
-    },
-    { 
-        id: 'web-scraping', 
-        label: 'Web Scraping', 
-        description: 'Extraction de sites web', 
-        icon: Link2, 
-        color: 'violet', 
-        available: false, 
-        comingSoon: true 
-    },
-];
-
-// ============================================================================
 // COMPOSANT CARTE DE SOURCE
 // ============================================================================
 
 function SourceCard({ source, isActive, onClick, disabled }) {
     const Icon = source.icon;
-    const colorClasses = {
-        indigo: { bg: 'bg-indigo-100', text: 'text-indigo-600', border: 'border-indigo-400', activeBg: 'bg-indigo-50' },
-        emerald: { bg: 'bg-emerald-100', text: 'text-emerald-600', border: 'border-emerald-400', activeBg: 'bg-emerald-50' },
-        blue: { bg: 'bg-blue-100', text: 'text-blue-600', border: 'border-blue-400', activeBg: 'bg-blue-50' },
-        violet: { bg: 'bg-violet-100', text: 'text-violet-600', border: 'border-violet-400', activeBg: 'bg-violet-50' },
-    };
-    const colors = colorClasses[source.color] || colorClasses.indigo;
+    // Utilise les couleurs du thème clair depuis la config partagée
+    const colors = LIGHT_THEME_COLORS[source.color] || LIGHT_THEME_COLORS.indigo;
 
     return (
         <button
