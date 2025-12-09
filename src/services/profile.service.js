@@ -22,9 +22,8 @@ export const profileService = {
    */
   async getProfile(userId) {
     try {
-      // MIGRATION: profiles → core.profiles
+      // Tables dans search_path: core
       const { data, error } = await supabase
-        .schema('core')
         .from('profiles')
         .select('*')
         .eq('id', userId)
@@ -51,9 +50,8 @@ export const profileService = {
    */
   async getProfileWithOrganization(userId) {
     try {
-      // MIGRATION: profiles → core.profiles
+      // Tables dans search_path: core
       const { data: profile, error: profileError } = await supabase
-        .schema('core')
         .from('profiles')
         .select('*')
         .eq('id', userId)
@@ -69,9 +67,8 @@ export const profileService = {
       // Récupère l'organisation si présente
       let organization = null;
       if (profile?.org_id) {
-        // MIGRATION: organizations → core.organizations
+        // Tables dans search_path: core
         const { data: orgData, error: orgError } = await supabase
-          .schema('core')
           .from('organizations')
           .select('*')
           .eq('id', profile.org_id)
@@ -96,9 +93,8 @@ export const profileService = {
    */
   async updateProfile(userId, data) {
     try {
-      // MIGRATION: profiles → core.profiles
+      // Tables dans search_path: core
       const { data: updated, error } = await supabase
-        .schema('core')
         .from('profiles')
         .update({
           ...data,
@@ -125,9 +121,8 @@ export const profileService = {
    */
   async completeOnboarding(userId, businessRole, bio = '', additionalData = {}) {
     try {
-      // MIGRATION: profiles → core.profiles
+      // Tables dans search_path: core
       const { data, error } = await supabase
-        .schema('core')
         .from('profiles')
         .update({
           business_role: businessRole,
@@ -221,9 +216,8 @@ export const profileService = {
     } = options;
 
     try {
-      // MIGRATION: profiles → core.profiles
+      // Tables dans search_path: core
       const { data, error, count } = await supabase
-        .schema('core')
         .from('profiles')
         .select('*', { count: 'exact' })
         .order(orderBy, { ascending })

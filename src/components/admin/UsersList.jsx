@@ -46,7 +46,6 @@ export default function UsersList() {
             // MIGRATION: profiles → core.profiles
             // NOTE: Les jointures cross-schema ne fonctionnent pas, on fait des requêtes séparées
             const { data: profilesData, error: profilesError } = await supabase
-                .schema('core')
                 .from('profiles')
                 .select(`
                     id,
@@ -69,8 +68,7 @@ export default function UsersList() {
             if (orgIds.length > 0) {
                 // MIGRATION: organizations → core.organizations
                 const { data: orgsData, error: orgsError } = await supabase
-                    .schema('core')
-                    .from('organizations')
+                        .from('organizations')
                     .select('id, name')
                     .in('id', orgIds);
 
@@ -89,8 +87,7 @@ export default function UsersList() {
             if (userIds.length > 0) {
                 // MIGRATION: organization_members → core.organization_members
                 const { data: membersData, error: membersError } = await supabase
-                    .schema('core')
-                    .from('organization_members')
+                        .from('organization_members')
                     .select('user_id, role, status, org_id')
                     .in('user_id', userIds);
 

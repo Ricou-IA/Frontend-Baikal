@@ -34,7 +34,6 @@ import { supabase } from '../lib/supabaseClient';
 export async function getApps() {
     try {
         const { data, error } = await supabase
-            .schema('config')                    // ← NOUVEAU: schéma config
             .from('apps')                        // ← CHANGÉ: verticals → apps
             .select('id, name, description, icon, color, sort_order')
             .eq('is_active', true)
@@ -67,7 +66,6 @@ export const getVerticals = getApps;
 export async function getAppById(appId) {
     try {
         const { data, error } = await supabase
-            .schema('config')                    // ← NOUVEAU: schéma config
             .from('apps')                        // ← CHANGÉ: verticals → apps
             .select('*')
             .eq('id', appId)
@@ -101,7 +99,6 @@ export const getVerticalById = getAppById;
 export async function getDocumentCategories() {
     try {
         const { data, error } = await supabase
-            .schema('config')                    // ← NOUVEAU: schéma config
             .from('document_categories')
             .select('id, slug, label, description, icon, sort_order')
             .eq('is_active', true)
@@ -138,7 +135,6 @@ export const getCategories = getDocumentCategories;
 export async function getCategoryBySlug(slug) {
     try {
         const { data, error } = await supabase
-            .schema('config')                    // ← NOUVEAU: schéma config
             .from('document_categories')
             .select('*')
             .eq('slug', slug)
@@ -165,7 +161,6 @@ export async function getCategoryBySlug(slug) {
 export async function getLegifranceDomains() {
     try {
         const { data, error } = await supabase
-            .schema('legifrance')
             .from('code_domains')
             .select('id, name, description, icon, color, sort_order')
             .eq('is_active', true)
@@ -191,7 +186,6 @@ export async function getLegifranceDomains() {
 export async function getLegifranceCodes(filters = {}) {
     try {
         let query = supabase
-            .schema('legifrance')
             .from('codes')
             .select('id, name, short_name, description, domain_id, is_enabled, last_sync_at, total_articles, indexed_articles, default_apps')  // ← CHANGÉ: default_verticals → default_apps
             .order('name', { ascending: true });

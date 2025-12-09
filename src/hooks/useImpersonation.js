@@ -117,9 +117,8 @@ export function useImpersonation(realProfile) {
     setError(null);
 
     try {
-      // MIGRATION: profiles → core.profiles
+      // Tables dans search_path: core
       const { data: targetProfile, error: profileError } = await supabase
-        .schema('core')
         .from('profiles')
         .select('*')
         .eq('id', targetUserId)
@@ -130,9 +129,8 @@ export function useImpersonation(realProfile) {
       // Charger l'organisation si présente
       let targetOrg = null;
       if (targetProfile.org_id) {
-        // MIGRATION: organizations → core.organizations
+        // Tables dans search_path: core
         const { data: orgData, error: orgError } = await supabase
-          .schema('core')
           .from('organizations')
           .select('*')
           .eq('id', targetProfile.org_id)

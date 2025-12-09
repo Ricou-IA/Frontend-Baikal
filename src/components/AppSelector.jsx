@@ -70,8 +70,7 @@ const AppSelector = ({
             setLoading(true);
             try {
                 const { data, error } = await supabaseClient
-                    .schema('config')                    // ← NOUVEAU: schéma config
-                    .from('apps')                        // ← CHANGÉ: verticals → apps
+                    .from('apps')                        // Tables dans search_path: config
                     .select('id, name, description, icon, color, sort_order')
                     .eq('is_active', true)
                     .order('sort_order', { ascending: true });

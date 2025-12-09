@@ -25,7 +25,6 @@ export const organizationService = {
     try {
       // MIGRATION: organizations → core.organizations
       const { data, error } = await supabase
-        .schema('core')
         .from('organizations')
         .select('*')
         .eq('id', orgId)
@@ -54,7 +53,6 @@ export const organizationService = {
     try {
       // MIGRATION: organizations → core.organizations
       const { data: updated, error } = await supabase
-        .schema('core')
         .from('organizations')
         .update({
           ...data,
@@ -80,7 +78,6 @@ export const organizationService = {
     try {
       // MIGRATION: organization_members → core.organization_members
       const { data: membersData, error: membersError } = await supabase
-        .schema('core')
         .from('organization_members')
         .select('*')
         .eq('org_id', orgId)
@@ -101,8 +98,7 @@ export const organizationService = {
       if (userIds.length > 0) {
         // MIGRATION: profiles → core.profiles
         const { data: profilesData, error: profilesError } = await supabase
-          .schema('core')
-          .from('profiles')
+            .from('profiles')
           .select('id, email, full_name, avatar_url')
           .in('id', userIds);
 
@@ -171,7 +167,6 @@ export const organizationService = {
     try {
       // MIGRATION: organization_members → core.organization_members
       const { error } = await supabase
-        .schema('core')
         .from('organization_members')
         .delete()
         .eq('id', memberId);
@@ -193,7 +188,6 @@ export const organizationService = {
     try {
       // MIGRATION: organization_members → core.organization_members
       const { error } = await supabase
-        .schema('core')
         .from('organization_members')
         .update({ 
           role: newRole,
@@ -224,7 +218,6 @@ export const organizationService = {
     try {
       // MIGRATION: organizations → core.organizations
       const { data, error, count } = await supabase
-        .schema('core')
         .from('organizations')
         .select('*', { count: 'exact' })
         .order('created_at', { ascending: false })
@@ -248,7 +241,6 @@ export const organizationService = {
     try {
       // MIGRATION: organizations → core.organizations
       const { data: created, error } = await supabase
-        .schema('core')
         .from('organizations')
         .insert({
           name: data.name,
@@ -274,7 +266,6 @@ export const organizationService = {
     try {
       // MIGRATION: organizations → core.organizations
       const { error } = await supabase
-        .schema('core')
         .from('organizations')
         .delete()
         .eq('id', orgId);
@@ -296,7 +287,6 @@ export const organizationService = {
     try {
       // MIGRATION: organization_members → core.organization_members
       const { data, error } = await supabase
-        .schema('core')
         .from('organization_members')
         .select('id')
         .eq('org_id', orgId)
@@ -320,7 +310,6 @@ export const organizationService = {
     try {
       // MIGRATION: organization_members → core.organization_members
       const { error } = await supabase
-        .schema('core')
         .from('organization_members')
         .update({ 
           status,
