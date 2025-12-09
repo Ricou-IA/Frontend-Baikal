@@ -167,7 +167,7 @@ function DashboardTab({ orgId, isSuperAdmin, onNavigate }) {
                         documents: totalDocs,
                         pending: totalPending,
                         approved: totalApproved,
-                        users: 0 // TODO: charger depuis un autre service
+                        users: 0 // Note: Nécessite une API backend pour compter les membres
                     });
                 }
             } catch (err) {

@@ -32,17 +32,16 @@ function DashboardLayout() {
     await signOut()
   }
 
-  const handleUploadSuccess = (result) => {
-    console.log('Document uploadé:', result)
+  const handleUploadSuccess = (_result) => {
+    // Callback après upload réussi - peut être utilisé pour rafraîchir une liste
   }
 
-  const handleInvoiceUploadSuccess = (result) => {
-    console.log('Facture uploadée:', result)
+  const handleInvoiceUploadSuccess = (_result) => {
+    // Callback après upload facture réussi
   }
 
-  const handleRecordingSuccess = (meeting) => {
-    console.log('Meeting processed:', meeting)
-    // Ici on pourrait ajouter une notif ou rafraîchir une liste
+  const handleRecordingSuccess = (_meeting) => {
+    // Callback après traitement meeting - peut être utilisé pour rafraîchir une liste
   }
 
   const verticalInfo = getCurrentVerticalInfo()

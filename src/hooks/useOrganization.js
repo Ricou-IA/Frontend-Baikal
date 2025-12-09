@@ -188,10 +188,10 @@ export function useOrganization(orgId) {
     }, [orgId, loadOrganization]);
 
     // Renvoyer une invitation
-    const resendInvitation = useCallback(async (memberId) => {
+    // Note: Nécessite une fonction Supabase Edge pour renvoyer l'email d'invitation
+    const resendInvitation = useCallback(async (_memberId) => {
         try {
-            // TODO: Implémenter la logique de renvoi d'invitation
-            // Pour l'instant, on recharge juste les membres
+            // Placeholder - recharge les membres en attendant l'implémentation backend
             await loadMembers();
             return { success: true };
         } catch (err) {

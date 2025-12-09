@@ -487,9 +487,6 @@ function LegifranceInterface({ selectedVertical, selectedLayer, verticals }) {
 
                 setDomains(domainsResult.data || []);
                 setCodes(codesResult.data || []);
-                
-                console.log('[Légifrance] Domaines chargés:', domainsResult.data?.length || 0);
-                console.log('[Légifrance] Codes chargés:', codesResult.data?.length || 0);
             } catch (err) {
                 console.error('Erreur chargement Légifrance:', err);
                 setError(err.message || 'Erreur de chargement');

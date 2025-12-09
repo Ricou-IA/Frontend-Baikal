@@ -228,8 +228,6 @@ const InvoiceUploader = ({
             filename: selectedFile.name  // Nom original pour affichage
           };
 
-          console.log('📤 Envoi webhook N8N:', webhookPayload);
-
           const response = await fetch(n8nWebhookUrl, {
             method: 'POST',
             headers: {
@@ -243,11 +241,9 @@ const InvoiceUploader = ({
           if (response.ok) {
             try {
               webhookResponse = await response.json();
-              console.log('✅ Réponse N8N:', webhookResponse);
               setProcessingInfo(webhookResponse);
-            } catch (jsonError) {
+            } catch (_jsonError) {
               // Réponse non-JSON, c'est OK
-              console.log('✅ Webhook N8N appelé avec succès');
             }
           } else {
             console.warn('⚠️ Webhook N8N a retourné:', response.status);

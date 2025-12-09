@@ -65,8 +65,6 @@ export default function AudioRecorder({ onRecordingComplete }) {
             else if (mimeType.includes('ogg')) extension = 'ogg';
             else if (mimeType.includes('wav')) extension = 'wav';
 
-            console.log(`Format détecté: ${mimeType} -> .${extension}`);
-
             // 2. Création du fichier
             const blob = new Blob(chunksRef.current, { type: mimeType });
             const file = new File([blob], `recording.${extension}`, { type: mimeType });
@@ -81,7 +79,6 @@ export default function AudioRecorder({ onRecordingComplete }) {
             const n8nWebhookUrl = import.meta.env.VITE_N8N_INGEST_WEBHOOK_URL?.trim();
             if (n8nWebhookUrl && meeting) {
                 try {
-                    console.log('📤 Envoi signal à N8N pour lancer le workflow (transcript uniquement)...');
                     const n8nResponse = await fetch(n8nWebhookUrl, {
                         method: 'POST',
                         headers: {
@@ -103,8 +100,6 @@ export default function AudioRecorder({ onRecordingComplete }) {
 
                     if (!n8nResponse.ok) {
                         console.warn('⚠️ Erreur lors de l\'appel N8N (non bloquant):', n8nResponse.status);
-                    } else {
-                        console.log('✅ Transcript envoyé à N8N pour embedding (RAG)');
                     }
                 } catch (n8nError) {
                     console.warn('⚠️ Erreur lors de l\'appel N8N (non bloquant):', n8nError);
