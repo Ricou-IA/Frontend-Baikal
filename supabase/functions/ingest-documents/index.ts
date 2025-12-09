@@ -1,3 +1,14 @@
+// ╔══════════════════════════════════════════════════════════════════════════════╗
+// ║  INGEST-DOCUMENTS - Edge Function Supabase                                   ║
+// ║  Version: 3.0.0 - Migration schémas (core, config, rag)                      ║
+// ╠══════════════════════════════════════════════════════════════════════════════╣
+// ║  Changements v3.0.0:                                                         ║
+// ║  - profiles → core.profiles                                                  ║
+// ║  - documents → rag.documents                                                 ║
+// ║  - vertical_id → app_id                                                      ║
+// ║  - target_verticals → target_apps                                            ║
+// ╚══════════════════════════════════════════════════════════════════════════════╝
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -39,14 +50,17 @@ serve(async (req) => {
       // ENRICHISSEMENT DEPUIS LE PROFIL SUPABASE
       // ============================================
       let orgId = parseUUID(doc.org_id) || parseUUID(doc.metadata?.org_id)
-      let targetVerticals = normalizeArray(doc.target_verticals || doc.metadata?.target_verticals || [])
+      // MIGRATION: target_verticals → target_apps
+      let targetApps = normalizeArray(doc.target_apps || doc.target_verticals || doc.metadata?.target_apps || doc.metadata?.target_verticals || [])
       const userId = parseUUID(doc.created_by) || parseUUID(doc.metadata?.user_id)
       
-      // Si on a un user_id mais pas org_id ou target_verticals, on enrichit depuis le profil
-      if (userId && (!orgId || targetVerticals.length === 0)) {
+      // Si on a un user_id mais pas org_id ou target_apps, on enrichit depuis le profil
+      if (userId && (!orgId || targetApps.length === 0)) {
+        // MIGRATION: profiles → core.profiles
         const { data: profile, error: profileError } = await supabase
+          .schema('core')
           .from('profiles')
-          .select('org_id, vertical_id, app_role')
+          .select('org_id, app_id, app_role')
           .eq('id', userId)
           .single()
         
@@ -56,29 +70,30 @@ serve(async (req) => {
             orgId = profile.org_id
           }
           
-          // Récupère vertical_id depuis le profil si non fourni
-          if (targetVerticals.length === 0) {
+          // MIGRATION: Récupère app_id depuis le profil si non fourni (anciennement vertical_id)
+          if (targetApps.length === 0) {
             if (profile.app_role === 'super_admin') {
-              targetVerticals = ['all']
-            } else if (profile.vertical_id) {
-              targetVerticals = [profile.vertical_id]
+              targetApps = ['all']
+            } else if (profile.app_id) {
+              targetApps = [profile.app_id]
             } else {
-              targetVerticals = ['default']
+              targetApps = ['default']
             }
           }
         }
       }
       
       // Fallback si toujours vide
-      if (targetVerticals.length === 0) {
-        targetVerticals = ['default']
+      if (targetApps.length === 0) {
+        targetApps = ['default']
       }
 
       const targetProjects = normalizeUUIDArray(doc.target_projects || doc.metadata?.target_projects)
 
+      // MIGRATION: target_verticals → target_apps
       validDocs.push({
         content: content.trim(),
-        target_verticals: targetVerticals,
+        target_apps: targetApps,
         target_projects: targetProjects,
         org_id: orgId,
         created_by: userId,
@@ -116,10 +131,11 @@ serve(async (req) => {
     const embeddings = embeddingData.data.map((d: any) => d.embedding)
 
     // INSERTION BATCH
+    // MIGRATION: target_verticals → target_apps
     const rowsToInsert = validDocs.map((doc, idx) => ({
       content: doc.content,
       embedding: embeddings[idx],
-      target_verticals: doc.target_verticals,
+      target_apps: doc.target_apps,
       target_projects: doc.target_projects,
       org_id: doc.org_id,
       created_by: doc.created_by,
@@ -128,7 +144,9 @@ serve(async (req) => {
       updated_at: new Date().toISOString(),
     }))
 
+    // MIGRATION: documents → rag.documents
     const { data, error } = await supabase
+      .schema('rag')
       .from('documents')
       .insert(rowsToInsert)
       .select('id')

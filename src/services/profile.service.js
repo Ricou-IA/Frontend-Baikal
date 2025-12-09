@@ -1,12 +1,11 @@
 /**
- * Profile Service - Core RAG Engine
+ * Profile Service - Baikal Console
  * ============================================================================
- * Service centralisé pour la gestion des profils utilisateurs.
+ * MIGRATION PHASE 3 - Schémas explicites
  * 
- * @example
- * import { profileService } from '@/services';
- * 
- * const { data, error } = await profileService.getProfile(userId);
+ * MODIFICATIONS:
+ * - profiles → core.profiles (schéma)
+ * - organizations → core.organizations (schéma)
  * ============================================================================
  */
 
@@ -23,7 +22,9 @@ export const profileService = {
    */
   async getProfile(userId) {
     try {
+      // MIGRATION: profiles → core.profiles
       const { data, error } = await supabase
+        .schema('core')
         .from('profiles')
         .select('*')
         .eq('id', userId)
@@ -50,8 +51,9 @@ export const profileService = {
    */
   async getProfileWithOrganization(userId) {
     try {
-      // Récupère le profil
+      // MIGRATION: profiles → core.profiles
       const { data: profile, error: profileError } = await supabase
+        .schema('core')
         .from('profiles')
         .select('*')
         .eq('id', userId)
@@ -67,7 +69,9 @@ export const profileService = {
       // Récupère l'organisation si présente
       let organization = null;
       if (profile?.org_id) {
+        // MIGRATION: organizations → core.organizations
         const { data: orgData, error: orgError } = await supabase
+          .schema('core')
           .from('organizations')
           .select('*')
           .eq('id', profile.org_id)
@@ -92,7 +96,9 @@ export const profileService = {
    */
   async updateProfile(userId, data) {
     try {
+      // MIGRATION: profiles → core.profiles
       const { data: updated, error } = await supabase
+        .schema('core')
         .from('profiles')
         .update({
           ...data,
@@ -119,7 +125,9 @@ export const profileService = {
    */
   async completeOnboarding(userId, businessRole, bio = '', additionalData = {}) {
     try {
+      // MIGRATION: profiles → core.profiles
       const { data, error } = await supabase
+        .schema('core')
         .from('profiles')
         .update({
           business_role: businessRole,
@@ -140,6 +148,7 @@ export const profileService = {
 
   /**
    * Utilise la fonction RPC pour compléter l'onboarding
+   * NOTE: Les RPC ne nécessitent pas de changement de schéma
    * @param {string} businessRole - Rôle business
    * @param {string} bio - Bio
    * @returns {Promise<{success: boolean, error: Error|null}>}
@@ -160,6 +169,7 @@ export const profileService = {
 
   /**
    * Récupère le profil de l'utilisateur connecté via RPC
+   * NOTE: Les RPC ne nécessitent pas de changement de schéma
    * @returns {Promise<{data: Object|null, error: Error|null}>}
    */
   async getMyProfile() {
@@ -211,7 +221,9 @@ export const profileService = {
     } = options;
 
     try {
+      // MIGRATION: profiles → core.profiles
       const { data, error, count } = await supabase
+        .schema('core')
         .from('profiles')
         .select('*', { count: 'exact' })
         .order(orderBy, { ascending })

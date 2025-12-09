@@ -1,7 +1,16 @@
-// ============================================================================
-// BRIQUE 6 : Composant UsersList
-// Liste de tous les utilisateurs (visible uniquement pour super_admin)
-// ============================================================================
+/**
+ * UsersList.jsx - Baikal Console
+ * ============================================================================
+ * MIGRATION PHASE 3 - Schémas explicites
+ * 
+ * MODIFICATIONS:
+ * - profiles → core.profiles (schéma)
+ * - organization_members → core.organization_members (schéma)
+ * 
+ * NOTE: La jointure organizations:org_id ne fonctionne pas cross-schema,
+ * donc on fait 2 requêtes séparées.
+ * ============================================================================
+ */
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
@@ -34,8 +43,10 @@ export default function UsersList() {
         setError(null);
 
         try {
-            // Récupérer tous les profils avec leurs organisations
+            // MIGRATION: profiles → core.profiles
+            // NOTE: Les jointures cross-schema ne fonctionnent pas, on fait des requêtes séparées
             const { data: profilesData, error: profilesError } = await supabase
+                .schema('core')
                 .from('profiles')
                 .select(`
                     id,
@@ -45,22 +56,40 @@ export default function UsersList() {
                     business_role,
                     org_id,
                     created_at,
-                    updated_at,
-                    organizations:org_id (
-                        id,
-                        name
-                    )
+                    updated_at
                 `)
                 .order('created_at', { ascending: false });
 
             if (profilesError) throw profilesError;
+
+            // Récupérer les organisations pour les profils qui en ont une
+            const orgIds = [...new Set(profilesData?.filter(p => p.org_id).map(p => p.org_id) || [])];
+            let organizationsMap = {};
+            
+            if (orgIds.length > 0) {
+                // MIGRATION: organizations → core.organizations
+                const { data: orgsData, error: orgsError } = await supabase
+                    .schema('core')
+                    .from('organizations')
+                    .select('id, name')
+                    .in('id', orgIds);
+
+                if (!orgsError && orgsData) {
+                    organizationsMap = orgsData.reduce((acc, org) => {
+                        acc[org.id] = org;
+                        return acc;
+                    }, {});
+                }
+            }
 
             // Récupérer les membres d'organisation pour chaque utilisateur
             const userIds = profilesData?.map(p => p.id) || [];
             
             let membersMap = {};
             if (userIds.length > 0) {
+                // MIGRATION: organization_members → core.organization_members
                 const { data: membersData, error: membersError } = await supabase
+                    .schema('core')
                     .from('organization_members')
                     .select('user_id, role, status, org_id')
                     .in('user_id', userIds);
@@ -79,6 +108,7 @@ export default function UsersList() {
             // Fusionner les données
             const usersWithDetails = (profilesData || []).map(profile => ({
                 ...profile,
+                organizations: profile.org_id ? organizationsMap[profile.org_id] : null,
                 organization_members: membersMap[profile.id] || []
             }));
 
@@ -101,30 +131,46 @@ export default function UsersList() {
         const matchesRole = 
             filterRole === 'all' || 
             user.app_role === filterRole ||
-            (filterRole === 'org_member' && user.app_role === 'user' && user.org_id);
+            (filterRole === 'org_member' && user.app_role === 'member');
 
         return matchesSearch && matchesRole;
     });
 
-    // Obtenir le badge de rôle
-    const getRoleBadge = (appRole) => {
-        const roles = {
-            'super_admin': { label: 'SUPER_ADMIN', color: 'bg-violet-900/20 text-violet-300 border-violet-500/50', icon: Shield },
-            'org_admin': { label: 'ORG_ADMIN', color: 'bg-baikal-cyan/20 text-baikal-cyan border-baikal-cyan/50', icon: Shield },
-            'user': { label: 'UTILISATEUR', color: 'bg-baikal-bg text-baikal-text border-baikal-border', icon: User }
-        };
-        return roles[appRole] || roles['user'];
+    // Badge pour le rôle app
+    const getRoleBadge = (role) => {
+        switch (role) {
+            case 'super_admin':
+                return { label: 'SUPER_ADMIN', color: 'bg-purple-500/20 text-purple-400 border-purple-500/50', icon: Shield };
+            case 'org_admin':
+                return { label: 'ORG_ADMIN', color: 'bg-baikal-cyan/20 text-baikal-cyan border-baikal-cyan/50', icon: Shield };
+            default:
+                return { label: 'MEMBER', color: 'bg-baikal-text/20 text-baikal-text border-baikal-border', icon: User };
+        }
     };
 
-    // Obtenir le badge de business role
-    const getBusinessRoleBadge = (businessRole) => {
-        const roles = {
-            'provider': { label: 'Expert', color: 'bg-blue-500/20 text-blue-400 border-blue-500/50' },
-            'client': { label: 'Client', color: 'bg-green-500/20 text-green-400 border-green-500/50' }
-        };
-        return roles[businessRole] || { label: businessRole || 'N/A', color: 'bg-baikal-bg text-baikal-text border-baikal-border' };
+    // Badge pour le rôle business
+    const getBusinessRoleBadge = (role) => {
+        switch (role) {
+            case 'provider':
+                return { label: 'Provider', color: 'bg-green-500/20 text-green-400' };
+            case 'client':
+                return { label: 'Client', color: 'bg-blue-500/20 text-blue-400' };
+            default:
+                return { label: 'Non défini', color: 'bg-amber-500/20 text-amber-400' };
+        }
     };
 
+    // Formater la date
+    const formatDate = (dateString) => {
+        if (!dateString) return '-';
+        return new Date(dateString).toLocaleDateString('fr-FR', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric'
+        });
+    };
+
+    // État de chargement
     if (loading) {
         return (
             <div className="flex items-center justify-center py-12">
@@ -133,56 +179,59 @@ export default function UsersList() {
         );
     }
 
+    // État d'erreur
+    if (error) {
+        return (
+            <div className="p-6 bg-red-900/20 border border-red-500/50 rounded-md">
+                <p className="flex items-center gap-2 text-red-400 font-mono">
+                    <AlertCircle className="w-5 h-5" />
+                    ERREUR: {error}
+                </p>
+                <button
+                    onClick={loadUsers}
+                    className="mt-4 px-4 py-2 bg-baikal-cyan text-black rounded-md hover:opacity-80 font-mono"
+                >
+                    RÉESSAYER
+                </button>
+            </div>
+        );
+    }
+
     return (
-        <div className="space-y-6">
-            {/* Header */}
-            <div>
+        <div className="space-y-4">
+            {/* Header avec recherche et filtres */}
+            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
                 <h2 className="text-xl font-mono font-semibold text-white flex items-center gap-2">
                     <Users className="w-5 h-5 text-baikal-cyan" />
                     TOUS_LES_UTILISATEURS
+                    <span className="text-sm text-baikal-text ml-2">({filteredUsers.length})</span>
                 </h2>
-                <p className="text-sm text-baikal-text mt-1 font-sans">
-                    {filteredUsers.length} {filteredUsers.length > 1 ? 'utilisateurs' : 'utilisateur'}
-                    {searchTerm && ` (filtrés)`}
-                </p>
-            </div>
 
-            {/* Erreur */}
-            {error && (
-                <div className="p-3 bg-red-900/20 border border-red-500/50 rounded-md flex items-center gap-2 text-red-300 text-sm font-mono">
-                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                    {error}
-                </div>
-            )}
-
-            {/* Filtres et recherche */}
-            <div className="bg-baikal-surface rounded-md border border-baikal-border p-4">
-                <div className="flex flex-col sm:flex-row gap-4">
+                <div className="flex flex-wrap gap-3 w-full sm:w-auto">
                     {/* Recherche */}
-                    <div className="flex-1 relative">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-baikal-text" />
+                    <div className="relative flex-1 sm:flex-none">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-baikal-text" />
                         <input
                             type="text"
-                            placeholder="Rechercher par email, nom ou organisation..."
+                            placeholder="Rechercher..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2 bg-black border border-baikal-border rounded-md text-white placeholder-baikal-text focus:outline-none focus:ring-2 focus:ring-baikal-cyan focus:border-transparent"
+                            className="w-full sm:w-64 pl-10 pr-4 py-2 bg-baikal-surface border border-baikal-border rounded-md text-white placeholder-baikal-text focus:outline-none focus:ring-2 focus:ring-baikal-cyan focus:border-transparent"
                         />
                     </div>
 
                     {/* Filtre par rôle */}
                     <div className="relative">
-                        <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-baikal-text" />
+                        <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-baikal-text" />
                         <select
                             value={filterRole}
                             onChange={(e) => setFilterRole(e.target.value)}
-                            className="pl-10 pr-8 py-2 bg-black border border-baikal-border rounded-md text-white focus:outline-none focus:ring-2 focus:ring-baikal-cyan focus:border-transparent appearance-none"
+                            className="pl-10 pr-8 py-2 bg-baikal-surface border border-baikal-border rounded-md text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-baikal-cyan focus:border-transparent"
                         >
                             <option value="all">Tous les rôles</option>
                             <option value="super_admin">Super Admin</option>
                             <option value="org_admin">Org Admin</option>
-                            <option value="user">Utilisateur</option>
-                            <option value="org_member">Membre d'organisation</option>
+                            <option value="org_member">Membres</option>
                         </select>
                     </div>
                 </div>
@@ -229,72 +278,68 @@ export default function UsersList() {
                                     const orgMember = user.organization_members?.[0];
 
                                     return (
-                                        <tr key={user.id} className="hover:bg-baikal-bg transition-colors">
+                                        <tr key={user.id} className="hover:bg-baikal-bg/50 transition-colors">
+                                            {/* Utilisateur */}
                                             <td className="px-4 py-4">
                                                 <div className="flex items-center gap-3">
-                                                    <div className="w-10 h-10 bg-baikal-cyan/20 rounded-full flex items-center justify-center border border-baikal-cyan/50">
-                                                        <RoleIcon className="w-5 h-5 text-baikal-cyan" />
+                                                    <div className="w-10 h-10 rounded-full bg-baikal-cyan/20 flex items-center justify-center">
+                                                        <User className="w-5 h-5 text-baikal-cyan" />
                                                     </div>
                                                     <div>
-                                                        <p className="font-medium text-white font-sans">
+                                                        <p className="text-white font-medium">
                                                             {user.full_name || 'Sans nom'}
                                                         </p>
-                                                        <p className="text-sm text-baikal-text flex items-center gap-1 font-mono">
-                                                            <Mail className="w-3.5 h-3.5" />
+                                                        <p className="text-sm text-baikal-text flex items-center gap-1">
+                                                            <Mail className="w-3 h-3" />
                                                             {user.email}
                                                         </p>
                                                     </div>
                                                 </div>
                                             </td>
+
+                                            {/* Rôle app */}
                                             <td className="px-4 py-4">
                                                 <div className="flex flex-col gap-1">
-                                                    <span className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md border ${roleInfo.color}`}>
+                                                    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-mono border ${roleInfo.color}`}>
                                                         <RoleIcon className="w-3 h-3" />
                                                         {roleInfo.label}
                                                     </span>
-                                                    <span className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-md border ${businessRoleInfo.color}`}>
+                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${businessRoleInfo.color}`}>
                                                         {businessRoleInfo.label}
                                                     </span>
                                                 </div>
                                             </td>
+
+                                            {/* Organisation */}
                                             <td className="px-4 py-4">
                                                 {user.organizations ? (
                                                     <div className="flex items-center gap-2">
                                                         <Building2 className="w-4 h-4 text-baikal-text" />
-                                                        <span className="text-sm text-white font-sans">
-                                                            {user.organizations.name}
-                                                        </span>
+                                                        <span className="text-white">{user.organizations.name}</span>
                                                     </div>
                                                 ) : (
-                                                    <span className="text-sm text-baikal-text font-mono">Aucune</span>
+                                                    <span className="text-baikal-text italic">Aucune</span>
                                                 )}
                                             </td>
+
+                                            {/* Rôle membre */}
                                             <td className="px-4 py-4">
                                                 {orgMember ? (
                                                     <div className="flex flex-col gap-1">
-                                                        <span className="text-xs font-medium text-white font-mono">
-                                                            {orgMember.role === 'owner' ? 'PROPRIÉTAIRE' :
-                                                             orgMember.role === 'admin' ? 'ADMIN' : 'MEMBRE'}
-                                                        </span>
-                                                        <span className={`text-xs px-2 py-0.5 rounded-md inline-block w-fit border ${
-                                                            orgMember.status === 'active' 
-                                                                ? 'bg-green-900/20 text-green-300 border-green-500/50' 
-                                                                : 'bg-amber-900/20 text-amber-300 border-amber-500/50'
-                                                        }`}>
+                                                        <span className="text-white capitalize">{orgMember.role}</span>
+                                                        <span className={`text-xs ${orgMember.status === 'active' ? 'text-green-400' : 'text-amber-400'}`}>
                                                             {orgMember.status === 'active' ? 'Actif' : 'Invité'}
                                                         </span>
                                                     </div>
                                                 ) : (
-                                                    <span className="text-sm text-baikal-text font-mono">-</span>
+                                                    <span className="text-baikal-text italic">-</span>
                                                 )}
                                             </td>
+
+                                            {/* Date d'inscription */}
                                             <td className="px-4 py-4">
-                                                <span className="text-sm text-baikal-text font-mono">
-                                                    {new Date(user.created_at).toLocaleDateString('fr-FR', {
-                                                        day: 'numeric',
-                                                        month: 'short',
-                                                        year: 'numeric'
-                                                    })}
+                                                <span className="text-baikal-text text-sm">
+                                                    {formatDate(user.created_at)}
                                                 </span>
                                             </td>
                                         </tr>
@@ -308,6 +353,3 @@ export default function UsersList() {
         </div>
     );
 }
-
-
-

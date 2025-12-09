@@ -54,48 +54,6 @@ import {
 } from 'lucide-react';
 
 // ============================================================================
-// CONFIGURATION DES SOURCES
-// ============================================================================
-
-const INGESTION_SOURCES = [
-    { 
-        id: 'file-upload', 
-        label: 'Upload de fichiers', 
-        description: 'PDF, Word, Excel, texte...', 
-        icon: Upload, 
-        color: 'indigo', 
-        available: true 
-    },
-    { 
-        id: 'legifrance', 
-        label: 'Légifrance', 
-        description: 'Codes juridiques français', 
-        icon: Scale, 
-        color: 'emerald', 
-        available: true, 
-        superAdminOnly: true 
-    },
-    { 
-        id: 'api-externe', 
-        label: 'API Externe', 
-        description: 'Connecteurs personnalisés', 
-        icon: Globe, 
-        color: 'blue', 
-        available: false, 
-        comingSoon: true 
-    },
-    { 
-        id: 'web-scraping', 
-        label: 'Web Scraping', 
-        description: 'Extraction de sites web', 
-        icon: Link2, 
-        color: 'violet', 
-        available: false, 
-        comingSoon: true 
-    },
-];
-
-// ============================================================================
 // COMPOSANT CARTE DE SOURCE
 // ============================================================================
 
@@ -448,7 +406,6 @@ function LegifranceInterface({ selectedVertical, selectedLayer, verticals }) {
                     referentielsService.getLegifranceCodes(),
                 ]);
 
-                // Vérifier les erreurs pour les deux appels
                 if (domainsResult.error) {
                     console.error('[LegifranceInterface] Error loading domains:', domainsResult.error);
                     setError(`Erreur lors du chargement des domaines Légifrance: ${domainsResult.error.message || domainsResult.error}`);
@@ -456,7 +413,6 @@ function LegifranceInterface({ selectedVertical, selectedLayer, verticals }) {
                     console.error('[LegifranceInterface] Error loading codes:', codesResult.error);
                     setError(`Erreur lors du chargement des codes Légifrance: ${codesResult.error.message || codesResult.error}`);
                 } else {
-                    // Tout s'est bien passé
                     setDomains(domainsResult.data || []);
                     setCodes(codesResult.data || []);
                 }

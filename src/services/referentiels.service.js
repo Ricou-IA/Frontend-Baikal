@@ -1,13 +1,18 @@
 /**
  * Referentiels Service - Baikal Console
  * ============================================================================
- * Service pour le chargement des référentiels depuis Supabase.
- * Gère : Verticales, Catégories de documents, Domaines Légifrance.
+ * MIGRATION PHASE 3 - Base de données Baikal v2
+ * 
+ * MODIFICATIONS APPORTÉES:
+ * - verticals → config.apps (table renommée, schéma changé)
+ * - vertical_id → app_id (colonne renommée)
+ * - document_categories → config.document_categories (schéma changé)
+ * - Ajout de .schema('config') pour toutes les requêtes apps/categories
  * 
  * @example
  * import { referentielsService } from '@/services';
  * 
- * const { data: verticals } = await referentielsService.getVerticals();
+ * const { data: apps } = await referentielsService.getApps();
  * const { data: categories } = await referentielsService.getCategories();
  * ============================================================================
  */
@@ -15,17 +20,22 @@
 import { supabase } from '../lib/supabaseClient';
 
 // ============================================================================
-// VERTICALES
+// APPS (anciennement VERTICALES)
 // ============================================================================
 
 /**
- * Récupère toutes les verticales actives
+ * Récupère toutes les apps actives
  * @returns {Promise<{data: Array, error: Error|null}>}
+ * 
+ * MIGRATION: verticals → config.apps
+ * - Ajout .schema('config')
+ * - Table renommée: verticals → apps
  */
-export async function getVerticals() {
+export async function getApps() {
     try {
         const { data, error } = await supabase
-            .from('verticals')
+            .schema('config')                    // ← NOUVEAU: schéma config
+            .from('apps')                        // ← CHANGÉ: verticals → apps
             .select('id, name, description, icon, color, sort_order')
             .eq('is_active', true)
             .order('sort_order', { ascending: true });
@@ -33,31 +43,49 @@ export async function getVerticals() {
         if (error) throw error;
         return { data: data || [], error: null };
     } catch (err) {
-        console.error('[ReferentielsService] Error loading verticals:', err);
+        console.error('[ReferentielsService] Error loading apps:', err);
         return { data: [], error: err };
     }
 }
 
 /**
- * Récupère une verticale par son ID
- * @param {string} verticalId - ID de la verticale
- * @returns {Promise<{data: Object|null, error: Error|null}>}
+ * Alias pour compatibilité ascendante
+ * @deprecated Utiliser getApps() à la place
  */
-export async function getVerticalById(verticalId) {
+export const getVerticals = getApps;
+
+/**
+ * Récupère une app par son ID
+ * @param {string} appId - ID de l'app
+ * @returns {Promise<{data: Object|null, error: Error|null}>}
+ * 
+ * MIGRATION: getVerticalById → getAppById
+ * - Ajout .schema('config')
+ * - Table renommée: verticals → apps
+ * - Paramètre renommé: verticalId → appId
+ */
+export async function getAppById(appId) {
     try {
         const { data, error } = await supabase
-            .from('verticals')
+            .schema('config')                    // ← NOUVEAU: schéma config
+            .from('apps')                        // ← CHANGÉ: verticals → apps
             .select('*')
-            .eq('id', verticalId)
+            .eq('id', appId)
             .single();
 
         if (error) throw error;
         return { data, error: null };
     } catch (err) {
-        console.error('[ReferentielsService] Error loading vertical:', err);
+        console.error('[ReferentielsService] Error loading app:', err);
         return { data: null, error: err };
     }
 }
+
+/**
+ * Alias pour compatibilité ascendante
+ * @deprecated Utiliser getAppById() à la place
+ */
+export const getVerticalById = getAppById;
 
 // ============================================================================
 // CATÉGORIES DOCUMENTS
@@ -66,10 +94,14 @@ export async function getVerticalById(verticalId) {
 /**
  * Récupère toutes les catégories de documents actives
  * @returns {Promise<{data: Array, error: Error|null}>}
+ * 
+ * MIGRATION: document_categories → config.document_categories
+ * - Ajout .schema('config')
  */
 export async function getDocumentCategories() {
     try {
         const { data, error } = await supabase
+            .schema('config')                    // ← NOUVEAU: schéma config
             .from('document_categories')
             .select('id, slug, label, description, icon, sort_order')
             .eq('is_active', true)
@@ -99,10 +131,14 @@ export const getCategories = getDocumentCategories;
  * Récupère une catégorie par son slug
  * @param {string} slug - Slug de la catégorie
  * @returns {Promise<{data: Object|null, error: Error|null}>}
+ * 
+ * MIGRATION: document_categories → config.document_categories
+ * - Ajout .schema('config')
  */
 export async function getCategoryBySlug(slug) {
     try {
         const { data, error } = await supabase
+            .schema('config')                    // ← NOUVEAU: schéma config
             .from('document_categories')
             .select('*')
             .eq('slug', slug)
@@ -117,12 +153,14 @@ export async function getCategoryBySlug(slug) {
 }
 
 // ============================================================================
-// DOMAINES LÉGIFRANCE
+// DOMAINES LÉGIFRANCE (déjà dans le bon schéma)
 // ============================================================================
 
 /**
  * Récupère tous les domaines Légifrance actifs
  * @returns {Promise<{data: Array, error: Error|null}>}
+ * 
+ * NOTE: Pas de changement, déjà dans schéma legifrance
  */
 export async function getLegifranceDomains() {
     try {
@@ -147,13 +185,15 @@ export async function getLegifranceDomains() {
  * @param {string} filters.domainId - Filtrer par domaine
  * @param {boolean} filters.enabledOnly - Uniquement les codes activés
  * @returns {Promise<{data: Array, error: Error|null}>}
+ * 
+ * MIGRATION: default_verticals → default_apps (colonne renommée)
  */
 export async function getLegifranceCodes(filters = {}) {
     try {
         let query = supabase
             .schema('legifrance')
             .from('codes')
-            .select('id, name, short_name, description, domain_id, is_enabled, last_sync_at, total_articles, indexed_articles, default_verticals')
+            .select('id, name, short_name, description, domain_id, is_enabled, last_sync_at, total_articles, indexed_articles, default_apps')  // ← CHANGÉ: default_verticals → default_apps
             .order('name', { ascending: true });
 
         if (filters.domainId) {
@@ -204,82 +244,27 @@ export async function getLegifranceCodesGroupedByDomain() {
 }
 
 // ============================================================================
-// CACHE LOCAL
-// ============================================================================
-
-let cachedVerticals = null;
-let cachedCategories = null;
-let verticalsLastFetch = 0;
-let categoriesLastFetch = 0;
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
-
-/**
- * Récupère les verticales avec cache
- * @returns {Promise<{data: Array, error: Error|null}>}
- */
-export async function getVerticalsCached() {
-    const now = Date.now();
-    if (cachedVerticals && (now - verticalsLastFetch) < CACHE_DURATION) {
-        return { data: cachedVerticals, error: null };
-    }
-    const result = await getVerticals();
-    if (!result.error) {
-        cachedVerticals = result.data;
-        verticalsLastFetch = now;
-    }
-    return result;
-}
-
-/**
- * Récupère les catégories avec cache
- * @returns {Promise<{data: Array, error: Error|null}>}
- */
-export async function getCategoriesCached() {
-    const now = Date.now();
-    if (cachedCategories && (now - categoriesLastFetch) < CACHE_DURATION) {
-        return { data: cachedCategories, error: null };
-    }
-    const result = await getDocumentCategories();
-    if (!result.error) {
-        cachedCategories = result.data;
-        categoriesLastFetch = now;
-    }
-    return result;
-}
-
-/**
- * Invalide le cache
- */
-export function invalidateCache() {
-    cachedVerticals = null;
-    cachedCategories = null;
-    verticalsLastFetch = 0;
-    categoriesLastFetch = 0;
-}
-
-// ============================================================================
-// EXPORT
+// EXPORT GROUPÉ POUR COMPATIBILITÉ
 // ============================================================================
 
 export const referentielsService = {
-    // Verticales
+    // Apps (nouveau nom)
+    getApps,
+    getAppById,
+    
+    // Aliases pour compatibilité ascendante (deprecated)
     getVerticals,
     getVerticalById,
-    getVerticalsCached,
     
     // Catégories
     getDocumentCategories,
-    getCategories, // Alias
+    getCategories,
     getCategoryBySlug,
-    getCategoriesCached,
     
     // Légifrance
     getLegifranceDomains,
     getLegifranceCodes,
     getLegifranceCodesGroupedByDomain,
-    
-    // Cache
-    invalidateCache,
 };
 
 export default referentielsService;

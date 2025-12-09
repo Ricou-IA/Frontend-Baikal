@@ -1,16 +1,11 @@
 /**
  * useImpersonation - Hook pour gérer l'impersonation (super_admin uniquement)
  * ============================================================================
- * Permet à un super_admin de "se connecter en tant que" un autre utilisateur
- * pour tester et débugger.
+ * MIGRATION PHASE 3 - Schémas explicites
  * 
- * @example
- * const { 
- *   isImpersonating, 
- *   impersonatedProfile,
- *   impersonateUser, 
- *   stopImpersonating 
- * } = useImpersonation(realProfile);
+ * MODIFICATIONS:
+ * - profiles → core.profiles (schéma)
+ * - organizations → core.organizations (schéma)
  * ============================================================================
  */
 
@@ -122,8 +117,9 @@ export function useImpersonation(realProfile) {
     setError(null);
 
     try {
-      // Charger le profil cible
+      // MIGRATION: profiles → core.profiles
       const { data: targetProfile, error: profileError } = await supabase
+        .schema('core')
         .from('profiles')
         .select('*')
         .eq('id', targetUserId)
@@ -134,7 +130,9 @@ export function useImpersonation(realProfile) {
       // Charger l'organisation si présente
       let targetOrg = null;
       if (targetProfile.org_id) {
+        // MIGRATION: organizations → core.organizations
         const { data: orgData, error: orgError } = await supabase
+          .schema('core')
           .from('organizations')
           .select('*')
           .eq('id', targetProfile.org_id)

@@ -1,7 +1,14 @@
-// ============================================================================
-// BRIQUE 6 : Hook useOrganization
-// Gestion de l'organisation et de ses membres
-// ============================================================================
+/**
+ * useOrganization.js - Baikal Console
+ * ============================================================================
+ * MIGRATION PHASE 3 - Schémas explicites
+ * 
+ * MODIFICATIONS:
+ * - organizations → core.organizations (schéma)
+ * - organization_members → core.organization_members (schéma)
+ * - profiles → core.profiles (schéma)
+ * ============================================================================
+ */
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
@@ -20,7 +27,9 @@ export function useOrganization(orgId) {
         }
 
         try {
+            // MIGRATION: organizations → core.organizations
             const { data, error: orgError } = await supabase
+                .schema('core')
                 .from('organizations')
                 .select('*')
                 .eq('id', orgId)
@@ -41,8 +50,9 @@ export function useOrganization(orgId) {
         }
 
         try {
-            // Récupérer les membres
+            // MIGRATION: organization_members → core.organization_members
             const { data: membersData, error: membersError } = await supabase
+                .schema('core')
                 .from('organization_members')
                 .select('*')
                 .eq('org_id', orgId)
@@ -66,7 +76,9 @@ export function useOrganization(orgId) {
 
             let profilesMap = {};
             if (userIds.length > 0) {
+                // MIGRATION: profiles → core.profiles
                 const { data: profilesData, error: profilesError } = await supabase
+                    .schema('core')
                     .from('profiles')
                     .select('id, email, full_name, avatar_url')
                     .in('id', userIds);
@@ -139,7 +151,9 @@ export function useOrganization(orgId) {
     // Révoquer un membre
     const revokeMember = useCallback(async (memberId) => {
         try {
+            // MIGRATION: organization_members → core.organization_members
             const { error } = await supabase
+                .schema('core')
                 .from('organization_members')
                 .delete()
                 .eq('id', memberId);
@@ -156,7 +170,9 @@ export function useOrganization(orgId) {
     // Mettre à jour le rôle d'un membre
     const updateMemberRole = useCallback(async (memberId, newRole) => {
         try {
+            // MIGRATION: organization_members → core.organization_members
             const { error } = await supabase
+                .schema('core')
                 .from('organization_members')
                 .update({ role: newRole })
                 .eq('id', memberId);
@@ -173,7 +189,9 @@ export function useOrganization(orgId) {
     // Mettre à jour le nom de l'organisation
     const updateOrganizationName = useCallback(async (newName) => {
         try {
+            // MIGRATION: organizations → core.organizations
             const { error } = await supabase
+                .schema('core')
                 .from('organizations')
                 .update({ name: newName })
                 .eq('id', orgId);
@@ -222,4 +240,4 @@ export function useOrganization(orgId) {
     };
 }
 
-
+export default useOrganization;

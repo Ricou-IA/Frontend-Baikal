@@ -1,6 +1,7 @@
 // ============================================================================
 // Edge Function : trigger-legifrance-sync
 // Proxy sécurisé pour déclencher le workflow n8n Légifrance
+// Version: 2.0.0 - Migration schémas
 // ============================================================================
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
@@ -33,6 +34,8 @@ serve(async (req) => {
   }
 
   try {
+    console.log('[trigger-legifrance-sync] v2.0.0 - Migration Schemas')
+
     // 1. Vérifier l'authentification
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
@@ -63,7 +66,9 @@ serve(async (req) => {
     console.log('[trigger-legifrance-sync] User authenticated:', user.email)
 
     // 3. Vérifier que l'utilisateur est super_admin
+    // MIGRATION: profiles → core.profiles
     const { data: profile, error: profileError } = await supabase
+      .schema('core')
       .from('profiles')
       .select('app_role')
       .eq('id', user.id)

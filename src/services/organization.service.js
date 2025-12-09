@@ -1,36 +1,37 @@
 /**
- * Profile Service - Core RAG Engine
+ * Organization Service - Baikal Console
  * ============================================================================
- * Service centralisé pour la gestion des profils utilisateurs.
+ * MIGRATION PHASE 3 - Schémas explicites
  * 
- * @example
- * import { profileService } from '@/services';
- * 
- * const { data, error } = await profileService.getProfile(userId);
+ * MODIFICATIONS:
+ * - organizations → core.organizations (schéma)
+ * - organization_members → core.organization_members (schéma)
+ * - profiles → core.profiles (schéma)
  * ============================================================================
  */
 
 import { supabase } from '../lib/supabaseClient';
 
 /**
- * Service de gestion des profils
+ * Service de gestion des organisations
  */
-export const profileService = {
+export const organizationService = {
   /**
-   * Récupère un profil par son ID
-   * @param {string} userId - ID de l'utilisateur
+   * Récupère une organisation par son ID
+   * @param {string} orgId - ID de l'organisation
    * @returns {Promise<{data: Object|null, error: Error|null}>}
    */
-  async getProfile(userId) {
+  async getOrganization(orgId) {
     try {
+      // MIGRATION: organizations → core.organizations
       const { data, error } = await supabase
-        .from('profiles')
+        .schema('core')
+        .from('organizations')
         .select('*')
-        .eq('id', userId)
+        .eq('id', orgId)
         .single();
 
       if (error) {
-        // PGRST116 = No rows found
         if (error.code === 'PGRST116') {
           return { data: null, error: null };
         }
@@ -44,61 +45,22 @@ export const profileService = {
   },
 
   /**
-   * Récupère un profil avec son organisation
-   * @param {string} userId - ID de l'utilisateur
-   * @returns {Promise<{profile: Object|null, organization: Object|null, error: Error|null}>}
-   */
-  async getProfileWithOrganization(userId) {
-    try {
-      // Récupère le profil
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-
-      if (profileError) {
-        if (profileError.code === 'PGRST116') {
-          return { profile: null, organization: null, error: null };
-        }
-        throw profileError;
-      }
-
-      // Récupère l'organisation si présente
-      let organization = null;
-      if (profile?.org_id) {
-        const { data: orgData, error: orgError } = await supabase
-          .from('organizations')
-          .select('*')
-          .eq('id', profile.org_id)
-          .single();
-
-        if (!orgError) {
-          organization = orgData;
-        }
-      }
-
-      return { profile, organization, error: null };
-    } catch (error) {
-      return { profile: null, organization: null, error };
-    }
-  },
-
-  /**
-   * Met à jour un profil
-   * @param {string} userId - ID de l'utilisateur
+   * Met à jour une organisation
+   * @param {string} orgId - ID de l'organisation
    * @param {Object} data - Données à mettre à jour
    * @returns {Promise<{data: Object|null, error: Error|null}>}
    */
-  async updateProfile(userId, data) {
+  async updateOrganization(orgId, data) {
     try {
+      // MIGRATION: organizations → core.organizations
       const { data: updated, error } = await supabase
-        .from('profiles')
+        .schema('core')
+        .from('organizations')
         .update({
           ...data,
           updated_at: new Date().toISOString(),
         })
-        .eq('id', userId)
+        .eq('id', orgId)
         .select()
         .single();
 
@@ -110,111 +72,162 @@ export const profileService = {
   },
 
   /**
-   * Complète l'onboarding d'un utilisateur
-   * @param {string} userId - ID de l'utilisateur
-   * @param {string} businessRole - Rôle business (provider/client)
-   * @param {string} bio - Bio de l'utilisateur
-   * @param {Object} additionalData - Données supplémentaires
-   * @returns {Promise<{data: Object|null, error: Error|null}>}
+   * Récupère les membres d'une organisation avec leurs profils
+   * @param {string} orgId - ID de l'organisation
+   * @returns {Promise<{data: Array|null, error: Error|null}>}
    */
-  async completeOnboarding(userId, businessRole, bio = '', additionalData = {}) {
+  async getMembers(orgId) {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .update({
-          business_role: businessRole,
-          bio,
-          ...additionalData,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', userId)
-        .select()
-        .single();
+      // MIGRATION: organization_members → core.organization_members
+      const { data: membersData, error: membersError } = await supabase
+        .schema('core')
+        .from('organization_members')
+        .select('*')
+        .eq('org_id', orgId)
+        .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      return { data, error: null };
+      if (membersError) throw membersError;
+
+      if (!membersData || membersData.length === 0) {
+        return { data: [], error: null };
+      }
+
+      // Récupérer les user_ids non nulls
+      const userIds = membersData
+        .map(m => m.user_id)
+        .filter(id => id !== null);
+
+      let profilesMap = {};
+      if (userIds.length > 0) {
+        // MIGRATION: profiles → core.profiles
+        const { data: profilesData, error: profilesError } = await supabase
+          .schema('core')
+          .from('profiles')
+          .select('id, email, full_name, avatar_url')
+          .in('id', userIds);
+
+        if (!profilesError && profilesData) {
+          profilesMap = profilesData.reduce((acc, profile) => {
+            acc[profile.id] = profile;
+            return acc;
+          }, {});
+        }
+      }
+
+      // Fusionner les membres avec leurs profils
+      const membersWithProfiles = membersData.map(member => ({
+        ...member,
+        profiles: member.user_id ? profilesMap[member.user_id] || null : null,
+      }));
+
+      return { data: membersWithProfiles, error: null };
     } catch (error) {
       return { data: null, error };
     }
   },
 
   /**
-   * Utilise la fonction RPC pour compléter l'onboarding
-   * @param {string} businessRole - Rôle business
-   * @param {string} bio - Bio
+   * Invite un nouveau membre dans l'organisation
+   * Utilise l'Edge Function invite-user
+   * @param {string} orgId - ID de l'organisation
+   * @param {string} email - Email du membre à inviter
+   * @param {string} role - Rôle du membre ('admin' | 'member')
    * @returns {Promise<{success: boolean, error: Error|null}>}
    */
-  async completeOnboardingRPC(businessRole, bio = '') {
+  async inviteMember(orgId, email, role = 'member') {
     try {
-      const { data, error } = await supabase.rpc('complete_onboarding', {
-        p_business_role: businessRole,
-        p_bio: bio,
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Non authentifié');
+
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const response = await fetch(`${supabaseUrl}/functions/v1/invite-user`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          email,
+          role,
+          org_id: orgId,
+        }),
       });
 
-      if (error) throw error;
-      return { success: true, data, error: null };
+      const result = await response.json();
+      if (!result.success) throw new Error(result.error);
+
+      return { success: true, error: null };
     } catch (error) {
-      return { success: false, data: null, error };
+      return { success: false, error };
     }
   },
 
   /**
-   * Récupère le profil de l'utilisateur connecté via RPC
-   * @returns {Promise<{data: Object|null, error: Error|null}>}
+   * Révoque un membre de l'organisation
+   * @param {string} memberId - ID du membre (dans organization_members)
+   * @returns {Promise<{success: boolean, error: Error|null}>}
    */
-  async getMyProfile() {
+  async revokeMember(memberId) {
     try {
-      const { data, error } = await supabase.rpc('get_my_profile');
+      // MIGRATION: organization_members → core.organization_members
+      const { error } = await supabase
+        .schema('core')
+        .from('organization_members')
+        .delete()
+        .eq('id', memberId);
 
       if (error) throw error;
-      return { data, error: null };
+      return { success: true, error: null };
     } catch (error) {
-      return { data: null, error };
+      return { success: false, error };
     }
   },
 
   /**
-   * Met à jour l'avatar d'un utilisateur
-   * @param {string} userId - ID de l'utilisateur
-   * @param {string} avatarUrl - URL de l'avatar
-   * @returns {Promise<{data: Object|null, error: Error|null}>}
+   * Met à jour le rôle d'un membre
+   * @param {string} memberId - ID du membre
+   * @param {string} newRole - Nouveau rôle ('owner' | 'admin' | 'member')
+   * @returns {Promise<{success: boolean, error: Error|null}>}
    */
-  async updateAvatar(userId, avatarUrl) {
-    return this.updateProfile(userId, { avatar_url: avatarUrl });
+  async updateMemberRole(memberId, newRole) {
+    try {
+      // MIGRATION: organization_members → core.organization_members
+      const { error } = await supabase
+        .schema('core')
+        .from('organization_members')
+        .update({ 
+          role: newRole,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', memberId);
+
+      if (error) throw error;
+      return { success: true, error: null };
+    } catch (error) {
+      return { success: false, error };
+    }
   },
 
   /**
-   * Met à jour le nom complet
-   * @param {string} userId - ID de l'utilisateur
-   * @param {string} fullName - Nom complet
-   * @returns {Promise<{data: Object|null, error: Error|null}>}
-   */
-  async updateFullName(userId, fullName) {
-    return this.updateProfile(userId, { full_name: fullName });
-  },
-
-  /**
-   * Récupère tous les profils (admin uniquement)
+   * Récupère toutes les organisations (super_admin uniquement)
    * @param {Object} options - Options de filtrage
    * @param {number} options.limit - Limite de résultats
    * @param {number} options.offset - Offset pour pagination
-   * @param {string} options.orderBy - Champ de tri
-   * @param {boolean} options.ascending - Ordre croissant
    * @returns {Promise<{data: Array|null, count: number, error: Error|null}>}
    */
-  async getAllProfiles(options = {}) {
+  async getAllOrganizations(options = {}) {
     const {
       limit = 100,
       offset = 0,
-      orderBy = 'created_at',
-      ascending = false,
     } = options;
 
     try {
+      // MIGRATION: organizations → core.organizations
       const { data, error, count } = await supabase
-        .from('profiles')
+        .schema('core')
+        .from('organizations')
         .select('*', { count: 'exact' })
-        .order(orderBy, { ascending })
+        .order('created_at', { ascending: false })
         .range(offset, offset + limit - 1);
 
       if (error) throw error;
@@ -223,6 +236,104 @@ export const profileService = {
       return { data: null, count: 0, error };
     }
   },
+
+  /**
+   * Crée une nouvelle organisation
+   * @param {Object} data - Données de l'organisation
+   * @param {string} data.name - Nom de l'organisation
+   * @param {string} data.plan - Plan de l'organisation ('free' | 'starter' | 'pro' | 'enterprise')
+   * @returns {Promise<{data: Object|null, error: Error|null}>}
+   */
+  async createOrganization(data) {
+    try {
+      // MIGRATION: organizations → core.organizations
+      const { data: created, error } = await supabase
+        .schema('core')
+        .from('organizations')
+        .insert({
+          name: data.name,
+          plan: data.plan || 'free',
+          ...data,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return { data: created, error: null };
+    } catch (error) {
+      return { data: null, error };
+    }
+  },
+
+  /**
+   * Supprime une organisation
+   * @param {string} orgId - ID de l'organisation
+   * @returns {Promise<{success: boolean, error: Error|null}>}
+   */
+  async deleteOrganization(orgId) {
+    try {
+      // MIGRATION: organizations → core.organizations
+      const { error } = await supabase
+        .schema('core')
+        .from('organizations')
+        .delete()
+        .eq('id', orgId);
+
+      if (error) throw error;
+      return { success: true, error: null };
+    } catch (error) {
+      return { success: false, error };
+    }
+  },
+
+  /**
+   * Vérifie si un email est déjà membre de l'organisation
+   * @param {string} orgId - ID de l'organisation
+   * @param {string} email - Email à vérifier
+   * @returns {Promise<{exists: boolean, error: Error|null}>}
+   */
+  async checkMemberExists(orgId, email) {
+    try {
+      // MIGRATION: organization_members → core.organization_members
+      const { data, error } = await supabase
+        .schema('core')
+        .from('organization_members')
+        .select('id')
+        .eq('org_id', orgId)
+        .eq('invited_email', email)
+        .maybeSingle();
+
+      if (error) throw error;
+      return { exists: !!data, error: null };
+    } catch (error) {
+      return { exists: false, error };
+    }
+  },
+
+  /**
+   * Met à jour le statut d'un membre (invited → active)
+   * @param {string} memberId - ID du membre
+   * @param {string} status - Nouveau statut ('active' | 'invited')
+   * @returns {Promise<{success: boolean, error: Error|null}>}
+   */
+  async updateMemberStatus(memberId, status) {
+    try {
+      // MIGRATION: organization_members → core.organization_members
+      const { error } = await supabase
+        .schema('core')
+        .from('organization_members')
+        .update({ 
+          status,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', memberId);
+
+      if (error) throw error;
+      return { success: true, error: null };
+    } catch (error) {
+      return { success: false, error };
+    }
+  },
 };
 
-export default profileService;
+export default organizationService;

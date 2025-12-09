@@ -3,6 +3,8 @@
  * ============================================================================
  * Export centralisé de tous les hooks personnalisés.
  * 
+ * Version: 2.0.0 - Nettoyé (useRAG supprimé, dette technique)
+ * 
  * @example
  * // Import groupé
  * import { useAsync, useForm, useToast } from '@/hooks';
@@ -48,9 +50,6 @@ export {
 // ============================================================================
 // HOOKS MÉTIER
 // ============================================================================
-
-// Chat RAG
-export { useRAG } from './useRAG';
 
 // Gestion des erreurs
 export { useErrorHandler, useErrorToast } from './useErrorHandler';

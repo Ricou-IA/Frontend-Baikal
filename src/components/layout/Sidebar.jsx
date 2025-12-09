@@ -1,26 +1,20 @@
 /**
  * Sidebar - Composant de navigation latérale
  * ============================================================================
- * Sidebar avec navigation par onglets, sélecteur de verticale et profil user.
+ * MIGRATION PHASE 3 - vertical → app
  * 
- * @example
- * <Sidebar
- *   isOpen={sidebarOpen}
- *   onClose={() => setSidebarOpen(false)}
- *   activeTab={activeTab}
- *   onTabChange={setActiveTab}
- *   tabs={tabs}
- *   verticalInfo={verticalInfo}
- *   user={user}
- *   profile={profile}
- *   onLogout={handleLogout}
- * />
+ * MODIFICATIONS:
+ * - VerticalSelector → AppSelector
+ * - verticalInfo → appInfo
+ * - currentVertical → currentApp
+ * - onVerticalChange → onAppChange
  * ============================================================================
  */
 
 import React from 'react';
 import { LogOut, X as XIcon } from 'lucide-react';
-import VerticalSelector from '../VerticalSelector';
+// MIGRATION: VerticalSelector → AppSelector
+import AppSelector from '../AppSelector';
 
 /**
  * @typedef {Object} Tab
@@ -37,10 +31,10 @@ import VerticalSelector from '../VerticalSelector';
  * @property {string} activeTab - ID de l'onglet actif
  * @property {Function} onTabChange - Callback pour changer d'onglet
  * @property {Tab[]} tabs - Liste des onglets
- * @property {Object} verticalInfo - Infos de la verticale courante
- * @property {string} currentVertical - ID de la verticale courante
- * @property {Function} onVerticalChange - Callback pour changer de verticale
- * @property {Object} supabaseClient - Client Supabase pour VerticalSelector
+ * @property {Object} appInfo - Infos de l'app courante (ex: verticalInfo)
+ * @property {string} currentApp - ID de l'app courante (ex: currentVertical)
+ * @property {Function} onAppChange - Callback pour changer d'app (ex: onVerticalChange)
+ * @property {Object} supabaseClient - Client Supabase pour AppSelector
  * @property {Object} user - Utilisateur connecté
  * @property {Object} profile - Profil utilisateur
  * @property {Function} onLogout - Callback pour déconnexion
@@ -52,15 +46,19 @@ export default function Sidebar({
   activeTab,
   onTabChange,
   tabs = [],
-  verticalInfo,
-  currentVertical,
-  onVerticalChange,
+  // MIGRATION: verticalInfo → appInfo
+  appInfo,
+  // MIGRATION: currentVertical → currentApp
+  currentApp,
+  // MIGRATION: onVerticalChange → onAppChange
+  onAppChange,
   supabaseClient,
   user,
   profile,
   onLogout,
 }) {
-  const primaryColor = verticalInfo?.color || '#6366f1';
+  // MIGRATION: verticalInfo → appInfo
+  const primaryColor = appInfo?.color || '#6366f1';
 
   return (
     <aside
@@ -78,7 +76,8 @@ export default function Sidebar({
           <h1
             className="text-lg font-mono font-bold text-white"
           >
-            {verticalInfo?.name || 'BAÏKAL'}
+            {/* MIGRATION: verticalInfo → appInfo */}
+            {appInfo?.name || 'BAÏKAL'}
           </h1>
           <button
             onClick={onClose}
@@ -89,11 +88,11 @@ export default function Sidebar({
           </button>
         </div>
 
-        {/* Sélecteur de verticale */}
+        {/* MIGRATION: VerticalSelector → AppSelector */}
         {supabaseClient && (
-          <VerticalSelector
-            currentVertical={currentVertical}
-            onVerticalChange={onVerticalChange}
+          <AppSelector
+            currentApp={currentApp}
+            onAppChange={onAppChange}
             supabaseClient={supabaseClient}
             showLabel={true}
           />

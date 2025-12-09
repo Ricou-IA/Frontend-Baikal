@@ -1,7 +1,8 @@
 /**
- * Configuration API - Core RAG Engine
+ * Configuration API - Baikal Console
  * ============================================================================
  * Configuration Supabase, endpoints et paramètres API.
+ * Version: 2.0.0 - Nettoyé (RAG_BRAIN supprimé, dette technique)
  * ============================================================================
  */
 
@@ -42,9 +43,9 @@ export const SUPABASE_OPTIONS = Object.freeze({
  * @type {Object}
  */
 export const EDGE_FUNCTIONS = Object.freeze({
-  RAG_BRAIN: 'rag-brain',
   PROCESS_AUDIO: 'process-audio',
   INGEST_DOCUMENTS: 'ingest-documents',
+  TRIGGER_LEGIFRANCE_SYNC: 'trigger-legifrance-sync',
 });
 
 /**
@@ -78,157 +79,29 @@ export const N8N_WEBHOOKS = Object.freeze({
  * @returns {boolean}
  */
 export const isWebhookConfigured = (webhookKey) => {
-  return !!N8N_WEBHOOKS[webhookKey]?.trim();
+  return !!N8N_WEBHOOKS[webhookKey];
 };
 
 // ============================================
-// STORAGE BUCKETS
+// TIMEOUTS ET LIMITES
 // ============================================
 
 /**
- * Noms des buckets Supabase Storage
+ * Configuration des timeouts (en ms)
  * @type {Object}
  */
-export const STORAGE_BUCKETS = Object.freeze({
-  DOCUMENTS: 'documents',
-  INVOICES: 'invoices',
-  RECORDINGS: 'project-recordings',
-  AVATARS: 'avatars',
+export const TIMEOUTS = Object.freeze({
+  DEFAULT: 30000,
+  UPLOAD: 120000,
+  PROCESSING: 300000,
 });
 
-// ============================================
-// TABLES SUPABASE
-// ============================================
-
 /**
- * Noms des tables Supabase
+ * Limites de taille de fichier (en bytes)
  * @type {Object}
  */
-export const TABLES = Object.freeze({
-  PROFILES: 'profiles',
-  ORGANIZATIONS: 'organizations',
-  ORGANIZATION_MEMBERS: 'organization_members',
-  DOCUMENTS: 'documents',
-  MEETINGS: 'meetings',
-  VERTICALS: 'verticals',
-});
-
-// ============================================
-// RPC FUNCTIONS
-// ============================================
-
-/**
- * Noms des fonctions RPC Supabase
- * @type {Object}
- */
-export const RPC_FUNCTIONS = Object.freeze({
-  COMPLETE_ONBOARDING: 'complete_onboarding',
-  CHECK_EMAIL_EXISTS: 'check_email_exists',
-  GET_MY_PROFILE: 'get_my_profile',
-  MATCH_DOCUMENTS: 'match_documents',
-});
-
-// ============================================
-// PARAMÈTRES RAG
-// ============================================
-
-/**
- * Configuration par défaut pour les appels RAG
- * @type {Object}
- */
-export const RAG_CONFIG = Object.freeze({
-  // Seuil de similarité (0-1)
-  DEFAULT_MATCH_THRESHOLD: 0.5,
-  
-  // Nombre de documents à retourner
-  DEFAULT_MATCH_COUNT: 5,
-  
-  // Modèle d'embedding
-  EMBEDDING_MODEL: 'text-embedding-3-small',
-  
-  // Dimensions des embeddings
-  EMBEDDING_DIMENSIONS: 768,
-  
-  // Modèle de génération
-  GENERATION_MODEL: 'gpt-4o-mini',
-  
-  // Température pour la génération
-  GENERATION_TEMPERATURE: 0.3,
-});
-
-// ============================================
-// PARAMÈTRES AUDIO
-// ============================================
-
-/**
- * Configuration pour le traitement audio
- * @type {Object}
- */
-export const AUDIO_CONFIG = Object.freeze({
-  // Modèle Whisper
-  TRANSCRIPTION_MODEL: 'whisper-1',
-  
-  // Langue par défaut
-  DEFAULT_LANGUAGE: 'fr',
-  
-  // Modèle pour l'analyse
-  ANALYSIS_MODEL: 'gpt-4o',
-});
-
-// ============================================
-// HEADERS HTTP
-// ============================================
-
-/**
- * Headers par défaut pour les appels API
- * @param {string} accessToken - Token d'accès (optionnel)
- * @returns {Object}
- */
-export const getApiHeaders = (accessToken = null) => {
-  const headers = {
-    'Content-Type': 'application/json',
-    'apikey': SUPABASE_ANON_KEY,
-  };
-  
-  if (accessToken) {
-    headers['Authorization'] = `Bearer ${accessToken}`;
-  }
-  
-  return headers;
-};
-
-// ============================================
-// VALIDATION
-// ============================================
-
-/**
- * Vérifie que les variables d'environnement Supabase sont configurées
- * @throws {Error} Si les variables sont manquantes
- */
-export const validateSupabaseConfig = () => {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    throw new Error(
-      '❌ Variables Supabase manquantes!\n' +
-      'Assurez-vous de créer un fichier .env.local avec:\n' +
-      '- VITE_SUPABASE_URL\n' +
-      '- VITE_SUPABASE_ANON_KEY\n' +
-      'Consultez .env.example pour plus de détails.'
-    );
-  }
-};
-
-// ============================================
-// MODE DEMO
-// ============================================
-
-/**
- * Configuration du mode démo
- * @type {Object}
- */
-export const DEMO_CONFIG = Object.freeze({
-  // Mode démo activé
-  ENABLED: import.meta.env.VITE_DEMO_MODE === 'true',
-  
-  // Délai simulé pour les réponses (ms)
-  SIMULATED_DELAY: 1200,
+export const FILE_LIMITS = Object.freeze({
+  MAX_DOCUMENT_SIZE: 20 * 1024 * 1024, // 20 MB
+  MAX_AUDIO_SIZE: 100 * 1024 * 1024,   // 100 MB
+  MAX_IMAGE_SIZE: 5 * 1024 * 1024,     // 5 MB
 });

@@ -1,11 +1,11 @@
 /**
  * AuthContext.jsx - Baikal Console
  * ============================================================================
- * Contexte d'authentification centralisé.
- * Gère : session, profil, organisation, et impersonation (via hook externe).
+ * MIGRATION PHASE 3 - Schémas explicites
  * 
- * @example
- * const { user, profile, signIn, signOut, isSuperAdmin } = useAuth();
+ * MODIFICATIONS:
+ * - profiles → core.profiles (schéma)
+ * - organizations → core.organizations (schéma)
  * ============================================================================
  */
 
@@ -85,8 +85,9 @@ export function AuthProvider({ children }) {
     loadingProfileRef.current = true;
 
     try {
-      // Charger le profil
+      // MIGRATION: profiles → core.profiles
       const { data: profileData, error: profileError } = await supabase
+        .schema('core')
         .from('profiles')
         .select('*')
         .eq('id', userId)
@@ -107,7 +108,9 @@ export function AuthProvider({ children }) {
 
       // Charger l'organisation si présente
       if (profileData?.org_id) {
+        // MIGRATION: organizations → core.organizations
         const { data: orgData, error: orgError } = await supabase
+          .schema('core')
           .from('organizations')
           .select('*')
           .eq('id', profileData.org_id)
@@ -244,8 +247,8 @@ export function AuthProvider({ children }) {
       setError(err.message);
       return { data: null, error: err };
     } finally {
-      signingUpRef.current = false;
       setLoading(false);
+      signingUpRef.current = false;
     }
   };
 
@@ -281,14 +284,14 @@ export function AuthProvider({ children }) {
     setError(null);
 
     try {
-      const { data, error: googleError } = await supabase.auth.signInWithOAuth({
+      const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/admin`,
+          redirectTo: `${window.location.origin}/dashboard`,
         },
       });
 
-      if (googleError) throw googleError;
+      if (oauthError) throw oauthError;
 
       return { data, error: null };
     } catch (err) {
@@ -307,7 +310,7 @@ export function AuthProvider({ children }) {
     setError(null);
 
     try {
-      // Arrêter l'impersonation avant déconnexion
+      // Arrêter l'impersonation si active
       if (isImpersonating) {
         stopImpersonating();
       }
@@ -315,11 +318,11 @@ export function AuthProvider({ children }) {
       const { error: signOutError } = await supabase.auth.signOut();
       if (signOutError) throw signOutError;
 
-      // Reset des états
       setUser(null);
       setSession(null);
       setProfile(null);
       setOrganization(null);
+      profileLoadedRef.current = false;
 
       return { error: null };
     } catch (err) {

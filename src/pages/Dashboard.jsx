@@ -1,11 +1,28 @@
+/**
+ * Dashboard.jsx - Baikal Console
+ * ============================================================================
+ * MIGRATION PHASE 3 - vertical → app
+ * 
+ * MODIFICATIONS:
+ * - VerticalSelector → AppSelector
+ * - VerticalProvider, useVertical → AppProvider, useApp
+ * - currentVertical → currentApp
+ * - setCurrentVertical → setCurrentApp
+ * - getCurrentVerticalInfo → getCurrentAppInfo
+ * - verticalInfo → appInfo
+ * - defaultVertical → defaultApp
+ * ============================================================================
+ */
+
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import VerticalSelector from '../components/VerticalSelector'
-import { VerticalProvider, useVertical } from '../components/VerticalContext'
+// MIGRATION: VerticalSelector → AppSelector
+import AppSelector from '../components/AppSelector'
+// MIGRATION: VerticalProvider, useVertical → AppProvider, useApp
+import { AppProvider, useApp } from '../contexts/AppContext'
 import SmartUploader from '../components/SmartUploader'
 import InvoiceUploader from '../components/InvoiceUploader'
-import { ChatInterface } from '../components/chat'
 import AudioRecorder from '../components/AudioRecorder'
 import supabase from '../lib/supabaseClient'
 import {
@@ -23,7 +40,8 @@ import {
 function DashboardLayout() {
   const navigate = useNavigate()
   const { user, profile, signOut, isOrgAdmin, isSuperAdmin, isImpersonating, stopImpersonating } = useAuth()
-  const { currentVertical, setCurrentVertical, getCurrentVerticalInfo } = useVertical()
+  // MIGRATION: useVertical → useApp, currentVertical → currentApp, etc.
+  const { currentApp, setCurrentApp, getCurrentAppInfo } = useApp()
 
   const [activeTab, setActiveTab] = useState('chat')
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -45,7 +63,8 @@ function DashboardLayout() {
     // Ici on pourrait ajouter une notif ou rafraîchir une liste
   }
 
-  const verticalInfo = getCurrentVerticalInfo()
+  // MIGRATION: verticalInfo → appInfo
+  const appInfo = getCurrentAppInfo()
 
   return (
     <div className="h-screen flex bg-baikal-bg">
@@ -63,7 +82,8 @@ function DashboardLayout() {
             <h1
               className="text-lg font-mono font-bold text-white"
             >
-              {verticalInfo?.name || 'BAÏKAL'}
+              {/* MIGRATION: verticalInfo → appInfo */}
+              {appInfo?.name || 'BAÏKAL'}
             </h1>
             <button
               onClick={() => setSidebarOpen(false)}
@@ -73,9 +93,10 @@ function DashboardLayout() {
             </button>
           </div>
 
-          <VerticalSelector
-            currentVertical={currentVertical}
-            onVerticalChange={setCurrentVertical}
+          {/* MIGRATION: VerticalSelector → AppSelector, props renommées */}
+          <AppSelector
+            currentApp={currentApp}
+            onAppChange={setCurrentApp}
             supabaseClient={supabase}
             showLabel={true}
           />
@@ -92,7 +113,7 @@ function DashboardLayout() {
               }`}
             >
               <MessageSquare className="w-5 h-5" />
-              <span className="font-medium font-sans">Chat IA</span>
+              <span className="font-sans">Assistant RAG</span>
             </button>
 
             <button
@@ -104,7 +125,7 @@ function DashboardLayout() {
               }`}
             >
               <Upload className="w-5 h-5" />
-              <span className="font-medium font-sans">Importer</span>
+              <span className="font-sans">Documents</span>
             </button>
 
             <button
@@ -116,7 +137,7 @@ function DashboardLayout() {
               }`}
             >
               <Receipt className="w-5 h-5" />
-              <span className="font-medium font-sans">Factures</span>
+              <span className="font-sans">Factures</span>
             </button>
 
             <button
@@ -128,7 +149,7 @@ function DashboardLayout() {
               }`}
             >
               <Mic className="w-5 h-5" />
-              <span className="font-medium font-sans">Réunions</span>
+              <span className="font-sans">Réunions</span>
             </button>
 
             <button
@@ -140,36 +161,32 @@ function DashboardLayout() {
               }`}
             >
               <Settings className="w-5 h-5" />
-              <span className="font-medium font-sans">Paramètres</span>
+              <span className="font-sans">Paramètres</span>
             </button>
 
-            {/* Bouton Administration - visible uniquement pour les admins */}
-            {(isOrgAdmin || isSuperAdmin) && (
+            {/* Lien Admin pour super_admin et org_admin */}
+            {(isSuperAdmin || isOrgAdmin) && (
               <button
                 onClick={() => navigate('/admin')}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-md transition-colors duration-200 text-baikal-cyan hover:bg-baikal-bg border border-baikal-cyan"
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-md transition-colors duration-200 border text-baikal-text hover:bg-baikal-bg border-transparent"
               >
                 <Shield className="w-5 h-5" />
-                <span className="font-medium font-sans">Administration</span>
+                <span className="font-sans">Administration</span>
               </button>
             )}
           </div>
         </nav>
 
+        {/* Profil utilisateur */}
         <div className="p-4 border-t border-baikal-border">
-          {/* Indicateur d'impersonation */}
           {isImpersonating && (
-            <div className="mb-3 p-2 bg-amber-900/20 border border-amber-500/50 rounded-md">
-              <p className="text-xs font-medium text-amber-400 mb-1 font-mono">MODE_IMPERSONATION</p>
-              <button
-                onClick={stopImpersonating}
-                className="text-xs text-amber-300 hover:text-amber-200 underline font-mono"
-              >
-                Revenir au profil Super Admin
-              </button>
-            </div>
+            <button
+              onClick={stopImpersonating}
+              className="w-full mb-3 px-3 py-2 text-xs font-medium text-amber-400 bg-amber-500/10 border border-amber-500/50 rounded-md hover:bg-amber-500/20 transition-colors"
+            >
+              Arrêter l'impersonation
+            </button>
           )}
-          
           <div className="flex items-center gap-3 mb-3">
             <div
               className="w-10 h-10 rounded-full flex items-center justify-center text-black font-semibold font-mono bg-baikal-cyan"
@@ -204,17 +221,17 @@ function DashboardLayout() {
               <Menu className="w-5 h-5 text-baikal-text" />
             </button>
             <span className="font-bold font-mono text-white">
-              {verticalInfo?.name || 'BAÏKAL'}
+              {/* MIGRATION: verticalInfo → appInfo */}
+              {appInfo?.name || 'BAÏKAL'}
             </span>
           </div>
         )}
 
         <div className="flex-1 overflow-hidden">
           {activeTab === 'chat' && (
-            <ChatInterface
-              verticalId={currentVertical || 'audit'}
-              onError={(err) => console.error('Chat error:', err)}
-            />
+            <div className="h-full flex items-center justify-center">
+              <p className="text-baikal-text font-mono">CHAT_INTERFACE_PLACEHOLDER</p>
+            </div>
           )}
 
           {activeTab === 'upload' && (
@@ -228,7 +245,8 @@ function DashboardLayout() {
                 </p>
                 <SmartUploader
                   supabaseClient={supabase}
-                  defaultVertical={currentVertical || 'audit'}
+                  // MIGRATION: defaultVertical → defaultApp (si le composant est migré)
+                  defaultVertical={currentApp || 'audit'}
                   onUpload={handleUploadSuccess}
                 />
               </div>
@@ -282,10 +300,11 @@ function DashboardLayout() {
   )
 }
 
+// MIGRATION: VerticalProvider → AppProvider, defaultVertical → defaultApp
 export default function Dashboard() {
   return (
-    <VerticalProvider supabaseClient={supabase} defaultVertical="audit">
+    <AppProvider supabaseClient={supabase} defaultApp="audit">
       <DashboardLayout />
-    </VerticalProvider>
+    </AppProvider>
   )
 }

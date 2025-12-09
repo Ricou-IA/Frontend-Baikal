@@ -1,7 +1,16 @@
+/**
+ * supabaseClient.js - Baikal Console
+ * ============================================================================
+ * Client Supabase et helpers d'authentification.
+ * Version: 2.0.0 - Nettoyé (callRagBrain supprimé, dette technique)
+ * ============================================================================
+ */
+
 import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
 if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error(
     '❌ Variables Supabase manquantes!\n' +
@@ -20,6 +29,11 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 })
 
+/**
+ * Complète l'onboarding d'un utilisateur
+ * @param {string} businessRole - Rôle métier sélectionné
+ * @param {string|null} bio - Bio optionnelle
+ */
 export async function completeOnboarding(businessRole, bio = null) {
   const { data, error } = await supabase.rpc('complete_onboarding', {
     p_business_role: businessRole,
@@ -29,6 +43,11 @@ export async function completeOnboarding(businessRole, bio = null) {
   return data
 }
 
+/**
+ * Vérifie si un email existe déjà
+ * @param {string} email - Email à vérifier
+ * @returns {Promise<boolean>}
+ */
 export async function checkEmailExists(email) {
   if (!email) return false
   try {
@@ -42,52 +61,9 @@ export async function checkEmailExists(email) {
   }
 }
 
-export async function callRagBrain(query, verticalId, options = {}) {
-  try {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) throw new Error('Utilisateur non authentifié')
-
-    const requestBody = {
-      query: query.trim(),
-      vertical_id: verticalId.trim(),
-      match_threshold: options.matchThreshold || 0.5,
-      match_count: options.matchCount || 5
-    }
-
-    const response = await fetch(
-      `${supabaseUrl}/functions/v1/rag-brain`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'apikey': supabaseAnonKey,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      }
-    )
-
-    const data = await response.json()
-    if (!response.ok) throw new Error(data.error || `Erreur HTTP: ${response.status}`)
-    if (!data.success && !data.answer) throw new Error(data.error || 'Erreur inconnue')
-
-    return {
-      data: {
-        answer: data.answer,
-        sources: data.sources || [],
-        processingTime: data.processing_time_ms
-      },
-      error: null
-    }
-  } catch (err) {
-    console.error('Erreur RAG:', err)
-    return { data: null, error: err }
-  }
-}
-
 /**
- * Upload un enregistrement audio pour analyse (Compatible OpenAI)
- * @param {File} file - Le fichier audio avec le bon mime-type
+ * Upload un enregistrement audio pour analyse
+ * @param {File} file - Le fichier audio
  * @param {string} title - Titre de la réunion
  */
 export async function uploadMeetingAudio(file, title = 'Réunion Audio') {
@@ -96,7 +72,7 @@ export async function uploadMeetingAudio(file, title = 'Réunion Audio') {
     if (!session) throw new Error('Non connecté')
 
     const formData = new FormData()
-    formData.append('audio', file) // Envoi sous la clé 'audio' (le backend accepte 'file' aussi)
+    formData.append('audio', file)
     formData.append('title', title)
 
     const response = await fetch(
@@ -106,7 +82,6 @@ export async function uploadMeetingAudio(file, title = 'Réunion Audio') {
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
           'apikey': supabaseAnonKey,
-          // Pas de Content-Type ici, fetch gère le boundary
         },
         body: formData,
       }

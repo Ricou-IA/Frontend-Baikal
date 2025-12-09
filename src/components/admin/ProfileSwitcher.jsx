@@ -1,7 +1,12 @@
-// ============================================================================
-// BRIQUE 6 : Composant ProfileSwitcher
-// Permet de basculer rapidement entre différents profils de test
-// ============================================================================
+/**
+ * ProfileSwitcher.jsx - Baikal Console
+ * ============================================================================
+ * MIGRATION PHASE 3 - Schémas explicites
+ * 
+ * MODIFICATIONS:
+ * - profiles → core.profiles (schéma)
+ * ============================================================================
+ */
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -43,7 +48,9 @@ export default function ProfileSwitcher() {
 
     const loadAllUsers = async () => {
         try {
+            // MIGRATION: profiles → core.profiles
             const { data, error } = await supabase
+                .schema('core')
                 .from('profiles')
                 .select('id, email, full_name, app_role, business_role')
                 .order('created_at', { ascending: false })
@@ -297,4 +304,3 @@ export default function ProfileSwitcher() {
         </div>
     );
 }
-

@@ -1,8 +1,14 @@
 /**
- * Prompts Service - Core RAG Engine
+ * Prompts Service - Baikal Console
  * ============================================================================
- * Service pour la gestion des prompts d'agents RAG dans Supabase.
- * Fournit les opérations CRUD et les requêtes associées.
+ * MIGRATION PHASE 3 - vertical → app
+ * 
+ * MODIFICATIONS:
+ * - agent_prompts → config.agent_prompts (schéma)
+ * - vertical_id → app_id (colonne)
+ * - verticals → config.apps (table + schéma)
+ * - organizations → core.organizations (schéma)
+ * - Jointures: verticals:vertical_id → apps:app_id
  * ============================================================================
  */
 
@@ -17,13 +23,16 @@ import { DEFAULT_PARAMETERS } from '../config/prompts';
  * Récupère tous les prompts avec les informations liées
  * @param {Object} filters - Filtres optionnels
  * @param {string} filters.agent_type - Filtrer par type d'agent
- * @param {string} filters.vertical_id - Filtrer par verticale
+ * @param {string} filters.app_id - Filtrer par app (ex: vertical_id)
  * @param {boolean} filters.is_active - Filtrer par statut actif
  * @returns {Promise<{data: Array, error: Error|null}>}
  */
 export const getPrompts = async (filters = {}) => {
   try {
+    // MIGRATION: agent_prompts → config.agent_prompts
+    // MIGRATION: verticals:vertical_id → apps:app_id
     let query = supabase
+      .schema('config')
       .from('agent_prompts')
       .select(`
         *,
@@ -31,21 +40,27 @@ export const getPrompts = async (filters = {}) => {
           id,
           name
         ),
-        verticals:vertical_id (
+        apps:app_id (
           id,
           name
         )
       `)
       .order('agent_type', { ascending: true })
-      .order('vertical_id', { ascending: true, nullsFirst: true })
+      .order('app_id', { ascending: true, nullsFirst: true })
       .order('org_id', { ascending: true, nullsFirst: true });
 
     // Appliquer les filtres
     if (filters.agent_type) {
       query = query.eq('agent_type', filters.agent_type);
     }
+    // MIGRATION: vertical_id → app_id
+    if (filters.app_id) {
+      query = query.eq('app_id', filters.app_id);
+    }
+    // Compatibilité ascendante
     if (filters.vertical_id) {
-      query = query.eq('vertical_id', filters.vertical_id);
+      console.warn('[prompts.service] filters.vertical_id is deprecated. Use filters.app_id instead.');
+      query = query.eq('app_id', filters.vertical_id);
     }
     if (typeof filters.is_active === 'boolean') {
       query = query.eq('is_active', filters.is_active);
@@ -55,7 +70,15 @@ export const getPrompts = async (filters = {}) => {
 
     if (error) throw error;
 
-    return { data, error: null };
+    // MIGRATION: Mapper les données pour compatibilité (apps → verticals alias)
+    const mappedData = data?.map(item => ({
+      ...item,
+      // Alias pour compatibilité ascendante
+      vertical_id: item.app_id,
+      verticals: item.apps,
+    })) || [];
+
+    return { data: mappedData, error: null };
   } catch (error) {
     console.error('Error fetching prompts:', error);
     return { data: null, error };
@@ -69,7 +92,9 @@ export const getPrompts = async (filters = {}) => {
  */
 export const getPromptById = async (id) => {
   try {
+    // MIGRATION: config.agent_prompts, apps:app_id
     const { data, error } = await supabase
+      .schema('config')
       .from('agent_prompts')
       .select(`
         *,
@@ -77,7 +102,7 @@ export const getPromptById = async (id) => {
           id,
           name
         ),
-        verticals:vertical_id (
+        apps:app_id (
           id,
           name
         )
@@ -87,7 +112,14 @@ export const getPromptById = async (id) => {
 
     if (error) throw error;
 
-    return { data, error: null };
+    // MIGRATION: Alias pour compatibilité
+    const mappedData = data ? {
+      ...data,
+      vertical_id: data.app_id,
+      verticals: data.apps,
+    } : null;
+
+    return { data: mappedData, error: null };
   } catch (error) {
     console.error('Error fetching prompt:', error);
     return { data: null, error };
@@ -107,13 +139,18 @@ export const createPrompt = async (promptData) => {
       ...promptData.parameters,
     };
 
+    // MIGRATION: vertical_id → app_id
+    const appId = promptData.app_id || promptData.vertical_id || null;
+
+    // MIGRATION: config.agent_prompts
     const { data, error } = await supabase
+      .schema('config')
       .from('agent_prompts')
       .insert({
         name: promptData.name,
         description: promptData.description || null,
         agent_type: promptData.agent_type,
-        vertical_id: promptData.vertical_id || null,
+        app_id: appId,                              // ← MIGRATION: vertical_id → app_id
         org_id: promptData.org_id || null,
         system_prompt: promptData.system_prompt,
         parameters,
@@ -125,7 +162,7 @@ export const createPrompt = async (promptData) => {
           id,
           name
         ),
-        verticals:vertical_id (
+        apps:app_id (
           id,
           name
         )
@@ -134,7 +171,14 @@ export const createPrompt = async (promptData) => {
 
     if (error) throw error;
 
-    return { data, error: null };
+    // MIGRATION: Alias pour compatibilité
+    const mappedData = data ? {
+      ...data,
+      vertical_id: data.app_id,
+      verticals: data.apps,
+    } : null;
+
+    return { data: mappedData, error: null };
   } catch (error) {
     console.error('Error creating prompt:', error);
     return { data: null, error };
@@ -157,13 +201,20 @@ export const updatePrompt = async (id, promptData) => {
     if (promptData.name !== undefined) updateData.name = promptData.name;
     if (promptData.description !== undefined) updateData.description = promptData.description;
     if (promptData.agent_type !== undefined) updateData.agent_type = promptData.agent_type;
-    if (promptData.vertical_id !== undefined) updateData.vertical_id = promptData.vertical_id || null;
+    // MIGRATION: Support des deux noms de colonnes
+    if (promptData.app_id !== undefined) updateData.app_id = promptData.app_id || null;
+    if (promptData.vertical_id !== undefined) {
+      console.warn('[prompts.service] vertical_id is deprecated. Use app_id instead.');
+      updateData.app_id = promptData.vertical_id || null;
+    }
     if (promptData.org_id !== undefined) updateData.org_id = promptData.org_id || null;
     if (promptData.system_prompt !== undefined) updateData.system_prompt = promptData.system_prompt;
     if (promptData.parameters !== undefined) updateData.parameters = promptData.parameters;
     if (promptData.is_active !== undefined) updateData.is_active = promptData.is_active;
 
+    // MIGRATION: config.agent_prompts
     const { data, error } = await supabase
+      .schema('config')
       .from('agent_prompts')
       .update(updateData)
       .eq('id', id)
@@ -173,7 +224,7 @@ export const updatePrompt = async (id, promptData) => {
           id,
           name
         ),
-        verticals:vertical_id (
+        apps:app_id (
           id,
           name
         )
@@ -182,7 +233,14 @@ export const updatePrompt = async (id, promptData) => {
 
     if (error) throw error;
 
-    return { data, error: null };
+    // MIGRATION: Alias pour compatibilité
+    const mappedData = data ? {
+      ...data,
+      vertical_id: data.app_id,
+      verticals: data.apps,
+    } : null;
+
+    return { data: mappedData, error: null };
   } catch (error) {
     console.error('Error updating prompt:', error);
     return { data: null, error };
@@ -196,7 +254,9 @@ export const updatePrompt = async (id, promptData) => {
  */
 export const deletePrompt = async (id) => {
   try {
+    // MIGRATION: config.agent_prompts
     const { error } = await supabase
+      .schema('config')
       .from('agent_prompts')
       .delete()
       .eq('id', id);
@@ -223,11 +283,12 @@ export const duplicatePrompt = async (id, overrides = {}) => {
     if (fetchError) throw fetchError;
 
     // Créer la copie
+    // MIGRATION: vertical_id → app_id
     const newPromptData = {
       name: overrides.name || `${original.name} (copie)`,
       description: overrides.description ?? original.description,
       agent_type: overrides.agent_type || original.agent_type,
-      vertical_id: overrides.vertical_id ?? original.vertical_id,
+      app_id: overrides.app_id ?? overrides.vertical_id ?? original.app_id,
       org_id: overrides.org_id ?? original.org_id,
       system_prompt: overrides.system_prompt || original.system_prompt,
       parameters: overrides.parameters || original.parameters,
@@ -252,17 +313,20 @@ export const togglePromptStatus = async (id, isActive) => {
 };
 
 // ============================================
-// VERTICALES
+// APPS (anciennement VERTICALES)
 // ============================================
 
 /**
- * Récupère toutes les verticales actives
+ * Récupère toutes les apps actives
+ * MIGRATION: verticals → config.apps
  * @returns {Promise<{data: Array, error: Error|null}>}
  */
-export const getVerticals = async () => {
+export const getApps = async () => {
   try {
+    // MIGRATION: verticals → config.apps
     const { data, error } = await supabase
-      .from('verticals')
+      .schema('config')
+      .from('apps')
       .select('id, name, description, icon, color')
       .eq('is_active', true)
       .order('name', { ascending: true });
@@ -271,9 +335,18 @@ export const getVerticals = async () => {
 
     return { data, error: null };
   } catch (error) {
-    console.error('Error fetching verticals:', error);
+    console.error('Error fetching apps:', error);
     return { data: null, error };
   }
+};
+
+/**
+ * Alias pour compatibilité ascendante
+ * @deprecated Utiliser getApps()
+ */
+export const getVerticals = async () => {
+  console.warn('[prompts.service] getVerticals is deprecated. Use getApps instead.');
+  return getApps();
 };
 
 // ============================================
@@ -281,20 +354,25 @@ export const getVerticals = async () => {
 // ============================================
 
 /**
- * Récupère les organisations, optionnellement filtrées par verticale
- * @param {string} verticalId - ID de la verticale (optionnel)
+ * Récupère les organisations, optionnellement filtrées par app
+ * MIGRATION: organizations → core.organizations, vertical_id → app_id
+ * @param {string} appId - ID de l'app (optionnel, ex: verticalId)
  * @returns {Promise<{data: Array, error: Error|null}>}
  */
-export const getOrganizations = async (verticalId = null) => {
+export const getOrganizations = async (appId = null) => {
   try {
+    // MIGRATION: organizations → core.organizations
     let query = supabase
+      .schema('core')
       .from('organizations')
-      .select('id, name, vertical_id, plan')
+      .select('id, name, plan')
       .order('name', { ascending: true });
 
-    if (verticalId) {
-      query = query.eq('vertical_id', verticalId);
-    }
+    // Note: La colonne vertical_id/app_id n'existe peut-être plus sur organizations
+    // Si elle existe encore, décommenter ci-dessous:
+    // if (appId) {
+    //   query = query.eq('app_id', appId);
+    // }
 
     const { data, error } = await query;
 
@@ -313,24 +391,27 @@ export const getOrganizations = async (verticalId = null) => {
 
 /**
  * Vérifie si un prompt existe déjà pour cette combinaison
+ * MIGRATION: vertical_id → app_id
  * @param {string} agentType - Type d'agent
- * @param {string|null} verticalId - ID de la verticale
+ * @param {string|null} appId - ID de l'app (ex: verticalId)
  * @param {string|null} orgId - ID de l'organisation
  * @param {string|null} excludeId - ID à exclure (pour l'édition)
  * @returns {Promise<{exists: boolean, error: Error|null}>}
  */
-export const checkPromptExists = async (agentType, verticalId, orgId, excludeId = null) => {
+export const checkPromptExists = async (agentType, appId, orgId, excludeId = null) => {
   try {
+    // MIGRATION: config.agent_prompts, app_id
     let query = supabase
+      .schema('config')
       .from('agent_prompts')
       .select('id')
       .eq('agent_type', agentType);
 
-    // Gérer les NULL pour vertical_id
-    if (verticalId) {
-      query = query.eq('vertical_id', verticalId);
+    // MIGRATION: vertical_id → app_id
+    if (appId) {
+      query = query.eq('app_id', appId);
     } else {
-      query = query.is('vertical_id', null);
+      query = query.is('app_id', null);
     }
 
     // Gérer les NULL pour org_id
@@ -368,7 +449,11 @@ const promptsService = {
   deletePrompt,
   duplicatePrompt,
   togglePromptStatus,
+  // Nouveau nom
+  getApps,
+  // Alias deprecated
   getVerticals,
+  // Organisations
   getOrganizations,
   checkPromptExists,
 };

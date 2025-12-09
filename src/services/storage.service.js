@@ -1,24 +1,55 @@
 /**
- * Storage Service - Core RAG Engine
+ * Storage Service - Baikal Console
  * ============================================================================
- * Service centralisé pour la gestion des fichiers dans Supabase Storage.
+ * MIGRATION PHASE 3 - Base de données Baikal v2
+ * 
+ * MODIFICATIONS APPORTÉES (BUCKETS):
+ * - 'documents' → 'premium-sources' (bucket principal pour documents premium)
+ * - 'baikal-workspace' → 'user-workspace' (workspace utilisateur)
+ * - 'project-recordings' → supprimé (fusionné dans 'user-workspace')
+ * - 'invoices' → conservé tel quel
+ * - 'avatars' → conservé tel quel
  * 
  * @example
- * import { storageService } from '@/services';
+ * import { storageService, STORAGE_BUCKETS } from '@/services';
  * 
- * const { url, error } = await storageService.uploadFile('documents', file);
+ * const { url, error } = await storageService.uploadFile(STORAGE_BUCKETS.PREMIUM_SOURCES, file);
  * ============================================================================
  */
 
 import { supabase } from '../lib/supabaseClient';
 
-// Buckets disponibles
+// ============================================================================
+// BUCKETS DISPONIBLES
+// ============================================================================
+
+/**
+ * Constantes des buckets Storage
+ * 
+ * MIGRATION:
+ * - DOCUMENTS → PREMIUM_SOURCES (renommé)
+ * - Ajout WORKSPACE (nouveau nom)
+ * - RECORDINGS → supprimé (fusionné dans WORKSPACE)
+ */
 export const STORAGE_BUCKETS = {
-  DOCUMENTS: 'documents',
+  // Buckets renommés
+  PREMIUM_SOURCES: 'premium-sources',            // ← CHANGÉ: documents → premium-sources
+  WORKSPACE: 'user-workspace',                   // ← CHANGÉ: baikal-workspace → user-workspace
+  
+  // Buckets conservés
   INVOICES: 'invoices',
-  RECORDINGS: 'project-recordings',
   AVATARS: 'avatars',
+  
+  // Alias pour compatibilité (deprecated)
+  /** @deprecated Utiliser PREMIUM_SOURCES */
+  DOCUMENTS: 'premium-sources',
+  /** @deprecated Utiliser WORKSPACE */
+  RECORDINGS: 'user-workspace',                  // ← CHANGÉ: project-recordings fusionné
 };
+
+// ============================================================================
+// SERVICE STORAGE
+// ============================================================================
 
 /**
  * Service de stockage
@@ -40,10 +71,13 @@ export const storageService = {
       upsert = false,
     } = options;
 
+    // Migration automatique des anciens noms de buckets
+    const actualBucket = this._migrateBucketName(bucket);
+
     try {
       const { data, error } = await supabase
         .storage
-        .from(bucket)
+        .from(actualBucket)
         .upload(path, file, {
           cacheControl,
           upsert,
@@ -64,13 +98,15 @@ export const storageService = {
    * @returns {Promise<{data: Object|null, path: string|null, error: Error|null}>}
    */
   async uploadFileAuto(bucket, file, userId) {
+    const actualBucket = this._migrateBucketName(bucket);
+
     try {
       // Génère un chemin unique
       const timestamp = Date.now();
       const sanitizedFileName = this.sanitizeFileName(file.name);
       const path = `${userId}/${timestamp}_${sanitizedFileName}`;
 
-      const { data, error } = await this.uploadFile(bucket, path, file);
+      const { data, error } = await this.uploadFile(actualBucket, path, file);
 
       if (error) throw error;
       return { data, path, error: null };
@@ -86,9 +122,11 @@ export const storageService = {
    * @returns {string} - URL publique
    */
   getPublicUrl(bucket, path) {
+    const actualBucket = this._migrateBucketName(bucket);
+
     const { data } = supabase
       .storage
-      .from(bucket)
+      .from(actualBucket)
       .getPublicUrl(path);
 
     return data?.publicUrl || null;
@@ -102,10 +140,12 @@ export const storageService = {
    * @returns {Promise<{signedUrl: string|null, error: Error|null}>}
    */
   async getSignedUrl(bucket, path, expiresIn = 3600) {
+    const actualBucket = this._migrateBucketName(bucket);
+
     try {
       const { data, error } = await supabase
         .storage
-        .from(bucket)
+        .from(actualBucket)
         .createSignedUrl(path, expiresIn);
 
       if (error) throw error;
@@ -122,10 +162,12 @@ export const storageService = {
    * @returns {Promise<{success: boolean, error: Error|null}>}
    */
   async deleteFile(bucket, path) {
+    const actualBucket = this._migrateBucketName(bucket);
+
     try {
       const { error } = await supabase
         .storage
-        .from(bucket)
+        .from(actualBucket)
         .remove([path]);
 
       if (error) throw error;
@@ -142,10 +184,12 @@ export const storageService = {
    * @returns {Promise<{success: boolean, error: Error|null}>}
    */
   async deleteFiles(bucket, paths) {
+    const actualBucket = this._migrateBucketName(bucket);
+
     try {
       const { error } = await supabase
         .storage
-        .from(bucket)
+        .from(actualBucket)
         .remove(paths);
 
       if (error) throw error;
@@ -166,11 +210,12 @@ export const storageService = {
    */
   async listFiles(bucket, folder = '', options = {}) {
     const { limit = 100, offset = 0 } = options;
+    const actualBucket = this._migrateBucketName(bucket);
 
     try {
       const { data, error } = await supabase
         .storage
-        .from(bucket)
+        .from(actualBucket)
         .list(folder, {
           limit,
           offset,
@@ -192,10 +237,12 @@ export const storageService = {
    * @returns {Promise<{success: boolean, error: Error|null}>}
    */
   async moveFile(bucket, fromPath, toPath) {
+    const actualBucket = this._migrateBucketName(bucket);
+
     try {
       const { error } = await supabase
         .storage
-        .from(bucket)
+        .from(actualBucket)
         .move(fromPath, toPath);
 
       if (error) throw error;
@@ -213,10 +260,12 @@ export const storageService = {
    * @returns {Promise<{success: boolean, error: Error|null}>}
    */
   async copyFile(bucket, fromPath, toPath) {
+    const actualBucket = this._migrateBucketName(bucket);
+
     try {
       const { error } = await supabase
         .storage
-        .from(bucket)
+        .from(actualBucket)
         .copy(fromPath, toPath);
 
       if (error) throw error;
@@ -233,10 +282,12 @@ export const storageService = {
    * @returns {Promise<{data: Blob|null, error: Error|null}>}
    */
   async downloadFile(bucket, path) {
+    const actualBucket = this._migrateBucketName(bucket);
+
     try {
       const { data, error } = await supabase
         .storage
-        .from(bucket)
+        .from(actualBucket)
         .download(path);
 
       if (error) throw error;
@@ -266,13 +317,15 @@ export const storageService = {
    * @returns {Promise<boolean>}
    */
   async fileExists(bucket, path) {
+    const actualBucket = this._migrateBucketName(bucket);
+
     try {
       const folder = path.substring(0, path.lastIndexOf('/'));
       const fileName = path.substring(path.lastIndexOf('/') + 1);
 
       const { data, error } = await supabase
         .storage
-        .from(bucket)
+        .from(actualBucket)
         .list(folder);
 
       if (error) return false;
@@ -315,6 +368,31 @@ export const storageService = {
     }
 
     return { valid: true, error: null };
+  },
+
+  // ==========================================================================
+  // HELPERS PRIVÉS
+  // ==========================================================================
+
+  /**
+   * Migre automatiquement les anciens noms de buckets vers les nouveaux
+   * @private
+   * @param {string} bucket - Nom du bucket (ancien ou nouveau)
+   * @returns {string} - Nom du bucket actuel
+   */
+  _migrateBucketName(bucket) {
+    const migrations = {
+      'documents': 'premium-sources',
+      'baikal-workspace': 'user-workspace',
+      'project-recordings': 'user-workspace',    // Fusionné dans user-workspace
+    };
+
+    if (migrations[bucket]) {
+      console.warn(`[StorageService] Bucket "${bucket}" migré vers "${migrations[bucket]}". Mettez à jour votre code.`);
+      return migrations[bucket];
+    }
+
+    return bucket;
   },
 };
 
