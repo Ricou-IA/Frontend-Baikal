@@ -97,7 +97,7 @@ export default function AudioRecorder({ onRecordingComplete }) {
                                 transcript_path: meeting.transcript_path,
                                 user_id: meeting.user_id
                             },
-                            target_verticals: ['default']
+                            target_apps: ['default']  // MIGRATION: target_verticals → target_apps
                         })
                     });
 
