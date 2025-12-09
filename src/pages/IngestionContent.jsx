@@ -10,7 +10,7 @@
  * ============================================================================
  */
 
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { documentsService } from '../services/documents.service';
 import { referentielsService } from '../services/referentiels.service';
@@ -25,6 +25,10 @@ import {
     formatFileSize,
     getPermissions,
 } from '../config/rag-layers.config';
+import {
+    INGESTION_SOURCES,
+    DARK_THEME_COLORS,
+} from '../config/ingestion.config';
 import {
     Upload,
     FileText,
@@ -444,13 +448,20 @@ function LegifranceInterface({ selectedVertical, selectedLayer, verticals }) {
                     referentielsService.getLegifranceCodes(),
                 ]);
 
-                if (codesResult.error) {
-                    setError('Erreur lors du chargement des codes Légifrance');
+                // Vérifier les erreurs pour les deux appels
+                if (domainsResult.error) {
+                    console.error('[LegifranceInterface] Error loading domains:', domainsResult.error);
+                    setError(`Erreur lors du chargement des domaines Légifrance: ${domainsResult.error.message || domainsResult.error}`);
+                } else if (codesResult.error) {
+                    console.error('[LegifranceInterface] Error loading codes:', codesResult.error);
+                    setError(`Erreur lors du chargement des codes Légifrance: ${codesResult.error.message || codesResult.error}`);
+                } else {
+                    // Tout s'est bien passé
+                    setDomains(domainsResult.data || []);
+                    setCodes(codesResult.data || []);
                 }
-
-                setDomains(domainsResult.data || []);
-                setCodes(codesResult.data || []);
             } catch (err) {
+                console.error('[LegifranceInterface] Unexpected error:', err);
                 setError(err.message || 'Erreur de chargement');
             } finally {
                 setLoading(false);
@@ -503,9 +514,10 @@ function LegifranceInterface({ selectedVertical, selectedLayer, verticals }) {
             });
             setSelectedCodes([]);
         } catch (err) {
+            console.error('[LegifranceInterface] Sync error:', err);
             setSyncResult({
                 success: false,
-                message: err.message || 'Erreur lors de la synchronisation'
+                message: err.message || err.error?.message || 'Erreur lors de la synchronisation'
             });
         } finally {
             setSyncing(false);
@@ -526,9 +538,41 @@ function LegifranceInterface({ selectedVertical, selectedLayer, verticals }) {
     if (error) {
         return (
             <div className="p-6 bg-red-900/20 border border-red-500/50 rounded-md">
-                <div className="flex items-center gap-3 text-red-300">
-                    <AlertCircle className="w-5 h-5" />
-                    <p className="font-medium font-mono">{error}</p>
+                <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                        <p className="font-medium font-mono text-red-300 mb-2">{error}</p>
+                        <button
+                            onClick={() => {
+                                setError(null);
+                                setLoading(true);
+                                async function retry() {
+                                    try {
+                                        const [domainsResult, codesResult] = await Promise.all([
+                                            referentielsService.getLegifranceDomains(),
+                                            referentielsService.getLegifranceCodes(),
+                                        ]);
+                                        if (domainsResult.error) {
+                                            setError(`Erreur lors du chargement des domaines Légifrance: ${domainsResult.error.message || domainsResult.error}`);
+                                        } else if (codesResult.error) {
+                                            setError(`Erreur lors du chargement des codes Légifrance: ${codesResult.error.message || codesResult.error}`);
+                                        } else {
+                                            setDomains(domainsResult.data || []);
+                                            setCodes(codesResult.data || []);
+                                        }
+                                    } catch (err) {
+                                        setError(err.message || 'Erreur de chargement');
+                                    } finally {
+                                        setLoading(false);
+                                    }
+                                }
+                                retry();
+                            }}
+                            className="px-4 py-2 bg-red-900/30 border border-red-500/50 rounded-md text-red-300 hover:bg-red-900/40 transition-colors font-mono text-sm"
+                        >
+                            RÉESSAYER
+                        </button>
+                    </div>
                 </div>
             </div>
         );
@@ -559,9 +603,16 @@ function LegifranceInterface({ selectedVertical, selectedLayer, verticals }) {
                     ) : (
                         <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
                     )}
-                    <p className={syncResult.success ? 'text-green-300 font-mono' : 'text-red-300 font-mono'}>
-                        {syncResult.message}
-                    </p>
+                    <div className="flex-1">
+                        <p className={syncResult.success ? 'text-green-300 font-mono' : 'text-red-300 font-mono'}>
+                            {syncResult.message}
+                        </p>
+                        {!syncResult.success && syncResult.message?.includes('Edge Function') && (
+                            <p className="text-red-200 text-sm font-sans mt-2">
+                                Contactez l'administrateur pour vérifier le déploiement de l'Edge Function "sync-legifrance".
+                            </p>
+                        )}
+                    </div>
                 </div>
             )}
 
@@ -729,15 +780,20 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
     // Permissions
     const userRole = profile?.app_role || 'member';
     const permissions = getPermissions(userRole);
-    const availableLayers = [];
-    if (permissions.canUploadVertical) availableLayers.push('vertical');
-    if (permissions.canUploadOrg) availableLayers.push('org');
+    const availableLayers = useMemo(() => {
+        const layers = [];
+        if (permissions.canUploadVertical) layers.push('vertical');
+        if (permissions.canUploadOrg) layers.push('org');
+        return layers;
+    }, [permissions.canUploadVertical, permissions.canUploadOrg]);
 
     // Filtrer les sources disponibles
-    const availableSources = INGESTION_SOURCES.filter(source => {
-        if (source.superAdminOnly && !isSuperAdmin) return false;
-        return true;
-    });
+    const availableSources = useMemo(() => {
+        return INGESTION_SOURCES.filter(source => {
+            if (source.superAdminOnly && !isSuperAdmin) return false;
+            return true;
+        });
+    }, [isSuperAdmin]);
 
     // Charger les référentiels
     useEffect(() => {
@@ -767,7 +823,7 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
         if (availableLayers.length > 0 && !availableLayers.includes(selectedLayer)) {
             setSelectedLayer(availableLayers[0]);
         }
-    }, [availableLayers]);
+    }, [availableLayers, selectedLayer]);
 
     // Handlers drag & drop
     const handleDragEnter = (e) => { e.preventDefault(); setIsDragging(true); };

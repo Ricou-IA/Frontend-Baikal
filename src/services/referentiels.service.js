@@ -153,7 +153,7 @@ export async function getLegifranceCodes(filters = {}) {
         let query = supabase
             .schema('legifrance')
             .from('codes')
-            .select('id, name, short_name, code, description, domain_id, is_enabled, last_sync_at, total_articles, indexed_articles, default_verticals')
+            .select('id, name, short_name, description, domain_id, is_enabled, last_sync_at, total_articles, indexed_articles, default_verticals')
             .order('name', { ascending: true });
 
         if (filters.domainId) {

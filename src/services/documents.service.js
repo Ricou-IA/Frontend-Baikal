@@ -619,6 +619,8 @@ export const documentsService = {
 
   /**
    * Synchronise des codes Légifrance vers la base RAG
+   * Utilise l'Edge Function "trigger-legifrance-sync" qui appelle n8n
+   * 
    * @param {Object} params - Paramètres de synchronisation
    * @param {string[]} params.codeIds - IDs des codes à synchroniser
    * @param {string} params.verticalId - ID de la verticale cible
@@ -629,13 +631,86 @@ export const documentsService = {
     const { codeIds, verticalId, layer } = params;
 
     try {
-      // Appeler la Edge Function de synchronisation Légifrance
-      const { data, error } = await supabase.functions.invoke('sync-legifrance', {
+      // Si plusieurs codes, on les traite séquentiellement
+      // L'Edge Function attend un code_id singulier
+      const results = [];
+      const errors = [];
+
+      for (const codeId of codeIds) {
+        try {
+          // ✅ CORRIGÉ : Appel à "trigger-legifrance-sync" au lieu de "sync-legifrance"
+          const { data, error } = await supabase.functions.invoke('trigger-legifrance-sync', {
+            body: {
+              code_id: codeId,           // L'Edge Function attend code_id (singulier)
+              sync_type: 'full',
+              target_verticals: verticalId ? [verticalId] : null,
+              layer: layer,
+            },
+          });
+
+          if (error) {
+            console.warn(`[documentsService] Sync failed for code ${codeId}:`, error);
+            errors.push({ codeId, error: error.message });
+          } else {
+            results.push({ codeId, success: true, ...data });
+          }
+        } catch (err) {
+          errors.push({ codeId, error: err.message });
+        }
+      }
+
+      // Résumé du résultat
+      const allSuccess = errors.length === 0;
+      const partialSuccess = results.length > 0 && errors.length > 0;
+
+      return { 
+        data: {
+          success: allSuccess,
+          partialSuccess,
+          syncedCodes: results.length,
+          failedCodes: errors.length,
+          results,
+          errors: errors.length > 0 ? errors : undefined,
+        }, 
+        error: allSuccess ? null : new Error(`${errors.length} code(s) failed to sync`)
+      };
+
+    } catch (error) {
+      console.error('[documentsService] syncLegifranceCodes error:', error);
+      
+      // Améliorer le message d'erreur
+      let errorMessage = error.message || 'Erreur lors de la synchronisation';
+      
+      if (error.message?.includes('Failed to send a request')) {
+        errorMessage = 'Impossible de contacter l\'Edge Function. Vérifiez que "trigger-legifrance-sync" est déployée.';
+      } else if (error.message?.includes('Function not found')) {
+        errorMessage = 'L\'Edge Function "trigger-legifrance-sync" n\'est pas trouvée. Vérifiez le déploiement.';
+      } else if (error.message?.includes('permission') || error.message?.includes('unauthorized')) {
+        errorMessage = 'Vous n\'avez pas les permissions nécessaires (super_admin requis).';
+      } else if (error.message?.includes('403')) {
+        errorMessage = 'Accès refusé. Seuls les super_admin peuvent synchroniser les codes Légifrance.';
+      }
+      
+      return { data: null, error: new Error(errorMessage) };
+    }
+  },
+
+  /**
+   * Synchronise un seul code Légifrance (méthode simplifiée)
+   * @param {string} codeId - ID du code Légifrance (ex: "LEGITEXT000006074075")
+   * @param {Object} options - Options de synchronisation
+   * @returns {Promise<{data: Object, error: Error|null}>}
+   */
+  async syncSingleLegifranceCode(codeId, options = {}) {
+    const { verticalId, layer = 'vertical', syncType = 'full' } = options;
+
+    try {
+      const { data, error } = await supabase.functions.invoke('trigger-legifrance-sync', {
         body: {
-          codeIds,
-          verticalId,
+          code_id: codeId,
+          sync_type: syncType,
+          target_verticals: verticalId ? [verticalId] : null,
           layer,
-          action: 'sync',
         },
       });
 
@@ -644,14 +719,13 @@ export const documentsService = {
       return { 
         data: {
           success: true,
-          syncedCodes: codeIds.length,
-          jobId: data?.jobId,
+          codeId,
           ...data,
         }, 
         error: null 
       };
     } catch (error) {
-      console.error('[documentsService] syncLegifranceCodes error:', error);
+      console.error('[documentsService] syncSingleLegifranceCode error:', error);
       return { data: null, error };
     }
   },

@@ -506,7 +506,6 @@ function LegifranceInterface({ selectedVertical, selectedLayer, verticals }) {
         const matchesSearch = !searchTerm || 
             code.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             code.short_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            code.code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             code.description?.toLowerCase().includes(searchTerm.toLowerCase());
         
         // Filtre par domaine
