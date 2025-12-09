@@ -37,11 +37,17 @@ describe('useAsync()', () => {
       expect(result.current.isIdle).toBe(true)
     })
 
-    it('devrait être en loading si immediate est true', () => {
+    it('devrait être en loading si immediate est true', async () => {
       const asyncFn = vi.fn().mockResolvedValue('data')
       const { result } = renderHook(() => useAsync(asyncFn, { immediate: true }))
 
+      // Vérifier que loading est true initialement
       expect(result.current.loading).toBe(true)
+
+      // Attendre que l'exécution se termine pour éviter les warnings act()
+      await act(async () => {
+        await vi.runAllTimersAsync()
+      })
     })
   })
 

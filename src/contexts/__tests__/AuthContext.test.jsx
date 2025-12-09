@@ -366,14 +366,20 @@ describe('AuthContext', () => {
         await authContext.signIn('test@test.com', 'wrong')
       })
 
-      expect(authContext.error).toBe('Test error')
+      // Attendre que l'erreur soit mise à jour dans le state
+      await waitFor(() => {
+        expect(authContext.error).toBe('Test error')
+      })
 
       // Effacer l'erreur
-      act(() => {
+      await act(async () => {
         authContext.clearError()
       })
 
-      expect(authContext.error).toBeNull()
+      // Attendre que l'erreur soit effacée
+      await waitFor(() => {
+        expect(authContext.error).toBeNull()
+      })
     })
   })
 
