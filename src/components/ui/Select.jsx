@@ -26,11 +26,11 @@ import { cn } from '../../utils/cn';
  */
 const baseSelectStyles = `
   w-full px-4 py-2.5 pr-10
-  bg-white border rounded-lg
-  text-slate-800
+  bg-black border rounded-md
+  text-white
   transition-colors duration-200
-  focus:outline-none focus:ring-2 focus:ring-offset-0
-  disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed
+  focus:outline-none focus:ring-2 focus:ring-offset-0 focus:ring-offset-baikal-bg
+  disabled:bg-baikal-bg disabled:text-baikal-text disabled:cursor-not-allowed
   appearance-none cursor-pointer
 `;
 
@@ -39,9 +39,9 @@ const baseSelectStyles = `
  */
 const selectStates = {
   default: `
-    border-slate-300
-    hover:border-slate-400
-    focus:border-indigo-500 focus:ring-indigo-500/20
+    border-baikal-border
+    hover:border-baikal-cyan/50
+    focus:border-baikal-cyan focus:ring-baikal-cyan/20
   `,
   error: `
     border-red-500
@@ -108,10 +108,10 @@ const Select = forwardRef(({
       {label && (
         <label
           htmlFor={selectId}
-          className="block text-sm font-medium text-slate-700 mb-1.5"
+          className="block text-xs font-mono text-baikal-text mb-1.5 uppercase"
         >
           {label}
-          {required && <span className="text-red-500 ml-1">*</span>}
+          {required && <span className="text-red-400 ml-1">*</span>}
         </label>
       )}
 
@@ -127,7 +127,7 @@ const Select = forwardRef(({
             baseSelectStyles,
             selectStates[state],
             sizes[size],
-            !value && 'text-slate-400',
+            !value && 'text-baikal-text',
             className
           )}
           aria-invalid={error ? 'true' : 'false'}
@@ -155,7 +155,7 @@ const Select = forwardRef(({
 
         {/* Icône chevron */}
         <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-          <ChevronDown className="w-5 h-5 text-slate-400" />
+          <ChevronDown className="w-5 h-5 text-baikal-text" />
         </div>
       </div>
 
@@ -163,7 +163,7 @@ const Select = forwardRef(({
       {error && (
         <p
           id={`${selectId}-error`}
-          className="mt-1.5 text-sm text-red-600"
+          className="mt-1.5 text-sm text-red-400 font-mono"
           role="alert"
         >
           {error}
@@ -174,7 +174,7 @@ const Select = forwardRef(({
       {helperText && !error && (
         <p
           id={`${selectId}-helper`}
-          className="mt-1.5 text-sm text-slate-500"
+          className="mt-1.5 text-sm text-baikal-text font-sans"
         >
           {helperText}
         </p>

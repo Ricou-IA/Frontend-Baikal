@@ -1,509 +1,430 @@
-import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react'
-import { supabase } from '../lib/supabaseClient'
-import * as supabaseHelpers from '../lib/supabaseClient'
+/**
+ * AuthContext.jsx - Baikal Console
+ * ============================================================================
+ * Contexte d'authentification centralisé.
+ * Gère : session, profil, organisation, et impersonation (via hook externe).
+ * 
+ * @example
+ * const { user, profile, signIn, signOut, isSuperAdmin } = useAuth();
+ * ============================================================================
+ */
 
-const AuthContext = createContext({})
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
+import { supabase } from '../lib/supabaseClient';
+import { useImpersonation } from '../hooks/useImpersonation';
 
+// ============================================================================
+// CONTEXT
+// ============================================================================
+
+const AuthContext = createContext({});
+
+/**
+ * Hook pour utiliser le contexte d'authentification
+ * @returns {Object} - Contexte d'authentification
+ */
 export const useAuth = () => {
-  const context = useContext(AuthContext)
+  const context = useContext(AuthContext);
   if (!context) {
-    throw new Error('useAuth doit être utilisé dans un AuthProvider')
+    throw new Error('useAuth doit être utilisé dans un AuthProvider');
   }
-  return context
-}
+  return context;
+};
+
+// ============================================================================
+// PROVIDER
+// ============================================================================
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null)
-  const [session, setSession] = useState(null)
-  const [profile, setProfile] = useState(null)
-  const [organization, setOrganization] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  // ========================================================================
+  // ÉTATS PRINCIPAUX
+  // ========================================================================
   
-  // État pour l'impersonation (super_admin uniquement)
-  // Restaurer depuis localStorage si présent
-  const [impersonatedProfile, setImpersonatedProfile] = useState(() => {
-    try {
-      const saved = localStorage.getItem('impersonated_profile')
-      return saved ? JSON.parse(saved) : null
-    } catch {
-      return null
-    }
-  })
-  const [impersonatedOrganization, setImpersonatedOrganization] = useState(() => {
-    try {
-      const saved = localStorage.getItem('impersonated_organization')
-      return saved ? JSON.parse(saved) : null
-    } catch {
-      return null
-    }
-  })
-  const [impersonatedUser, setImpersonatedUser] = useState(() => {
-    try {
-      const saved = localStorage.getItem('impersonated_user')
-      return saved ? JSON.parse(saved) : null
-    } catch {
-      return null
-    }
-  })
+  const [user, setUser] = useState(null);
+  const [session, setSession] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [organization, setOrganization] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Refs pour éviter les appels multiples
+  const profileLoadedRef = useRef(false);
+  const loadingProfileRef = useRef(false);
+  const signingUpRef = useRef(false);
+
+  // ========================================================================
+  // HOOK D'IMPERSONATION (externe)
+  // ========================================================================
   
-  const profileLoadedRef = useRef(false)
-  const loadingProfileRef = useRef(false)
-  const signingUpRef = useRef(false)
+  const {
+    isImpersonating,
+    impersonatedProfile,
+    impersonatedOrganization,
+    impersonatedUser,
+    impersonateUser,
+    stopImpersonating,
+  } = useImpersonation(profile);
+
+  // ========================================================================
+  // VALEURS EFFECTIVES (impersonation ou réelles)
+  // ========================================================================
+  
+  const effectiveProfile = impersonatedProfile || profile;
+  const effectiveOrganization = impersonatedOrganization || organization;
+  const effectiveUser = impersonatedUser || user;
+
+  // ========================================================================
+  // CHARGEMENT DU PROFIL
+  // ========================================================================
+
   const loadUserProfile = useCallback(async (userId) => {
     if (loadingProfileRef.current) {
-      return
+      return;
     }
-    
-    loadingProfileRef.current = true
-    
+
+    loadingProfileRef.current = true;
+
     try {
+      // Charger le profil
       const { data: profileData, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single()
+        .single();
 
       if (profileError) {
+        // PGRST116 = No rows found (profil non créé)
         if (profileError.code === 'PGRST116') {
-          setProfile(null)
-          setOrganization(null)
-          profileLoadedRef.current = true
-          return
+          setProfile(null);
+          setOrganization(null);
+          profileLoadedRef.current = true;
+          return;
         }
-        throw profileError
+        throw profileError;
       }
 
-      setProfile(profileData)
+      setProfile(profileData);
 
+      // Charger l'organisation si présente
       if (profileData?.org_id) {
         const { data: orgData, error: orgError } = await supabase
           .from('organizations')
           .select('*')
           .eq('id', profileData.org_id)
-          .single()
+          .single();
 
         if (!orgError) {
-          setOrganization(orgData)
+          setOrganization(orgData);
         }
+      } else {
+        setOrganization(null);
       }
-      
-      profileLoadedRef.current = true
+
+      profileLoadedRef.current = true;
     } catch (err) {
-      setError(err.message)
-      profileLoadedRef.current = true
+      setError(err.message);
+      profileLoadedRef.current = true;
     } finally {
-      loadingProfileRef.current = false
+      loadingProfileRef.current = false;
     }
-  }, [])
+  }, []);
 
-  // Restaurer l'impersonation depuis localStorage après le chargement du profil
-  useEffect(() => {
-    if (profile && profile.app_role === 'super_admin' && !impersonatedProfile) {
-      try {
-        const savedProfile = localStorage.getItem('impersonated_profile')
-        const savedOrg = localStorage.getItem('impersonated_organization')
-        const savedUser = localStorage.getItem('impersonated_user')
-        
-        if (savedProfile) {
-          const parsedProfile = JSON.parse(savedProfile)
-          const parsedOrg = savedOrg ? JSON.parse(savedOrg) : null
-          const parsedUser = savedUser ? JSON.parse(savedUser) : null
-          
-          setImpersonatedProfile(parsedProfile)
-          setImpersonatedOrganization(parsedOrg)
-          setImpersonatedUser(parsedUser)
-        }
-      } catch (err) {
-        console.error('Erreur lors de la restauration de l\'impersonation:', err)
-        // Nettoyer localStorage en cas d'erreur
-        localStorage.removeItem('impersonated_profile')
-        localStorage.removeItem('impersonated_organization')
-        localStorage.removeItem('impersonated_user')
-      }
-    } else if (profile && profile.app_role !== 'super_admin' && impersonatedProfile) {
-      // Si on n'est plus super_admin, nettoyer l'impersonation
-      localStorage.removeItem('impersonated_profile')
-      localStorage.removeItem('impersonated_organization')
-      localStorage.removeItem('impersonated_user')
-      setImpersonatedProfile(null)
-      setImpersonatedOrganization(null)
-      setImpersonatedUser(null)
+  /**
+   * Rafraîchit le profil depuis la base de données
+   */
+  const refreshProfile = useCallback(async () => {
+    if (user?.id) {
+      profileLoadedRef.current = false;
+      loadingProfileRef.current = false;
+      await loadUserProfile(user.id);
     }
-  }, [profile, impersonatedProfile])
+  }, [user?.id, loadUserProfile]);
+
+  // ========================================================================
+  // INITIALISATION DE LA SESSION
+  // ========================================================================
 
   useEffect(() => {
-    let mounted = true
-    
+    let mounted = true;
+
     const initSession = async () => {
       try {
-        const { data: { session: initialSession } } = await supabase.auth.getSession()
-        
-        if (!mounted) return
-        
-        setSession(initialSession)
-        setUser(initialSession?.user ?? null)
+        const { data: { session: initialSession } } = await supabase.auth.getSession();
+
+        if (!mounted) return;
+
+        setSession(initialSession);
+        setUser(initialSession?.user ?? null);
 
         if (initialSession?.user) {
-          await loadUserProfile(initialSession.user.id)
+          await loadUserProfile(initialSession.user.id);
         }
       } catch (err) {
-        if (mounted) setError(err.message)
+        if (mounted) setError(err.message);
       } finally {
-        if (mounted) setLoading(false)
+        if (mounted) setLoading(false);
       }
-    }
+    };
 
-    initSession()
+    initSession();
 
+    // Écouter les changements d'état d'authentification
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, newSession) => {
-        if (!mounted) return
-        
-        setSession(newSession)
-        setUser(newSession?.user ?? null)
+        if (!mounted) return;
+
+        setSession(newSession);
+        setUser(newSession?.user ?? null);
 
         if (event === 'SIGNED_IN' && newSession?.user) {
-          profileLoadedRef.current = false
-          loadingProfileRef.current = false
-          
-          // Charger le profil immédiatement
+          profileLoadedRef.current = false;
+          loadingProfileRef.current = false;
+
           if (mounted) {
-            loadUserProfile(newSession.user.id).then(() => {
-              if (mounted) {
-                setLoading(false)
-              }
-            }).catch(() => {
-              if (mounted) {
-                setLoading(false)
-              }
-            })
+            loadUserProfile(newSession.user.id)
+              .then(() => {
+                if (mounted) setLoading(false);
+              })
+              .catch(() => {
+                if (mounted) setLoading(false);
+              });
           }
         } else if (event === 'SIGNED_OUT') {
-          setProfile(null)
-          setOrganization(null)
-          profileLoadedRef.current = false
-          loadingProfileRef.current = false
-          setLoading(false)
+          setProfile(null);
+          setOrganization(null);
+          profileLoadedRef.current = false;
+          loadingProfileRef.current = false;
+          setLoading(false);
+          
+          // Arrêter l'impersonation si active
+          if (isImpersonating) {
+            stopImpersonating();
+          }
         } else {
-          setLoading(false)
+          setLoading(false);
         }
       }
-    )
+    );
 
     return () => {
-      mounted = false
-      subscription?.unsubscribe()
-    }
-  }, [loadUserProfile])
+      mounted = false;
+      subscription?.unsubscribe();
+    };
+  }, [loadUserProfile, isImpersonating, stopImpersonating]);
 
+  // ========================================================================
+  // MÉTHODES D'AUTHENTIFICATION
+  // ========================================================================
+
+  /**
+   * Inscription avec email/password
+   */
   const signUp = async (email, password, metadata = {}) => {
     if (signingUpRef.current) {
-      return { data: null, error: { message: 'Une inscription est déjà en cours.' } }
+      return { data: null, error: { message: 'Une inscription est déjà en cours.' } };
     }
 
-    signingUpRef.current = true
-    setLoading(true)
+    signingUpRef.current = true;
+    setLoading(true);
+    setError(null);
 
     try {
-      if (supabaseHelpers.checkEmailExists && typeof supabaseHelpers.checkEmailExists === 'function') {
-        try {
-          const emailExists = await supabaseHelpers.checkEmailExists(email)
-          
-          if (emailExists === true) {
-            const errorMessage = 'Un compte existe déjà avec cet email. Veuillez vous connecter ou utiliser la réinitialisation de mot de passe.'
-            setError(errorMessage)
-            signingUpRef.current = false
-            setLoading(false)
-            
-            return {
-              data: null,
-              error: {
-                message: errorMessage,
-                code: 'EMAIL_EXISTS'
-              }
-            }
-          }
-        } catch (checkErr) {
-          // Continue l'inscription même si la vérification échoue
-        }
-      }
-
-      const { data, error } = await supabase.auth.signUp({
+      const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
         options: {
           data: metadata,
         },
-      })
+      });
 
-      if (error) {
-        const errorMessage = error.message || ''
-        const errorStatus = error.status || error.code || ''
-        const errorLower = errorMessage.toLowerCase()
-        
-        const isEmailExists = 
-          errorStatus === 422 || 
-          errorStatus === 400 ||
-          errorLower.includes('already') ||
-          errorLower.includes('exists') ||
-          errorLower.includes('registered') ||
-          errorLower.includes('duplicate') ||
-          errorMessage === 'User already registered' ||
-          errorMessage === 'Email already registered' ||
-          errorMessage === 'A user with this email already exists'
+      if (signUpError) throw signUpError;
 
-        if (isEmailExists) {
-          return { 
-            data: null, 
-            error: { 
-              message: 'Un compte existe déjà avec cet email. Veuillez vous connecter ou utiliser la réinitialisation de mot de passe.',
-              code: 'EMAIL_EXISTS',
-              originalError: error
-            } 
-          }
-        }
-        
-        return { data: null, error: error }
-      }
-
-      signingUpRef.current = false
-      return { data, error: null }
+      return { data, error: null };
     } catch (err) {
-      const errorMessage = err?.message || 'Une erreur inattendue s\'est produite.'
-      setError(errorMessage)
-      signingUpRef.current = false
-      return { 
-        data: null, 
-        error: { 
-          message: errorMessage,
-          code: 'UNKNOWN_ERROR'
-        } 
-      }
+      setError(err.message);
+      return { data: null, error: err };
     } finally {
-      setLoading(false)
-      signingUpRef.current = false
+      signingUpRef.current = false;
+      setLoading(false);
     }
-  }
+  };
 
+  /**
+   * Connexion avec email/password
+   */
   const signIn = async (email, password) => {
-    setLoading(true)
-    setError(null)
+    setLoading(true);
+    setError(null);
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
-      })
+      });
 
-      if (error) throw error
+      if (signInError) throw signInError;
 
-      return { data, error: null }
+      return { data, error: null };
     } catch (err) {
-      setError(err.message)
-      return { data: null, error: err }
+      setError(err.message);
+      return { data: null, error: err };
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
+  /**
+   * Connexion avec Google OAuth
+   */
   const signInWithGoogle = async () => {
-    setLoading(true)
-    setError(null)
+    setLoading(true);
+    setError(null);
 
     try {
-      const { data, error } = await supabase.auth.signInWithOAuth({
+      const { data, error: googleError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/dashboard`,
+          redirectTo: `${window.location.origin}/admin`,
         },
-      })
+      });
 
-      if (error) throw error
+      if (googleError) throw googleError;
 
-      return { data, error: null }
+      return { data, error: null };
     } catch (err) {
-      setError(err.message)
-      return { data: null, error: err }
+      setError(err.message);
+      return { data: null, error: err };
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
+  /**
+   * Déconnexion
+   */
   const signOut = async () => {
-    setLoading(true)
-    setError(null)
+    setLoading(true);
+    setError(null);
 
     try {
-      const { error } = await supabase.auth.signOut()
-      if (error) throw error
+      // Arrêter l'impersonation avant déconnexion
+      if (isImpersonating) {
+        stopImpersonating();
+      }
 
-      setUser(null)
-      setSession(null)
-      setProfile(null)
-      setOrganization(null)
-      profileLoadedRef.current = false
+      const { error: signOutError } = await supabase.auth.signOut();
+      if (signOutError) throw signOutError;
 
-      return { error: null }
+      // Reset des états
+      setUser(null);
+      setSession(null);
+      setProfile(null);
+      setOrganization(null);
+
+      return { error: null };
     } catch (err) {
-      setError(err.message)
-      return { error: err }
+      setError(err.message);
+      return { error: err };
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
-  const refreshProfile = async () => {
-    if (user?.id) {
-      profileLoadedRef.current = false
-      loadingProfileRef.current = false
-      await loadUserProfile(user.id)
-    }
-  }
-
+  /**
+   * Réinitialisation du mot de passe
+   */
   const resetPassword = async (email) => {
-    setLoading(true)
-    setError(null)
+    setLoading(true);
+    setError(null);
 
     try {
-      const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+      const { data, error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/reset-password`,
-      })
+      });
 
-      if (error) throw error
+      if (resetError) throw resetError;
 
-      return { data, error: null }
+      return { data, error: null };
     } catch (err) {
-      setError(err.message)
-      return { data: null, error: err }
+      setError(err.message);
+      return { data: null, error: err };
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
+  /**
+   * Mise à jour du mot de passe
+   */
   const updatePassword = async (newPassword) => {
-    setLoading(true)
-    setError(null)
+    setLoading(true);
+    setError(null);
 
     try {
-      const { data, error } = await supabase.auth.updateUser({
+      const { data, error: updateError } = await supabase.auth.updateUser({
         password: newPassword,
-      })
+      });
 
-      if (error) throw error
+      if (updateError) throw updateError;
 
-      return { data, error: null }
+      return { data, error: null };
     } catch (err) {
-      setError(err.message)
-      return { data: null, error: err }
+      setError(err.message);
+      return { data: null, error: err };
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
+  /**
+   * Effacer l'erreur
+   */
   const clearError = () => {
-    setError(null)
-  }
+    setError(null);
+  };
 
-  // Fonction pour emprunter l'identité d'un utilisateur (super_admin uniquement)
-  const impersonateUser = useCallback(async (targetUserId) => {
-    if (!profile || profile.app_role !== 'super_admin') {
-      throw new Error('Seul le super_admin peut emprunter l\'identité d\'un utilisateur')
-    }
+  // ========================================================================
+  // VALEURS DÉRIVÉES
+  // ========================================================================
 
-    try {
-      // Charger le profil cible
-      const { data: targetProfile, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', targetUserId)
-        .single()
+  // L'onboarding est bypassé si on est en impersonation
+  const isOnboarded = isImpersonating ? true : !!effectiveProfile?.business_role;
 
-      if (profileError) throw profileError
+  // isSuperAdmin est TOUJOURS basé sur le profil RÉEL (pas impersoné)
+  const isSuperAdmin = profile?.app_role === 'super_admin';
 
-      // Charger l'organisation si présente
-      let targetOrg = null
-      if (targetProfile.org_id) {
-        const { data: orgData, error: orgError } = await supabase
-          .from('organizations')
-          .select('*')
-          .eq('id', targetProfile.org_id)
-          .single()
+  // isOrgAdmin est basé sur le profil effectif
+  const isOrgAdmin = effectiveProfile?.app_role === 'org_admin' || effectiveProfile?.app_role === 'super_admin';
 
-        if (!orgError) {
-          targetOrg = orgData
-        }
-      }
-
-      // Créer un objet user simulé à partir du profil
-      const simulatedUser = {
-        id: targetProfile.id,
-        email: targetProfile.email,
-        user_metadata: {
-          full_name: targetProfile.full_name
-        }
-      }
-
-      // Sauvegarder dans localStorage pour persister après rechargement
-      localStorage.setItem('impersonated_profile', JSON.stringify(targetProfile))
-      if (targetOrg) {
-        localStorage.setItem('impersonated_organization', JSON.stringify(targetOrg))
-      } else {
-        localStorage.removeItem('impersonated_organization')
-      }
-      localStorage.setItem('impersonated_user', JSON.stringify(simulatedUser))
-
-      setImpersonatedProfile(targetProfile)
-      setImpersonatedOrganization(targetOrg)
-      setImpersonatedUser(simulatedUser)
-
-      return { success: true }
-    } catch (err) {
-      setError(err.message)
-      return { success: false, error: err.message }
-    }
-  }, [profile])
-
-  // Arrêter l'impersonation
-  const stopImpersonating = useCallback(() => {
-    // Supprimer de localStorage
-    localStorage.removeItem('impersonated_profile')
-    localStorage.removeItem('impersonated_organization')
-    localStorage.removeItem('impersonated_user')
-    
-    setImpersonatedProfile(null)
-    setImpersonatedOrganization(null)
-    setImpersonatedUser(null)
-  }, [])
-
-  // Utiliser le profil emprunté si présent, sinon le profil réel
-  const effectiveProfile = impersonatedProfile || profile
-  const effectiveOrganization = impersonatedOrganization || organization
-  const effectiveUser = impersonatedUser || user
-  const isImpersonating = !!impersonatedProfile
-
-  // Si on est en impersonation, on bypass la vérification d'onboarding
-  // (le super_admin peut tester n'importe quel profil, même s'il n'a pas complété son onboarding)
-  const isOnboarded = isImpersonating 
-    ? true 
-    : !!effectiveProfile?.business_role
+  // ========================================================================
+  // VALEUR DU CONTEXTE
+  // ========================================================================
 
   const value = {
+    // Données (effectives - impersonation ou réelles)
     user: effectiveUser,
     session,
     profile: effectiveProfile,
     organization: effectiveOrganization,
+
+    // États
     loading,
     error,
+
+    // Flags booléens
     isAuthenticated: !!session,
     isOnboarded,
-    isOrgAdmin: effectiveProfile?.app_role === 'org_admin' || effectiveProfile?.app_role === 'super_admin',
-    isSuperAdmin: profile?.app_role === 'super_admin', // Toujours basé sur le profil réel, pas emprunté
+    isOrgAdmin,
+    isSuperAdmin, // Toujours basé sur le profil réel
     hasProfile: !!effectiveProfile,
+
+    // Impersonation
     isImpersonating,
     realProfile: profile, // Profil réel du super_admin
     impersonateUser,
     stopImpersonating,
+
+    // Méthodes d'authentification
     signUp,
     signIn,
     signInWithGoogle,
@@ -512,14 +433,13 @@ export function AuthProvider({ children }) {
     resetPassword,
     updatePassword,
     clearError,
-  }
+  };
 
   return (
     <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
-  )
+  );
 }
 
-export default AuthContext
-
+export default AuthContext;

@@ -1,7 +1,16 @@
-// ============================================================================
-// Service Référentiels - Chargement depuis Supabase
-// Verticales, Catégories, Domaines Légifrance
-// ============================================================================
+/**
+ * Referentiels Service - Baikal Console
+ * ============================================================================
+ * Service pour le chargement des référentiels depuis Supabase.
+ * Gère : Verticales, Catégories de documents, Domaines Légifrance.
+ * 
+ * @example
+ * import { referentielsService } from '@/services';
+ * 
+ * const { data: verticals } = await referentielsService.getVerticals();
+ * const { data: categories } = await referentielsService.getCategories();
+ * ============================================================================
+ */
 
 import { supabase } from '../lib/supabaseClient';
 
@@ -9,6 +18,10 @@ import { supabase } from '../lib/supabaseClient';
 // VERTICALES
 // ============================================================================
 
+/**
+ * Récupère toutes les verticales actives
+ * @returns {Promise<{data: Array, error: Error|null}>}
+ */
 export async function getVerticals() {
     try {
         const { data, error } = await supabase
@@ -25,6 +38,11 @@ export async function getVerticals() {
     }
 }
 
+/**
+ * Récupère une verticale par son ID
+ * @param {string} verticalId - ID de la verticale
+ * @returns {Promise<{data: Object|null, error: Error|null}>}
+ */
 export async function getVerticalById(verticalId) {
     try {
         const { data, error } = await supabase
@@ -45,6 +63,10 @@ export async function getVerticalById(verticalId) {
 // CATÉGORIES DOCUMENTS
 // ============================================================================
 
+/**
+ * Récupère toutes les catégories de documents actives
+ * @returns {Promise<{data: Array, error: Error|null}>}
+ */
 export async function getDocumentCategories() {
     try {
         const { data, error } = await supabase
@@ -54,13 +76,30 @@ export async function getDocumentCategories() {
             .order('sort_order', { ascending: true });
 
         if (error) throw error;
-        return { data: data || [], error: null };
+        
+        // Mapper pour avoir un format cohérent
+        const mapped = (data || []).map(cat => ({
+            ...cat,
+            name: cat.label, // Alias pour compatibilité
+        }));
+        
+        return { data: mapped, error: null };
     } catch (err) {
         console.error('[ReferentielsService] Error loading categories:', err);
         return { data: [], error: err };
     }
 }
 
+/**
+ * Alias pour getDocumentCategories (pour compatibilité)
+ */
+export const getCategories = getDocumentCategories;
+
+/**
+ * Récupère une catégorie par son slug
+ * @param {string} slug - Slug de la catégorie
+ * @returns {Promise<{data: Object|null, error: Error|null}>}
+ */
 export async function getCategoryBySlug(slug) {
     try {
         const { data, error } = await supabase
@@ -81,6 +120,10 @@ export async function getCategoryBySlug(slug) {
 // DOMAINES LÉGIFRANCE
 // ============================================================================
 
+/**
+ * Récupère tous les domaines Légifrance actifs
+ * @returns {Promise<{data: Array, error: Error|null}>}
+ */
 export async function getLegifranceDomains() {
     try {
         const { data, error } = await supabase
@@ -98,12 +141,19 @@ export async function getLegifranceDomains() {
     }
 }
 
+/**
+ * Récupère les codes Légifrance avec filtres optionnels
+ * @param {Object} filters - Filtres optionnels
+ * @param {string} filters.domainId - Filtrer par domaine
+ * @param {boolean} filters.enabledOnly - Uniquement les codes activés
+ * @returns {Promise<{data: Array, error: Error|null}>}
+ */
 export async function getLegifranceCodes(filters = {}) {
     try {
         let query = supabase
             .schema('legifrance')
             .from('codes')
-            .select('id, name, short_name, description, domain_id, is_enabled, last_sync_at, total_articles, indexed_articles, default_verticals')
+            .select('id, name, short_name, code, description, domain_id, is_enabled, last_sync_at, total_articles, indexed_articles, default_verticals')
             .order('name', { ascending: true });
 
         if (filters.domainId) {
@@ -122,6 +172,10 @@ export async function getLegifranceCodes(filters = {}) {
     }
 }
 
+/**
+ * Récupère les codes Légifrance groupés par domaine
+ * @returns {Promise<{data: Object, error: Error|null}>}
+ */
 export async function getLegifranceCodesGroupedByDomain() {
     try {
         const [domainsResult, codesResult] = await Promise.all([
@@ -157,8 +211,12 @@ let cachedVerticals = null;
 let cachedCategories = null;
 let verticalsLastFetch = 0;
 let categoriesLastFetch = 0;
-const CACHE_DURATION = 5 * 60 * 1000;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
+/**
+ * Récupère les verticales avec cache
+ * @returns {Promise<{data: Array, error: Error|null}>}
+ */
 export async function getVerticalsCached() {
     const now = Date.now();
     if (cachedVerticals && (now - verticalsLastFetch) < CACHE_DURATION) {
@@ -172,6 +230,10 @@ export async function getVerticalsCached() {
     return result;
 }
 
+/**
+ * Récupère les catégories avec cache
+ * @returns {Promise<{data: Array, error: Error|null}>}
+ */
 export async function getCategoriesCached() {
     const now = Date.now();
     if (cachedCategories && (now - categoriesLastFetch) < CACHE_DURATION) {
@@ -185,6 +247,9 @@ export async function getCategoriesCached() {
     return result;
 }
 
+/**
+ * Invalide le cache
+ */
 export function invalidateCache() {
     cachedVerticals = null;
     cachedCategories = null;
@@ -197,15 +262,23 @@ export function invalidateCache() {
 // ============================================================================
 
 export const referentielsService = {
+    // Verticales
     getVerticals,
     getVerticalById,
     getVerticalsCached,
+    
+    // Catégories
     getDocumentCategories,
+    getCategories, // Alias
     getCategoryBySlug,
     getCategoriesCached,
+    
+    // Légifrance
     getLegifranceDomains,
     getLegifranceCodes,
     getLegifranceCodesGroupedByDomain,
+    
+    // Cache
     invalidateCache,
 };
 

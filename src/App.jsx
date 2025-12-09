@@ -27,6 +27,7 @@ import Validation from './pages/Validation';
 import IngestionPremium from './pages/IngestionPremium';
 import Prompts from './pages/Prompts';
 import PromptForm from './pages/PromptForm';
+import Baikal from './pages/marketing/Baikal';
 
 function App() {
   return (
@@ -38,6 +39,16 @@ function App() {
     >
       <AuthProvider>
         <Routes>
+          {/* ============================================ */}
+          {/* ROUTES MARKETING */}
+          {/* ============================================ */}
+          
+          {/* Baïkal Landing Page */}
+          <Route
+            path="/baikal"
+            element={<Baikal />}
+          />
+
           {/* ============================================ */}
           {/* ROUTES PUBLIQUES */}
           {/* ============================================ */}
@@ -174,11 +185,11 @@ function App() {
           {/* REDIRECTIONS */}
           {/* ============================================ */}
           
-          {/* Redirection racine → /admin */}
-          <Route path="/" element={<Navigate to="/admin" replace />} />
+          {/* Redirection racine → Landing Page Baïkal */}
+          <Route path="/" element={<Baikal />} />
 
-          {/* 404 - Route non trouvée → /admin */}
-          <Route path="*" element={<Navigate to="/admin" replace />} />
+          {/* 404 - Route non trouvée → Landing Page Baïkal */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>

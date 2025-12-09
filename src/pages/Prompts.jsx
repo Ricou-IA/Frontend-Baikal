@@ -38,13 +38,13 @@ function ToggleSwitch({ enabled, onChange, disabled }) {
       disabled={disabled}
       className={`
         relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0
-        ${enabled ? 'bg-indigo-600' : 'bg-slate-300'}
+        ${enabled ? 'bg-baikal-cyan' : 'bg-baikal-border'}
         ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
       `}
     >
       <span
         className={`
-          inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform
+          inline-block h-4 w-4 transform rounded-full bg-white transition-transform
           ${enabled ? 'translate-x-6' : 'translate-x-1'}
         `}
       />
@@ -83,11 +83,11 @@ function PromptRow({ prompt, onEdit, onDuplicate, onDelete, onToggleStatus }) {
   const usageCount = prompt.usage_count || 0;
 
   return (
-    <div className="flex items-center py-3 px-4 hover:bg-slate-50 border-b border-slate-100 last:border-b-0">
+    <div className="flex items-center py-3 px-4 hover:bg-baikal-bg border-b border-baikal-border last:border-b-0">
       {/* Icône cadenas ou espace réservé */}
       <div className="w-6 flex-shrink-0">
         {isDefault ? (
-          <Lock className="w-4 h-4 text-slate-400" />
+          <Lock className="w-4 h-4 text-baikal-text" />
         ) : (
           <span className="w-4 h-4 inline-block" />
         )}
@@ -97,12 +97,12 @@ function PromptRow({ prompt, onEdit, onDuplicate, onDelete, onToggleStatus }) {
       <div className="flex-1 min-w-0 pr-4">
         <button
           onClick={() => onEdit(prompt)}
-          className="font-medium text-slate-900 hover:text-indigo-600 truncate block text-left"
+          className="font-medium text-white hover:text-baikal-cyan truncate block text-left font-mono"
         >
           {prompt.name}
         </button>
         {prompt.description && (
-          <p className="text-sm text-slate-500 truncate">{prompt.description}</p>
+          <p className="text-sm text-baikal-text truncate font-sans">{prompt.description}</p>
         )}
       </div>
 
@@ -112,7 +112,7 @@ function PromptRow({ prompt, onEdit, onDuplicate, onDelete, onToggleStatus }) {
       </div>
 
       {/* Usage count */}
-      <div className="hidden md:block w-28 text-sm text-slate-500 text-right px-2">
+      <div className="hidden md:block w-28 text-sm text-baikal-text text-right px-2 font-mono">
         {usageCount > 0 ? `${usageCount.toLocaleString()} requêtes` : 'Aucune requête'}
       </div>
 
@@ -128,14 +128,14 @@ function PromptRow({ prompt, onEdit, onDuplicate, onDelete, onToggleStatus }) {
       <div className="w-28 flex items-center justify-end gap-1">
         <button
           onClick={() => onEdit(prompt)}
-          className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+          className="p-2 text-baikal-text hover:text-baikal-cyan hover:bg-baikal-bg rounded-md transition-colors"
           title="Modifier"
         >
           <Edit className="w-4 h-4" />
         </button>
         <button
           onClick={() => onDuplicate(prompt)}
-          className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+          className="p-2 text-baikal-text hover:text-white hover:bg-baikal-bg rounded-md transition-colors"
           title="Dupliquer"
         >
           <Copy className="w-4 h-4" />
@@ -143,7 +143,7 @@ function PromptRow({ prompt, onEdit, onDuplicate, onDelete, onToggleStatus }) {
         {!isDefault ? (
           <button
             onClick={() => onDelete(prompt)}
-            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            className="p-2 text-baikal-text hover:text-red-400 hover:bg-red-900/20 rounded-md transition-colors"
             title="Supprimer"
           >
             <Trash2 className="w-4 h-4" />
@@ -171,14 +171,14 @@ function AgentSection({ agentType, prompts, onEdit, onDuplicate, onDelete, onTog
       {/* Header de section */}
       <div className="flex items-center gap-3 mb-3">
         <span className="text-2xl">{agent.icon}</span>
-        <h2 className="text-lg font-semibold text-slate-900">{agent.label.toUpperCase()}</h2>
-        <span className="text-sm text-slate-500">({agentPrompts.length} prompt{agentPrompts.length > 1 ? 's' : ''})</span>
+        <h2 className="text-lg font-mono font-semibold text-white">{agent.label.toUpperCase()}</h2>
+        <span className="text-sm text-baikal-text font-mono">({agentPrompts.length} prompt{agentPrompts.length > 1 ? 's' : ''})</span>
       </div>
 
       {/* Liste des prompts */}
-      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+      <div className="bg-baikal-surface rounded-md border border-baikal-border overflow-hidden">
         {agentPrompts.length === 0 ? (
-          <div className="py-8 text-center text-slate-500">
+          <div className="py-8 text-center text-baikal-text font-sans">
             Aucun prompt configuré pour cet agent
           </div>
         ) : (
@@ -298,12 +298,12 @@ function Prompts({ embedded = false }) {
   // Accès refusé
   if (!hasAccess) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-baikal-bg flex items-center justify-center p-4">
         <Card className="max-w-md w-full">
           <CardContent className="text-center py-8">
-            <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-slate-900 mb-2">Accès refusé</h2>
-            <p className="text-slate-600 mb-6">
+            <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
+            <h2 className="text-xl font-mono font-semibold text-white mb-2">ACCÈS_REFUSÉ</h2>
+            <p className="text-baikal-text mb-6 font-sans">
               Vous n'avez pas les droits pour gérer les prompts.
             </p>
             <Button variant="primary" onClick={() => navigate('/admin')}>
@@ -322,8 +322,8 @@ function Prompts({ embedded = false }) {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-semibold text-slate-900">Gestion des Prompts</h2>
-            <p className="text-sm text-slate-500 mt-1">
+            <h2 className="text-xl font-mono font-semibold text-white">GESTION_DES_PROMPTS</h2>
+            <p className="text-sm text-baikal-text mt-1 font-sans">
               Configurez les prompts système pour chaque type d'agent
             </p>
           </div>
@@ -337,22 +337,22 @@ function Prompts({ embedded = false }) {
         </div>
 
         {/* Info hiérarchie */}
-        <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-xl">
+        <div className="p-4 bg-baikal-cyan/10 border border-baikal-cyan/50 rounded-md">
           <div className="flex items-start gap-3">
-            <Info className="w-5 h-5 text-indigo-600 flex-shrink-0 mt-0.5" />
-            <div className="text-sm text-indigo-700">
-              <p className="font-medium mb-1">Hiérarchie des prompts</p>
-              <p>{HIERARCHY_EXPLANATION}</p>
+            <Info className="w-5 h-5 text-baikal-cyan flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-baikal-text">
+              <p className="font-medium mb-1 font-mono">HIÉRARCHIE_DES_PROMPTS</p>
+              <p className="font-sans">{HIERARCHY_EXPLANATION}</p>
             </div>
           </div>
         </div>
 
         {/* Erreur */}
         {error && (
-          <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3 text-red-700">
+          <div className="p-4 bg-red-900/20 border border-red-500/50 rounded-md flex items-center gap-3 text-red-300">
             <AlertCircle className="w-5 h-5 flex-shrink-0" />
-            <p>{error}</p>
-            <button onClick={loadData} className="ml-auto text-sm font-medium hover:underline">
+            <p className="font-mono">{error}</p>
+            <button onClick={loadData} className="ml-auto text-sm font-medium hover:underline font-mono">
               Réessayer
             </button>
           </div>
@@ -362,7 +362,7 @@ function Prompts({ embedded = false }) {
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Spinner size="lg" />
-            <span className="ml-3 text-slate-500">Chargement des prompts...</span>
+            <span className="ml-3 text-baikal-text font-mono">CHARGEMENT_DES_PROMPTS...</span>
           </div>
         ) : (
           AGENT_TYPES_SORTED.map((agent) => (
@@ -395,21 +395,21 @@ function Prompts({ embedded = false }) {
 
   // Page complète (standalone)
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-baikal-bg">
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
+      <header className="bg-baikal-surface border-b border-baikal-border sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-4">
               <button
                 onClick={() => navigate('/admin')}
-                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                className="p-2 text-baikal-text hover:text-white hover:bg-baikal-bg rounded-md transition-colors"
               >
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <div>
-                <h1 className="text-lg font-semibold text-slate-800">Gestion des Prompts</h1>
-                <p className="text-sm text-slate-500">Configuration des prompts système</p>
+                <h1 className="text-lg font-mono font-semibold text-white">GESTION_DES_PROMPTS</h1>
+                <p className="text-sm text-baikal-text font-sans">Configuration des prompts système</p>
               </div>
             </div>
 
@@ -427,22 +427,22 @@ function Prompts({ embedded = false }) {
       {/* Contenu */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Info hiérarchie */}
-        <div className="mb-8 p-4 bg-indigo-50 border border-indigo-100 rounded-xl">
+        <div className="mb-8 p-4 bg-baikal-cyan/10 border border-baikal-cyan/50 rounded-md">
           <div className="flex items-start gap-3">
-            <Info className="w-5 h-5 text-indigo-600 flex-shrink-0 mt-0.5" />
-            <div className="text-sm text-indigo-700">
-              <p className="font-medium mb-1">Hiérarchie des prompts</p>
-              <p>{HIERARCHY_EXPLANATION}</p>
+            <Info className="w-5 h-5 text-baikal-cyan flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-baikal-text">
+              <p className="font-medium mb-1 font-mono">HIÉRARCHIE_DES_PROMPTS</p>
+              <p className="font-sans">{HIERARCHY_EXPLANATION}</p>
             </div>
           </div>
         </div>
 
         {/* Erreur */}
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3 text-red-700">
+          <div className="mb-6 p-4 bg-red-900/20 border border-red-500/50 rounded-md flex items-center gap-3 text-red-300">
             <AlertCircle className="w-5 h-5 flex-shrink-0" />
-            <p>{error}</p>
-            <button onClick={loadData} className="ml-auto text-sm font-medium hover:underline">
+            <p className="font-mono">{error}</p>
+            <button onClick={loadData} className="ml-auto text-sm font-medium hover:underline font-mono">
               Réessayer
             </button>
           </div>
@@ -452,7 +452,7 @@ function Prompts({ embedded = false }) {
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Spinner size="lg" />
-            <span className="ml-3 text-slate-500">Chargement des prompts...</span>
+            <span className="ml-3 text-baikal-text font-mono">CHARGEMENT_DES_PROMPTS...</span>
           </div>
         ) : (
           AGENT_TYPES_SORTED.map((agent) => (

@@ -27,9 +27,9 @@ import { cn } from '../../utils/cn';
  */
 const baseStyles = `
   inline-flex items-center justify-center
-  font-medium rounded-lg
+  font-medium rounded-md
   transition-colors duration-200
-  focus:outline-none focus:ring-2 focus:ring-offset-2
+  focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-baikal-bg
   disabled:opacity-50 disabled:cursor-not-allowed
 `;
 
@@ -38,14 +38,15 @@ const baseStyles = `
  */
 const variants = {
   primary: `
-    bg-indigo-600 text-white
-    hover:bg-indigo-700
-    focus:ring-indigo-500
+    bg-baikal-cyan text-black
+    hover:opacity-80
+    focus:ring-baikal-cyan
   `,
   secondary: `
-    bg-slate-100 text-slate-700
-    hover:bg-slate-200
-    focus:ring-slate-500
+    bg-baikal-surface text-baikal-text
+    border border-baikal-border
+    hover:bg-baikal-bg
+    focus:ring-baikal-border
   `,
   danger: `
     bg-red-600 text-white
@@ -63,20 +64,20 @@ const variants = {
     focus:ring-amber-500
   `,
   ghost: `
-    bg-transparent text-slate-600
-    hover:bg-slate-100
-    focus:ring-slate-500
+    bg-transparent text-baikal-text
+    hover:bg-baikal-bg
+    focus:ring-baikal-border
   `,
   outline: `
-    bg-transparent text-indigo-600
-    border border-indigo-600
-    hover:bg-indigo-50
-    focus:ring-indigo-500
+    bg-transparent text-baikal-cyan
+    border border-baikal-cyan
+    hover:bg-baikal-cyan/10
+    focus:ring-baikal-cyan
   `,
   link: `
-    bg-transparent text-indigo-600
-    hover:text-indigo-700 hover:underline
-    focus:ring-indigo-500
+    bg-transparent text-baikal-cyan
+    hover:text-baikal-cyan/80 hover:underline
+    focus:ring-baikal-cyan
     p-0
   `,
 };

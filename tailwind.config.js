@@ -47,9 +47,19 @@ export default {
           800: '#3730a3',
           900: '#312e81',
         },
+        // Baïkal Brand Colors
+        baikal: {
+          bg: '#0B0F17',       // Deep Abyssal Blue
+          surface: '#161B26',  // Dark Surface
+          border: '#2D3748',   // Tech Border
+          cyan: '#00F0FF',     // Electric Cyan (Accent)
+          text: '#94A3B8',     // Slate 400 (Technical Text)
+        },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'Fira Code', 'Consolas', 'Monaco', 'monospace'],
+        serif: ['Playfair Display', 'Georgia', 'serif'],
       },
       // Animations pour les composants chat (Brique 3)
       animation: {

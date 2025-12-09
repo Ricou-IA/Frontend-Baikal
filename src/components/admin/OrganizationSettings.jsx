@@ -1,9 +1,20 @@
-// ============================================================================
-// BRIQUE 6 : Composant OrganizationSettings
-// Paramètres de l'organisation (nom, quotas, etc.)
-// ============================================================================
+/**
+ * OrganizationSettings.jsx - Baikal Console
+ * ============================================================================
+ * Composant pour les paramètres de l'organisation (nom, quotas, facturation).
+ * 
+ * @example
+ * <OrganizationSettings
+ *   organization={organization}
+ *   loading={loading}
+ *   currentUserRole="admin"
+ *   onUpdateName={handleUpdateName}
+ * />
+ * ============================================================================
+ */
 
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     Building2,
     Edit3,
@@ -20,41 +31,30 @@ import {
     Crown
 } from 'lucide-react';
 
-/**
- * Props du composant
- */
-interface OrganizationSettingsProps {
-    organization: {
-        id: string;
-        name: string;
-        plan: 'free' | 'pro' | 'enterprise';
-        credits_balance: number;
-        stripe_customer_id: string | null;
-        created_at: string;
-    } | null;
-    loading: boolean;
-    currentUserRole: 'owner' | 'admin' | 'member';
-    onUpdateName: (name: string) => Promise<{ success: boolean; error?: string }>;
-}
+// ============================================================================
+// COMPOSANTS INTERNES
+// ============================================================================
 
 /**
- * Badge de plan
+ * Badge de plan d'abonnement
+ * @param {Object} props
+ * @param {string} props.plan - Plan (free, pro, enterprise)
  */
-const PlanBadge = ({ plan }: { plan: string }) => {
+function PlanBadge({ plan }) {
     const config = {
         free: {
             label: 'Gratuit',
-            className: 'bg-slate-100 text-slate-700 border-slate-200',
+            className: 'bg-baikal-bg text-baikal-text border-baikal-border',
             icon: null
         },
         pro: {
             label: 'Pro',
-            className: 'bg-indigo-100 text-indigo-700 border-indigo-200',
+            className: 'bg-baikal-cyan/20 text-baikal-cyan border-baikal-cyan/50',
             icon: Zap
         },
         enterprise: {
             label: 'Enterprise',
-            className: 'bg-amber-100 text-amber-700 border-amber-200',
+            className: 'bg-amber-500/20 text-amber-400 border-amber-500/50',
             icon: Crown
         }
     };
@@ -62,72 +62,80 @@ const PlanBadge = ({ plan }: { plan: string }) => {
     const { label, className, icon: Icon } = config[plan] || config.free;
 
     return (
-        <span className={`inline-flex items-center gap-1.5 px-3 py-1 text-sm font-medium rounded-full border ${className}`}>
+        <span className={`inline-flex items-center gap-1.5 px-3 py-1 text-sm font-mono font-medium rounded-md border ${className}`}>
             {Icon && <Icon className="w-3.5 h-3.5" />}
             {label}
         </span>
     );
-};
+}
 
 /**
  * Carte de statistique
+ * @param {Object} props
+ * @param {string} props.label - Libellé
+ * @param {string|number} props.value - Valeur
+ * @param {React.ComponentType} props.icon - Icône Lucide
+ * @param {string} [props.description] - Description optionnelle
+ * @param {string} [props.color] - Couleur (indigo, green, amber, red)
  */
-const StatCard = ({
-    label,
-    value,
-    icon: Icon,
-    description,
-    color = 'indigo'
-}: {
-    label: string;
-    value: string | number;
-    icon: any;
-    description?: string;
-    color?: 'indigo' | 'green' | 'amber' | 'red';
-}) => {
+function StatCard({ label, value, icon: Icon, description, color = 'indigo' }) {
     const colorClasses = {
-        indigo: 'bg-indigo-100 text-indigo-600',
-        green: 'bg-green-100 text-green-600',
-        amber: 'bg-amber-100 text-amber-600',
-        red: 'bg-red-100 text-red-600'
+        indigo: 'bg-baikal-cyan/20 text-baikal-cyan',
+        green: 'bg-green-500/20 text-green-400',
+        amber: 'bg-amber-500/20 text-amber-400',
+        red: 'bg-red-500/20 text-red-400'
     };
 
     return (
-        <div className="p-4 bg-white rounded-xl border border-slate-200">
+        <div className="p-4 bg-baikal-surface rounded-md border border-baikal-border">
             <div className="flex items-center gap-3 mb-2">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${colorClasses[color]}`}>
+                <div className={`w-10 h-10 rounded-md flex items-center justify-center ${colorClasses[color]}`}>
                     <Icon className="w-5 h-5" />
                 </div>
                 <div>
-                    <p className="text-sm text-slate-500">{label}</p>
-                    <p className="text-2xl font-bold text-slate-800">{value}</p>
+                    <p className="text-sm text-baikal-text font-sans">{label}</p>
+                    <p className="text-2xl font-bold font-mono text-white">{value}</p>
                 </div>
             </div>
             {description && (
-                <p className="text-xs text-slate-500 mt-2">{description}</p>
+                <p className="text-xs text-baikal-text mt-2 font-sans">{description}</p>
             )}
         </div>
     );
-};
+}
+
+// ============================================================================
+// COMPOSANT PRINCIPAL
+// ============================================================================
 
 /**
- * Composant principal OrganizationSettings
+ * Paramètres de l'organisation
+ * @param {Object} props
+ * @param {Object|null} props.organization - Données de l'organisation
+ * @param {boolean} props.loading - État de chargement
+ * @param {string} props.currentUserRole - Rôle de l'utilisateur (owner, admin, member)
+ * @param {Function} props.onUpdateName - Callback pour mettre à jour le nom
  */
 export default function OrganizationSettings({
     organization,
     loading,
     currentUserRole,
     onUpdateName
-}: OrganizationSettingsProps) {
+}) {
+    const navigate = useNavigate();
+    
+    // États locaux
     const [isEditingName, setIsEditingName] = useState(false);
     const [newName, setNewName] = useState(organization?.name || '');
     const [saving, setSaving] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState(null);
     const [success, setSuccess] = useState(false);
 
     const canEdit = currentUserRole === 'owner' || currentUserRole === 'admin';
 
-    // Sauvegarder le nouveau nom
+    /**
+     * Sauvegarder le nouveau nom
+     */
     const handleSaveName = async () => {
         if (!newName.trim()) {
             setError('Le nom ne peut pas être vide');
@@ -147,34 +155,45 @@ export default function OrganizationSettings({
             } else {
                 setError(result.error || 'Erreur lors de la mise à jour');
             }
-        } catch (err: any) {
+        } catch (err) {
             setError(err.message);
         } finally {
             setSaving(false);
         }
     };
 
-    // Annuler l'édition
+    /**
+     * Annuler l'édition
+     */
     const handleCancelEdit = () => {
         setNewName(organization?.name || '');
         setIsEditingName(false);
         setError(null);
     };
 
+    /**
+     * Naviguer vers la page de facturation
+     */
+    const handleGoToBilling = () => {
+        navigate('/admin/billing');
+    };
+
+    // État de chargement
     if (loading) {
         return (
             <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+                <Loader2 className="w-8 h-8 animate-spin text-baikal-cyan" />
             </div>
         );
     }
 
+    // Organisation non trouvée
     if (!organization) {
         return (
-            <div className="p-6 bg-amber-50 border border-amber-200 rounded-xl text-amber-700">
-                <p className="flex items-center gap-2">
+            <div className="p-6 bg-amber-900/20 border border-amber-500/50 rounded-md text-amber-300">
+                <p className="flex items-center gap-2 font-mono">
                     <AlertCircle className="w-5 h-5" />
-                    Organisation non trouvée
+                    ORGANISATION_NON_TROUVÉE
                 </p>
             </div>
         );
@@ -184,30 +203,30 @@ export default function OrganizationSettings({
         <div className="space-y-6">
             {/* Header */}
             <div>
-                <h2 className="text-xl font-semibold text-slate-800 flex items-center gap-2">
-                    <Building2 className="w-5 h-5 text-indigo-600" />
-                    Paramètres de l'organisation
+                <h2 className="text-xl font-mono font-semibold text-white flex items-center gap-2">
+                    <Building2 className="w-5 h-5 text-baikal-cyan" />
+                    PARAMÈTRES_DE_L'ORGANISATION
                 </h2>
-                <p className="text-sm text-slate-500 mt-1">
+                <p className="text-sm text-baikal-text mt-1 font-sans">
                     Gérez les informations de votre organisation
                 </p>
             </div>
 
             {/* Message de succès */}
             {success && (
-                <div className="p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2 text-green-700 text-sm">
+                <div className="p-3 bg-green-900/20 border border-green-500/50 rounded-md flex items-center gap-2 text-green-300 text-sm font-mono">
                     <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-                    Modifications enregistrées avec succès
+                    MODIFICATIONS_ENREGISTRÉES
                 </div>
             )}
 
             {/* Informations principales */}
-            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="bg-baikal-surface rounded-md border border-baikal-border overflow-hidden">
                 {/* Nom de l'organisation */}
-                <div className="p-6 border-b border-slate-200">
+                <div className="p-6 border-b border-baikal-border">
                     <div className="flex items-center justify-between">
                         <div className="flex-1">
-                            <label className="block text-sm font-medium text-slate-500 mb-1">
+                            <label className="block text-xs font-mono text-baikal-text mb-1 uppercase">
                                 Nom de l'organisation
                             </label>
 
@@ -217,13 +236,13 @@ export default function OrganizationSettings({
                                         type="text"
                                         value={newName}
                                         onChange={(e) => setNewName(e.target.value)}
-                                        className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                        className="flex-1 px-3 py-2 bg-black border border-baikal-border rounded-md text-white focus:outline-none focus:ring-2 focus:ring-baikal-cyan focus:border-transparent"
                                         autoFocus
                                     />
                                     <button
                                         onClick={handleSaveName}
                                         disabled={saving}
-                                        className="flex items-center gap-1 px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                                        className="flex items-center gap-1 px-3 py-2 bg-baikal-cyan text-black rounded-md hover:opacity-80 transition-opacity disabled:opacity-50 font-mono"
                                     >
                                         {saving ? (
                                             <Loader2 className="w-4 h-4 animate-spin" />
@@ -234,20 +253,20 @@ export default function OrganizationSettings({
                                     <button
                                         onClick={handleCancelEdit}
                                         disabled={saving}
-                                        className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors"
+                                        className="p-2 text-baikal-text hover:text-white hover:bg-baikal-bg rounded-md transition-colors"
                                     >
                                         <X className="w-4 h-4" />
                                     </button>
                                 </div>
                             ) : (
                                 <div className="flex items-center gap-3">
-                                    <p className="text-lg font-medium text-slate-800">
+                                    <p className="text-lg font-medium text-white font-sans">
                                         {organization.name}
                                     </p>
                                     {canEdit && (
                                         <button
                                             onClick={() => setIsEditingName(true)}
-                                            className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                            className="p-1.5 text-baikal-text hover:text-baikal-cyan hover:bg-baikal-bg rounded-md transition-colors"
                                         >
                                             <Edit3 className="w-4 h-4" />
                                         </button>
@@ -256,7 +275,7 @@ export default function OrganizationSettings({
                             )}
 
                             {error && (
-                                <p className="mt-2 text-sm text-red-600 flex items-center gap-1">
+                                <p className="mt-2 text-sm text-red-400 flex items-center gap-1 font-mono">
                                     <AlertCircle className="w-3.5 h-3.5" />
                                     {error}
                                 </p>
@@ -268,12 +287,12 @@ export default function OrganizationSettings({
                 </div>
 
                 {/* Date de création */}
-                <div className="p-6 border-b border-slate-200">
-                    <label className="block text-sm font-medium text-slate-500 mb-1">
+                <div className="p-6 border-b border-baikal-border">
+                    <label className="block text-xs font-mono text-baikal-text mb-1 uppercase">
                         Date de création
                     </label>
-                    <p className="text-slate-800 flex items-center gap-2">
-                        <Calendar className="w-4 h-4 text-slate-400" />
+                    <p className="text-white flex items-center gap-2 font-sans">
+                        <Calendar className="w-4 h-4 text-baikal-text" />
                         {new Date(organization.created_at).toLocaleDateString('fr-FR', {
                             day: 'numeric',
                             month: 'long',
@@ -285,10 +304,10 @@ export default function OrganizationSettings({
                 {/* ID Stripe (si existant) */}
                 {organization.stripe_customer_id && (
                     <div className="p-6">
-                        <label className="block text-sm font-medium text-slate-500 mb-1">
+                        <label className="block text-xs font-mono text-baikal-text mb-1 uppercase">
                             Client Stripe
                         </label>
-                        <p className="text-sm text-slate-600 font-mono bg-slate-50 px-3 py-2 rounded-lg inline-block">
+                        <p className="text-sm text-baikal-text font-mono bg-baikal-bg px-3 py-2 rounded-md inline-block border border-baikal-border">
                             {organization.stripe_customer_id}
                         </p>
                     </div>
@@ -297,23 +316,29 @@ export default function OrganizationSettings({
 
             {/* Statistiques */}
             <div>
-                <h3 className="text-lg font-medium text-slate-800 mb-4 flex items-center gap-2">
-                    <BarChart3 className="w-5 h-5 text-slate-400" />
-                    Quotas et utilisation
+                <h3 className="text-lg font-mono font-medium text-white mb-4 flex items-center gap-2">
+                    <BarChart3 className="w-5 h-5 text-baikal-text" />
+                    QUOTAS_ET_UTILISATION
                 </h3>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     <StatCard
                         label="Crédits disponibles"
-                        value={organization.credits_balance.toLocaleString('fr-FR')}
+                        value={organization.credits_balance?.toLocaleString('fr-FR') || '0'}
                         icon={Zap}
                         description="Crédits utilisables pour les requêtes IA"
-                        color={organization.credits_balance > 100 ? 'green' : organization.credits_balance > 10 ? 'amber' : 'red'}
+                        color={
+                            organization.credits_balance > 100 
+                                ? 'green' 
+                                : organization.credits_balance > 10 
+                                    ? 'amber' 
+                                    : 'red'
+                        }
                     />
 
                     <StatCard
                         label="Plan actuel"
-                        value={organization.plan.charAt(0).toUpperCase() + organization.plan.slice(1)}
+                        value={organization.plan?.charAt(0).toUpperCase() + organization.plan?.slice(1) || 'Free'}
                         icon={CreditCard}
                         description="Votre formule d'abonnement"
                         color="indigo"
@@ -322,24 +347,21 @@ export default function OrganizationSettings({
             </div>
 
             {/* Actions de facturation */}
-            {(currentUserRole === 'owner' || currentUserRole === 'admin') && (
-                <div className="bg-slate-50 rounded-xl p-6 border border-slate-200">
+            {canEdit && (
+                <div className="bg-baikal-surface rounded-md p-6 border border-baikal-border">
                     <div className="flex items-start gap-3">
-                        <Info className="w-5 h-5 text-slate-400 flex-shrink-0 mt-0.5" />
+                        <Info className="w-5 h-5 text-baikal-text flex-shrink-0 mt-0.5" />
                         <div>
-                            <h4 className="font-medium text-slate-800">Besoin de plus de crédits ?</h4>
-                            <p className="text-sm text-slate-600 mt-1">
+                            <h4 className="font-medium text-white font-mono">BESOIN_DE_PLUS_DE_CRÉDITS?</h4>
+                            <p className="text-sm text-baikal-text mt-1 font-sans">
                                 Rendez-vous dans la section Facturation pour recharger vos crédits ou passer à un plan supérieur.
                             </p>
                             <button
-                                className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm"
-                                onClick={() => {
-                                    // TODO: Rediriger vers la page billing (Brique 7)
-                                    console.log('Redirection vers Billing...');
-                                }}
+                                className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-baikal-cyan text-black rounded-md hover:opacity-80 transition-opacity text-sm font-mono"
+                                onClick={handleGoToBilling}
                             >
                                 <CreditCard className="w-4 h-4" />
-                                Gérer la facturation
+                                GÉRER_LA_FACTURATION
                             </button>
                         </div>
                     </div>
@@ -348,10 +370,3 @@ export default function OrganizationSettings({
         </div>
     );
 }
-
-
-
-
-
-
-

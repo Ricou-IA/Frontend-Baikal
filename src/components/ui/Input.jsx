@@ -23,11 +23,11 @@ import { cn } from '../../utils/cn';
  */
 const baseInputStyles = `
   w-full px-4 py-2.5
-  bg-white border rounded-lg
-  text-slate-800 placeholder-slate-400
+  bg-black border rounded-md
+  text-white placeholder-baikal-text
   transition-colors duration-200
-  focus:outline-none focus:ring-2 focus:ring-offset-0
-  disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed
+  focus:outline-none focus:ring-2 focus:ring-offset-0 focus:ring-offset-baikal-bg
+  disabled:bg-baikal-bg disabled:text-baikal-text disabled:cursor-not-allowed
 `;
 
 /**
@@ -35,9 +35,9 @@ const baseInputStyles = `
  */
 const inputStates = {
   default: `
-    border-slate-300
-    hover:border-slate-400
-    focus:border-indigo-500 focus:ring-indigo-500/20
+    border-baikal-border
+    hover:border-baikal-cyan/50
+    focus:border-baikal-cyan focus:ring-baikal-cyan/20
   `,
   error: `
     border-red-500
@@ -112,10 +112,10 @@ const Input = forwardRef(({
       {label && (
         <label
           htmlFor={inputId}
-          className="block text-sm font-medium text-slate-700 mb-1.5"
+          className="block text-xs font-mono text-baikal-text mb-1.5 uppercase"
         >
           {label}
-          {required && <span className="text-red-500 ml-1">*</span>}
+          {required && <span className="text-red-400 ml-1">*</span>}
         </label>
       )}
 
@@ -124,7 +124,7 @@ const Input = forwardRef(({
         {/* Icône gauche */}
         {leftIcon && (
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <span className="text-slate-400 w-5 h-5">{leftIcon}</span>
+            <span className="text-baikal-text w-5 h-5">{leftIcon}</span>
           </div>
         )}
 
@@ -155,7 +155,7 @@ const Input = forwardRef(({
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="text-slate-400 hover:text-slate-600 focus:outline-none"
+                className="text-baikal-text hover:text-baikal-cyan focus:outline-none"
                 tabIndex={-1}
               >
                 {showPassword ? (
@@ -165,7 +165,7 @@ const Input = forwardRef(({
                 )}
               </button>
             ) : (
-              <span className="text-slate-400 w-5 h-5">{rightIcon}</span>
+              <span className="text-baikal-text w-5 h-5">{rightIcon}</span>
             )}
           </div>
         )}
@@ -175,7 +175,7 @@ const Input = forwardRef(({
       {error && (
         <p
           id={`${inputId}-error`}
-          className="mt-1.5 text-sm text-red-600"
+          className="mt-1.5 text-sm text-red-400 font-mono"
           role="alert"
         >
           {error}
@@ -186,7 +186,7 @@ const Input = forwardRef(({
       {helperText && !error && (
         <p
           id={`${inputId}-helper`}
-          className="mt-1.5 text-sm text-slate-500"
+          className="mt-1.5 text-sm text-baikal-text font-sans"
         >
           {helperText}
         </p>
@@ -220,10 +220,10 @@ const Textarea = forwardRef(({
       {label && (
         <label
           htmlFor={inputId}
-          className="block text-sm font-medium text-slate-700 mb-1.5"
+          className="block text-xs font-mono text-baikal-text mb-1.5 uppercase"
         >
           {label}
-          {required && <span className="text-red-500 ml-1">*</span>}
+          {required && <span className="text-red-400 ml-1">*</span>}
         </label>
       )}
 
@@ -244,13 +244,13 @@ const Textarea = forwardRef(({
       />
 
       {error && (
-        <p className="mt-1.5 text-sm text-red-600" role="alert">
+        <p className="mt-1.5 text-sm text-red-400 font-mono" role="alert">
           {error}
         </p>
       )}
 
       {helperText && !error && (
-        <p className="mt-1.5 text-sm text-slate-500">
+        <p className="mt-1.5 text-sm text-baikal-text font-sans">
           {helperText}
         </p>
       )}

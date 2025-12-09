@@ -129,7 +129,7 @@ export function Modal({
           ref={modalRef}
           tabIndex={-1}
           className={cn(
-            'relative w-full bg-white rounded-2xl shadow-xl',
+            'relative w-full bg-baikal-surface border border-baikal-border rounded-md',
             'transform transition-all',
             'animate-in fade-in-0 zoom-in-95 duration-200',
             sizes[size],
@@ -139,11 +139,11 @@ export function Modal({
         >
           {/* Header */}
           {(title || showCloseButton) && (
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-baikal-border">
               {title && (
                 <h2
                   id="modal-title"
-                  className="text-lg font-semibold text-slate-800"
+                  className="text-lg font-mono font-semibold text-white"
                 >
                   {title}
                 </h2>
@@ -151,7 +151,7 @@ export function Modal({
               {showCloseButton && (
                 <button
                   onClick={onClose}
-                  className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                  className="p-1.5 text-baikal-text hover:text-baikal-cyan hover:bg-baikal-bg rounded-md transition-colors"
                   aria-label="Fermer"
                 >
                   <X className="w-5 h-5" />
@@ -188,7 +188,7 @@ export function ModalFooter({
   return (
     <div
       className={cn(
-        'flex items-center gap-3 pt-4 mt-4 border-t border-slate-100',
+        'flex items-center gap-3 pt-4 mt-4 border-t border-baikal-border',
         alignments[align],
         className
       )}
@@ -220,12 +220,12 @@ export function ConfirmModal({
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={title} size="sm">
-      <p className="text-slate-600">{message}</p>
+      <p className="text-baikal-text font-sans">{message}</p>
       <ModalFooter>
         <button
           onClick={onClose}
           disabled={loading}
-          className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors disabled:opacity-50"
+          className="px-4 py-2 text-sm font-medium text-baikal-text bg-baikal-surface border border-baikal-border hover:bg-baikal-bg rounded-md transition-colors disabled:opacity-50"
         >
           {cancelText}
         </button>
@@ -233,7 +233,7 @@ export function ConfirmModal({
           onClick={onConfirm}
           disabled={loading}
           className={cn(
-            'px-4 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-50',
+            'px-4 py-2 text-sm font-medium rounded-md transition-colors disabled:opacity-50',
             buttonVariants[variant]
           )}
         >

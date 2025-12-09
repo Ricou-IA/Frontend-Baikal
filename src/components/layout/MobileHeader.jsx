@@ -32,19 +32,16 @@ export default function MobileHeader({
   const primaryColor = verticalInfo?.color || '#6366f1';
 
   return (
-    <div className="p-4 border-b border-slate-200 bg-white flex items-center gap-4 lg:hidden">
+    <div className="p-4 border-b border-baikal-border bg-baikal-surface flex items-center gap-4 lg:hidden">
       <button
         onClick={onMenuClick}
-        className="p-2 hover:bg-slate-100 rounded-lg"
+        className="p-2 hover:bg-baikal-bg rounded-md"
         aria-label="Ouvrir le menu"
       >
-        <Menu className="w-5 h-5 text-slate-600" />
+        <Menu className="w-5 h-5 text-baikal-text" />
       </button>
-      <span
-        className="font-bold"
-        style={{ color: primaryColor }}
-      >
-        {verticalInfo?.name || 'Core RAG'}
+      <span className="font-bold font-mono text-white">
+        {verticalInfo?.name || 'BAÏKAL'}
       </span>
     </div>
   );

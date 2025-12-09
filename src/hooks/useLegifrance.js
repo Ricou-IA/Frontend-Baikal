@@ -1,10 +1,15 @@
-// ============================================================================
-// Hook useLegifrance
-// Gestion des données Légifrance pour le SuperAdmin
-// Version 2 : Verticales et Domaines depuis Supabase
-// ============================================================================
+/**
+ * useLegifrance.js - Baikal Console
+ * ============================================================================
+ * Hook pour la gestion des données Légifrance (SuperAdmin uniquement).
+ * Gère les codes juridiques, domaines, verticales et synchronisation.
+ * 
+ * @example
+ * const { codes, domains, verticals, loading, triggerSync } = useLegifrance();
+ * ============================================================================
+ */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
 // URL de l'Edge Function Supabase
@@ -15,14 +20,18 @@ const SYNC_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/trigger-legifrance-sync`
  * Hook principal pour la gestion Légifrance
  */
 export function useLegifrance() {
-    // États - Données
+    // ========================================================================
+    // ÉTATS
+    // ========================================================================
+    
+    // Données
     const [codes, setCodes] = useState([]);
     const [domains, setDomains] = useState([]);
     const [verticals, setVerticals] = useState([]);
     const [syncJobs, setSyncJobs] = useState([]);
     const [organizations, setOrganizations] = useState([]);
     
-    // États - UI
+    // UI
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [syncing, setSyncing] = useState(false);
@@ -232,8 +241,6 @@ export function useLegifrance() {
                 triggered_by: triggeredBy
             };
 
-            console.log('[useLegifrance] Triggering sync via Edge Function:', payload);
-
             const response = await fetch(SYNC_FUNCTION_URL, {
                 method: 'POST',
                 headers: {
@@ -248,8 +255,6 @@ export function useLegifrance() {
             if (!response.ok) {
                 throw new Error(result.error || `Erreur ${response.status}`);
             }
-
-            console.log('[useLegifrance] Sync triggered successfully:', result);
 
             // Recharger les données après un court délai
             setTimeout(() => {
@@ -296,8 +301,8 @@ export function useLegifrance() {
         return codes.filter(c => c.domain_id === domainId);
     }, [codes]);
 
-    // Codes groupés par domaine
-    const codesGroupedByDomain = useCallback(() => {
+    // Codes groupés par domaine (mémorisé)
+    const codesGroupedByDomain = useMemo(() => {
         const grouped = {};
         
         domains.forEach(domain => {
@@ -372,8 +377,5 @@ export function useLegifrance() {
         refresh
     };
 }
-
-// Export nommé pour compatibilité
-export const VERTICALS = []; // Déprécié - utiliser verticals du hook
 
 export default useLegifrance;

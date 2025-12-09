@@ -32,13 +32,13 @@ const paddings = {
 };
 
 /**
- * Variantes d'ombre
+ * Variantes d'ombre (remplacées par bordures pour Baïkal)
  */
 const shadows = {
   none: '',
-  sm: 'shadow-sm',
-  md: 'shadow-md',
-  lg: 'shadow-lg',
+  sm: '',
+  md: '',
+  lg: '',
 };
 
 /**
@@ -57,11 +57,11 @@ const Card = forwardRef(({
     <div
       ref={ref}
       className={cn(
-        'bg-white rounded-xl',
-        bordered && 'border border-slate-200',
+        'bg-baikal-surface rounded-md',
+        bordered && 'border border-baikal-border',
         shadows[shadow],
         paddings[padding],
-        hoverable && 'transition-shadow hover:shadow-md',
+        hoverable && 'transition-colors hover:border-baikal-cyan',
         className
       )}
       {...props}
@@ -85,7 +85,7 @@ const CardHeader = forwardRef(({
     <div
       ref={ref}
       className={cn(
-        'px-6 py-4 border-b border-slate-100',
+        'px-6 py-4 border-b border-baikal-border',
         className
       )}
       {...props}
@@ -110,7 +110,7 @@ const CardTitle = forwardRef(({
     <Component
       ref={ref}
       className={cn(
-        'text-lg font-semibold text-slate-800',
+        'text-lg font-mono font-semibold text-white',
         className
       )}
       {...props}
@@ -134,7 +134,7 @@ const CardDescription = forwardRef(({
     <p
       ref={ref}
       className={cn(
-        'text-sm text-slate-500 mt-1',
+        'text-sm text-baikal-text mt-1 font-sans',
         className
       )}
       {...props}
@@ -182,7 +182,7 @@ const CardFooter = forwardRef(({
     <div
       ref={ref}
       className={cn(
-        'px-6 py-4 border-t border-slate-100 bg-slate-50/50 rounded-b-xl',
+        'px-6 py-4 border-t border-baikal-border bg-baikal-bg/50 rounded-b-md',
         className
       )}
       {...props}

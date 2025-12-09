@@ -37,7 +37,6 @@ export const documentsService = {
    */
   async getLayerStats(orgId) {
     try {
-      // Comptage par layer et status
       const { data, error } = await supabase
         .from('documents')
         .select('layer, status, quality_level', { count: 'exact' })
@@ -45,7 +44,6 @@ export const documentsService = {
 
       if (error) throw error;
 
-      // Agrégation côté client
       const stats = {
         vertical: { total: 0, pending: 0, approved: 0, rejected: 0, draft: 0 },
         org: { total: 0, pending: 0, approved: 0, rejected: 0, draft: 0 },
@@ -95,17 +93,7 @@ export const documentsService = {
   /**
    * Récupère les documents avec filtres et pagination
    * @param {Object} filters - Filtres de recherche
-   * @param {string} filters.layer - Couche (vertical, org, project, user)
-   * @param {string} filters.status - Statut (draft, pending, approved, rejected)
-   * @param {string} filters.quality_level - Niveau de qualité
-   * @param {string} filters.search - Recherche textuelle
-   * @param {string} filters.orgId - ID organisation (obligatoire)
-   * @param {string} filters.createdBy - Filtrer par créateur
    * @param {Object} pagination - Options de pagination
-   * @param {number} pagination.page - Numéro de page (1-indexed)
-   * @param {number} pagination.pageSize - Taille de page
-   * @param {string} pagination.sortBy - Colonne de tri
-   * @param {string} pagination.sortOrder - Ordre (asc/desc)
    * @returns {Promise<{data: Array, total: number, error: Error|null}>}
    */
   async getDocuments(filters = {}, pagination = {}) {
@@ -128,25 +116,26 @@ export const documentsService = {
         sortOrder = 'desc',
       } = pagination;
 
-      // Construction de la requête
       let query = supabase
         .from('documents')
         .select(`
           id,
+          title,
           content,
           layer,
           status,
           quality_level,
-          metadata,
-          target_verticals,
-          target_projects,
+          vertical_id,
           org_id,
+          project_id,
           created_by,
-          source_file_id,
-          usage_count,
-          positive_feedback_count,
           created_at,
-          updated_at
+          updated_at,
+          approved_at,
+          approved_by,
+          metadata,
+          source_file_id,
+          creator:profiles!created_by(id, display_name, email)
         `, { count: 'exact' });
 
       // Filtres
@@ -154,16 +143,12 @@ export const documentsService = {
       if (layer) query = query.eq('layer', layer);
       if (status) query = query.eq('status', status);
       if (quality_level) query = query.eq('quality_level', quality_level);
+      if (verticalId) query = query.eq('vertical_id', verticalId);
+      if (projectId) query = query.eq('project_id', projectId);
       if (createdBy) query = query.eq('created_by', createdBy);
-      if (verticalId) query = query.contains('target_verticals', [verticalId]);
-      if (projectId) query = query.contains('target_projects', [projectId]);
+      if (search) query = query.ilike('title', `%${search}%`);
 
-      // Recherche textuelle (sur le contenu via FTS si disponible)
-      if (search) {
-        query = query.textSearch('fts', search, { type: 'websearch' });
-      }
-
-      // Tri et pagination
+      // Pagination et tri
       query = query
         .order(sortBy, { ascending: sortOrder === 'asc' })
         .range((page - 1) * pageSize, page * pageSize - 1);
@@ -182,27 +167,14 @@ export const documentsService = {
       };
     } catch (error) {
       console.error('[documentsService] getDocuments error:', error);
-      return { data: [], total: 0, page: 1, pageSize: DEFAULT_PAGE_SIZE, totalPages: 0, error };
+      return { data: [], total: 0, error };
     }
   },
 
   /**
-   * Récupère les documents en attente de validation
-   * @param {string} orgId - ID de l'organisation
-   * @param {Object} pagination - Options de pagination
-   * @returns {Promise<{data: Array, total: number, error: Error|null}>}
-   */
-  async getPendingDocuments(orgId, pagination = {}) {
-    return this.getDocuments(
-      { orgId, status: 'pending' },
-      { ...pagination, sortBy: 'created_at', sortOrder: 'asc' }
-    );
-  },
-
-  /**
-   * Récupère un document par son ID avec les détails du fichier source
+   * Récupère un document par son ID
    * @param {number} documentId - ID du document
-   * @returns {Promise<{data: Object, error: Error|null}>}
+   * @returns {Promise<{data: Object|null, error: Error|null}>}
    */
   async getDocumentById(documentId) {
     try {
@@ -210,18 +182,9 @@ export const documentsService = {
         .from('documents')
         .select(`
           *,
-          source_file:source_files(
-            id,
-            original_filename,
-            mime_type,
-            file_size,
-            created_at
-          ),
-          creator:profiles!created_by(
-            id,
-            display_name,
-            email
-          )
+          creator:profiles!created_by(id, display_name, email),
+          approver:profiles!approved_by(id, display_name, email),
+          source_file:source_files(id, original_filename, mime_type, file_size)
         `)
         .eq('id', documentId)
         .single();
@@ -234,17 +197,10 @@ export const documentsService = {
     }
   },
 
-  // ==========================================================================
-  // FICHIERS SOURCES
-  // ==========================================================================
-
   /**
-   * Récupère les fichiers sources avec leurs statistiques
+   * Récupère les fichiers sources avec pagination
    * @param {Object} filters - Filtres
-   * @param {string} filters.orgId - ID organisation
-   * @param {string} filters.layer - Couche
-   * @param {string} filters.processingStatus - Statut de traitement
-   * @param {Object} pagination - Options de pagination
+   * @param {Object} pagination - Pagination
    * @returns {Promise<{data: Array, total: number, error: Error|null}>}
    */
   async getSourceFiles(filters = {}, pagination = {}) {
@@ -271,10 +227,7 @@ export const documentsService = {
           created_by,
           created_at,
           processed_at,
-          creator:profiles!created_by(
-            id,
-            display_name
-          )
+          creator:profiles!created_by(id, display_name)
         `, { count: 'exact' });
 
       if (orgId) query = query.eq('org_id', orgId);
@@ -308,12 +261,13 @@ export const documentsService = {
   // ==========================================================================
 
   /**
-   * Vérifie si un fichier existe déjà (basé sur le hash)
-   * @param {string} contentHash - Hash SHA-256 du contenu
+   * Vérifie si un fichier existe déjà (basé sur nom et taille)
+   * @param {string} filename - Nom du fichier
+   * @param {number} fileSize - Taille du fichier
    * @param {string} orgId - ID de l'organisation
    * @returns {Promise<{isDuplicate: boolean, existingFile: Object|null, error: Error|null}>}
    */
-  async checkDuplicate(contentHash, orgId) {
+  async checkDuplicate(filename, fileSize, orgId) {
     try {
       const { data, error } = await supabase
         .from('source_files')
@@ -322,11 +276,10 @@ export const documentsService = {
           original_filename,
           layer,
           created_at,
-          creator:profiles!created_by(
-            display_name
-          )
+          creator:profiles!created_by(display_name)
         `)
-        .eq('content_hash', contentHash)
+        .eq('original_filename', filename)
+        .eq('file_size', fileSize)
         .eq('org_id', orgId)
         .maybeSingle();
 
@@ -373,19 +326,20 @@ export const documentsService = {
    */
   async approveDocument(documentId, approvedBy) {
     try {
-      // Utilise la fonction RPC si disponible
-      const { data, error } = await supabase.rpc('approve_document', {
-        p_document_id: documentId,
-        p_approved_by: approvedBy,
-      });
+      const { data, error } = await supabase
+        .from('documents')
+        .update({
+          status: 'approved',
+          approved_by: approvedBy,
+          approved_at: new Date().toISOString(),
+        })
+        .eq('id', documentId)
+        .select()
+        .single();
 
       if (error) throw error;
 
-      return {
-        success: data?.success ?? true,
-        data,
-        error: null,
-      };
+      return { success: true, data, error: null };
     } catch (error) {
       console.error('[documentsService] approveDocument error:', error);
       return { success: false, data: null, error };
@@ -399,18 +353,15 @@ export const documentsService = {
    * @param {string} reason - Raison du rejet
    * @returns {Promise<{success: boolean, data: Object, error: Error|null}>}
    */
-  async rejectDocument(documentId, rejectedBy, reason) {
+  async rejectDocument(documentId, rejectedBy, reason = '') {
     try {
       const { data, error } = await supabase
         .from('documents')
         .update({
           status: 'rejected',
-          updated_at: new Date().toISOString(),
-          metadata: supabase.sql`metadata || ${JSON.stringify({
-            rejected_at: new Date().toISOString(),
-            rejected_by: rejectedBy,
-            rejection_reason: reason,
-          })}::jsonb`,
+          rejected_by: rejectedBy,
+          rejected_at: new Date().toISOString(),
+          rejection_reason: reason,
         })
         .eq('id', documentId)
         .select()
@@ -426,35 +377,67 @@ export const documentsService = {
   },
 
   /**
-   * Approuve plusieurs documents en batch
+   * Approuve plusieurs documents en lot
    * @param {number[]} documentIds - IDs des documents
    * @param {string} approvedBy - ID de l'utilisateur
-   * @returns {Promise<{success: boolean, count: number, errors: Array}>}
+   * @returns {Promise<{success: boolean, count: number, error: Error|null}>}
    */
-  async approveBatch(documentIds, approvedBy) {
-    const results = await Promise.allSettled(
-      documentIds.map(id => this.approveDocument(id, approvedBy))
-    );
+  async bulkApprove(documentIds, approvedBy) {
+    try {
+      const { data, error } = await supabase
+        .from('documents')
+        .update({
+          status: 'approved',
+          approved_by: approvedBy,
+          approved_at: new Date().toISOString(),
+        })
+        .in('id', documentIds)
+        .select();
 
-    const succeeded = results.filter(r => r.status === 'fulfilled' && r.value.success);
-    const failed = results.filter(r => r.status === 'rejected' || !r.value?.success);
+      if (error) throw error;
 
-    return {
-      success: failed.length === 0,
-      count: succeeded.length,
-      errors: failed.map((r, i) => ({
-        documentId: documentIds[i],
-        error: r.reason || r.value?.error,
-      })),
-    };
+      return { success: true, count: data?.length || 0, error: null };
+    } catch (error) {
+      console.error('[documentsService] bulkApprove error:', error);
+      return { success: false, count: 0, error };
+    }
+  },
+
+  /**
+   * Rejette plusieurs documents en lot
+   * @param {number[]} documentIds - IDs des documents
+   * @param {string} rejectedBy - ID de l'utilisateur
+   * @param {string} reason - Raison du rejet
+   * @returns {Promise<{success: boolean, count: number, error: Error|null}>}
+   */
+  async bulkReject(documentIds, rejectedBy, reason = '') {
+    try {
+      const { data, error } = await supabase
+        .from('documents')
+        .update({
+          status: 'rejected',
+          rejected_by: rejectedBy,
+          rejected_at: new Date().toISOString(),
+          rejection_reason: reason,
+        })
+        .in('id', documentIds)
+        .select();
+
+      if (error) throw error;
+
+      return { success: true, count: data?.length || 0, error: null };
+    } catch (error) {
+      console.error('[documentsService] bulkReject error:', error);
+      return { success: false, count: 0, error };
+    }
   },
 
   // ==========================================================================
-  // PROMOTION DE COUCHE
+  // CHANGEMENT DE COUCHE
   // ==========================================================================
 
   /**
-   * Change la couche d'un document (promotion/rétrogradation)
+   * Change la couche d'un document (promotion/démotion)
    * @param {number} documentId - ID du document
    * @param {string} newLayer - Nouvelle couche
    * @param {string} changedBy - ID de l'utilisateur
@@ -462,19 +445,19 @@ export const documentsService = {
    */
   async changeDocumentLayer(documentId, newLayer, changedBy) {
     try {
-      const { data, error } = await supabase.rpc('change_document_layer', {
-        p_document_id: documentId,
-        p_new_layer: newLayer,
-        p_changed_by: changedBy,
-      });
+      const { data, error } = await supabase
+        .from('documents')
+        .update({
+          layer: newLayer,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', documentId)
+        .select()
+        .single();
 
       if (error) throw error;
 
-      return {
-        success: data?.success ?? true,
-        data,
-        error: null,
-      };
+      return { success: true, data, error: null };
     } catch (error) {
       console.error('[documentsService] changeDocumentLayer error:', error);
       return { success: false, data: null, error };
@@ -486,7 +469,7 @@ export const documentsService = {
   // ==========================================================================
 
   /**
-   * Supprime un document (soft delete ou hard delete selon config)
+   * Supprime un document
    * @param {number} documentId - ID du document
    * @returns {Promise<{success: boolean, error: Error|null}>}
    */
@@ -512,7 +495,6 @@ export const documentsService = {
    */
   async deleteSourceFile(sourceFileId) {
     try {
-      // 1. Supprimer les chunks associés
       const { count: deletedChunks, error: chunksError } = await supabase
         .from('documents')
         .delete({ count: 'exact' })
@@ -520,7 +502,6 @@ export const documentsService = {
 
       if (chunksError) throw chunksError;
 
-      // 2. Supprimer le fichier source
       const { error: fileError } = await supabase
         .from('source_files')
         .delete()
@@ -569,80 +550,164 @@ export const documentsService = {
   },
 
   /**
-   * Récupère l'URL publique d'un fichier
-   * @param {string} path - Chemin du fichier dans le storage
-   * @returns {string} URL publique
+   * Upload complet d'un document (storage + metadata + processing)
+   * @param {Object} params - Paramètres d'upload
+   * @returns {Promise<{data: Object, path: string, error: Error|null}>}
    */
-  getPublicUrl(path) {
-    const { data } = supabase.storage
-      .from('documents')
-      .getPublicUrl(path);
-    
-    return data?.publicUrl;
-  },
+  async uploadDocument(params) {
+    const {
+      file,
+      layer,
+      verticalId,
+      orgId,
+      userId,
+      projectId = null,
+      metadata = {},
+      qualityLevel = 'standard',
+      status = 'pending',
+    } = params;
 
-  /**
-   * Récupère une URL signée (temporaire) pour un fichier privé
-   * @param {string} path - Chemin du fichier
-   * @param {number} expiresIn - Durée de validité en secondes (défaut: 1h)
-   * @returns {Promise<{url: string, error: Error|null}>}
-   */
-  async getSignedUrl(path, expiresIn = 3600) {
     try {
-      const { data, error } = await supabase.storage
-        .from('documents')
-        .createSignedUrl(path, expiresIn);
+      // 1. Upload vers Storage
+      const { path, error: uploadError } = await this.uploadToStorage(file, userId, layer);
+      if (uploadError) throw uploadError;
 
-      if (error) throw error;
-      return { url: data.signedUrl, error: null };
+      // 2. Créer l'entrée source_file
+      const { data: sourceFile, error: sourceError } = await supabase
+        .from('source_files')
+        .insert({
+          original_filename: file.name,
+          mime_type: file.type,
+          file_size: file.size,
+          storage_path: path,
+          layer,
+          vertical_id: verticalId,
+          org_id: orgId,
+          project_id: projectId,
+          created_by: userId,
+          processing_status: 'pending',
+          metadata,
+        })
+        .select()
+        .single();
+
+      if (sourceError) throw sourceError;
+
+      // 3. Déclencher le traitement (Edge Function)
+      const { error: processError } = await supabase.functions.invoke('process-document', {
+        body: {
+          sourceFileId: sourceFile.id,
+          qualityLevel,
+          extractToc: metadata.extractToc || false,
+        },
+      });
+
+      if (processError) {
+        console.warn('[documentsService] Processing trigger failed:', processError);
+      }
+
+      return { data: sourceFile, path, error: null };
     } catch (error) {
-      console.error('[documentsService] getSignedUrl error:', error);
-      return { url: null, error };
+      console.error('[documentsService] uploadDocument error:', error);
+      return { data: null, path: null, error };
     }
   },
 
   // ==========================================================================
-  // WEBHOOK N8N
+  // LÉGIFRANCE - SYNCHRONISATION
   // ==========================================================================
 
   /**
-   * Déclenche le webhook N8N pour l'ingestion
-   * @param {Object} payload - Données à envoyer
-   * @param {string} payload.path - Chemin du fichier dans le storage
-   * @param {string} payload.user_id - ID utilisateur
-   * @param {string} payload.org_id - ID organisation
-   * @param {string} payload.layer - Couche cible
-   * @param {Object} payload.metadata - Métadonnées additionnelles
-   * @returns {Promise<{success: boolean, error: Error|null}>}
+   * Synchronise des codes Légifrance vers la base RAG
+   * @param {Object} params - Paramètres de synchronisation
+   * @param {string[]} params.codeIds - IDs des codes à synchroniser
+   * @param {string} params.verticalId - ID de la verticale cible
+   * @param {string} params.layer - Couche de destination
+   * @returns {Promise<{data: Object, error: Error|null}>}
    */
-  async triggerIngestionWebhook(payload) {
-    try {
-      const webhookUrl = import.meta.env.VITE_N8N_INGEST_WEBHOOK_URL;
-      
-      if (!webhookUrl) {
-        console.warn('[documentsService] N8N webhook URL not configured');
-        return { success: true, error: null }; // Silencieux si non configuré
-      }
+  async syncLegifranceCodes(params) {
+    const { codeIds, verticalId, layer } = params;
 
-      const response = await fetch(webhookUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...payload,
-          source: 'baikal-console',
-          quality_level: 'premium',
-          triggered_at: new Date().toISOString(),
-        }),
+    try {
+      // Appeler la Edge Function de synchronisation Légifrance
+      const { data, error } = await supabase.functions.invoke('sync-legifrance', {
+        body: {
+          codeIds,
+          verticalId,
+          layer,
+          action: 'sync',
+        },
       });
 
-      if (!response.ok) {
-        throw new Error(`Webhook error: ${response.status}`);
+      if (error) throw error;
+
+      return { 
+        data: {
+          success: true,
+          syncedCodes: codeIds.length,
+          jobId: data?.jobId,
+          ...data,
+        }, 
+        error: null 
+      };
+    } catch (error) {
+      console.error('[documentsService] syncLegifranceCodes error:', error);
+      return { data: null, error };
+    }
+  },
+
+  /**
+   * Récupère le statut d'un job de synchronisation Légifrance
+   * @param {string} jobId - ID du job
+   * @returns {Promise<{data: Object, error: Error|null}>}
+   */
+  async getLegifranceSyncStatus(jobId) {
+    try {
+      const { data, error } = await supabase
+        .schema('legifrance')
+        .from('sync_jobs')
+        .select('*')
+        .eq('id', jobId)
+        .single();
+
+      if (error) throw error;
+
+      return { data, error: null };
+    } catch (error) {
+      console.error('[documentsService] getLegifranceSyncStatus error:', error);
+      return { data: null, error };
+    }
+  },
+
+  /**
+   * Récupère l'historique des synchronisations Légifrance
+   * @param {Object} filters - Filtres optionnels
+   * @returns {Promise<{data: Array, error: Error|null}>}
+   */
+  async getLegifranceSyncHistory(filters = {}) {
+    try {
+      let query = supabase
+        .schema('legifrance')
+        .from('sync_jobs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(filters.limit || 50);
+
+      if (filters.codeId) {
+        query = query.eq('code_id', filters.codeId);
+      }
+      if (filters.status) {
+        query = query.eq('status', filters.status);
       }
 
-      return { success: true, error: null };
+      const { data, error } = await query;
+
+      if (error) throw error;
+
+      return { data: data || [], error: null };
     } catch (error) {
-      console.error('[documentsService] triggerIngestionWebhook error:', error);
-      return { success: false, error };
+      console.error('[documentsService] getLegifranceSyncHistory error:', error);
+      return { data: [], error };
     }
   },
 };

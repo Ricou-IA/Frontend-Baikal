@@ -29,27 +29,27 @@ import { cn } from '../../utils/cn';
  */
 const variants = {
   info: {
-    container: 'bg-blue-50 border-blue-200 text-blue-800',
-    icon: 'text-blue-500',
-    title: 'text-blue-800',
+    container: 'bg-blue-900/20 border-blue-500/50 text-blue-300',
+    icon: 'text-blue-400',
+    title: 'text-blue-300',
     Icon: Info,
   },
   success: {
-    container: 'bg-green-50 border-green-200 text-green-800',
-    icon: 'text-green-500',
-    title: 'text-green-800',
+    container: 'bg-green-900/20 border-green-500/50 text-green-300',
+    icon: 'text-green-400',
+    title: 'text-green-300',
     Icon: CheckCircle2,
   },
   warning: {
-    container: 'bg-amber-50 border-amber-200 text-amber-800',
-    icon: 'text-amber-500',
-    title: 'text-amber-800',
+    container: 'bg-amber-900/20 border-amber-500/50 text-amber-300',
+    icon: 'text-amber-400',
+    title: 'text-amber-300',
     Icon: AlertTriangle,
   },
   error: {
-    container: 'bg-red-50 border-red-200 text-red-800',
-    icon: 'text-red-500',
-    title: 'text-red-800',
+    container: 'bg-red-900/20 border-red-500/50 text-red-300',
+    icon: 'text-red-400',
+    title: 'text-red-300',
     Icon: AlertCircle,
   },
 };
