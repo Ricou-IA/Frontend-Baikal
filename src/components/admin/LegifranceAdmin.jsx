@@ -8,7 +8,7 @@
 import React, { useState } from 'react';
 import { useLegifrance } from '../../hooks/useLegifrance';
 import { LegifranceCodesList, SyncModal, SyncHistoryModal } from './legifrance';
-import { Scale, ExternalLink, Loader2, Database, BookOpen, Layers } from 'lucide-react';
+import { Scale, ExternalLink, Database, Layers } from 'lucide-react';
 
 /**
  * Carte de statistique

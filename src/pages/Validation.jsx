@@ -11,14 +11,9 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { documentsService } from '../services/documents.service';
 import {
-  DocumentStatus,
   LAYER_LABELS,
   LAYER_COLORS,
   LAYER_ICONS,
-  QUALITY_LABELS,
-  QUALITY_COLORS,
-  STATUS_LABELS,
-  formatFileSize,
   formatRelativeDate,
   getPermissions,
 } from '../config/rag-layers.config';
@@ -41,14 +36,9 @@ import {
   BookOpen,
   FolderOpen,
   Filter,
-  Search,
   CheckCheck,
   X,
-  MessageSquare,
   AlertTriangle,
-  Sparkles,
-  File,
-  ExternalLink,
 } from 'lucide-react';
 
 // ============================================================================
@@ -380,7 +370,7 @@ function BulkActionsBar({
 
 export default function Validation() {
   const navigate = useNavigate();
-  const { profile, organization, isSuperAdmin, isOrgAdmin } = useAuth();
+  const { profile } = useAuth();
 
   // États
   const [documents, setDocuments] = useState([]);
@@ -401,7 +391,7 @@ export default function Validation() {
 
   // Filtres
   const [filterLayer, setFilterLayer] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [_searchQuery, _setSearchQuery] = useState('');
 
   // Permissions
   const userRole = profile?.app_role || 'member';
@@ -576,7 +566,7 @@ export default function Validation() {
     setError(null);
 
     try {
-      const { success, count, errors } = await documentsService.approveBatch(
+      const { count, errors } = await documentsService.approveBatch(
         idsToApprove,
         profile?.id
       );

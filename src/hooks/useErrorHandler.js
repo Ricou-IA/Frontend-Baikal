@@ -15,7 +15,7 @@
  */
 
 import { useState, useCallback } from 'react';
-import { useToast } from '../contexts/ToastContext';
+import { useToastSafe } from '../contexts/ToastContext';
 import { handleError as processError, logError } from '../utils/errors';
 
 /**
@@ -30,14 +30,9 @@ export function useErrorHandler(options = {}) {
 
   const [error, setError] = useState(null);
   const [errorHistory, setErrorHistory] = useState([]);
-  
-  // Toast peut ne pas être disponible si pas dans ToastProvider
-  let toast = null;
-  try {
-    toast = useToast();
-  } catch {
-    // Toast non disponible
-  }
+
+  // Toast peut être null si pas dans ToastProvider
+  const toast = useToastSafe();
 
   const handleError = useCallback((err, context = {}) => {
     const processed = processError(err);
@@ -104,12 +99,8 @@ export function useErrorHandler(options = {}) {
 }
 
 export function useErrorToast() {
-  let toast = null;
-  try {
-    toast = useToast();
-  } catch {
-    // Toast non disponible
-  }
+  // Toast peut être null si pas dans ToastProvider
+  const toast = useToastSafe();
 
   const showError = useCallback((message) => {
     if (toast) {

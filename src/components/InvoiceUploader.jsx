@@ -173,7 +173,7 @@ const InvoiceUploader = ({
       // ============================================
       // ÉTAPE 3: Upload vers Supabase Storage
       // ============================================
-      const { data: storageData, error: storageError } = await supabaseClient
+      const { error: storageError } = await supabaseClient
         .storage
         .from('invoices') // Bucket dédié aux documents commerciaux
         .upload(filePath, selectedFile, {

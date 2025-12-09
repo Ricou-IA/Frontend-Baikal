@@ -149,9 +149,6 @@ export function useForm(options = {}) {
     setIsSubmitting(true);
     try {
       await onSubmit(values);
-    } catch (error) {
-      // L'erreur est gérée par le composant parent
-      throw error;
     } finally {
       setIsSubmitting(false);
     }

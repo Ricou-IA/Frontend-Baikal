@@ -1,10 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { 
-  User, 
-  Settings, 
-  Users, 
-  Sun, 
+import {
+  Settings,
+  Users,
+  Sun,
   Moon,
   LogOut,
   Check,

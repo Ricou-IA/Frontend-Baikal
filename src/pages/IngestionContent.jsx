@@ -10,14 +10,13 @@
  * ============================================================================
  */
 
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { documentsService } from '../services/documents.service';
 import { referentielsService } from '../services/referentiels.service';
 import {
     LAYER_LABELS,
     LAYER_COLORS,
-    LAYER_ICONS,
     ACCEPTED_MIME_TYPES,
     ACCEPTED_EXTENSIONS,
     MAX_FILE_SIZE_MB,
@@ -214,7 +213,7 @@ function LayerSelector({ selectedLayer, onSelect, availableLayers }) {
             <label className="block text-xs font-mono text-baikal-text uppercase">Couche de destination *</label>
             <div className="grid grid-cols-2 gap-3">
                 {layers.map((layer) => {
-                    const colors = LAYER_COLORS[layer.id];
+                    const _colors = LAYER_COLORS[layer.id];
                     const isAvailable = availableLayers.includes(layer.id);
                     const isSelected = selectedLayer === layer.id;
                     const Icon = layer.icon;
@@ -489,7 +488,7 @@ function LegifranceInterface({ selectedVertical, selectedLayer, verticals }) {
         setSyncResult(null);
         
         try {
-            const { data, error } = await documentsService.syncLegifranceCodes({
+            const { error } = await documentsService.syncLegifranceCodes({
                 codeIds: selectedCodes,
                 verticalId: selectedVertical,
                 layer: selectedLayer,
@@ -835,7 +834,7 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
         setUploadResult(null);
 
         try {
-            const { data, error, path } = await documentsService.uploadDocument({
+            const { error, path } = await documentsService.uploadDocument({
                 file,
                 layer: selectedLayer,
                 verticalId: selectedVertical,

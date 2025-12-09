@@ -83,6 +83,14 @@ export function useToast() {
   return context;
 }
 
+/**
+ * Version safe de useToast qui retourne null si pas dans un provider
+ * Utile pour les hooks qui peuvent fonctionner avec ou sans toast
+ */
+export function useToastSafe() {
+  return useContext(ToastContext);
+}
+
 // ============================================================================
 // PROVIDER
 // ============================================================================

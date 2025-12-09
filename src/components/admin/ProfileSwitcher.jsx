@@ -18,14 +18,13 @@ import {
 } from 'lucide-react';
 
 export default function ProfileSwitcher() {
-    const { 
-        profile, 
-        user, 
-        isSuperAdmin, 
-        isImpersonating, 
-        impersonateUser, 
+    const {
+        profile,
+        isSuperAdmin,
+        isImpersonating,
+        impersonateUser,
         stopImpersonating,
-        realProfile 
+        realProfile
     } = useAuth();
     const [isOpen, setIsOpen] = useState(false);
     const [switching, setSwitching] = useState(false);
@@ -118,8 +117,8 @@ export default function ProfileSwitcher() {
         ? (profile?.full_name || profile?.email || 'Profil emprunté')
         : (realProfile?.full_name || realProfile?.email || 'Super Admin');
 
-    const currentUserEmail = isImpersonating 
-        ? profile?.email 
+    const _currentUserEmail = isImpersonating
+        ? profile?.email
         : realProfile?.email;
 
     // Ne pas afficher si pas super_admin

@@ -104,7 +104,7 @@ export default function Login() {
     try {
       if (isSignUp) {
         const result = await signUp(email, password, { full_name: fullName });
-        const { data, error } = result || {};
+        const { error } = result || {};
         
         if (error) {
           const errorMessage = error?.message || error?.toString() || 'Une erreur est survenue lors de l\'inscription.';

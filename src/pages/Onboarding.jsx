@@ -52,7 +52,7 @@ const ROLES = [
 
 export default function Onboarding() {
   const navigate = useNavigate();
-  const { profile, refreshProfile } = useAuth();
+  const { refreshProfile } = useAuth();
   
   // États
   const [selectedRole, setSelectedRole] = useState(null);

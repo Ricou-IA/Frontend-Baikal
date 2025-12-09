@@ -12,7 +12,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { documentsService } from '../services/documents.service';
 import {
   DocumentLayer,
-  DocumentStatus,
   LAYER_LABELS,
   LAYER_DESCRIPTIONS,
   LAYER_COLORS,

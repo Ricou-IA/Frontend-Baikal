@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { documentsService } from '../services/documents.service';
@@ -24,7 +24,6 @@ import { referentielsService } from '../services/referentiels.service';
 import {
     LAYER_LABELS,
     LAYER_COLORS,
-    LAYER_ICONS,
     ACCEPTED_MIME_TYPES,
     ACCEPTED_EXTENSIONS,
     MAX_FILE_SIZE_MB,
@@ -49,17 +48,11 @@ import {
     FileSpreadsheet,
     AlertTriangle,
     Info,
-    ChevronDown,
-    ChevronRight,
     Sparkles,
     Globe,
     Link2,
     Layers,
-    FolderOpen,
-    User,
-    RefreshCw,
     Search,
-    Settings,
     Play,
     Clock,
 } from 'lucide-react';
@@ -774,7 +767,7 @@ function LegifranceInterface({ selectedVertical, selectedLayer, verticals }) {
 
 export default function IngestionPremium() {
     const navigate = useNavigate();
-    const { profile, isSuperAdmin, isOrgAdmin } = useAuth();
+    const { profile, isSuperAdmin } = useAuth();
 
     // États - Référentiels
     const [verticals, setVerticals] = useState([]);
@@ -929,7 +922,7 @@ export default function IngestionPremium() {
         setUploadResult(null);
 
         try {
-            const { data, error, path } = await documentsService.uploadDocument({
+            const { error, path } = await documentsService.uploadDocument({
                 file,
                 layer: selectedLayer,
                 verticalId: selectedVertical,

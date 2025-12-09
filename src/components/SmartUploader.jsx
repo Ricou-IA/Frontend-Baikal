@@ -167,7 +167,7 @@ const SmartUploader = ({
       
       if (supabaseClient) {
         const fileName = `${Date.now()}-${selectedFile.name}`;
-        const { data: storageData, error: storageError } = await supabaseClient
+        const { error: storageError } = await supabaseClient
           .storage
           .from('documents')
           .upload(fileName, selectedFile, {

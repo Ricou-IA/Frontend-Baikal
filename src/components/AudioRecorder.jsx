@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { Mic, Square, Loader2, CheckCircle2, AlertCircle, FileText } from 'lucide-react';
 // Correction de l'import : utilisation du chemin relatif pour éviter les problèmes d'alias
 import { uploadMeetingAudio } from '../lib/supabaseClient';

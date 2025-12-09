@@ -60,7 +60,7 @@ export default function Sidebar({
   profile,
   onLogout,
 }) {
-  const primaryColor = verticalInfo?.color || '#6366f1';
+  const _primaryColor = verticalInfo?.color || '#6366f1';
 
   return (
     <aside

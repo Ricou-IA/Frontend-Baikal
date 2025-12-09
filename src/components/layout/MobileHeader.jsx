@@ -29,7 +29,7 @@ export default function MobileHeader({
 }) {
   if (!show) return null;
 
-  const primaryColor = verticalInfo?.color || '#6366f1';
+  const _primaryColor = verticalInfo?.color || '#6366f1';
 
   return (
     <div className="p-4 border-b border-baikal-border bg-baikal-surface flex items-center gap-4 lg:hidden">

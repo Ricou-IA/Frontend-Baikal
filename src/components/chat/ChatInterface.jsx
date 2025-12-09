@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { MessageSquare, Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
-import { supabase } from '../../lib/supabaseClient';
 import { callRagBrain } from '../../lib/supabaseClient';
 import ChatBubble from './ChatBubble';
 import ChatInput from './ChatInput';
@@ -8,9 +7,6 @@ import ChatInput from './ChatInput';
 // ============================================
 // CONFIGURATION
 // ============================================
-
-// URL Supabase (depuis variable d'environnement)
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://your-project.supabase.co';
 
 // Verticale par défaut (simulée pour Brique 3)
 const DEFAULT_VERTICAL_ID = 'audit';

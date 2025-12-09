@@ -27,7 +27,7 @@ export default function MembersList({
     onInvite = () => {},
     onRevoke = () => {},
     onUpdateRole = () => {},
-    onResendInvitation = () => {}
+    onResendInvitation: _onResendInvitation = () => {}
 }) {
     const [editingMemberId, setEditingMemberId] = useState(null);
     const [selectedRole, setSelectedRole] = useState('');

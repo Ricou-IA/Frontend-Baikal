@@ -6,14 +6,13 @@
  */
 
 import React from 'react';
-import { 
-  Edit, 
-  Copy, 
-  Trash2, 
-  ToggleLeft, 
+import {
+  Edit,
+  Copy,
+  Trash2,
+  ToggleLeft,
   ToggleRight,
   MoreVertical,
-  Eye,
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { 

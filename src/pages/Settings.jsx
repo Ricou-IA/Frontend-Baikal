@@ -8,7 +8,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { 
+import {
   ArrowLeft,
   User,
   Building2,
@@ -19,13 +19,12 @@ import {
   Lock,
   Sparkles,
   Shield,
-  Mail
 } from 'lucide-react';
 
 export default function Settings() {
   const navigate = useNavigate();
   const { user, profile, organization, signOut, isOrgAdmin, isSuperAdmin } = useAuth();
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, _setDarkMode] = useState(false);
   const [language, setLanguage] = useState('fr');
   const [notifications, setNotifications] = useState(true);
 

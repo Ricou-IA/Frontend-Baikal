@@ -42,10 +42,6 @@ import {
     FileText,
     CheckCircle2,
     Clock,
-    TrendingUp,
-    Upload,
-    Eye,
-    ChevronRight,
     LogOut,
     Settings,
 } from 'lucide-react';
@@ -140,7 +136,7 @@ function StatCard({ label, value, icon: Icon, color = 'indigo', subValue = null,
 // COMPOSANT DASHBOARD TAB
 // ============================================================================
 
-function DashboardTab({ orgId, isSuperAdmin, onNavigate }) {
+function DashboardTab({ orgId, isSuperAdmin: _isSuperAdmin, onNavigate }) {
     const [stats, setStats] = useState({
         documents: 0,
         pending: 0,
@@ -270,7 +266,7 @@ function DashboardTab({ orgId, isSuperAdmin, onNavigate }) {
 
 export default function Admin() {
     const navigate = useNavigate();
-    const { user, profile, organization: authOrg, isOrgAdmin, isSuperAdmin, isImpersonating, realProfile, signOut } = useAuth();
+    const { user, profile, organization: _authOrg, isOrgAdmin, isSuperAdmin, isImpersonating, realProfile, signOut } = useAuth();
     
     // État local
     const [activeTab, setActiveTab] = useState('dashboard');

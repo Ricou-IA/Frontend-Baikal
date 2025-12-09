@@ -443,7 +443,7 @@ export const documentsService = {
    * @param {string} changedBy - ID de l'utilisateur
    * @returns {Promise<{success: boolean, data: Object, error: Error|null}>}
    */
-  async changeDocumentLayer(documentId, newLayer, changedBy) {
+  async changeDocumentLayer(documentId, newLayer, _changedBy) {
     try {
       const { data, error } = await supabase
         .from('documents')
@@ -564,7 +564,7 @@ export const documentsService = {
       projectId = null,
       metadata = {},
       qualityLevel = 'standard',
-      status = 'pending',
+      status: _status = 'pending',
     } = params;
 
     try {

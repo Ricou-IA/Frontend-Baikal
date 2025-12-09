@@ -17,7 +17,6 @@ import {
     Loader2,
     Zap,
     Database,
-    Clock
 } from 'lucide-react';
 
 /**
@@ -70,7 +69,7 @@ export default function SyncModal({
     onClose,
     code,
     verticals = [],
-    organizations = [],
+    organizations: _organizations = [],
     onSync,
     syncing,
     searchOrganizations,

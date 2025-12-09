@@ -88,7 +88,7 @@ class ErrorBoundary extends Component {
   }
 }
 
-function DefaultErrorFallback({ error, onReset, onReload, onGoHome }) {
+function DefaultErrorFallback({ error, onReset, onReload: _onReload, onGoHome }) {
   const isDev = import.meta.env.DEV;
 
   return (
@@ -144,7 +144,7 @@ function DefaultErrorFallback({ error, onReset, onReload, onGoHome }) {
   );
 }
 
-export function SectionErrorFallback({ error, resetError }) {
+export function SectionErrorFallback({ error: _error, resetError }) {
   return (
     <div className="flex flex-col items-center justify-center p-8 bg-red-50 rounded-lg border border-red-200">
       <AlertTriangle className="w-8 h-8 text-red-500 mb-3" />
