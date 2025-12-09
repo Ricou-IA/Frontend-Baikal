@@ -94,6 +94,16 @@ export function AuthProvider({ children }) {
         .single();
 
       if (profileError) {
+        // DEBUG: Log complet de l'erreur pour diagnostic 406
+        console.error('[AuthContext] Profile error details:', {
+          code: profileError.code,
+          message: profileError.message,
+          details: profileError.details,
+          hint: profileError.hint,
+          status: profileError.status,
+          full: profileError
+        });
+
         // PGRST116 = No rows found (profil non créé)
         if (profileError.code === 'PGRST116') {
           setProfile(null);
