@@ -85,9 +85,8 @@ export function AuthProvider({ children }) {
     loadingProfileRef.current = true;
 
     try {
-      // Schéma core explicite (exposé dans Supabase API settings)
+      // Accès via vue public.profiles (pointe vers core.profiles)
       const { data: profileData, error: profileError } = await supabase
-        .schema('core')
         .from('profiles')
         .select('*')
         .eq('id', userId)
@@ -118,9 +117,8 @@ export function AuthProvider({ children }) {
 
       // Charger l'organisation si présente
       if (profileData?.org_id) {
-        // Schéma core explicite
+        // Accès via vue public.organizations
         const { data: orgData, error: orgError } = await supabase
-          .schema('core')
           .from('organizations')
           .select('*')
           .eq('id', profileData.org_id)
