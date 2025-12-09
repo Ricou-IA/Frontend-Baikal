@@ -48,7 +48,6 @@ export const documentsService = {
   async getLayerStats(orgId) {
     try {
       const { data, error } = await supabase
-        .schema('rag')                           // ← NOUVEAU: schéma rag
         .from('documents')
         .select('layer, status, quality_level', { count: 'exact' })
         .eq('org_id', orgId);
@@ -90,7 +89,6 @@ export const documentsService = {
   async getPendingCount(orgId) {
     try {
       const { count, error } = await supabase
-        .schema('rag')                           // ← NOUVEAU: schéma rag
         .from('documents')
         .select('*', { count: 'exact', head: true })
         .eq('org_id', orgId)
@@ -140,7 +138,6 @@ export const documentsService = {
       } = pagination;
 
       let query = supabase
-        .schema('rag')                           // ← NOUVEAU: schéma rag
         .from('documents')
         .select(`
           id,
@@ -208,7 +205,6 @@ export const documentsService = {
   async getDocumentById(documentId) {
     try {
       const { data, error } = await supabase
-        .schema('rag')                           // ← NOUVEAU: schéma rag
         .from('documents')
         .select(`
           *,
@@ -248,7 +244,6 @@ export const documentsService = {
       } = pagination;
 
       let query = supabase
-        .schema('sources')                       // ← NOUVEAU: schéma sources
         .from('files')                           // ← CHANGÉ: source_files → files
         .select(`
           id,
@@ -307,7 +302,6 @@ export const documentsService = {
   async checkDuplicate(filename, fileSize, orgId) {
     try {
       const { data, error } = await supabase
-        .schema('sources')                       // ← NOUVEAU: schéma sources
         .from('files')                           // ← CHANGÉ: source_files → files
         .select(`
           id,
@@ -355,7 +349,6 @@ export const documentsService = {
   async approveDocument(documentId, approvedBy) {
     try {
       const { data, error } = await supabase
-        .schema('rag')                           // ← NOUVEAU: schéma rag
         .from('documents')
         .update({
           status: 'approved',
@@ -387,7 +380,6 @@ export const documentsService = {
   async rejectDocument(documentId, rejectedBy, reason = '') {
     try {
       const { data, error } = await supabase
-        .schema('rag')                           // ← NOUVEAU: schéma rag
         .from('documents')
         .update({
           status: 'rejected',
@@ -419,7 +411,6 @@ export const documentsService = {
   async bulkApprove(documentIds, approvedBy) {
     try {
       const { data, error } = await supabase
-        .schema('rag')                           // ← NOUVEAU: schéma rag
         .from('documents')
         .update({
           status: 'approved',
@@ -450,7 +441,6 @@ export const documentsService = {
   async bulkReject(documentIds, rejectedBy, reason = '') {
     try {
       const { data, error } = await supabase
-        .schema('rag')                           // ← NOUVEAU: schéma rag
         .from('documents')
         .update({
           status: 'rejected',
@@ -486,7 +476,6 @@ export const documentsService = {
   async changeDocumentLayer(documentId, newLayer, changedBy) {
     try {
       const { data, error } = await supabase
-        .schema('rag')                           // ← NOUVEAU: schéma rag
         .from('documents')
         .update({
           layer: newLayer,
@@ -519,7 +508,6 @@ export const documentsService = {
   async deleteDocument(documentId) {
     try {
       const { error } = await supabase
-        .schema('rag')                           // ← NOUVEAU: schéma rag
         .from('documents')
         .delete()
         .eq('id', documentId);
@@ -545,7 +533,6 @@ export const documentsService = {
     try {
       // D'abord supprimer les chunks associés
       const { count: deletedChunks, error: chunksError } = await supabase
-        .schema('rag')                           // ← NOUVEAU: schéma rag
         .from('documents')
         .delete({ count: 'exact' })
         .eq('source_file_id', sourceFileId);
@@ -554,7 +541,6 @@ export const documentsService = {
 
       // Ensuite supprimer le fichier source
       const { error: fileError } = await supabase
-        .schema('sources')                       // ← NOUVEAU: schéma sources
         .from('files')                           // ← CHANGÉ: source_files → files
         .delete()
         .eq('id', sourceFileId);
@@ -632,7 +618,6 @@ export const documentsService = {
 
       // 2. Créer l'entrée source file
       const { data: sourceFile, error: sourceError } = await supabase
-        .schema('sources')                       // ← NOUVEAU: schéma sources
         .from('files')                           // ← CHANGÉ: source_files → files
         .insert({
           original_filename: file.name,

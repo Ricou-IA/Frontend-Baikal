@@ -45,8 +45,7 @@ export function useLegifrance() {
     const loadVerticals = useCallback(async () => {
         try {
             const { data, error: fetchError } = await supabase
-                .schema('config')  // MIGRATION: ajout du schéma
-                .from('apps')      // MIGRATION: verticals → apps
+                .from('apps')      // Tables dans search_path: config
                 .select('id, name, description, icon, color, sort_order')
                 .eq('is_active', true)
                 .order('sort_order', { ascending: true });
@@ -72,8 +71,7 @@ export function useLegifrance() {
     const loadDomains = useCallback(async () => {
         try {
             const { data, error: fetchError } = await supabase
-                .schema('legifrance')
-                .from('code_domains')
+                .from('code_domains')  // Tables dans search_path: legifrance
                 .select('id, name, description, icon, color, sort_order')
                 .eq('is_active', true)
                 .order('sort_order', { ascending: true });
@@ -90,8 +88,7 @@ export function useLegifrance() {
         try {
             setError(null);
             const { data, error: fetchError } = await supabase
-                .schema('legifrance')
-                .from('codes')
+                .from('codes')  // Tables dans search_path: legifrance
                 .select('*, domain:code_domains(id, name, icon, color)')
                 .order('name', { ascending: true });
 
@@ -107,8 +104,7 @@ export function useLegifrance() {
     const loadSyncJobs = useCallback(async (codeId = null) => {
         try {
             let query = supabase
-                .schema('legifrance')
-                .from('sync_jobs')
+                .from('sync_jobs')  // Tables dans search_path: legifrance
                 .select('*')
                 .order('created_at', { ascending: false })
                 .limit(50);
@@ -130,8 +126,7 @@ export function useLegifrance() {
     const loadOrganizations = useCallback(async () => {
         try {
             const { data, error: fetchError } = await supabase
-                .schema('core')  // MIGRATION: ajout du schéma
-                .from('organizations')
+                .from('organizations')  // Tables dans search_path: core
                 .select('id, name')
                 .order('name', { ascending: true });
 
@@ -167,8 +162,7 @@ export function useLegifrance() {
         try {
             setError(null);
             const { error: updateError } = await supabase
-                .schema('legifrance')
-                .from('codes')
+                .from('codes')  // Tables dans search_path: legifrance
                 .update({
                     ...updates,
                     updated_at: new Date().toISOString()

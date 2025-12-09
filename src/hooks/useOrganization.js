@@ -29,7 +29,6 @@ export function useOrganization(orgId) {
         try {
             // MIGRATION: organizations → core.organizations
             const { data, error: orgError } = await supabase
-                .schema('core')
                 .from('organizations')
                 .select('*')
                 .eq('id', orgId)
@@ -52,7 +51,6 @@ export function useOrganization(orgId) {
         try {
             // MIGRATION: organization_members → core.organization_members
             const { data: membersData, error: membersError } = await supabase
-                .schema('core')
                 .from('organization_members')
                 .select('*')
                 .eq('org_id', orgId)
@@ -78,8 +76,7 @@ export function useOrganization(orgId) {
             if (userIds.length > 0) {
                 // MIGRATION: profiles → core.profiles
                 const { data: profilesData, error: profilesError } = await supabase
-                    .schema('core')
-                    .from('profiles')
+                        .from('profiles')
                     .select('id, email, full_name, avatar_url')
                     .in('id', userIds);
 
@@ -153,7 +150,6 @@ export function useOrganization(orgId) {
         try {
             // MIGRATION: organization_members → core.organization_members
             const { error } = await supabase
-                .schema('core')
                 .from('organization_members')
                 .delete()
                 .eq('id', memberId);
@@ -172,7 +168,6 @@ export function useOrganization(orgId) {
         try {
             // MIGRATION: organization_members → core.organization_members
             const { error } = await supabase
-                .schema('core')
                 .from('organization_members')
                 .update({ role: newRole })
                 .eq('id', memberId);
@@ -191,7 +186,6 @@ export function useOrganization(orgId) {
         try {
             // MIGRATION: organizations → core.organizations
             const { error } = await supabase
-                .schema('core')
                 .from('organizations')
                 .update({ name: newName })
                 .eq('id', orgId);

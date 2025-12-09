@@ -48,9 +48,8 @@ export default function ProfileSwitcher() {
 
     const loadAllUsers = async () => {
         try {
-            // MIGRATION: profiles → core.profiles
+            // Tables dans search_path: core
             const { data, error } = await supabase
-                .schema('core')
                 .from('profiles')
                 .select('id, email, full_name, app_role, business_role')
                 .order('created_at', { ascending: false })

@@ -85,15 +85,24 @@ export function AuthProvider({ children }) {
     loadingProfileRef.current = true;
 
     try {
-      // MIGRATION: profiles → core.profiles
+      // Tables dans search_path: core, config, etc.
       const { data: profileData, error: profileError } = await supabase
-        .schema('core')
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .single();
 
       if (profileError) {
+        // DEBUG: Log complet de l'erreur pour diagnostic 406
+        console.error('[AuthContext] Profile error details:', {
+          code: profileError.code,
+          message: profileError.message,
+          details: profileError.details,
+          hint: profileError.hint,
+          status: profileError.status,
+          full: profileError
+        });
+
         // PGRST116 = No rows found (profil non créé)
         if (profileError.code === 'PGRST116') {
           setProfile(null);
@@ -108,9 +117,8 @@ export function AuthProvider({ children }) {
 
       // Charger l'organisation si présente
       if (profileData?.org_id) {
-        // MIGRATION: organizations → core.organizations
+        // Tables dans search_path: core, config, etc.
         const { data: orgData, error: orgError } = await supabase
-          .schema('core')
           .from('organizations')
           .select('*')
           .eq('id', profileData.org_id)

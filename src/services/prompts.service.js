@@ -32,7 +32,6 @@ export const getPrompts = async (filters = {}) => {
     // MIGRATION: agent_prompts → config.agent_prompts
     // MIGRATION: verticals:vertical_id → apps:app_id
     let query = supabase
-      .schema('config')
       .from('agent_prompts')
       .select(`
         *,
@@ -94,7 +93,6 @@ export const getPromptById = async (id) => {
   try {
     // MIGRATION: config.agent_prompts, apps:app_id
     const { data, error } = await supabase
-      .schema('config')
       .from('agent_prompts')
       .select(`
         *,
@@ -144,7 +142,6 @@ export const createPrompt = async (promptData) => {
 
     // MIGRATION: config.agent_prompts
     const { data, error } = await supabase
-      .schema('config')
       .from('agent_prompts')
       .insert({
         name: promptData.name,
@@ -214,7 +211,6 @@ export const updatePrompt = async (id, promptData) => {
 
     // MIGRATION: config.agent_prompts
     const { data, error } = await supabase
-      .schema('config')
       .from('agent_prompts')
       .update(updateData)
       .eq('id', id)
@@ -256,7 +252,6 @@ export const deletePrompt = async (id) => {
   try {
     // MIGRATION: config.agent_prompts
     const { error } = await supabase
-      .schema('config')
       .from('agent_prompts')
       .delete()
       .eq('id', id);
@@ -325,7 +320,6 @@ export const getApps = async () => {
   try {
     // MIGRATION: verticals → config.apps
     const { data, error } = await supabase
-      .schema('config')
       .from('apps')
       .select('id, name, description, icon, color')
       .eq('is_active', true)
@@ -363,7 +357,6 @@ export const getOrganizations = async (appId = null) => {
   try {
     // MIGRATION: organizations → core.organizations
     let query = supabase
-      .schema('core')
       .from('organizations')
       .select('id, name, plan')
       .order('name', { ascending: true });
@@ -402,7 +395,6 @@ export const checkPromptExists = async (agentType, appId, orgId, excludeId = nul
   try {
     // MIGRATION: config.agent_prompts, app_id
     let query = supabase
-      .schema('config')
       .from('agent_prompts')
       .select('id')
       .eq('agent_type', agentType);

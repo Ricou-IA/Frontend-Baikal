@@ -259,8 +259,7 @@ export default function SyncHistoryModal({
                 setError(null);
 
                 const { data, error: fetchError } = await supabase
-                    .schema('legifrance')
-                    .from('sync_jobs')
+                    .from('sync_jobs')  // Tables dans search_path: legifrance
                     .select('*')
                     .eq('code_id', code.id)
                     .order('created_at', { ascending: false })

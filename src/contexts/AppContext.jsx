@@ -92,8 +92,7 @@ export const AppProvider = ({
 
             try {
                 const { data, error: fetchError } = await supabaseClient
-                    .schema('config')                    // ← NOUVEAU: schéma config
-                    .from('apps')                        // ← CHANGÉ: verticals → apps
+                    .from('apps')                        // Tables dans search_path
                     .select('id, name, description, icon, color, sort_order')
                     .eq('is_active', true)
                     .order('sort_order', { ascending: true });
