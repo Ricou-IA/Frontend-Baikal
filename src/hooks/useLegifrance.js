@@ -40,11 +40,13 @@ export function useLegifrance() {
     // CHARGEMENT DES DONNÉES
     // ========================================================================
 
-    // Charger les verticales depuis Supabase
+    // Charger les apps (anciennement verticales) depuis Supabase
+    // MIGRATION: verticals → config.apps
     const loadVerticals = useCallback(async () => {
         try {
             const { data, error: fetchError } = await supabase
-                .from('verticals')
+                .schema('config')  // MIGRATION: ajout du schéma
+                .from('apps')      // MIGRATION: verticals → apps
                 .select('id, name, description, icon, color, sort_order')
                 .eq('is_active', true)
                 .order('sort_order', { ascending: true });
@@ -124,9 +126,11 @@ export function useLegifrance() {
     }, []);
 
     // Charger les organisations
+    // MIGRATION: organizations → core.organizations
     const loadOrganizations = useCallback(async () => {
         try {
             const { data, error: fetchError } = await supabase
+                .schema('core')  // MIGRATION: ajout du schéma
                 .from('organizations')
                 .select('id, name')
                 .order('name', { ascending: true });
@@ -187,9 +191,10 @@ export function useLegifrance() {
         return updateCode(codeId, { is_enabled: isEnabled });
     }, [updateCode]);
 
-    // Mettre à jour les verticales par défaut
+    // Mettre à jour les apps par défaut (anciennement verticales)
+    // MIGRATION: default_verticals → default_apps
     const updateCodeVerticals = useCallback(async (codeId, verticalIds) => {
-        return updateCode(codeId, { default_verticals: verticalIds });
+        return updateCode(codeId, { default_apps: verticalIds });  // MIGRATION: default_verticals → default_apps
     }, [updateCode]);
 
     // Mettre à jour les grants organisations

@@ -543,7 +543,7 @@ function LegifranceInterface({ selectedVertical, selectedLayer, verticals }) {
             // Appel API pour synchroniser les codes sélectionnés
             const { data, error } = await documentsService.syncLegifranceCodes({
                 codeIds: selectedCodes,
-                verticalId: selectedVertical,
+                appId: selectedVertical,  // MIGRATION: verticalId → appId
                 layer: selectedLayer,
             });
 
@@ -934,7 +934,7 @@ export default function IngestionPremium() {
             const { data, error, path } = await documentsService.uploadDocument({
                 file,
                 layer: selectedLayer,
-                verticalId: selectedVertical,
+                appId: selectedVertical,  // MIGRATION: verticalId → appId
                 orgId: profile?.org_id,
                 userId: profile?.id,
                 metadata: {

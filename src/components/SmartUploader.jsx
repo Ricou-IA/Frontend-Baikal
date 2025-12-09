@@ -169,7 +169,7 @@ const SmartUploader = ({
         const fileName = `${Date.now()}-${selectedFile.name}`;
         const { data: storageData, error: storageError } = await supabaseClient
           .storage
-          .from('documents')
+          .from('premium-sources')  // MIGRATION: documents → premium-sources
           .upload(fileName, selectedFile, {
             cacheControl: '3600',
             upsert: false,
@@ -181,7 +181,7 @@ const SmartUploader = ({
           // Récupérer l'URL publique
           const { data: { publicUrl } } = supabaseClient
             .storage
-            .from('documents')
+            .from('premium-sources')  // MIGRATION: documents → premium-sources
             .getPublicUrl(fileName);
           storageUrl = publicUrl;
 
@@ -204,7 +204,7 @@ const SmartUploader = ({
                   path: `documents/${fileName}`,  // Path dans Supabase Storage
                   user_id: userId,
                   tag: selectedVerticals[0] || 'default',
-                  target_verticals: selectedVerticals || ['default']
+                  target_apps: selectedVerticals || ['default']  // MIGRATION: target_verticals → target_apps
                 })
               });
               // Ne pas bloquer si l'appel N8N échoue (non bloquant)
