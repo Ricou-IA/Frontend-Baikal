@@ -29,21 +29,10 @@ import { DEFAULT_PARAMETERS } from '../config/prompts';
  */
 export const getPrompts = async (filters = {}) => {
   try {
-    // MIGRATION: agent_prompts → config.agent_prompts
-    // MIGRATION: verticals:vertical_id → apps:app_id
+    // Requête principale sans jointures (les vues ne supportent pas les relations PostgREST)
     let query = supabase
       .from('agent_prompts')
-      .select(`
-        *,
-        organizations:org_id (
-          id,
-          name
-        ),
-        apps:app_id (
-          id,
-          name
-        )
-      `)
+      .select('*')
       .order('agent_type', { ascending: true })
       .order('app_id', { ascending: true, nullsFirst: true })
       .order('org_id', { ascending: true, nullsFirst: true });
@@ -52,11 +41,9 @@ export const getPrompts = async (filters = {}) => {
     if (filters.agent_type) {
       query = query.eq('agent_type', filters.agent_type);
     }
-    // MIGRATION: vertical_id → app_id
     if (filters.app_id) {
       query = query.eq('app_id', filters.app_id);
     }
-    // Compatibilité ascendante
     if (filters.vertical_id) {
       console.warn('[prompts.service] filters.vertical_id is deprecated. Use filters.app_id instead.');
       query = query.eq('app_id', filters.vertical_id);
@@ -65,17 +52,45 @@ export const getPrompts = async (filters = {}) => {
       query = query.eq('is_active', filters.is_active);
     }
 
-    const { data, error } = await query;
-
+    const { data: promptsData, error } = await query;
     if (error) throw error;
 
-    // MIGRATION: Mapper les données pour compatibilité (apps → verticals alias)
-    const mappedData = data?.map(item => ({
+    // Récupérer les organizations et apps séparément
+    const orgIds = [...new Set(promptsData?.filter(p => p.org_id).map(p => p.org_id) || [])];
+    const appIds = [...new Set(promptsData?.filter(p => p.app_id).map(p => p.app_id) || [])];
+
+    let orgsMap = {};
+    let appsMap = {};
+
+    if (orgIds.length > 0) {
+      const { data: orgsData } = await supabase
+        .from('organizations')
+        .select('id, name')
+        .in('id', orgIds);
+      if (orgsData) {
+        orgsMap = orgsData.reduce((acc, org) => { acc[org.id] = org; return acc; }, {});
+      }
+    }
+
+    if (appIds.length > 0) {
+      const { data: appsData } = await supabase
+        .from('apps')
+        .select('id, name')
+        .in('id', appIds);
+      if (appsData) {
+        appsMap = appsData.reduce((acc, app) => { acc[app.id] = app; return acc; }, {});
+      }
+    }
+
+    // Fusionner les données
+    const mappedData = (promptsData || []).map(item => ({
       ...item,
-      // Alias pour compatibilité ascendante
+      organizations: item.org_id ? orgsMap[item.org_id] : null,
+      apps: item.app_id ? appsMap[item.app_id] : null,
+      // Alias pour compatibilité
       vertical_id: item.app_id,
-      verticals: item.apps,
-    })) || [];
+      verticals: item.app_id ? appsMap[item.app_id] : null,
+    }));
 
     return { data: mappedData, error: null };
   } catch (error) {
@@ -91,30 +106,44 @@ export const getPrompts = async (filters = {}) => {
  */
 export const getPromptById = async (id) => {
   try {
-    // MIGRATION: config.agent_prompts, apps:app_id
+    // Requête principale sans jointures (les vues ne supportent pas les relations PostgREST)
     const { data, error } = await supabase
       .from('agent_prompts')
-      .select(`
-        *,
-        organizations:org_id (
-          id,
-          name
-        ),
-        apps:app_id (
-          id,
-          name
-        )
-      `)
+      .select('*')
       .eq('id', id)
       .single();
 
     if (error) throw error;
 
+    // Récupérer organization et app séparément si nécessaire
+    let organization = null;
+    let app = null;
+
+    if (data?.org_id) {
+      const { data: orgData } = await supabase
+        .from('organizations')
+        .select('id, name')
+        .eq('id', data.org_id)
+        .single();
+      organization = orgData;
+    }
+
+    if (data?.app_id) {
+      const { data: appData } = await supabase
+        .from('apps')
+        .select('id, name')
+        .eq('id', data.app_id)
+        .single();
+      app = appData;
+    }
+
     // MIGRATION: Alias pour compatibilité
     const mappedData = data ? {
       ...data,
+      organizations: organization,
+      apps: app,
       vertical_id: data.app_id,
-      verticals: data.apps,
+      verticals: app,
     } : null;
 
     return { data: mappedData, error: null };
@@ -139,40 +168,55 @@ export const createPrompt = async (promptData) => {
 
     // MIGRATION: vertical_id → app_id
     const appId = promptData.app_id || promptData.vertical_id || null;
+    const orgId = promptData.org_id || null;
 
-    // MIGRATION: config.agent_prompts
+    // Insert sans jointures (les vues ne supportent pas les relations PostgREST)
     const { data, error } = await supabase
       .from('agent_prompts')
       .insert({
         name: promptData.name,
         description: promptData.description || null,
         agent_type: promptData.agent_type,
-        app_id: appId,                              // ← MIGRATION: vertical_id → app_id
-        org_id: promptData.org_id || null,
+        app_id: appId,
+        org_id: orgId,
         system_prompt: promptData.system_prompt,
         parameters,
         is_active: promptData.is_active ?? true,
       })
-      .select(`
-        *,
-        organizations:org_id (
-          id,
-          name
-        ),
-        apps:app_id (
-          id,
-          name
-        )
-      `)
+      .select('*')
       .single();
 
     if (error) throw error;
 
+    // Récupérer organization et app séparément si nécessaire
+    let organization = null;
+    let app = null;
+
+    if (orgId) {
+      const { data: orgData } = await supabase
+        .from('organizations')
+        .select('id, name')
+        .eq('id', orgId)
+        .single();
+      organization = orgData;
+    }
+
+    if (appId) {
+      const { data: appData } = await supabase
+        .from('apps')
+        .select('id, name')
+        .eq('id', appId)
+        .single();
+      app = appData;
+    }
+
     // MIGRATION: Alias pour compatibilité
     const mappedData = data ? {
       ...data,
+      organizations: organization,
+      apps: app,
       vertical_id: data.app_id,
-      verticals: data.apps,
+      verticals: app,
     } : null;
 
     return { data: mappedData, error: null };
@@ -209,31 +253,45 @@ export const updatePrompt = async (id, promptData) => {
     if (promptData.parameters !== undefined) updateData.parameters = promptData.parameters;
     if (promptData.is_active !== undefined) updateData.is_active = promptData.is_active;
 
-    // MIGRATION: config.agent_prompts
+    // Update sans jointures (les vues ne supportent pas les relations PostgREST)
     const { data, error } = await supabase
       .from('agent_prompts')
       .update(updateData)
       .eq('id', id)
-      .select(`
-        *,
-        organizations:org_id (
-          id,
-          name
-        ),
-        apps:app_id (
-          id,
-          name
-        )
-      `)
+      .select('*')
       .single();
 
     if (error) throw error;
 
+    // Récupérer organization et app séparément si nécessaire
+    let organization = null;
+    let app = null;
+
+    if (data?.org_id) {
+      const { data: orgData } = await supabase
+        .from('organizations')
+        .select('id, name')
+        .eq('id', data.org_id)
+        .single();
+      organization = orgData;
+    }
+
+    if (data?.app_id) {
+      const { data: appData } = await supabase
+        .from('apps')
+        .select('id, name')
+        .eq('id', data.app_id)
+        .single();
+      app = appData;
+    }
+
     // MIGRATION: Alias pour compatibilité
     const mappedData = data ? {
       ...data,
+      organizations: organization,
+      apps: app,
       vertical_id: data.app_id,
-      verticals: data.apps,
+      verticals: app,
     } : null;
 
     return { data: mappedData, error: null };

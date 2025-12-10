@@ -87,13 +87,38 @@ export function useLegifrance() {
     const loadCodes = useCallback(async () => {
         try {
             setError(null);
-            const { data, error: fetchError } = await supabase
+            // Requête principale sans jointure (les vues ne supportent pas les relations PostgREST)
+            const { data: codesData, error: fetchError } = await supabase
                 .from('codes')  // Tables dans search_path: legifrance
-                .select('*, domain:code_domains(id, name, icon, color)')
+                .select('*')
                 .order('name', { ascending: true });
 
             if (fetchError) throw fetchError;
-            setCodes(data || []);
+
+            // Récupérer les domaines séparément
+            const domainIds = [...new Set((codesData || []).filter(c => c.domain_id).map(c => c.domain_id))];
+            let domainsMap = {};
+
+            if (domainIds.length > 0) {
+                const { data: domainsData } = await supabase
+                    .from('code_domains')
+                    .select('id, name, icon, color')
+                    .in('id', domainIds);
+                if (domainsData) {
+                    domainsMap = domainsData.reduce((acc, d) => {
+                        acc[d.id] = d;
+                        return acc;
+                    }, {});
+                }
+            }
+
+            // Fusionner les données
+            const mappedCodes = (codesData || []).map(code => ({
+                ...code,
+                domain: code.domain_id ? domainsMap[code.domain_id] : null,
+            }));
+
+            setCodes(mappedCodes);
         } catch (err) {
             console.error('Erreur chargement codes:', err);
             setError(err.message);
