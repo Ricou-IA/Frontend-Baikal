@@ -766,18 +766,27 @@ export const documentsService = {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            source_file_id: sourceFile.id,
-            storage_path: path,
-            storage_bucket: 'premium-sources',
-            original_filename: file.name,
-            mime_type: file.type,
-            file_size: file.size,
-            layer,
-            app_id: appId,
+            // Identifiants
+            user_id: userId,
             org_id: orgId,
-            project_id: projectId,
-            created_by: userId,
-            metadata,
+
+            // Fichier
+            filename: file.name,
+            path: path,
+
+            // Ciblage RAG
+            target_apps: appId ? [appId] : null,
+            target_projects: projectId ? [projectId] : null,
+
+            // Metadata enrichie
+            metadata: {
+              ...metadata,
+              source_file_id: sourceFile.id,
+              storage_bucket: 'premium-sources',
+              mime_type: file.type,
+              file_size: file.size,
+              layer,
+            },
           }),
         });
 
