@@ -759,7 +759,7 @@ export const documentsService = {
       if (sourceError) throw sourceError;
 
       // 4. Déclencher le traitement (Edge Function)
-      const { error: processError } = await supabase.functions.invoke('ingest-document', {
+      const { error: processError } = await supabase.functions.invoke('ingest-documents', {
         body: {
           sourceFileId: sourceFile.id,
           qualityLevel,
