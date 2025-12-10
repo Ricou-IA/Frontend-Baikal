@@ -126,7 +126,7 @@ export const documentsService = {
         search,
         orgId,
         createdBy,
-        appId,                                   // ← CHANGÉ: verticalId → appId
+        appId,
         projectId,
       } = filters;
 
@@ -137,6 +137,7 @@ export const documentsService = {
         sortOrder = 'desc',
       } = pagination;
 
+      // Requête principale sans jointures (les vues ne supportent pas les relations PostgREST)
       let query = supabase
         .from('documents')
         .select(`
@@ -155,16 +156,15 @@ export const documentsService = {
           approved_at,
           approved_by,
           metadata,
-          source_file_id,
-          creator:core.profiles!created_by(id, display_name, email)
-        `, { count: 'exact' });                  // ← CHANGÉ: profiles → core.profiles
+          source_file_id
+        `, { count: 'exact' });
 
       // Filtres
       if (orgId) query = query.eq('org_id', orgId);
       if (layer) query = query.eq('layer', layer);
       if (status) query = query.eq('status', status);
       if (quality_level) query = query.eq('quality_level', quality_level);
-      if (appId) query = query.eq('app_id', appId);           // ← CHANGÉ: vertical_id → app_id
+      if (appId) query = query.eq('app_id', appId);
       if (projectId) query = query.eq('project_id', projectId);
       if (createdBy) query = query.eq('created_by', createdBy);
       if (search) query = query.ilike('title', `%${search}%`);
@@ -178,8 +178,31 @@ export const documentsService = {
 
       if (error) throw error;
 
+      // Récupérer les créateurs séparément
+      const creatorIds = [...new Set((data || []).filter(d => d.created_by).map(d => d.created_by))];
+      let creatorsMap = {};
+
+      if (creatorIds.length > 0) {
+        const { data: creatorsData } = await supabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .in('id', creatorIds);
+        if (creatorsData) {
+          creatorsMap = creatorsData.reduce((acc, p) => {
+            acc[p.id] = { id: p.id, display_name: p.full_name, email: p.email };
+            return acc;
+          }, {});
+        }
+      }
+
+      // Fusionner les données
+      const mappedData = (data || []).map(doc => ({
+        ...doc,
+        creator: doc.created_by ? creatorsMap[doc.created_by] : null,
+      }));
+
       return {
-        data: data || [],
+        data: mappedData,
         total: count || 0,
         page,
         pageSize,
@@ -204,19 +227,59 @@ export const documentsService = {
    */
   async getDocumentById(documentId) {
     try {
+      // Requête principale sans jointures
       const { data, error } = await supabase
         .from('documents')
-        .select(`
-          *,
-          creator:core.profiles!created_by(id, display_name, email),
-          approver:core.profiles!approved_by(id, display_name, email),
-          source_file:sources.files(id, original_filename, mime_type, file_size)
-        `)                                       // ← CHANGÉ: source_files → sources.files
+        .select('*')
         .eq('id', documentId)
         .single();
 
       if (error) throw error;
-      return { data, error: null };
+
+      // Récupérer les données liées séparément
+      let creator = null;
+      let approver = null;
+      let source_file = null;
+
+      if (data?.created_by) {
+        const { data: creatorData } = await supabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .eq('id', data.created_by)
+          .single();
+        if (creatorData) {
+          creator = { id: creatorData.id, display_name: creatorData.full_name, email: creatorData.email };
+        }
+      }
+
+      if (data?.approved_by) {
+        const { data: approverData } = await supabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .eq('id', data.approved_by)
+          .single();
+        if (approverData) {
+          approver = { id: approverData.id, display_name: approverData.full_name, email: approverData.email };
+        }
+      }
+
+      if (data?.source_file_id) {
+        const { data: fileData } = await supabase
+          .from('files')
+          .select('id, original_filename, mime_type, file_size')
+          .eq('id', data.source_file_id)
+          .single();
+        source_file = fileData;
+      }
+
+      const mappedData = data ? {
+        ...data,
+        creator,
+        approver,
+        source_file,
+      } : null;
+
+      return { data: mappedData, error: null };
     } catch (error) {
       console.error('[documentsService] getDocumentById error:', error);
       return { data: null, error };
@@ -243,8 +306,9 @@ export const documentsService = {
         sortOrder = 'desc',
       } = pagination;
 
+      // Requête principale sans jointures
       let query = supabase
-        .from('files')                           // ← CHANGÉ: source_files → files
+        .from('files')
         .select(`
           id,
           original_filename,
@@ -256,9 +320,8 @@ export const documentsService = {
           processing_error,
           created_by,
           created_at,
-          processed_at,
-          creator:core.profiles!created_by(id, display_name)
-        `, { count: 'exact' });                  // ← CHANGÉ: profiles → core.profiles
+          processed_at
+        `, { count: 'exact' });
 
       if (orgId) query = query.eq('org_id', orgId);
       if (layer) query = query.eq('layer', layer);
@@ -272,8 +335,31 @@ export const documentsService = {
 
       if (error) throw error;
 
+      // Récupérer les créateurs séparément
+      const creatorIds = [...new Set((data || []).filter(d => d.created_by).map(d => d.created_by))];
+      let creatorsMap = {};
+
+      if (creatorIds.length > 0) {
+        const { data: creatorsData } = await supabase
+          .from('profiles')
+          .select('id, full_name')
+          .in('id', creatorIds);
+        if (creatorsData) {
+          creatorsMap = creatorsData.reduce((acc, p) => {
+            acc[p.id] = { id: p.id, display_name: p.full_name };
+            return acc;
+          }, {});
+        }
+      }
+
+      // Fusionner les données
+      const mappedData = (data || []).map(file => ({
+        ...file,
+        creator: file.created_by ? creatorsMap[file.created_by] : null,
+      }));
+
       return {
-        data: data || [],
+        data: mappedData,
         total: count || 0,
         page,
         pageSize,
@@ -301,14 +387,15 @@ export const documentsService = {
    */
   async checkDuplicate(filename, fileSize, orgId) {
     try {
+      // Requête principale sans jointure
       const { data, error } = await supabase
-        .from('files')                           // ← CHANGÉ: source_files → files
+        .from('files')
         .select(`
           id,
           original_filename,
           layer,
           created_at,
-          creator:core.profiles!created_by(display_name)
+          created_by
         `)
         .eq('original_filename', filename)
         .eq('file_size', fileSize)
@@ -317,6 +404,19 @@ export const documentsService = {
 
       if (error) throw error;
 
+      // Récupérer le créateur séparément si nécessaire
+      let creatorName = 'Inconnu';
+      if (data?.created_by) {
+        const { data: creatorData } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', data.created_by)
+          .single();
+        if (creatorData?.full_name) {
+          creatorName = creatorData.full_name;
+        }
+      }
+
       return {
         isDuplicate: !!data,
         existingFile: data ? {
@@ -324,7 +424,7 @@ export const documentsService = {
           filename: data.original_filename,
           layer: data.layer,
           uploadedAt: data.created_at,
-          uploadedBy: data.creator?.display_name || 'Inconnu',
+          uploadedBy: creatorName,
         } : null,
         error: null,
       };
