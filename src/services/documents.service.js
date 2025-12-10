@@ -758,18 +758,8 @@ export const documentsService = {
 
       if (sourceError) throw sourceError;
 
-      // 4. Déclencher le traitement (Edge Function)
-      const { error: processError } = await supabase.functions.invoke('ingest-documents', {
-        body: {
-          sourceFileId: sourceFile.id,
-          qualityLevel,
-          extractToc: metadata.extractToc || false,
-        },
-      });
-
-      if (processError) {
-        console.warn('[documentsService] Processing trigger failed:', processError);
-      }
+      // L'Edge Function ingest-documents est déclenchée automatiquement
+      // via un trigger database ou webhook après l'insertion dans sources.files
 
       return { data: sourceFile, path, error: null };
     } catch (error) {
