@@ -758,17 +758,43 @@ export const documentsService = {
 
       if (sourceError) throw sourceError;
 
-      // 4. Déclencher le traitement (Edge Function)
-      const { error: processError } = await supabase.functions.invoke('ingest-documents', {
-        body: {
-          sourceFileId: sourceFile.id,
-          qualityLevel,
-          extractToc: metadata.extractToc || false,
-        },
-      });
+      // 4. Déclencher le traitement via webhook n8n
+      try {
+        const webhookResponse = await fetch('https://n8n.srv1102213.hstgr.cloud/webhook/ingest', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            // Identifiants
+            user_id: userId,
+            org_id: orgId,
 
-      if (processError) {
-        console.warn('[documentsService] Processing trigger failed:', processError);
+            // Fichier
+            filename: file.name,
+            path: path,
+
+            // Ciblage RAG
+            target_apps: appId ? [appId] : null,
+            target_projects: projectId ? [projectId] : null,
+
+            // Metadata enrichie
+            metadata: {
+              ...metadata,
+              source_file_id: sourceFile.id,
+              storage_bucket: 'premium-sources',
+              mime_type: file.type,
+              file_size: file.size,
+              layer,
+            },
+          }),
+        });
+
+        if (!webhookResponse.ok) {
+          console.warn('[documentsService] Webhook n8n failed:', webhookResponse.status);
+        }
+      } catch (webhookError) {
+        console.warn('[documentsService] Webhook n8n error:', webhookError);
       }
 
       return { data: sourceFile, path, error: null };
