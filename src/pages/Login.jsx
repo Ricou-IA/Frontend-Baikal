@@ -175,16 +175,15 @@ export default function Login() {
     }
   };
 
-  // Loading state
-  if (loading || isRedirecting) {
+  // Loading state - seulement pendant le chargement initial, pas pendant la redirection
+  // La redirection sera gérée par les guards qui afficheront leur propre écran de chargement
+  if (loading && !isAuthenticated) {
     return (
       <PlatformLayout>
         <div className="h-screen w-full flex items-center justify-center bg-black">
           <div className="text-center">
             <Loader2 className="w-12 h-12 animate-spin text-baikal-cyan mx-auto" />
-            <p className="mt-4 text-baikal-text font-mono">
-              {isRedirecting ? 'INITIALIZATION...' : 'LOADING...'}
-            </p>
+            <p className="mt-4 text-baikal-text font-mono">LOADING...</p>
           </div>
         </div>
       </PlatformLayout>

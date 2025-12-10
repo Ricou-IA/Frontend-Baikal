@@ -34,9 +34,9 @@ export const Slider = forwardRef(({
   return (
     <div className={cn('w-full', className)}>
       <div className="flex items-center justify-between mb-2">
-        {label && <label className="text-sm font-medium text-slate-700">{label}</label>}
+        {label && <label className="text-sm font-medium text-white font-mono">{label}</label>}
         {showValue && (
-          <span className="text-sm font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
+          <span className="text-sm font-semibold text-baikal-cyan bg-baikal-cyan/20 px-2 py-0.5 rounded font-mono">
             {formatValue(value)}
           </span>
         )}
@@ -52,25 +52,25 @@ export const Slider = forwardRef(({
         disabled={disabled}
         className={cn(
           'w-full h-2 rounded-full appearance-none cursor-pointer',
-          'focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:ring-offset-2',
+          'focus:outline-none focus:ring-2 focus:ring-baikal-cyan/20 focus:ring-offset-2',
           'disabled:opacity-50 disabled:cursor-not-allowed',
           '[&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5',
-          '[&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-indigo-600',
-          '[&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white',
+          '[&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-baikal-cyan',
+          '[&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-baikal-bg',
           '[&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:cursor-pointer',
           '[&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:rounded-full',
-          '[&::-moz-range-thumb]:bg-indigo-600 [&::-moz-range-thumb]:border-2',
-          '[&::-moz-range-thumb]:border-white [&::-moz-range-thumb]:shadow-md',
+          '[&::-moz-range-thumb]:bg-baikal-cyan [&::-moz-range-thumb]:border-2',
+          '[&::-moz-range-thumb]:border-baikal-bg [&::-moz-range-thumb]:shadow-md',
         )}
         style={{
-          background: `linear-gradient(to right, #4f46e5 0%, #4f46e5 ${percentage}%, #e2e8f0 ${percentage}%, #e2e8f0 100%)`,
+          background: `linear-gradient(to right, #00F0FF 0%, #00F0FF ${percentage}%, #2D3748 ${percentage}%, #2D3748 100%)`,
         }}
       />
       <div className="flex justify-between mt-1">
-        <span className="text-xs text-slate-400">{formatValue(min)}</span>
-        <span className="text-xs text-slate-400">{formatValue(max)}</span>
+        <span className="text-xs text-baikal-text font-mono">{formatValue(min)}</span>
+        <span className="text-xs text-baikal-text font-mono">{formatValue(max)}</span>
       </div>
-      {helperText && <p className="mt-1.5 text-sm text-slate-500">{helperText}</p>}
+      {helperText && <p className="mt-1.5 text-sm text-baikal-text font-sans">{helperText}</p>}
     </div>
   );
 });
@@ -102,7 +102,7 @@ export const SliderWithInput = forwardRef(({
 
   return (
     <div className={cn('w-full', className)}>
-      {label && <label className="block text-sm font-medium text-slate-700 mb-2">{label}</label>}
+      {label && <label className="block text-sm font-medium text-white font-mono mb-2">{label}</label>}
       <div className="flex items-center gap-4">
         <div className="flex-1">
           <input
@@ -117,13 +117,13 @@ export const SliderWithInput = forwardRef(({
               'w-full h-2 rounded-full appearance-none cursor-pointer',
               'focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed',
               '[&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5',
-              '[&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-indigo-600',
-              '[&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white [&::-webkit-slider-thumb]:shadow-md',
+              '[&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-baikal-cyan',
+              '[&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-baikal-bg [&::-webkit-slider-thumb]:shadow-md',
               '[&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:rounded-full',
-              '[&::-moz-range-thumb]:bg-indigo-600 [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-white',
+              '[&::-moz-range-thumb]:bg-baikal-cyan [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-baikal-bg',
             )}
             style={{
-              background: `linear-gradient(to right, #4f46e5 0%, #4f46e5 ${percentage}%, #e2e8f0 ${percentage}%, #e2e8f0 100%)`,
+              background: `linear-gradient(to right, #00F0FF 0%, #00F0FF ${percentage}%, #2D3748 ${percentage}%, #2D3748 100%)`,
             }}
           />
         </div>
@@ -136,10 +136,10 @@ export const SliderWithInput = forwardRef(({
           max={max}
           step={step}
           disabled={disabled}
-          className="w-20 px-2 py-1.5 text-sm text-center border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 disabled:bg-slate-50 disabled:text-slate-500"
+          className="w-20 px-2 py-1.5 text-sm text-center border border-baikal-border rounded-lg bg-black text-white focus:outline-none focus:ring-2 focus:ring-baikal-cyan/20 focus:border-baikal-cyan disabled:bg-baikal-surface disabled:text-baikal-text font-mono"
         />
       </div>
-      {helperText && <p className="mt-1.5 text-sm text-slate-500">{helperText}</p>}
+      {helperText && <p className="mt-1.5 text-sm text-baikal-text font-sans">{helperText}</p>}
     </div>
   );
 });
@@ -166,16 +166,16 @@ export const WeightSlider = forwardRef(({
     <div className={cn('w-full', className)}>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-indigo-700">Vectoriel</span>
-          <span className="text-sm font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
+          <span className="text-sm font-medium text-baikal-cyan font-mono">Vectoriel</span>
+          <span className="text-sm font-bold text-baikal-cyan bg-baikal-cyan/20 px-2 py-0.5 rounded font-mono">
             {formatValue(vectorWeight)}
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-sm font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded">
+          <span className="text-sm font-bold text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded font-mono">
             {formatValue(fulltextWeight)}
           </span>
-          <span className="text-sm font-medium text-amber-700">Full-text</span>
+          <span className="text-sm font-medium text-emerald-400 font-mono">Full-text</span>
         </div>
       </div>
       
@@ -191,25 +191,25 @@ export const WeightSlider = forwardRef(({
           disabled={disabled}
           className={cn(
             'w-full h-3 rounded-full appearance-none cursor-pointer',
-            'focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:ring-offset-2',
+            'focus:outline-none focus:ring-2 focus:ring-baikal-cyan/20 focus:ring-offset-2',
             'disabled:opacity-50 disabled:cursor-not-allowed',
             '[&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6',
             '[&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white',
-            '[&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-slate-400',
+            '[&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-baikal-border',
             '[&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:cursor-pointer',
             '[&::-moz-range-thumb]:w-6 [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:rounded-full',
             '[&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-2',
-            '[&::-moz-range-thumb]:border-slate-400 [&::-moz-range-thumb]:shadow-lg',
+            '[&::-moz-range-thumb]:border-baikal-border [&::-moz-range-thumb]:shadow-lg',
           )}
           style={{
-            background: `linear-gradient(to right, #4f46e5 0%, #4f46e5 ${percentage}%, #f59e0b ${percentage}%, #f59e0b 100%)`,
+            background: `linear-gradient(to right, #00F0FF 0%, #00F0FF ${percentage}%, #10b981 ${percentage}%, #10b981 100%)`,
           }}
         />
       </div>
       
       <div className="flex justify-between mt-2">
-        <span className="text-xs text-indigo-500">100% sémantique</span>
-        <span className="text-xs text-amber-500">100% textuel</span>
+        <span className="text-xs text-baikal-cyan font-mono">100% sémantique</span>
+        <span className="text-xs text-emerald-400 font-mono">100% textuel</span>
       </div>
     </div>
   );

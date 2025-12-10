@@ -9,7 +9,7 @@
  * - vertical_id → app_id (colonne renommée)
  * - profiles → core.profiles (schéma changé)
  * - Bucket 'documents' → 'premium-sources' (storage renommé)
- * - Ajout de .schema() pour toutes les requêtes
+ * - Ajout storage_bucket dans payload webhook n8n
  * 
  * @example
  * import { documentsService } from '@/services';
@@ -26,6 +26,9 @@ import { supabase } from '../lib/supabaseClient';
 // ============================================================================
 
 const DEFAULT_PAGE_SIZE = 20;
+
+// URL du webhook N8N (configurable via variables d'environnement)
+const N8N_WEBHOOK_URL = import.meta.env.VITE_N8N_INGEST_WEBHOOK_URL || 'https://n8n.srv1102213.hstgr.cloud/webhook/ingest';
 
 // ============================================================================
 // UTILITAIRES
@@ -57,9 +60,6 @@ export const documentsService = {
    * Récupère les statistiques globales par couche
    * @param {string} orgId - ID de l'organisation
    * @returns {Promise<{data: Object, error: Error|null}>}
-   * 
-   * MIGRATION: documents → rag.documents
-   * - Ajout .schema('rag')
    */
   async getLayerStats(orgId) {
     try {
@@ -70,16 +70,14 @@ export const documentsService = {
 
       if (error) throw error;
 
-      // MIGRATION: 'vertical' layer → 'app' layer
       const stats = {
-        app: { total: 0, pending: 0, approved: 0, rejected: 0, draft: 0 },      // ← CHANGÉ: vertical → app
+        app: { total: 0, pending: 0, approved: 0, rejected: 0, draft: 0 },
         org: { total: 0, pending: 0, approved: 0, rejected: 0, draft: 0 },
         project: { total: 0, pending: 0, approved: 0, rejected: 0, draft: 0 },
         user: { total: 0, pending: 0, approved: 0, rejected: 0, draft: 0 },
       };
 
       (data || []).forEach(doc => {
-        // Mapping pour compatibilité: 'vertical' → 'app'
         const layer = doc.layer === 'vertical' ? 'app' : doc.layer;
         if (stats[layer]) {
           stats[layer].total++;
@@ -98,9 +96,6 @@ export const documentsService = {
    * Récupère le nombre de documents en attente de validation
    * @param {string} orgId - ID de l'organisation
    * @returns {Promise<{count: number, error: Error|null}>}
-   * 
-   * MIGRATION: documents → rag.documents
-   * - Ajout .schema('rag')
    */
   async getPendingCount(orgId) {
     try {
@@ -127,11 +122,6 @@ export const documentsService = {
    * @param {Object} filters - Filtres de recherche
    * @param {Object} pagination - Options de pagination
    * @returns {Promise<{data: Array, total: number, error: Error|null}>}
-   * 
-   * MIGRATION:
-   * - documents → rag.documents (schéma)
-   * - vertical_id → app_id (colonne)
-   * - profiles!created_by → core.profiles (schéma)
    */
   async getDocuments(filters = {}, pagination = {}) {
     try {
@@ -153,7 +143,6 @@ export const documentsService = {
         sortOrder = 'desc',
       } = pagination;
 
-      // Requête principale sans jointures (les vues ne supportent pas les relations PostgREST)
       let query = supabase
         .from('documents')
         .select(`
@@ -175,7 +164,6 @@ export const documentsService = {
           source_file_id
         `, { count: 'exact' });
 
-      // Filtres
       if (orgId) query = query.eq('org_id', orgId);
       if (layer) query = query.eq('layer', layer);
       if (status) query = query.eq('status', status);
@@ -185,7 +173,6 @@ export const documentsService = {
       if (createdBy) query = query.eq('created_by', createdBy);
       if (search) query = query.ilike('title', `%${search}%`);
 
-      // Pagination et tri
       query = query
         .order(sortBy, { ascending: sortOrder === 'asc' })
         .range((page - 1) * pageSize, page * pageSize - 1);
@@ -194,7 +181,6 @@ export const documentsService = {
 
       if (error) throw error;
 
-      // Récupérer les créateurs séparément
       const creatorIds = [...new Set((data || []).filter(d => d.created_by).map(d => d.created_by))];
       let creatorsMap = {};
 
@@ -211,7 +197,6 @@ export const documentsService = {
         }
       }
 
-      // Fusionner les données
       const mappedData = (data || []).map(doc => ({
         ...doc,
         creator: doc.created_by ? creatorsMap[doc.created_by] : null,
@@ -235,15 +220,9 @@ export const documentsService = {
    * Récupère un document par son ID
    * @param {number} documentId - ID du document
    * @returns {Promise<{data: Object|null, error: Error|null}>}
-   * 
-   * MIGRATION:
-   * - documents → rag.documents
-   * - source_files → sources.files
-   * - profiles → core.profiles
    */
   async getDocumentById(documentId) {
     try {
-      // Requête principale sans jointures
       const { data, error } = await supabase
         .from('documents')
         .select('*')
@@ -252,7 +231,6 @@ export const documentsService = {
 
       if (error) throw error;
 
-      // Récupérer les données liées séparément
       let creator = null;
       let approver = null;
       let source_file = null;
@@ -307,10 +285,6 @@ export const documentsService = {
    * @param {Object} filters - Filtres
    * @param {Object} pagination - Pagination
    * @returns {Promise<{data: Array, total: number, error: Error|null}>}
-   * 
-   * MIGRATION:
-   * - source_files → sources.files
-   * - profiles!created_by → core.profiles
    */
   async getSourceFiles(filters = {}, pagination = {}) {
     try {
@@ -322,7 +296,6 @@ export const documentsService = {
         sortOrder = 'desc',
       } = pagination;
 
-      // Requête principale sans jointures
       let query = supabase
         .from('files')
         .select(`
@@ -351,7 +324,6 @@ export const documentsService = {
 
       if (error) throw error;
 
-      // Récupérer les créateurs séparément
       const creatorIds = [...new Set((data || []).filter(d => d.created_by).map(d => d.created_by))];
       let creatorsMap = {};
 
@@ -368,7 +340,6 @@ export const documentsService = {
         }
       }
 
-      // Fusionner les données
       const mappedData = (data || []).map(file => ({
         ...file,
         creator: file.created_by ? creatorsMap[file.created_by] : null,
@@ -398,12 +369,9 @@ export const documentsService = {
    * @param {number} fileSize - Taille du fichier
    * @param {string} orgId - ID de l'organisation
    * @returns {Promise<{isDuplicate: boolean, existingFile: Object|null, error: Error|null}>}
-   * 
-   * MIGRATION: source_files → sources.files
    */
   async checkDuplicate(filename, fileSize, orgId) {
     try {
-      // Requête principale sans jointure
       const { data, error } = await supabase
         .from('files')
         .select(`
@@ -420,7 +388,6 @@ export const documentsService = {
 
       if (error) throw error;
 
-      // Récupérer le créateur séparément si nécessaire
       let creatorName = 'Inconnu';
       if (data?.created_by) {
         const { data: creatorData } = await supabase
@@ -456,11 +423,6 @@ export const documentsService = {
 
   /**
    * Approuve un document
-   * @param {number} documentId - ID du document
-   * @param {string} approvedBy - ID de l'utilisateur
-   * @returns {Promise<{success: boolean, data: Object, error: Error|null}>}
-   * 
-   * MIGRATION: documents → rag.documents
    */
   async approveDocument(documentId, approvedBy) {
     try {
@@ -476,7 +438,6 @@ export const documentsService = {
         .single();
 
       if (error) throw error;
-
       return { success: true, data, error: null };
     } catch (error) {
       console.error('[documentsService] approveDocument error:', error);
@@ -486,12 +447,6 @@ export const documentsService = {
 
   /**
    * Rejette un document
-   * @param {number} documentId - ID du document
-   * @param {string} rejectedBy - ID de l'utilisateur
-   * @param {string} reason - Raison du rejet
-   * @returns {Promise<{success: boolean, data: Object, error: Error|null}>}
-   * 
-   * MIGRATION: documents → rag.documents
    */
   async rejectDocument(documentId, rejectedBy, reason = '') {
     try {
@@ -508,7 +463,6 @@ export const documentsService = {
         .single();
 
       if (error) throw error;
-
       return { success: true, data, error: null };
     } catch (error) {
       console.error('[documentsService] rejectDocument error:', error);
@@ -518,11 +472,6 @@ export const documentsService = {
 
   /**
    * Approuve plusieurs documents en lot
-   * @param {number[]} documentIds - IDs des documents
-   * @param {string} approvedBy - ID de l'utilisateur
-   * @returns {Promise<{success: boolean, count: number, error: Error|null}>}
-   * 
-   * MIGRATION: documents → rag.documents
    */
   async bulkApprove(documentIds, approvedBy) {
     try {
@@ -537,7 +486,6 @@ export const documentsService = {
         .select();
 
       if (error) throw error;
-
       return { success: true, count: data?.length || 0, error: null };
     } catch (error) {
       console.error('[documentsService] bulkApprove error:', error);
@@ -547,12 +495,6 @@ export const documentsService = {
 
   /**
    * Rejette plusieurs documents en lot
-   * @param {number[]} documentIds - IDs des documents
-   * @param {string} rejectedBy - ID de l'utilisateur
-   * @param {string} reason - Raison du rejet
-   * @returns {Promise<{success: boolean, count: number, error: Error|null}>}
-   * 
-   * MIGRATION: documents → rag.documents
    */
   async bulkReject(documentIds, rejectedBy, reason = '') {
     try {
@@ -568,7 +510,6 @@ export const documentsService = {
         .select();
 
       if (error) throw error;
-
       return { success: true, count: data?.length || 0, error: null };
     } catch (error) {
       console.error('[documentsService] bulkReject error:', error);
@@ -581,13 +522,7 @@ export const documentsService = {
   // ==========================================================================
 
   /**
-   * Change la couche d'un document (promotion/démotion)
-   * @param {number} documentId - ID du document
-   * @param {string} newLayer - Nouvelle couche
-   * @param {string} changedBy - ID de l'utilisateur
-   * @returns {Promise<{success: boolean, data: Object, error: Error|null}>}
-   * 
-   * MIGRATION: documents → rag.documents
+   * Change la couche d'un document
    */
   async changeDocumentLayer(documentId, newLayer, changedBy) {
     try {
@@ -602,7 +537,6 @@ export const documentsService = {
         .single();
 
       if (error) throw error;
-
       return { success: true, data, error: null };
     } catch (error) {
       console.error('[documentsService] changeDocumentLayer error:', error);
@@ -616,10 +550,6 @@ export const documentsService = {
 
   /**
    * Supprime un document
-   * @param {number} documentId - ID du document
-   * @returns {Promise<{success: boolean, error: Error|null}>}
-   * 
-   * MIGRATION: documents → rag.documents
    */
   async deleteDocument(documentId) {
     try {
@@ -638,16 +568,9 @@ export const documentsService = {
 
   /**
    * Supprime un fichier source et tous ses chunks
-   * @param {string} sourceFileId - ID du fichier source
-   * @returns {Promise<{success: boolean, deletedChunks: number, error: Error|null}>}
-   * 
-   * MIGRATION:
-   * - documents → rag.documents
-   * - source_files → sources.files
    */
   async deleteSourceFile(sourceFileId) {
     try {
-      // D'abord supprimer les chunks associés
       const { count: deletedChunks, error: chunksError } = await supabase
         .from('documents')
         .delete({ count: 'exact' })
@@ -655,9 +578,8 @@ export const documentsService = {
 
       if (chunksError) throw chunksError;
 
-      // Ensuite supprimer le fichier source
       const { error: fileError } = await supabase
-        .from('files')                           // ← CHANGÉ: source_files → files
+        .from('files')
         .delete()
         .eq('id', sourceFileId);
 
@@ -679,18 +601,17 @@ export const documentsService = {
    * @param {File} file - Fichier à uploader
    * @param {string} userId - ID de l'utilisateur
    * @param {string} layer - Couche cible
+   * @param {string} bucket - Nom du bucket
    * @returns {Promise<{path: string, error: Error|null}>}
-   * 
-   * MIGRATION: bucket 'documents' → 'premium-sources'
    */
-  async uploadToStorage(file, userId, layer = 'project') {
+  async uploadToStorage(file, userId, layer = 'project', bucket = 'premium-sources') {
     try {
       const timestamp = Date.now();
       const cleanFilename = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
       const path = `${layer}/${userId}/${timestamp}_${cleanFilename}`;
 
       const { data, error } = await supabase.storage
-        .from('premium-sources')                 // ← CHANGÉ: documents → premium-sources
+        .from(bucket)
         .upload(path, file, {
           cacheControl: '3600',
           upsert: false,
@@ -706,25 +627,22 @@ export const documentsService = {
   },
 
   /**
-   * Upload complet d'un document (storage + metadata + processing)
+   * Upload complet d'un document (storage + metadata + webhook n8n)
    * @param {Object} params - Paramètres d'upload
    * @returns {Promise<{data: Object, path: string, error: Error|null}>}
-   * 
-   * MIGRATION:
-   * - source_files → sources.files
-   * - vertical_id → app_id
    */
   async uploadDocument(params) {
     const {
       file,
       layer,
-      appId,                                     // ← CHANGÉ: verticalId → appId
+      appId,
       orgId,
       userId,
       projectId = null,
       metadata = {},
       qualityLevel = 'standard',
       status = 'pending',
+      bucket = 'premium-sources',  // Bucket configurable
     } = params;
 
     try {
@@ -732,7 +650,7 @@ export const documentsService = {
       const contentHash = await computeFileHash(file);
 
       // 2. Upload vers Storage
-      const { path, error: uploadError } = await this.uploadToStorage(file, userId, layer);
+      const { path, error: uploadError } = await this.uploadToStorage(file, userId, layer, bucket);
       if (uploadError) throw uploadError;
 
       // 3. Créer l'entrée source file
@@ -744,7 +662,7 @@ export const documentsService = {
           file_size: file.size,
           content_hash: contentHash,
           storage_path: path,
-          storage_bucket: 'premium-sources',
+          storage_bucket: bucket,
           layer,
           app_id: appId,
           org_id: orgId,
@@ -758,17 +676,47 @@ export const documentsService = {
 
       if (sourceError) throw sourceError;
 
-      // 4. Déclencher le traitement (Edge Function)
-      const { error: processError } = await supabase.functions.invoke('ingest-documents', {
-        body: {
-          sourceFileId: sourceFile.id,
-          qualityLevel,
-          extractToc: metadata.extractToc || false,
-        },
-      });
+      // 4. Déclencher le traitement via webhook n8n
+      try {
+        const webhookResponse = await fetch(N8N_WEBHOOK_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            // Identifiants
+            user_id: userId,
+            org_id: orgId,
 
-      if (processError) {
-        console.warn('[documentsService] Processing trigger failed:', processError);
+            // Fichier - IMPORTANT: storage_bucket au niveau racine
+            filename: file.name,
+            path: path,
+            storage_bucket: bucket,
+
+            // Ciblage RAG
+            target_apps: appId ? [appId] : null,
+            target_projects: projectId ? [projectId] : null,
+
+            // Metadata enrichie
+            metadata: {
+              ...metadata,
+              source_file_id: sourceFile.id,
+              mime_type: file.type,
+              file_size: file.size,
+              layer,
+              quality_level: qualityLevel,
+            },
+          }),
+        });
+
+        if (!webhookResponse.ok) {
+          const errorText = await webhookResponse.text().catch(() => 'No details');
+          console.warn('[documentsService] Webhook n8n failed:', webhookResponse.status, errorText);
+        } else {
+          console.log('[documentsService] Webhook n8n triggered successfully');
+        }
+      } catch (webhookError) {
+        console.warn('[documentsService] Webhook n8n error:', webhookError);
       }
 
       return { data: sourceFile, path, error: null };
@@ -784,16 +732,9 @@ export const documentsService = {
 
   /**
    * Synchronise des codes Légifrance vers la base RAG
-   * @param {Object} params - Paramètres de synchronisation
-   * @param {string[]} params.codeIds - IDs des codes à synchroniser
-   * @param {string} params.appId - ID de l'app cible
-   * @param {string} params.layer - Couche de destination
-   * @returns {Promise<{data: Object, error: Error|null}>}
-   * 
-   * MIGRATION: verticalId → appId, target_verticals → target_apps
    */
   async syncLegifranceCodes(params) {
-    const { codeIds, appId, layer } = params;    // ← CHANGÉ: verticalId → appId
+    const { codeIds, appId, layer } = params;
 
     try {
       const results = [];
@@ -805,8 +746,8 @@ export const documentsService = {
             body: {
               code_id: codeId,
               sync_type: 'full',
-              target_apps: appId ? [appId] : null,  // ← CHANGÉ: target_verticals → target_apps
-              target_layer: layer || 'app',          // ← CHANGÉ: 'vertical' → 'app'
+              target_apps: appId ? [appId] : null,
+              target_layer: layer || 'app',
             },
           });
 

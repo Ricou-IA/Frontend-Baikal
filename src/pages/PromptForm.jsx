@@ -7,7 +7,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Save, AlertCircle, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
+import { ArrowLeft, Save, AlertCircle, ChevronDown, ChevronUp, Sparkles, Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../hooks/useToast';
 import { Button } from '../components/ui/Button';
@@ -37,19 +37,19 @@ function CollapsibleSection({ title, icon: Icon, children, defaultOpen = false }
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
-    <div className="border border-slate-200 rounded-lg overflow-hidden">
+    <div className="border border-baikal-border rounded-lg overflow-hidden">
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-4 py-3 bg-slate-50 flex items-center justify-between hover:bg-slate-100 transition-colors"
+        className="w-full px-4 py-3 bg-baikal-surface flex items-center justify-between hover:bg-baikal-bg transition-colors"
       >
         <div className="flex items-center gap-2">
-          {Icon && <Icon className="w-4 h-4 text-slate-500" />}
-          <span className="font-medium text-slate-700">{title}</span>
+          {Icon && <Icon className="w-4 h-4 text-baikal-cyan" />}
+          <span className="font-medium text-white font-mono">{title}</span>
         </div>
-        {isOpen ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
+        {isOpen ? <ChevronUp className="w-4 h-4 text-baikal-cyan" /> : <ChevronDown className="w-4 h-4 text-baikal-cyan" />}
       </button>
-      {isOpen && <div className="p-4 border-t border-slate-200">{children}</div>}
+      {isOpen && <div className="p-4 border-t border-baikal-border bg-baikal-surface">{children}</div>}
     </div>
   );
 }
@@ -63,9 +63,9 @@ function PromptLengthIndicator({ length }) {
   const percentage = Math.min((length / PROMPT_CONFIG.idealLength) * 100, 100);
 
   const colors = {
-    ideal: { bar: 'bg-green-500', text: 'text-green-600' },
-    warning: { bar: 'bg-amber-500', text: 'text-amber-600' },
-    error: { bar: 'bg-red-500', text: 'text-red-600' },
+    ideal: { bar: 'bg-green-500', text: 'text-green-400' },
+    warning: { bar: 'bg-amber-500', text: 'text-amber-400' },
+    error: { bar: 'bg-red-500', text: 'text-red-400' },
   };
 
   const color = colors[status.status];
@@ -73,14 +73,14 @@ function PromptLengthIndicator({ length }) {
   return (
     <div className="mt-2">
       <div className="flex items-center justify-between text-sm mb-1">
-        <span className="text-slate-500">
+        <span className="text-baikal-text font-mono">
           {length.toLocaleString()} / {PROMPT_CONFIG.idealLength.toLocaleString()} caractères
         </span>
-        <span className={color.text}>
+        <span className={`${color.text} font-mono`}>
           {status.status === 'ideal' && '✓'} {status.message}
         </span>
       </div>
-      <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+      <div className="h-1.5 bg-baikal-border rounded-full overflow-hidden">
         <div
           className={`h-full ${color.bar} transition-all duration-300`}
           style={{ width: `${Math.min(percentage, 100)}%` }}
@@ -252,16 +252,14 @@ function PromptForm() {
   // Accès refusé
   if (!hasAccess) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <Card className="max-w-md w-full">
-          <CardContent className="text-center py-8">
-            <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-slate-900 mb-2">Accès refusé</h2>
-            <Button variant="primary" className="mt-6" onClick={() => navigate('/admin')}>
-              Retour à l'administration
-            </Button>
-          </CardContent>
-        </Card>
+      <div className="min-h-screen bg-baikal-bg flex items-center justify-center p-4">
+        <div className="bg-baikal-surface border border-baikal-border rounded-md p-8 max-w-md w-full text-center">
+          <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-white font-mono mb-2">ACCÈS REFUSÉ</h2>
+          <Button variant="primary" className="mt-6" onClick={() => navigate('/admin')}>
+            Retour à l'administration
+          </Button>
+        </div>
       </div>
     );
   }
@@ -269,8 +267,11 @@ function PromptForm() {
   // Chargement
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <Spinner size="lg" />
+      <div className="min-h-screen bg-baikal-bg flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 animate-spin text-baikal-cyan mx-auto" />
+          <p className="mt-4 text-baikal-text font-mono">CHARGEMENT...</p>
+        </div>
       </div>
     );
   }
@@ -286,9 +287,9 @@ function PromptForm() {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-baikal-bg">
       {/* Header */}
-      <div className="bg-white border-b border-slate-200">
+      <div className="bg-baikal-surface border-b border-baikal-border">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center gap-4">
             <Button 
@@ -300,8 +301,8 @@ function PromptForm() {
               Retour
             </Button>
             <div>
-              <h1 className="text-2xl font-bold text-slate-900">
-                {isEditing ? 'Modifier le prompt' : 'Nouveau prompt'}
+              <h1 className="text-2xl font-bold text-white font-mono">
+                {isEditing ? 'MODIFIER_LE_PROMPT' : 'NOUVEAU_PROMPT'}
               </h1>
             </div>
           </div>
@@ -313,8 +314,8 @@ function PromptForm() {
         <div className="space-y-6">
           {/* Informations générales */}
           <Card>
-            <CardContent className="p-6">
-              <h2 className="text-lg font-semibold text-slate-900 mb-4">Informations générales</h2>
+            <CardContent className="p-6 bg-baikal-surface border-baikal-border">
+              <h2 className="text-lg font-semibold text-white font-mono mb-4">INFORMATIONS_GÉNÉRALES</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Input
                   label="Nom du prompt"
@@ -363,9 +364,9 @@ function PromptForm() {
                       type="checkbox"
                       checked={formData.is_active}
                       onChange={(e) => handleChange('is_active', e.target.checked)}
-                      className="w-4 h-4 text-indigo-600 rounded border-slate-300"
+                      className="w-4 h-4 text-baikal-cyan rounded border-baikal-border bg-black focus:ring-baikal-cyan"
                     />
-                    <span className="text-sm font-medium text-slate-700">Prompt actif</span>
+                    <span className="text-sm font-medium text-white font-mono">PROMPT_ACTIF</span>
                   </label>
                 </div>
               </div>
@@ -374,8 +375,8 @@ function PromptForm() {
 
           {/* Prompt système */}
           <Card>
-            <CardContent className="p-6">
-              <h2 className="text-lg font-semibold text-slate-900 mb-4">Prompt système</h2>
+            <CardContent className="p-6 bg-baikal-surface border-baikal-border">
+              <h2 className="text-lg font-semibold text-white font-mono mb-4">PROMPT_SYSTÈME</h2>
               <Textarea
                 value={formData.system_prompt}
                 onChange={(e) => handleChange('system_prompt', e.target.value)}
@@ -421,11 +422,11 @@ function PromptForm() {
                 helperText={PARAMETER_LIMITS.temperature.description}
               />
 
-              <hr className="border-slate-200" />
+              <hr className="border-baikal-border" />
 
               {/* Poids de recherche */}
               <div>
-                <h3 className="text-sm font-medium text-slate-700 mb-4">Poids de recherche</h3>
+                <h3 className="text-sm font-medium text-white font-mono mb-4">POIDS_DE_RECHERCHE</h3>
                 <WeightSlider
                   value={formData.parameters.vector_weight ?? DEFAULT_PARAMETERS.vector_weight}
                   onChange={handleVectorWeightChange}

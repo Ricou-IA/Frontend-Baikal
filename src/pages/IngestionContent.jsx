@@ -72,7 +72,7 @@ function SourceCard({ source, isActive, onClick, disabled }) {
             onClick={onClick}
             disabled={disabled || !source.available}
             className={`
-                relative w-full p-4 rounded-md border-2 text-left transition-all duration-200
+                relative w-full h-20 p-4 rounded-md border-2 text-left transition-all duration-200
                 ${isActive ? `${colors.border} ${colors.activeBg}` : 'border-baikal-border bg-baikal-surface hover:border-baikal-cyan/50'}
                 ${(!source.available || disabled) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
             `}
@@ -82,17 +82,19 @@ function SourceCard({ source, isActive, onClick, disabled }) {
                     Bientôt
                 </span>
             )}
-            <div className="flex items-center gap-3">
-                <div className={`p-2.5 rounded-md ${colors.bg}`}>
+            <div className="flex items-center gap-3 h-full">
+                <div className={`p-2.5 rounded-md flex-shrink-0 ${colors.bg}`}>
                     <Icon className={`w-5 h-5 ${colors.text}`} />
                 </div>
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 min-w-0 flex flex-col justify-center">
                     <p className={`font-medium font-mono ${isActive ? colors.text : 'text-white'}`}>
                         {source.label}
                     </p>
                     <p className="text-xs text-baikal-text truncate font-sans">{source.description}</p>
                 </div>
-                {isActive && <CheckCircle2 className={`w-5 h-5 ${colors.text}`} />}
+                {isActive && (
+                    <CheckCircle2 className={`w-5 h-5 ${colors.text} flex-shrink-0`} />
+                )}
             </div>
         </button>
     );
@@ -102,11 +104,11 @@ function SourceCard({ source, isActive, onClick, disabled }) {
 // COMPOSANT SÉLECTEUR DE VERTICALE
 // ============================================================================
 
-function VerticalSelector({ verticals, selectedVertical, onSelect, loading }) {
+function VerticalSelector({ verticals, selectedVerticals, onToggle, loading }) {
     if (loading) {
         return (
             <div className="space-y-3">
-                <label className="block text-xs font-mono text-baikal-text uppercase">Verticale métier *</label>
+                <label className="block text-xs font-mono text-baikal-text uppercase">APPLICATIONS *</label>
                 <div className="flex items-center justify-center py-8">
                     <Loader2 className="w-6 h-6 text-baikal-cyan animate-spin" />
                 </div>
@@ -116,14 +118,14 @@ function VerticalSelector({ verticals, selectedVertical, onSelect, loading }) {
 
     return (
         <div className="space-y-3">
-            <label className="block text-xs font-mono text-baikal-text uppercase">Verticale métier *</label>
+            <label className="block text-xs font-mono text-baikal-text uppercase">APPLICATIONS *</label>
             <div className="grid grid-cols-2 gap-3">
                 {verticals.map((vertical) => {
-                    const isSelected = selectedVertical === vertical.id;
+                    const isSelected = selectedVerticals.includes(vertical.id);
                     return (
                         <button
                             key={vertical.id}
-                            onClick={() => onSelect(vertical.id)}
+                            onClick={() => onToggle(vertical.id)}
                             className={`
                                 relative p-4 rounded-md border-2 text-left transition-all
                                 ${isSelected 
@@ -480,8 +482,6 @@ function LegifranceInterface({ selectedVertical, selectedLayer, verticals }) {
         }
     };
 
-    const selectedVerticalName = verticals.find(v => v.id === selectedVertical)?.name || 'Non sélectionnée';
-
     if (loading) {
         return (
             <div className="flex flex-col items-center justify-center py-12">
@@ -536,20 +536,6 @@ function LegifranceInterface({ selectedVertical, selectedLayer, verticals }) {
 
     return (
         <div className="space-y-6">
-            <div className="p-4 bg-emerald-900/20 border border-emerald-500/50 rounded-md">
-                <div className="flex items-center gap-3">
-                    <Scale className="w-5 h-5 text-emerald-400" />
-                    <div>
-                        <p className="font-medium text-emerald-300 font-mono">
-                            IMPORT_LÉGIFRANCE → {selectedVerticalName}
-                        </p>
-                        <p className="text-sm text-emerald-400 font-sans">
-                            Couche : {LAYER_LABELS[selectedLayer]}
-                        </p>
-                    </div>
-                </div>
-            </div>
-
             {syncResult && (
                 <div className={`p-4 rounded-md flex items-start gap-3 ${
                     syncResult.success ? 'bg-green-900/20 border border-green-500/50' : 'bg-red-900/20 border border-red-500/50'
@@ -714,7 +700,7 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
 
     // États - Formulaire commun
     const [activeSource, setActiveSource] = useState('file-upload');
-    const [selectedVertical, setSelectedVertical] = useState('');
+    const [selectedVerticals, setSelectedVerticals] = useState([]);
     const [selectedLayer, setSelectedLayer] = useState('org');
 
     // États - Upload fichier
@@ -763,8 +749,8 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
                 setVerticals(verticalsRes.data || []);
                 setCategories(categoriesRes.data || []);
                 
-                if (verticalsRes.data?.length > 0 && !selectedVertical) {
-                    setSelectedVertical(verticalsRes.data[0].id);
+                if (verticalsRes.data?.length > 0 && selectedVerticals.length === 0) {
+                    setSelectedVerticals([verticalsRes.data[0].id]);
                 }
             } catch (err) {
                 console.error('Erreur chargement référentiels:', err);
@@ -830,9 +816,20 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
         setErrors({});
     };
 
+    const toggleVertical = (verticalId) => {
+        setSelectedVerticals(prev => {
+            if (prev.includes(verticalId)) {
+                // Ne pas permettre de tout désélectionner
+                if (prev.length === 1) return prev;
+                return prev.filter(id => id !== verticalId);
+            }
+            return [...prev, verticalId];
+        });
+    };
+
     const validateForm = () => {
         const newErrors = {};
-        if (!selectedVertical) newErrors.vertical = 'Veuillez sélectionner une verticale';
+        if (selectedVerticals.length === 0) newErrors.vertical = 'Veuillez sélectionner au moins une application';
         if (!file) newErrors.file = 'Veuillez sélectionner un fichier';
         if (!metadata.title.trim()) newErrors.title = 'Le titre est obligatoire';
         setErrors(newErrors);
@@ -847,29 +844,37 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
         setUploadResult(null);
 
         try {
-            const { data, error, path } = await documentsService.uploadDocument({
-                file,
-                layer: selectedLayer,
-                appId: selectedVertical,  // MIGRATION: verticalId → appId
-                orgId: orgId,
-                userId: profile?.id,
-                metadata: {
-                    title: metadata.title,
-                    category: metadata.category,
-                    description: metadata.description,
-                    version: metadata.version,
-                    extractToc: metadata.extractToc,
-                },
-                qualityLevel: 'premium',
-                status: 'approved',
-            });
+            // Upload pour chaque application sélectionnée
+            const uploadPromises = selectedVerticals.map(appId =>
+                documentsService.uploadDocument({
+                    file,
+                    layer: selectedLayer,
+                    appId: appId,
+                    orgId: orgId,
+                    userId: profile?.id,
+                    metadata: {
+                        title: metadata.title,
+                        category: metadata.category,
+                        description: metadata.description,
+                        version: metadata.version,
+                        extractToc: metadata.extractToc,
+                    },
+                    qualityLevel: 'premium',
+                    status: 'approved',
+                })
+            );
 
-            if (error) throw error;
+            const results = await Promise.all(uploadPromises);
+            const errors = results.filter(r => r.error);
+            
+            if (errors.length > 0) {
+                throw new Error(`Erreur lors de l'upload pour ${errors.length} application(s)`);
+            }
 
             setUploadResult({
                 success: true,
-                message: 'Document uploadé avec succès !',
-                path
+                message: `Document uploadé avec succès pour ${selectedVerticals.length} application(s) !`,
+                path: results[0]?.path
             });
 
             setFile(null);
@@ -885,7 +890,7 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
         }
     };
 
-    const isSelectionValid = selectedVertical && selectedLayer;
+    const isSelectionValid = selectedVerticals.length > 0 && selectedLayer;
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -894,7 +899,7 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
                 <div className="bg-baikal-surface rounded-md border border-baikal-border p-4">
                     <h3 className="font-mono font-semibold text-white mb-4 flex items-center gap-2">
                         <Database className="w-5 h-5 text-baikal-text" />
-                        SOURCE
+                        SOURCES
                     </h3>
                     <div className="space-y-3">
                         {availableSources.map((source) => (
@@ -962,8 +967,8 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
                         <div className="space-y-6 pb-6 border-b border-baikal-border">
                             <VerticalSelector
                                 verticals={verticals}
-                                selectedVertical={selectedVertical}
-                                onSelect={setSelectedVertical}
+                                selectedVerticals={selectedVerticals}
+                                onToggle={toggleVertical}
                                 loading={loadingReferentiels}
                             />
                             {errors?.vertical && (
@@ -1042,7 +1047,7 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
 
                         {activeSource === 'legifrance' && isSelectionValid && (
                             <LegifranceInterface
-                                selectedVertical={selectedVertical}
+                                selectedVertical={selectedVerticals[0]}
                                 selectedLayer={selectedLayer}
                                 verticals={verticals}
                             />

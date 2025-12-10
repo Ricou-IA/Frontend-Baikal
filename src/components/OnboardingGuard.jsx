@@ -24,10 +24,10 @@ import { Loader2, AlertTriangle, ShieldX } from 'lucide-react';
  */
 function LoadingScreen() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50">
+    <div className="min-h-screen flex items-center justify-center bg-baikal-bg">
       <div className="text-center">
-        <Loader2 className="w-12 h-12 animate-spin text-indigo-600 mx-auto" />
-        <p className="mt-4 text-slate-600">Chargement...</p>
+        <Loader2 className="w-12 h-12 animate-spin text-baikal-cyan mx-auto" />
+        <p className="mt-4 text-baikal-text font-mono">CHARGEMENT...</p>
       </div>
     </div>
   );
@@ -38,30 +38,30 @@ function LoadingScreen() {
  */
 function ProfileErrorScreen({ onRetry, onSignOut }) {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
-      <div className="bg-white rounded-xl shadow-lg p-8 max-w-md text-center">
-        <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <AlertTriangle className="w-8 h-8 text-amber-600" />
+    <div className="min-h-screen flex items-center justify-center bg-baikal-bg p-4">
+      <div className="bg-baikal-surface border border-baikal-border rounded-md p-8 max-w-md text-center">
+        <div className="w-16 h-16 bg-amber-900/20 border border-amber-500/50 rounded-full flex items-center justify-center mx-auto mb-4">
+          <AlertTriangle className="w-8 h-8 text-amber-400" />
         </div>
-        <h2 className="text-xl font-semibold text-slate-900 mb-2">
-          Profil non trouvé
+        <h2 className="text-xl font-semibold text-white font-mono mb-2">
+          PROFIL NON TROUVÉ
         </h2>
-        <p className="text-slate-600 mb-6">
+        <p className="text-baikal-text mb-6 font-sans">
           Votre compte a été créé mais le profil n'a pas été initialisé correctement. 
           Cela peut arriver si le trigger de base de données n'a pas fonctionné.
         </p>
         <div className="flex gap-3 justify-center">
           <button
             onClick={onRetry}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+            className="px-4 py-2 bg-baikal-cyan text-black rounded-md hover:opacity-80 transition-opacity font-mono font-bold"
           >
-            Réessayer
+            RÉESSAYER
           </button>
           <button
             onClick={onSignOut}
-            className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors"
+            className="px-4 py-2 bg-baikal-surface border border-baikal-border text-baikal-text rounded-md hover:bg-baikal-bg transition-colors font-mono"
           >
-            Se déconnecter
+            SE DÉCONNECTER
           </button>
         </div>
       </div>
@@ -74,24 +74,24 @@ function ProfileErrorScreen({ onRetry, onSignOut }) {
  */
 function AccessDeniedScreen() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
-      <div className="bg-white rounded-xl shadow-lg p-8 max-w-md text-center">
-        <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <ShieldX className="w-8 h-8 text-red-600" />
+    <div className="min-h-screen flex items-center justify-center bg-baikal-bg p-4">
+      <div className="bg-baikal-surface border border-baikal-border rounded-md p-8 max-w-md text-center">
+        <div className="w-16 h-16 bg-red-900/20 border border-red-500/50 rounded-full flex items-center justify-center mx-auto mb-4">
+          <ShieldX className="w-8 h-8 text-red-400" />
         </div>
-        <h2 className="text-xl font-semibold text-slate-900 mb-2">
-          Accès refusé
+        <h2 className="text-xl font-semibold text-white font-mono mb-2">
+          ACCÈS REFUSÉ
         </h2>
-        <p className="text-slate-600 mb-6">
+        <p className="text-baikal-text mb-6 font-sans">
           Vous n'avez pas les droits d'accès à cette section.
           Contactez votre administrateur si vous pensez qu'il s'agit d'une erreur.
         </p>
         <div className="flex gap-3 justify-center">
           <button
             onClick={() => window.location.href = '/login'}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+            className="px-4 py-2 bg-baikal-cyan text-black rounded-md hover:opacity-80 transition-opacity font-mono font-bold"
           >
-            Retour à la connexion
+            RETOUR À LA CONNEXION
           </button>
         </div>
       </div>

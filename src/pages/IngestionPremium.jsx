@@ -1015,7 +1015,7 @@ export default function IngestionPremium() {
                         <div className="bg-white rounded-xl border border-slate-200 p-4">
                             <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
                                 <Database className="w-5 h-5 text-slate-400" />
-                                Source
+                                Sources
                             </h3>
                             <div className="space-y-3">
                                 {availableSources.map((source) => (
