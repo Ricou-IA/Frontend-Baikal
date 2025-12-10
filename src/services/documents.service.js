@@ -758,8 +758,35 @@ export const documentsService = {
 
       if (sourceError) throw sourceError;
 
-      // L'Edge Function ingest-documents est déclenchée automatiquement
-      // via un trigger database ou webhook après l'insertion dans sources.files
+      // 4. Déclencher le traitement via webhook n8n
+      try {
+        const webhookResponse = await fetch('https://n8n.srv1102213.hstgr.cloud/webhook/ingest', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            source_file_id: sourceFile.id,
+            storage_path: path,
+            storage_bucket: 'premium-sources',
+            original_filename: file.name,
+            mime_type: file.type,
+            file_size: file.size,
+            layer,
+            app_id: appId,
+            org_id: orgId,
+            project_id: projectId,
+            created_by: userId,
+            metadata,
+          }),
+        });
+
+        if (!webhookResponse.ok) {
+          console.warn('[documentsService] Webhook n8n failed:', webhookResponse.status);
+        }
+      } catch (webhookError) {
+        console.warn('[documentsService] Webhook n8n error:', webhookError);
+      }
 
       return { data: sourceFile, path, error: null };
     } catch (error) {
