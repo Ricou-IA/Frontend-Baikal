@@ -28,6 +28,22 @@ import { supabase } from '../lib/supabaseClient';
 const DEFAULT_PAGE_SIZE = 20;
 
 // ============================================================================
+// UTILITAIRES
+// ============================================================================
+
+/**
+ * Calcule le hash SHA-256 d'un fichier
+ * @param {File} file - Fichier à hasher
+ * @returns {Promise<string>} Hash en hexadécimal
+ */
+async function computeFileHash(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ============================================================================
 // SERVICE DOCUMENTS
 // ============================================================================
 
@@ -712,21 +728,25 @@ export const documentsService = {
     } = params;
 
     try {
-      // 1. Upload vers Storage
+      // 1. Calculer le hash du fichier
+      const contentHash = await computeFileHash(file);
+
+      // 2. Upload vers Storage
       const { path, error: uploadError } = await this.uploadToStorage(file, userId, layer);
       if (uploadError) throw uploadError;
 
-      // 2. Créer l'entrée source file
+      // 3. Créer l'entrée source file
       const { data: sourceFile, error: sourceError } = await supabase
-        .from('files')                           // ← CHANGÉ: source_files → files
+        .from('files')
         .insert({
           original_filename: file.name,
           mime_type: file.type,
           file_size: file.size,
+          content_hash: contentHash,
           storage_path: path,
-          storage_bucket: 'premium-sources',     // ← NOUVEAU: ajout du bucket
+          storage_bucket: 'premium-sources',
           layer,
-          app_id: appId,                         // ← CHANGÉ: vertical_id → app_id
+          app_id: appId,
           org_id: orgId,
           project_id: projectId,
           created_by: userId,
@@ -738,8 +758,8 @@ export const documentsService = {
 
       if (sourceError) throw sourceError;
 
-      // 3. Déclencher le traitement (Edge Function)
-      const { error: processError } = await supabase.functions.invoke('process-document', {
+      // 4. Déclencher le traitement (Edge Function)
+      const { error: processError } = await supabase.functions.invoke('ingest-documents', {
         body: {
           sourceFileId: sourceFile.id,
           qualityLevel,

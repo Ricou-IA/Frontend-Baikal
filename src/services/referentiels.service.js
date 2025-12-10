@@ -187,7 +187,7 @@ export async function getLegifranceCodes(filters = {}) {
     try {
         let query = supabase
             .from('codes')
-            .select('id, name, short_name, description, domain_id, is_enabled, last_sync_at, total_articles, indexed_articles, default_apps')  // ← CHANGÉ: default_verticals → default_apps
+            .select('id, name, short_name, description, domain_id, is_enabled, last_sync_at, total_articles, indexed_articles, default_apps')
             .order('name', { ascending: true });
 
         if (filters.domainId) {

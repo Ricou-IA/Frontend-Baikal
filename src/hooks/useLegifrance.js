@@ -210,10 +210,9 @@ export function useLegifrance() {
         return updateCode(codeId, { is_enabled: isEnabled });
     }, [updateCode]);
 
-    // Mettre à jour les apps par défaut (anciennement verticales)
-    // MIGRATION: default_verticals → default_apps
+    // Mettre à jour les apps par défaut
     const updateCodeVerticals = useCallback(async (codeId, verticalIds) => {
-        return updateCode(codeId, { default_apps: verticalIds });  // MIGRATION: default_verticals → default_apps
+        return updateCode(codeId, { default_apps: verticalIds });
     }, [updateCode]);
 
     // Mettre à jour les grants organisations
