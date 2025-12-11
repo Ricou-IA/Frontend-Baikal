@@ -1,450 +1,390 @@
-// ============================================================================
-// RAG LAYERS CONFIG - Phase 3 Frontend (Baikal Console)
-// ============================================================================
-// Constantes et configuration pour le système RAG multicouche
-// Compatible avec la structure Supabase Phase 2
-// ============================================================================
+/**
+ * rag-layers.config.js - Baikal Console
+ * ============================================================================
+ * Configuration des couches RAG et permissions associées.
+ * 
+ * MIGRATION PHASE 3:
+ * - 'vertical' → 'app' (alignement avec schéma DB)
+ * 
+ * Couches disponibles:
+ * - app: Visible par tous les utilisateurs (anciennement 'vertical')
+ * - org: Visible par les membres de l'organisation
+ * - project: Visible par les membres du projet
+ * - user: Visible uniquement par l'utilisateur
+ * ============================================================================
+ */
+
+import { BookOpen, Building2, FolderOpen, User } from 'lucide-react';
 
 // ============================================================================
-// ENUMS - Valeurs possibles (correspondent aux types PostgreSQL)
+// TYPES / ENUMS
 // ============================================================================
 
 /**
- * Couches documentaires
- * @readonly
- * @enum {string}
+ * Enum des couches de documents
  */
 export const DocumentLayer = {
-    VERTICAL: 'vertical',
+    APP: 'app',
     ORG: 'org',
     PROJECT: 'project',
     USER: 'user',
-  };
-  
-  /**
-   * Statuts de validation
-   * @readonly
-   * @enum {string}
-   */
-  export const DocumentStatus = {
+};
+
+/**
+ * Enum des statuts de documents
+ */
+export const DocumentStatus = {
     DRAFT: 'draft',
     PENDING: 'pending',
     APPROVED: 'approved',
     REJECTED: 'rejected',
-  };
-  
-  /**
-   * Niveaux de qualité
-   * @readonly
-   * @enum {string}
-   */
-  export const DocumentQualityLevel = {
-    STANDARD: 'standard',
-    VERIFIED: 'verified',
-    PREMIUM: 'premium',
-  };
-  
-  /**
-   * Statuts de traitement
-   * @readonly
-   * @enum {string}
-   */
-  export const ProcessingStatus = {
-    PENDING: 'pending',
-    PROCESSING: 'processing',
-    COMPLETED: 'completed',
-    FAILED: 'failed',
-  };
-  
-  /**
-   * Rôles utilisateur
-   * @readonly
-   * @enum {string}
-   */
-  export const AppRole = {
-    SUPER_ADMIN: 'super_admin',
-    ORG_ADMIN: 'org_admin',
-    TEAM_LEADER: 'team_leader',
-    MEMBER: 'member',
-  };
-  
-  // ============================================================================
-  // LABELS - Textes d'affichage
-  // ============================================================================
-  
-  /** Labels pour les couches */
-  export const LAYER_LABELS = {
-    [DocumentLayer.VERTICAL]: 'Verticale Métier',
-    [DocumentLayer.ORG]: 'Organisation',
-    [DocumentLayer.PROJECT]: 'Projet',
-    [DocumentLayer.USER]: 'Personnel',
-  };
-  
-  /** Descriptions pour les couches */
-  export const LAYER_DESCRIPTIONS = {
-    [DocumentLayer.VERTICAL]: 'Documents métier partagés (DTU, normes, réglementations)',
-    [DocumentLayer.ORG]: 'Documents internes à l\'organisation',
-    [DocumentLayer.PROJECT]: 'Documents spécifiques à un projet/chantier',
-    [DocumentLayer.USER]: 'Documents personnels de l\'utilisateur',
-  };
-  
-  /** Labels pour les statuts */
-  export const STATUS_LABELS = {
-    [DocumentStatus.DRAFT]: 'Brouillon',
-    [DocumentStatus.PENDING]: 'En attente',
-    [DocumentStatus.APPROVED]: 'Approuvé',
-    [DocumentStatus.REJECTED]: 'Rejeté',
-  };
-  
-  /** Labels pour les niveaux de qualité */
-  export const QUALITY_LABELS = {
-    [DocumentQualityLevel.STANDARD]: 'Standard',
-    [DocumentQualityLevel.VERIFIED]: 'Vérifié',
-    [DocumentQualityLevel.PREMIUM]: 'Premium',
-  };
-  
-  /** Labels pour les rôles */
-  export const ROLE_LABELS = {
-    [AppRole.SUPER_ADMIN]: 'Super Admin',
-    [AppRole.ORG_ADMIN]: 'Admin Organisation',
-    [AppRole.TEAM_LEADER]: 'Chef d\'équipe',
-    [AppRole.MEMBER]: 'Membre',
-  };
-  
-  // ============================================================================
-  // ICÔNES - Noms Lucide React
-  // ============================================================================
-  
-  /** Icônes pour les couches (noms Lucide) */
-  export const LAYER_ICONS = {
-    [DocumentLayer.VERTICAL]: 'BookOpen',
-    [DocumentLayer.ORG]: 'Building2',
-    [DocumentLayer.PROJECT]: 'FolderOpen',
-    [DocumentLayer.USER]: 'User',
-  };
-  
-  /** Icônes pour les statuts */
-  export const STATUS_ICONS = {
-    [DocumentStatus.DRAFT]: 'FileEdit',
-    [DocumentStatus.PENDING]: 'Clock',
-    [DocumentStatus.APPROVED]: 'CheckCircle2',
-    [DocumentStatus.REJECTED]: 'XCircle',
-  };
-  
-  /** Icônes pour les niveaux de qualité */
-  export const QUALITY_ICONS = {
-    [DocumentQualityLevel.STANDARD]: 'File',
-    [DocumentQualityLevel.VERIFIED]: 'FileCheck',
-    [DocumentQualityLevel.PREMIUM]: 'Crown',
-  };
-  
-  // ============================================================================
-  // COULEURS - Classes Tailwind
-  // ============================================================================
-  
-  /** Couleurs pour les couches */
-  export const LAYER_COLORS = {
-    [DocumentLayer.VERTICAL]: {
-      bg: 'bg-purple-100',
-      text: 'text-purple-700',
-      border: 'border-purple-300',
-      icon: 'text-purple-600',
-      badge: 'bg-purple-600',
+    ARCHIVED: 'archived',
+};
+
+// ============================================================================
+// CONFIGURATION DES COUCHES (LAYERS)
+// ============================================================================
+
+/**
+ * Labels des couches pour l'affichage
+ */
+export const LAYER_LABELS = {
+    app: 'Verticale Métier',
+    org: 'Organisation',
+    project: 'Projet',
+    user: 'Personnel',
+};
+
+/**
+ * Descriptions des couches
+ */
+export const LAYER_DESCRIPTIONS = {
+    app: 'Partagé entre toutes les organisations',
+    org: "Interne à l'organisation",
+    project: "Visible par l'équipe projet",
+    user: 'Documents personnels',
+};
+
+/**
+ * Couleurs des couches (Tailwind classes)
+ */
+export const LAYER_COLORS = {
+    app: {
+        bg: 'bg-emerald-50',
+        border: 'border-emerald-500',
+        text: 'text-emerald-700',
+        icon: 'text-emerald-600',
     },
-    [DocumentLayer.ORG]: {
-      bg: 'bg-blue-100',
-      text: 'text-blue-700',
-      border: 'border-blue-300',
-      icon: 'text-blue-600',
-      badge: 'bg-blue-600',
+    org: {
+        bg: 'bg-blue-50',
+        border: 'border-blue-500',
+        text: 'text-blue-700',
+        icon: 'text-blue-600',
     },
-    [DocumentLayer.PROJECT]: {
-      bg: 'bg-green-100',
-      text: 'text-green-700',
-      border: 'border-green-300',
-      icon: 'text-green-600',
-      badge: 'bg-green-600',
+    project: {
+        bg: 'bg-purple-50',
+        border: 'border-purple-500',
+        text: 'text-purple-700',
+        icon: 'text-purple-600',
     },
-    [DocumentLayer.USER]: {
-      bg: 'bg-amber-100',
-      text: 'text-amber-700',
-      border: 'border-amber-300',
-      icon: 'text-amber-600',
-      badge: 'bg-amber-600',
+    user: {
+        bg: 'bg-amber-50',
+        border: 'border-amber-500',
+        text: 'text-amber-700',
+        icon: 'text-amber-600',
     },
-  };
-  
-  /** Couleurs pour les statuts */
-  export const STATUS_COLORS = {
-    [DocumentStatus.DRAFT]: {
-      bg: 'bg-gray-100',
-      text: 'text-gray-600',
-      border: 'border-gray-300',
+};
+
+/**
+ * Icônes des couches
+ */
+export const LAYER_ICONS = {
+    app: BookOpen,
+    org: Building2,
+    project: FolderOpen,
+    user: User,
+};
+
+// ============================================================================
+// CONFIGURATION DES STATUTS
+// ============================================================================
+
+/**
+ * Labels des statuts pour l'affichage
+ */
+export const STATUS_LABELS = {
+    draft: 'Brouillon',
+    pending: 'En attente',
+    approved: 'Approuvé',
+    rejected: 'Rejeté',
+    archived: 'Archivé',
+};
+
+/**
+ * Couleurs des statuts (Tailwind classes)
+ */
+export const STATUS_COLORS = {
+    draft: {
+        bg: 'bg-slate-100',
+        border: 'border-slate-300',
+        text: 'text-slate-700',
+        icon: 'text-slate-500',
+        badge: 'bg-slate-100 text-slate-700',
     },
-    [DocumentStatus.PENDING]: {
-      bg: 'bg-yellow-100',
-      text: 'text-yellow-700',
-      border: 'border-yellow-300',
+    pending: {
+        bg: 'bg-amber-50',
+        border: 'border-amber-300',
+        text: 'text-amber-700',
+        icon: 'text-amber-500',
+        badge: 'bg-amber-100 text-amber-700',
     },
-    [DocumentStatus.APPROVED]: {
-      bg: 'bg-green-100',
-      text: 'text-green-700',
-      border: 'border-green-300',
+    approved: {
+        bg: 'bg-green-50',
+        border: 'border-green-300',
+        text: 'text-green-700',
+        icon: 'text-green-500',
+        badge: 'bg-green-100 text-green-700',
     },
-    [DocumentStatus.REJECTED]: {
-      bg: 'bg-red-100',
-      text: 'text-red-700',
-      border: 'border-red-300',
+    rejected: {
+        bg: 'bg-red-50',
+        border: 'border-red-300',
+        text: 'text-red-700',
+        icon: 'text-red-500',
+        badge: 'bg-red-100 text-red-700',
     },
-  };
-  
-  /** Couleurs pour les niveaux de qualité */
-  export const QUALITY_COLORS = {
-    [DocumentQualityLevel.STANDARD]: {
-      bg: 'bg-gray-100',
-      text: 'text-gray-600',
-      border: 'border-gray-300',
+    archived: {
+        bg: 'bg-gray-50',
+        border: 'border-gray-300',
+        text: 'text-gray-700',
+        icon: 'text-gray-500',
+        badge: 'bg-gray-100 text-gray-700',
     },
-    [DocumentQualityLevel.VERIFIED]: {
-      bg: 'bg-blue-100',
-      text: 'text-blue-700',
-      border: 'border-blue-300',
+};
+
+// ============================================================================
+// CONFIGURATION DES FICHIERS
+// ============================================================================
+
+/**
+ * Types MIME acceptés pour l'upload
+ */
+export const ACCEPTED_MIME_TYPES = [
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/plain',
+    'text/markdown',
+    'text/csv',
+    'image/png',
+    'image/jpeg',
+    'image/webp',
+];
+
+/**
+ * Extensions acceptées
+ */
+export const ACCEPTED_EXTENSIONS = [
+    '.pdf',
+    '.doc',
+    '.docx',
+    '.xls',
+    '.xlsx',
+    '.txt',
+    '.md',
+    '.csv',
+    '.png',
+    '.jpg',
+    '.jpeg',
+    '.webp',
+];
+
+/**
+ * Taille maximale des fichiers
+ */
+export const MAX_FILE_SIZE_MB = 50;
+export const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+
+// ============================================================================
+// PERMISSIONS PAR RÔLE
+// ============================================================================
+
+/**
+ * Permissions par rôle utilisateur
+ */
+const ROLE_PERMISSIONS = {
+    super_admin: {
+        canUploadApp: true,
+        canUploadOrg: true,
+        canUploadProject: true,
+        canUploadUser: true,
+        canApprove: true,
+        canReject: true,
+        canDelete: true,
+        canViewAll: true,
     },
-    [DocumentQualityLevel.PREMIUM]: {
-      bg: 'bg-purple-100',
-      text: 'text-purple-700',
-      border: 'border-purple-300',
+    org_admin: {
+        canUploadApp: false,
+        canUploadOrg: true,
+        canUploadProject: true,
+        canUploadUser: true,
+        canApprove: true,
+        canReject: true,
+        canDelete: true,
+        canViewAll: false,
     },
-  };
-  
-  // ============================================================================
-  // PERMISSIONS - Matrice des droits par rôle
-  // ============================================================================
-  
-  /**
-   * Permissions par rôle
-   * @type {Object.<string, {
-   *   canUploadVertical: boolean,
-   *   canUploadOrg: boolean,
-   *   canUploadProject: boolean,
-   *   canUploadUser: boolean,
-   *   canValidate: boolean,
-   *   canPromote: boolean,
-   *   canDelete: boolean,
-   *   canViewAllLayers: boolean,
-   *   requiresValidation: boolean
-   * }>}
-   */
-  export const ROLE_PERMISSIONS = {
-    [AppRole.SUPER_ADMIN]: {
-      canUploadVertical: true,
-      canUploadOrg: true,
-      canUploadProject: true,
-      canUploadUser: true,
-      canValidate: true,
-      canPromote: true,
-      canDelete: true,
-      canViewAllLayers: true,
-      requiresValidation: false,
+    team_leader: {
+        canUploadApp: false,
+        canUploadOrg: false,
+        canUploadProject: true,
+        canUploadUser: true,
+        canApprove: false,
+        canReject: false,
+        canDelete: false,
+        canViewAll: false,
     },
-    [AppRole.ORG_ADMIN]: {
-      canUploadVertical: false,
-      canUploadOrg: true,
-      canUploadProject: true,
-      canUploadUser: true,
-      canValidate: true,
-      canPromote: true,
-      canDelete: true,
-      canViewAllLayers: true,
-      requiresValidation: false,
+    member: {
+        canUploadApp: false,
+        canUploadOrg: false,
+        canUploadProject: false,
+        canUploadUser: true,
+        canApprove: false,
+        canReject: false,
+        canDelete: false,
+        canViewAll: false,
     },
-    [AppRole.TEAM_LEADER]: {
-      canUploadVertical: false,
-      canUploadOrg: false,
-      canUploadProject: true,
-      canUploadUser: true,
-      canValidate: true,
-      canPromote: false,
-      canDelete: false,
-      canViewAllLayers: false,
-      requiresValidation: false,
-    },
-    [AppRole.MEMBER]: {
-      canUploadVertical: false,
-      canUploadOrg: false,
-      canUploadProject: true, // Mais status = pending
-      canUploadUser: true,
-      canValidate: false,
-      canPromote: false,
-      canDelete: false,
-      canViewAllLayers: false,
-      requiresValidation: true,
-    },
-  };
-  
-  // ============================================================================
-  // HELPERS - Fonctions utilitaires
-  // ============================================================================
-  
-  /**
-   * Obtenir les permissions pour un rôle
-   * @param {string} role - Rôle utilisateur
-   * @returns {Object} Permissions du rôle
-   */
-  export function getPermissions(role) {
-    return ROLE_PERMISSIONS[role] || ROLE_PERMISSIONS[AppRole.MEMBER];
-  }
-  
-  /**
-   * Vérifier si un utilisateur peut uploader vers une couche
-   * @param {string} role - Rôle utilisateur
-   * @param {string} layer - Couche cible
-   * @returns {boolean}
-   */
-  export function canUploadToLayer(role, layer) {
-    const permissions = getPermissions(role);
-    switch (layer) {
-      case DocumentLayer.VERTICAL:
-        return permissions.canUploadVertical;
-      case DocumentLayer.ORG:
-        return permissions.canUploadOrg;
-      case DocumentLayer.PROJECT:
-        return permissions.canUploadProject;
-      case DocumentLayer.USER:
-        return permissions.canUploadUser;
-      default:
-        return false;
-    }
-  }
-  
-  /**
-   * Obtenir les couches disponibles pour un rôle
-   * @param {string} role - Rôle utilisateur
-   * @returns {string[]} Liste des couches accessibles
-   */
-  export function getAvailableLayers(role) {
+};
+
+/**
+ * Récupère les permissions pour un rôle donné
+ * @param {string} role - Rôle de l'utilisateur
+ * @returns {Object} Permissions
+ */
+export function getPermissions(role) {
+    return ROLE_PERMISSIONS[role] || ROLE_PERMISSIONS.member;
+}
+
+/**
+ * Récupère les couches disponibles pour un rôle
+ * @param {string} role - Rôle de l'utilisateur
+ * @returns {string[]} Liste des couches autorisées
+ */
+export function getAvailableLayers(role) {
     const permissions = getPermissions(role);
     const layers = [];
     
-    if (permissions.canUploadVertical) layers.push(DocumentLayer.VERTICAL);
-    if (permissions.canUploadOrg) layers.push(DocumentLayer.ORG);
-    if (permissions.canUploadProject) layers.push(DocumentLayer.PROJECT);
-    if (permissions.canUploadUser) layers.push(DocumentLayer.USER);
+    if (permissions.canUploadApp) layers.push('app');
+    if (permissions.canUploadOrg) layers.push('org');
+    if (permissions.canUploadProject) layers.push('project');
+    if (permissions.canUploadUser) layers.push('user');
     
     return layers;
-  }
-  
-  /**
-   * Déterminer le statut initial selon le rôle et la couche
-   * @param {string} role - Rôle utilisateur
-   * @param {string} layer - Couche cible
-   * @returns {string} Statut initial
-   */
-  export function getInitialStatus(role, layer) {
-    const permissions = getPermissions(role);
-    if (permissions.requiresValidation && layer === DocumentLayer.PROJECT) {
-      return DocumentStatus.PENDING;
-    }
-    return DocumentStatus.APPROVED;
-  }
-  
-  /**
-   * Obtenir le niveau de qualité selon la source
-   * @param {'baikal' | 'arpet'} source - Source de l'upload
-   * @returns {string} Niveau de qualité
-   */
-  export function getQualityLevel(source) {
-    return source === 'baikal' ? DocumentQualityLevel.PREMIUM : DocumentQualityLevel.STANDARD;
-  }
-  
-  /**
-   * Formater la taille d'un fichier
-   * @param {number} bytes - Taille en bytes
-   * @returns {string} Taille formatée
-   */
-  export function formatFileSize(bytes) {
-    if (!bytes || bytes === 0) return '0 B';
+}
+
+// ============================================================================
+// UTILITAIRES
+// ============================================================================
+
+/**
+ * Formate la taille d'un fichier pour l'affichage
+ * @param {number} bytes - Taille en octets
+ * @returns {string} Taille formatée
+ */
+export function formatFileSize(bytes) {
+    if (bytes === 0) return '0 B';
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-  }
-  
-  /**
-   * Formater une date relative
-   * @param {string} dateString - Date ISO
-   * @returns {string} Date formatée
-   */
-  export function formatRelativeDate(dateString) {
-    if (!dateString) return '-';
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+/**
+ * Formate une date en format relatif (il y a X minutes, heures, jours...)
+ * @param {string|Date} date - Date à formater
+ * @returns {string} Date formatée en relatif
+ */
+export function formatRelativeDate(date) {
+    if (!date) return 'Date inconnue';
     
-    const date = new Date(dateString);
     const now = new Date();
-    const diffMs = now - date;
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
+    const targetDate = new Date(date);
+    const diffMs = now - targetDate;
+    const diffSeconds = Math.floor(diffMs / 1000);
+    const diffMinutes = Math.floor(diffSeconds / 60);
+    const diffHours = Math.floor(diffMinutes / 60);
+    const diffDays = Math.floor(diffHours / 24);
+    const diffWeeks = Math.floor(diffDays / 7);
+    const diffMonths = Math.floor(diffDays / 30);
+    const diffYears = Math.floor(diffDays / 365);
+
+    if (diffSeconds < 60) {
+        return "À l'instant";
+    } else if (diffMinutes < 60) {
+        return `Il y a ${diffMinutes} minute${diffMinutes > 1 ? 's' : ''}`;
+    } else if (diffHours < 24) {
+        return `Il y a ${diffHours} heure${diffHours > 1 ? 's' : ''}`;
+    } else if (diffDays < 7) {
+        return `Il y a ${diffDays} jour${diffDays > 1 ? 's' : ''}`;
+    } else if (diffWeeks < 4) {
+        return `Il y a ${diffWeeks} semaine${diffWeeks > 1 ? 's' : ''}`;
+    } else if (diffMonths < 12) {
+        return `Il y a ${diffMonths} mois`;
+    } else {
+        return `Il y a ${diffYears} an${diffYears > 1 ? 's' : ''}`;
+    }
+}
+
+/**
+ * Formate une date en format lisible
+ * @param {string|Date} date - Date à formater
+ * @returns {string} Date formatée
+ */
+export function formatDate(date) {
+    if (!date) return 'Date inconnue';
     
-    if (diffMins < 1) return 'À l\'instant';
-    if (diffMins < 60) return `Il y a ${diffMins} min`;
-    if (diffHours < 24) return `Il y a ${diffHours}h`;
-    if (diffDays < 7) return `Il y a ${diffDays}j`;
-    
-    return date.toLocaleDateString('fr-FR', {
-      day: 'numeric',
-      month: 'short',
-      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+    const targetDate = new Date(date);
+    return targetDate.toLocaleDateString('fr-FR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
     });
-  }
-  
-  // ============================================================================
-  // CONFIGURATION UPLOAD
-  // ============================================================================
-  
-  /** Types MIME acceptés pour les documents */
-  export const ACCEPTED_MIME_TYPES = [
-    'application/pdf',
-    'text/plain',
-    'text/markdown',
-    'application/msword',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'text/csv',
-    'application/vnd.ms-excel',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  ];
-  
-  /** Extensions acceptées */
-  export const ACCEPTED_EXTENSIONS = [
-    '.pdf', '.txt', '.md', '.doc', '.docx', '.csv', '.xls', '.xlsx'
-  ];
-  
-  /** Taille max de fichier en MB */
-  export const MAX_FILE_SIZE_MB = 20;
-  
-  /** Taille max de fichier en bytes */
-  export const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
-  
-  // ============================================================================
-  // CATÉGORIES DE DOCUMENTS (pour l'ingestion Premium)
-  // ============================================================================
-  
-  /** Catégories de documents disponibles */
-  export const DOCUMENT_CATEGORIES = [
-    { id: 'norme', label: 'Norme / DTU', icon: 'Scale' },
-    { id: 'procedure', label: 'Procédure', icon: 'ClipboardList' },
-    { id: 'template', label: 'Modèle / Template', icon: 'FileText' },
-    { id: 'guide', label: 'Guide / Manuel', icon: 'BookOpen' },
-    { id: 'rapport', label: 'Rapport', icon: 'FileBarChart' },
-    { id: 'contrat', label: 'Contrat / Juridique', icon: 'FileCheck' },
-    { id: 'technique', label: 'Fiche technique', icon: 'Wrench' },
-    { id: 'formation', label: 'Formation', icon: 'GraduationCap' },
-    { id: 'autre', label: 'Autre', icon: 'File' },
-  ];
-  
-  /** Tags prédéfinis */
-  export const PREDEFINED_TAGS = [
-    'DTU', 'NF', 'ISO', 'Sécurité', 'Qualité', 'Environnement',
-    'RH', 'Juridique', 'Commercial', 'Technique', 'Formation',
-    'Template', 'Archive', 'Urgent', 'Confidentiel',
-  ];
-  
+}
+
+/**
+ * Vérifie si un fichier est valide pour l'upload
+ * @param {File} file - Fichier à vérifier
+ * @returns {{valid: boolean, error: string|null}}
+ */
+export function validateFile(file) {
+    if (!file) {
+        return { valid: false, error: 'Aucun fichier sélectionné' };
+    }
+    
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+        return { valid: false, error: `Le fichier dépasse la limite de ${MAX_FILE_SIZE_MB} MB` };
+    }
+    
+    const isValidType = ACCEPTED_MIME_TYPES.includes(file.type);
+    const hasValidExtension = ACCEPTED_EXTENSIONS.some(ext => 
+        file.name.toLowerCase().endsWith(ext)
+    );
+    
+    if (!isValidType && !hasValidExtension) {
+        return { valid: false, error: 'Type de fichier non supporté' };
+    }
+    
+    return { valid: true, error: null };
+}
+
+/**
+ * Normalise la valeur du layer (rétrocompatibilité)
+ * @param {string} layer - Valeur de la couche
+ * @returns {string} Valeur normalisée
+ */
+export function normalizeLayer(layer) {
+    if (layer === 'vertical') return 'app';
+    return layer;
+}

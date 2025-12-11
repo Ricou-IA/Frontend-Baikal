@@ -1,12 +1,11 @@
 // ╔══════════════════════════════════════════════════════════════════════════════╗
 // ║  INGEST-DOCUMENTS - Edge Function Supabase                                   ║
-// ║  Version: 3.0.0 - Migration schémas (core, config, rag)                      ║
+// ║  Version: 3.2.0 - Utilisation RPC pour schémas rag/core                      ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
-// ║  Changements v3.0.0:                                                         ║
-// ║  - profiles → core.profiles                                                  ║
-// ║  - documents → rag.documents                                                 ║
-// ║  - vertical_id → app_id                                                      ║
-// ║  - target_verticals → target_apps                                            ║
+// ║  Changements v3.2.0:                                                         ║
+// ║  - Utilise rpc_insert_rag_document() au lieu de .schema('rag')               ║
+// ║  - Utilise rpc_get_profile() au lieu de .schema('core')                      ║
+// ║  - Contourne la limitation PostgREST sur les schémas exposés                 ║
 // ╚══════════════════════════════════════════════════════════════════════════════╝
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
@@ -50,27 +49,27 @@ serve(async (req) => {
       // ENRICHISSEMENT DEPUIS LE PROFIL SUPABASE
       // ============================================
       let orgId = parseUUID(doc.org_id) || parseUUID(doc.metadata?.org_id)
-      // MIGRATION: target_verticals → target_apps
       let targetApps = normalizeArray(doc.target_apps || doc.target_verticals || doc.metadata?.target_apps || doc.metadata?.target_verticals || [])
       const userId = parseUUID(doc.created_by) || parseUUID(doc.metadata?.user_id)
       
+      // Extraction layer, status, quality_level depuis payload
+      const layer = doc.layer || doc.metadata?.layer || 'project'
+      const status = doc.status || doc.metadata?.status || 'approved'
+      const qualityLevel = doc.quality_level || doc.metadata?.quality_level || 'premium'
+      
       // Si on a un user_id mais pas org_id ou target_apps, on enrichit depuis le profil
       if (userId && (!orgId || targetApps.length === 0)) {
-        // MIGRATION: profiles → core.profiles
-        const { data: profile, error: profileError } = await supabase
-          .schema('core')
-          .from('profiles')
-          .select('org_id, app_id, app_role')
-          .eq('id', userId)
-          .single()
+        // UTILISE RPC au lieu de .schema('core')
+        const { data: profiles, error: profileError } = await supabase
+          .rpc('rpc_get_profile', { p_user_id: userId })
+        
+        const profile = profiles?.[0]
         
         if (profile && !profileError) {
-          // Récupère org_id depuis le profil si non fourni
           if (!orgId) {
             orgId = profile.org_id
           }
           
-          // MIGRATION: Récupère app_id depuis le profil si non fourni (anciennement vertical_id)
           if (targetApps.length === 0) {
             if (profile.app_role === 'super_admin') {
               targetApps = ['all']
@@ -90,14 +89,16 @@ serve(async (req) => {
 
       const targetProjects = normalizeUUIDArray(doc.target_projects || doc.metadata?.target_projects)
 
-      // MIGRATION: target_verticals → target_apps
       validDocs.push({
         content: content.trim(),
         target_apps: targetApps,
-        target_projects: targetProjects,
+        target_projects: targetProjects.length > 0 ? targetProjects : null,
         org_id: orgId,
         created_by: userId,
         metadata: doc.metadata || {},
+        layer,
+        status,
+        quality_level: qualityLevel,
       })
     }
 
@@ -130,38 +131,42 @@ serve(async (req) => {
     const embeddingData = await embeddingResponse.json()
     const embeddings = embeddingData.data.map((d: any) => d.embedding)
 
-    // INSERTION BATCH
-    // MIGRATION: target_verticals → target_apps
-    const rowsToInsert = validDocs.map((doc, idx) => ({
-      content: doc.content,
-      embedding: embeddings[idx],
-      target_apps: doc.target_apps,
-      target_projects: doc.target_projects,
-      org_id: doc.org_id,
-      created_by: doc.created_by,
-      metadata: doc.metadata,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }))
+    // INSERTION VIA RPC (contourne la limitation PostgREST)
+    const insertedIds: string[] = []
+    const insertErrors: any[] = []
 
-    // MIGRATION: documents → rag.documents
-    const { data, error } = await supabase
-      .schema('rag')
-      .from('documents')
-      .insert(rowsToInsert)
-      .select('id')
+    for (let idx = 0; idx < validDocs.length; idx++) {
+      const doc = validDocs[idx]
+      const embedding = embeddings[idx]
 
-    if (error) {
-      throw new Error(`Supabase insert error: ${error.message}`)
+      const { data: docId, error: insertError } = await supabase.rpc('rpc_insert_rag_document', {
+        p_content: doc.content,
+        p_embedding: embedding,
+        p_target_apps: doc.target_apps,
+        p_target_projects: doc.target_projects,
+        p_org_id: doc.org_id,
+        p_created_by: doc.created_by,
+        p_metadata: doc.metadata,
+        p_layer: doc.layer,
+        p_status: doc.status,
+        p_quality_level: doc.quality_level,
+      })
+
+      if (insertError) {
+        console.error(`Erreur insertion doc ${idx}:`, insertError.message)
+        insertErrors.push({ index: idx, error: insertError.message })
+      } else if (docId) {
+        insertedIds.push(docId)
+      }
     }
 
     return new Response(
       JSON.stringify({
-        success: true,
-        inserted: data.length,
-        failed: errors.length,
-        ids: data.map((d: any) => d.id),
-        errors: errors.length > 0 ? errors : undefined,
+        success: insertErrors.length === 0,
+        inserted: insertedIds.length,
+        failed: errors.length + insertErrors.length,
+        ids: insertedIds,
+        errors: [...errors, ...insertErrors].length > 0 ? [...errors, ...insertErrors] : undefined,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )

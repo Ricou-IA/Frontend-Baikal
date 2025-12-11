@@ -10,12 +10,8 @@
  * - profiles → core.profiles (schéma changé)
  * - Bucket 'documents' → 'premium-sources' (storage renommé)
  * - Ajout storage_bucket dans payload webhook n8n
- * 
- * @example
- * import { documentsService } from '@/services';
- * 
- * const { data, error } = await documentsService.getLayerStats('org-id');
- * const docs = await documentsService.getDocumentsByLayer('app', filters);
+ * - Layer ajouté à la RACINE du payload (pas seulement metadata)
+ * - target_layer → layer (renommé dans syncLegifranceCodes)
  * ============================================================================
  */
 
@@ -28,7 +24,7 @@ import { supabase } from '../lib/supabaseClient';
 const DEFAULT_PAGE_SIZE = 20;
 
 // URL du webhook N8N (configurable via variables d'environnement)
-const N8N_WEBHOOK_URL = import.meta.env.VITE_N8N_INGEST_WEBHOOK_URL || 'https://n8n.srv1102213.hstgr.cloud/webhook/ingest';
+const N8N_WEBHOOK_URL = import.meta.env.VITE_N8N_INGEST_WEBHOOK_URL || 'https://n8n.srv1102213.hstgr.cloud/webhook/ingest-documents-console';
 
 // ============================================================================
 // UTILITAIRES
@@ -44,6 +40,16 @@ async function computeFileHash(file) {
   const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Normalise la valeur du layer (rétrocompatibilité)
+ * @param {string} layer - Valeur brute
+ * @returns {string} Valeur normalisée
+ */
+function normalizeLayer(layer) {
+  if (layer === 'vertical') return 'app';
+  return layer || 'org';
 }
 
 // ============================================================================
@@ -78,7 +84,7 @@ export const documentsService = {
       };
 
       (data || []).forEach(doc => {
-        const layer = doc.layer === 'vertical' ? 'app' : doc.layer;
+        const layer = normalizeLayer(doc.layer);
         if (stats[layer]) {
           stats[layer].total++;
           stats[layer][doc.status]++;
@@ -119,23 +125,15 @@ export const documentsService = {
 
   /**
    * Récupère les documents avec filtres et pagination
-   * @param {Object} filters - Filtres de recherche
-   * @param {Object} pagination - Options de pagination
+   * @param {string} layer - Couche cible ('app', 'org', 'project', 'user')
+   * @param {Object} filters - Filtres
+   * @param {Object} pagination - Pagination
    * @returns {Promise<{data: Array, total: number, error: Error|null}>}
    */
-  async getDocuments(filters = {}, pagination = {}) {
+  async getDocumentsByLayer(layer, filters = {}, pagination = {}) {
     try {
-      const {
-        layer,
-        status,
-        quality_level,
-        search,
-        orgId,
-        createdBy,
-        appId,
-        projectId,
-      } = filters;
-
+      const normalizedLayer = normalizeLayer(layer);
+      const { orgId, status, qualityLevel, appId, search } = filters;
       const {
         page = 1,
         pageSize = DEFAULT_PAGE_SIZE,
@@ -147,31 +145,26 @@ export const documentsService = {
         .from('documents')
         .select(`
           id,
-          title,
           content,
           layer,
           status,
           quality_level,
-          app_id,
+          target_apps,
+          target_projects,
           org_id,
-          project_id,
           created_by,
+          approved_by,
           created_at,
           updated_at,
-          approved_at,
-          approved_by,
-          metadata,
-          source_file_id
-        `, { count: 'exact' });
+          metadata
+        `, { count: 'exact' })
+        .eq('layer', normalizedLayer);
 
       if (orgId) query = query.eq('org_id', orgId);
-      if (layer) query = query.eq('layer', layer);
       if (status) query = query.eq('status', status);
-      if (quality_level) query = query.eq('quality_level', quality_level);
-      if (appId) query = query.eq('app_id', appId);
-      if (projectId) query = query.eq('project_id', projectId);
-      if (createdBy) query = query.eq('created_by', createdBy);
-      if (search) query = query.ilike('title', `%${search}%`);
+      if (qualityLevel) query = query.eq('quality_level', qualityLevel);
+      if (appId) query = query.contains('target_apps', [appId]);
+      if (search) query = query.ilike('content', `%${search}%`);
 
       query = query
         .order(sortBy, { ascending: sortOrder === 'asc' })
@@ -181,45 +174,17 @@ export const documentsService = {
 
       if (error) throw error;
 
-      const creatorIds = [...new Set((data || []).filter(d => d.created_by).map(d => d.created_by))];
-      let creatorsMap = {};
-
-      if (creatorIds.length > 0) {
-        const { data: creatorsData } = await supabase
-          .from('profiles')
-          .select('id, full_name, email')
-          .in('id', creatorIds);
-        if (creatorsData) {
-          creatorsMap = creatorsData.reduce((acc, p) => {
-            acc[p.id] = { id: p.id, display_name: p.full_name, email: p.email };
-            return acc;
-          }, {});
-        }
-      }
-
-      const mappedData = (data || []).map(doc => ({
-        ...doc,
-        creator: doc.created_by ? creatorsMap[doc.created_by] : null,
-      }));
-
-      return {
-        data: mappedData,
-        total: count || 0,
-        page,
-        pageSize,
-        totalPages: Math.ceil((count || 0) / pageSize),
-        error: null,
-      };
+      return { data: data || [], total: count || 0, error: null };
     } catch (error) {
-      console.error('[documentsService] getDocuments error:', error);
+      console.error('[documentsService] getDocumentsByLayer error:', error);
       return { data: [], total: 0, error };
     }
   },
 
   /**
-   * Récupère un document par son ID
-   * @param {number} documentId - ID du document
-   * @returns {Promise<{data: Object|null, error: Error|null}>}
+   * Récupère un document par son ID avec les relations
+   * @param {string} documentId - ID du document
+   * @returns {Promise<{data: Object, error: Error|null}>}
    */
   async getDocumentById(documentId) {
     try {
@@ -231,36 +196,33 @@ export const documentsService = {
 
       if (error) throw error;
 
+      // Récupérer les profils associés
       let creator = null;
       let approver = null;
       let source_file = null;
 
-      if (data?.created_by) {
+      if (data.created_by) {
         const { data: creatorData } = await supabase
           .from('profiles')
           .select('id, full_name, email')
           .eq('id', data.created_by)
           .single();
-        if (creatorData) {
-          creator = { id: creatorData.id, display_name: creatorData.full_name, email: creatorData.email };
-        }
+        creator = creatorData;
       }
 
-      if (data?.approved_by) {
+      if (data.approved_by) {
         const { data: approverData } = await supabase
           .from('profiles')
           .select('id, full_name, email')
           .eq('id', data.approved_by)
           .single();
-        if (approverData) {
-          approver = { id: approverData.id, display_name: approverData.full_name, email: approverData.email };
-        }
+        approver = approverData;
       }
 
-      if (data?.source_file_id) {
+      if (data.source_file_id) {
         const { data: fileData } = await supabase
           .from('files')
-          .select('id, original_filename, mime_type, file_size')
+          .select('id, original_filename, storage_path, storage_bucket')
           .eq('id', data.source_file_id)
           .single();
         source_file = fileData;
@@ -268,6 +230,7 @@ export const documentsService = {
 
       const mappedData = data ? {
         ...data,
+        layer: normalizeLayer(data.layer),
         creator,
         approver,
         source_file,
@@ -279,6 +242,312 @@ export const documentsService = {
       return { data: null, error };
     }
   },
+
+  // ==========================================================================
+  // GESTION DU STATUT
+  // ==========================================================================
+
+  /**
+   * Approuve un document
+   * @param {string} documentId - ID du document
+   * @param {string} approverId - ID de l'approbateur
+   * @returns {Promise<{data: Object, error: Error|null}>}
+   */
+  async approveDocument(documentId, approverId) {
+    try {
+      const { data, error } = await supabase
+        .from('documents')
+        .update({
+          status: 'approved',
+          approved_by: approverId,
+          approved_at: new Date().toISOString(),
+        })
+        .eq('id', documentId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return { data, error: null };
+    } catch (error) {
+      console.error('[documentsService] approveDocument error:', error);
+      return { data: null, error };
+    }
+  },
+
+  /**
+   * Rejette un document
+   * @param {string} documentId - ID du document
+   * @param {string} rejecterId - ID du rejeteur
+   * @param {string} reason - Raison du rejet
+   * @returns {Promise<{data: Object, error: Error|null}>}
+   */
+  async rejectDocument(documentId, rejecterId, reason = '') {
+    try {
+      const { data: currentDoc } = await supabase
+        .from('documents')
+        .select('metadata')
+        .eq('id', documentId)
+        .single();
+
+      const updatedMetadata = {
+        ...(currentDoc?.metadata || {}),
+        rejection_reason: reason,
+      };
+
+      const { data, error } = await supabase
+        .from('documents')
+        .update({
+          status: 'rejected',
+          approved_by: rejecterId,
+          approved_at: new Date().toISOString(),
+          metadata: updatedMetadata,
+        })
+        .eq('id', documentId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return { data, error: null };
+    } catch (error) {
+      console.error('[documentsService] rejectDocument error:', error);
+      return { data: null, error };
+    }
+  },
+
+  // ==========================================================================
+  // SUPPRESSION
+  // ==========================================================================
+
+  /**
+   * Supprime un document et ses chunks associés
+   * @param {string} documentId - ID du document
+   * @returns {Promise<{success: boolean, deletedChunks: number, error: Error|null}>}
+   */
+  async deleteDocument(documentId) {
+    try {
+      const { error } = await supabase
+        .from('documents')
+        .delete()
+        .eq('id', documentId);
+
+      if (error) throw error;
+
+      return { success: true, deletedChunks: 0, error: null };
+    } catch (error) {
+      console.error('[documentsService] deleteDocument error:', error);
+      return { success: false, deletedChunks: 0, error };
+    }
+  },
+
+  // ==========================================================================
+  // UPLOAD VERS STORAGE
+  // ==========================================================================
+
+  /**
+   * Upload un fichier vers le storage Supabase
+   * @param {File} file - Fichier à uploader
+   * @param {string} userId - ID de l'utilisateur
+   * @param {string} layer - Couche cible
+   * @param {string} bucket - Nom du bucket
+   * @returns {Promise<{path: string, error: Error|null}>}
+   */
+  async uploadToStorage(file, userId, layer = 'org', bucket = 'premium-sources') {
+    try {
+      const normalizedLayer = normalizeLayer(layer);
+      const timestamp = Date.now();
+      const cleanFilename = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+      const path = `${normalizedLayer}/${userId}/${timestamp}_${cleanFilename}`;
+
+      const { data, error } = await supabase.storage
+        .from(bucket)
+        .upload(path, file, {
+          cacheControl: '3600',
+          upsert: false,
+        });
+
+      if (error) throw error;
+
+      return { path: data.path, error: null };
+    } catch (error) {
+      console.error('[documentsService] uploadToStorage error:', error);
+      return { path: null, error };
+    }
+  },
+
+  /**
+   * Upload complet d'un document (storage + metadata + webhook n8n)
+   * ============================================================================
+   * IMPORTANT: Le payload webhook inclut 'layer' à la RACINE
+   * pour être lu correctement par le nœud 0.2 de N8N
+   * ============================================================================
+   * @param {Object} params - Paramètres d'upload
+   * @returns {Promise<{data: Object, path: string, error: Error|null}>}
+   */
+  async uploadDocument(params) {
+    const {
+      file,
+      layer,
+      appId,
+      orgId,
+      userId,
+      projectId = null,
+      metadata = {},
+      qualityLevel = 'premium',
+      status = 'approved',
+      bucket = 'premium-sources',
+    } = params;
+
+    // Normaliser le layer (vertical → app)
+    const normalizedLayer = normalizeLayer(layer);
+
+    try {
+      // 1. Calculer le hash du fichier
+      const contentHash = await computeFileHash(file);
+
+      // 2. Upload vers Storage
+      const { path, error: uploadError } = await this.uploadToStorage(file, userId, normalizedLayer, bucket);
+      if (uploadError) throw uploadError;
+
+      // 3. Créer l'entrée source file
+      const { data: sourceFile, error: sourceError } = await supabase
+        .from('files')
+        .insert({
+          original_filename: file.name,
+          mime_type: file.type,
+          file_size: file.size,
+          content_hash: contentHash,
+          storage_path: path,
+          storage_bucket: bucket,
+          layer: normalizedLayer,
+          app_id: appId,
+          org_id: orgId,
+          project_id: projectId,
+          created_by: userId,
+          processing_status: 'pending',
+          metadata,
+        })
+        .select()
+        .single();
+
+      if (sourceError) throw sourceError;
+
+      // 4. Déclencher le traitement via webhook n8n
+      // =========================================================================
+      // IMPORTANT: 'layer' est à la RACINE du payload pour le nœud 0.2
+      // =========================================================================
+      try {
+        const webhookResponse = await fetch(N8N_WEBHOOK_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            // Identifiants
+            user_id: userId,
+            org_id: orgId,
+
+            // Fichier
+            filename: file.name,
+            path: path,
+            storage_bucket: bucket,
+
+            // ⭐ LAYER À LA RACINE (pour nœud 0.2 N8N)
+            layer: normalizedLayer,
+
+            // Ciblage RAG
+            target_apps: appId ? [appId] : null,
+            target_projects: projectId ? [projectId] : null,
+
+            // Metadata enrichie
+            metadata: {
+              ...metadata,
+              source_file_id: sourceFile.id,
+              mime_type: file.type,
+              file_size: file.size,
+              layer: normalizedLayer,
+              quality_level: qualityLevel,
+            },
+          }),
+        });
+
+        if (!webhookResponse.ok) {
+          const errorText = await webhookResponse.text().catch(() => 'No details');
+          console.warn('[documentsService] Webhook n8n failed:', webhookResponse.status, errorText);
+        } else {
+          console.log('[documentsService] Webhook n8n triggered successfully');
+        }
+      } catch (webhookError) {
+        console.warn('[documentsService] Webhook n8n error:', webhookError);
+      }
+
+      return { data: sourceFile, path, error: null };
+    } catch (error) {
+      console.error('[documentsService] uploadDocument error:', error);
+      return { data: null, path: null, error };
+    }
+  },
+
+  // ==========================================================================
+  // LÉGIFRANCE - SYNCHRONISATION
+  // ==========================================================================
+
+  /**
+   * Synchronise des codes Légifrance vers la base RAG
+   * ============================================================================
+   * IMPORTANT: Utilise 'layer' (pas 'target_layer') pour le payload
+   * ============================================================================
+   */
+  async syncLegifranceCodes(params) {
+    const { codeIds, appId, layer } = params;
+
+    // Normaliser le layer
+    const normalizedLayer = normalizeLayer(layer) || 'app';
+
+    try {
+      const results = [];
+      const errors = [];
+
+      for (const codeId of codeIds) {
+        try {
+          const { data, error } = await supabase.functions.invoke('trigger-legifrance-sync', {
+            body: {
+              code_id: codeId,
+              sync_type: 'full',
+              target_apps: appId ? [appId] : null,
+              // ⭐ CORRIGÉ: 'layer' au lieu de 'target_layer'
+              layer: normalizedLayer,
+            },
+          });
+
+          if (error) {
+            errors.push({ codeId, error: error.message });
+          } else {
+            results.push({ codeId, ...data });
+          }
+        } catch (err) {
+          errors.push({ codeId, error: err.message });
+        }
+      }
+
+      return {
+        data: {
+          success: errors.length === 0,
+          synced: results.length,
+          failed: errors.length,
+          results,
+          errors,
+        },
+        error: errors.length > 0 ? new Error(`${errors.length} codes failed`) : null,
+      };
+    } catch (error) {
+      console.error('[documentsService] syncLegifranceCodes error:', error);
+      return { data: null, error };
+    }
+  },
+
+  // ==========================================================================
+  // FICHIERS SOURCES
+  // ==========================================================================
 
   /**
    * Récupère les fichiers sources avec pagination
@@ -313,7 +582,7 @@ export const documentsService = {
         `, { count: 'exact' });
 
       if (orgId) query = query.eq('org_id', orgId);
-      if (layer) query = query.eq('layer', layer);
+      if (layer) query = query.eq('layer', normalizeLayer(layer));
       if (processingStatus) query = query.eq('processing_status', processingStatus);
 
       query = query
@@ -324,6 +593,7 @@ export const documentsService = {
 
       if (error) throw error;
 
+      // Récupérer les créateurs
       const creatorIds = [...new Set((data || []).filter(d => d.created_by).map(d => d.created_by))];
       let creatorsMap = {};
 
@@ -342,17 +612,11 @@ export const documentsService = {
 
       const mappedData = (data || []).map(file => ({
         ...file,
+        layer: normalizeLayer(file.layer),
         creator: file.created_by ? creatorsMap[file.created_by] : null,
       }));
 
-      return {
-        data: mappedData,
-        total: count || 0,
-        page,
-        pageSize,
-        totalPages: Math.ceil((count || 0) / pageSize),
-        error: null,
-      };
+      return { data: mappedData, total: count || 0, error: null };
     } catch (error) {
       console.error('[documentsService] getSourceFiles error:', error);
       return { data: [], total: 0, error };
@@ -360,55 +624,29 @@ export const documentsService = {
   },
 
   // ==========================================================================
-  // DÉTECTION DE DOUBLONS
+  // VÉRIFICATION DE DOUBLONS
   // ==========================================================================
 
   /**
-   * Vérifie si un fichier existe déjà (basé sur nom et taille)
-   * @param {string} filename - Nom du fichier
-   * @param {number} fileSize - Taille du fichier
+   * Vérifie si un fichier existe déjà (par hash)
+   * @param {string} contentHash - Hash SHA-256 du fichier
    * @param {string} orgId - ID de l'organisation
    * @returns {Promise<{isDuplicate: boolean, existingFile: Object|null, error: Error|null}>}
    */
-  async checkDuplicate(filename, fileSize, orgId) {
+  async checkDuplicate(contentHash, orgId) {
     try {
       const { data, error } = await supabase
         .from('files')
-        .select(`
-          id,
-          original_filename,
-          layer,
-          created_at,
-          created_by
-        `)
-        .eq('original_filename', filename)
-        .eq('file_size', fileSize)
+        .select('id, original_filename, created_at, created_by')
+        .eq('content_hash', contentHash)
         .eq('org_id', orgId)
-        .maybeSingle();
+        .limit(1);
 
       if (error) throw error;
 
-      let creatorName = 'Inconnu';
-      if (data?.created_by) {
-        const { data: creatorData } = await supabase
-          .from('profiles')
-          .select('full_name')
-          .eq('id', data.created_by)
-          .single();
-        if (creatorData?.full_name) {
-          creatorName = creatorData.full_name;
-        }
-      }
-
       return {
-        isDuplicate: !!data,
-        existingFile: data ? {
-          id: data.id,
-          filename: data.original_filename,
-          layer: data.layer,
-          uploadedAt: data.created_at,
-          uploadedBy: creatorName,
-        } : null,
+        isDuplicate: data && data.length > 0,
+        existingFile: data?.[0] || null,
         error: null,
       };
     } catch (error) {
@@ -417,363 +655,23 @@ export const documentsService = {
     }
   },
 
-  // ==========================================================================
-  // VALIDATION
-  // ==========================================================================
-
   /**
-   * Approuve un document
+   * Vérifie un fichier avant upload (calcule le hash et vérifie les doublons)
+   * @param {File} file - Fichier à vérifier
+   * @param {string} orgId - ID de l'organisation
+   * @returns {Promise<{isDuplicate: boolean, existingFile: Object|null, contentHash: string, error: Error|null}>}
    */
-  async approveDocument(documentId, approvedBy) {
+  async checkFileBeforeUpload(file, orgId) {
     try {
-      const { data, error } = await supabase
-        .from('documents')
-        .update({
-          status: 'approved',
-          approved_by: approvedBy,
-          approved_at: new Date().toISOString(),
-        })
-        .eq('id', documentId)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return { success: true, data, error: null };
-    } catch (error) {
-      console.error('[documentsService] approveDocument error:', error);
-      return { success: false, data: null, error };
-    }
-  },
-
-  /**
-   * Rejette un document
-   */
-  async rejectDocument(documentId, rejectedBy, reason = '') {
-    try {
-      const { data, error } = await supabase
-        .from('documents')
-        .update({
-          status: 'rejected',
-          rejected_by: rejectedBy,
-          rejected_at: new Date().toISOString(),
-          rejection_reason: reason,
-        })
-        .eq('id', documentId)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return { success: true, data, error: null };
-    } catch (error) {
-      console.error('[documentsService] rejectDocument error:', error);
-      return { success: false, data: null, error };
-    }
-  },
-
-  /**
-   * Approuve plusieurs documents en lot
-   */
-  async bulkApprove(documentIds, approvedBy) {
-    try {
-      const { data, error } = await supabase
-        .from('documents')
-        .update({
-          status: 'approved',
-          approved_by: approvedBy,
-          approved_at: new Date().toISOString(),
-        })
-        .in('id', documentIds)
-        .select();
-
-      if (error) throw error;
-      return { success: true, count: data?.length || 0, error: null };
-    } catch (error) {
-      console.error('[documentsService] bulkApprove error:', error);
-      return { success: false, count: 0, error };
-    }
-  },
-
-  /**
-   * Rejette plusieurs documents en lot
-   */
-  async bulkReject(documentIds, rejectedBy, reason = '') {
-    try {
-      const { data, error } = await supabase
-        .from('documents')
-        .update({
-          status: 'rejected',
-          rejected_by: rejectedBy,
-          rejected_at: new Date().toISOString(),
-          rejection_reason: reason,
-        })
-        .in('id', documentIds)
-        .select();
-
-      if (error) throw error;
-      return { success: true, count: data?.length || 0, error: null };
-    } catch (error) {
-      console.error('[documentsService] bulkReject error:', error);
-      return { success: false, count: 0, error };
-    }
-  },
-
-  // ==========================================================================
-  // CHANGEMENT DE COUCHE
-  // ==========================================================================
-
-  /**
-   * Change la couche d'un document
-   */
-  async changeDocumentLayer(documentId, newLayer, changedBy) {
-    try {
-      const { data, error } = await supabase
-        .from('documents')
-        .update({
-          layer: newLayer,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', documentId)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return { success: true, data, error: null };
-    } catch (error) {
-      console.error('[documentsService] changeDocumentLayer error:', error);
-      return { success: false, data: null, error };
-    }
-  },
-
-  // ==========================================================================
-  // SUPPRESSION
-  // ==========================================================================
-
-  /**
-   * Supprime un document
-   */
-  async deleteDocument(documentId) {
-    try {
-      const { error } = await supabase
-        .from('documents')
-        .delete()
-        .eq('id', documentId);
-
-      if (error) throw error;
-      return { success: true, error: null };
-    } catch (error) {
-      console.error('[documentsService] deleteDocument error:', error);
-      return { success: false, error };
-    }
-  },
-
-  /**
-   * Supprime un fichier source et tous ses chunks
-   */
-  async deleteSourceFile(sourceFileId) {
-    try {
-      const { count: deletedChunks, error: chunksError } = await supabase
-        .from('documents')
-        .delete({ count: 'exact' })
-        .eq('source_file_id', sourceFileId);
-
-      if (chunksError) throw chunksError;
-
-      const { error: fileError } = await supabase
-        .from('files')
-        .delete()
-        .eq('id', sourceFileId);
-
-      if (fileError) throw fileError;
-
-      return { success: true, deletedChunks: deletedChunks || 0, error: null };
-    } catch (error) {
-      console.error('[documentsService] deleteSourceFile error:', error);
-      return { success: false, deletedChunks: 0, error };
-    }
-  },
-
-  // ==========================================================================
-  // UPLOAD VERS STORAGE
-  // ==========================================================================
-
-  /**
-   * Upload un fichier vers le storage Supabase
-   * @param {File} file - Fichier à uploader
-   * @param {string} userId - ID de l'utilisateur
-   * @param {string} layer - Couche cible
-   * @param {string} bucket - Nom du bucket
-   * @returns {Promise<{path: string, error: Error|null}>}
-   */
-  async uploadToStorage(file, userId, layer = 'project', bucket = 'premium-sources') {
-    try {
-      const timestamp = Date.now();
-      const cleanFilename = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-      const path = `${layer}/${userId}/${timestamp}_${cleanFilename}`;
-
-      const { data, error } = await supabase.storage
-        .from(bucket)
-        .upload(path, file, {
-          cacheControl: '3600',
-          upsert: false,
-        });
-
-      if (error) throw error;
-
-      return { path: data.path, error: null };
-    } catch (error) {
-      console.error('[documentsService] uploadToStorage error:', error);
-      return { path: null, error };
-    }
-  },
-
-  /**
-   * Upload complet d'un document (storage + metadata + webhook n8n)
-   * @param {Object} params - Paramètres d'upload
-   * @returns {Promise<{data: Object, path: string, error: Error|null}>}
-   */
-  async uploadDocument(params) {
-    const {
-      file,
-      layer,
-      appId,
-      orgId,
-      userId,
-      projectId = null,
-      metadata = {},
-      qualityLevel = 'standard',
-      status = 'pending',
-      bucket = 'premium-sources',  // Bucket configurable
-    } = params;
-
-    try {
-      // 1. Calculer le hash du fichier
       const contentHash = await computeFileHash(file);
+      const { isDuplicate, existingFile, error } = await this.checkDuplicate(contentHash, orgId);
 
-      // 2. Upload vers Storage
-      const { path, error: uploadError } = await this.uploadToStorage(file, userId, layer, bucket);
-      if (uploadError) throw uploadError;
+      if (error) throw error;
 
-      // 3. Créer l'entrée source file
-      const { data: sourceFile, error: sourceError } = await supabase
-        .from('files')
-        .insert({
-          original_filename: file.name,
-          mime_type: file.type,
-          file_size: file.size,
-          content_hash: contentHash,
-          storage_path: path,
-          storage_bucket: bucket,
-          layer,
-          app_id: appId,
-          org_id: orgId,
-          project_id: projectId,
-          created_by: userId,
-          processing_status: 'pending',
-          metadata,
-        })
-        .select()
-        .single();
-
-      if (sourceError) throw sourceError;
-
-      // 4. Déclencher le traitement via webhook n8n
-      try {
-        const webhookResponse = await fetch(N8N_WEBHOOK_URL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            // Identifiants
-            user_id: userId,
-            org_id: orgId,
-
-            // Fichier - IMPORTANT: storage_bucket au niveau racine
-            filename: file.name,
-            path: path,
-            storage_bucket: bucket,
-
-            // Ciblage RAG
-            target_apps: appId ? [appId] : null,
-            target_projects: projectId ? [projectId] : null,
-
-            // Metadata enrichie
-            metadata: {
-              ...metadata,
-              source_file_id: sourceFile.id,
-              mime_type: file.type,
-              file_size: file.size,
-              layer,
-              quality_level: qualityLevel,
-            },
-          }),
-        });
-
-        if (!webhookResponse.ok) {
-          const errorText = await webhookResponse.text().catch(() => 'No details');
-          console.warn('[documentsService] Webhook n8n failed:', webhookResponse.status, errorText);
-        } else {
-          console.log('[documentsService] Webhook n8n triggered successfully');
-        }
-      } catch (webhookError) {
-        console.warn('[documentsService] Webhook n8n error:', webhookError);
-      }
-
-      return { data: sourceFile, path, error: null };
+      return { isDuplicate, existingFile, contentHash, error: null };
     } catch (error) {
-      console.error('[documentsService] uploadDocument error:', error);
-      return { data: null, path: null, error };
-    }
-  },
-
-  // ==========================================================================
-  // LÉGIFRANCE - SYNCHRONISATION
-  // ==========================================================================
-
-  /**
-   * Synchronise des codes Légifrance vers la base RAG
-   */
-  async syncLegifranceCodes(params) {
-    const { codeIds, appId, layer } = params;
-
-    try {
-      const results = [];
-      const errors = [];
-
-      for (const codeId of codeIds) {
-        try {
-          const { data, error } = await supabase.functions.invoke('trigger-legifrance-sync', {
-            body: {
-              code_id: codeId,
-              sync_type: 'full',
-              target_apps: appId ? [appId] : null,
-              target_layer: layer || 'app',
-            },
-          });
-
-          if (error) {
-            errors.push({ codeId, error: error.message });
-          } else {
-            results.push({ codeId, ...data });
-          }
-        } catch (err) {
-          errors.push({ codeId, error: err.message });
-        }
-      }
-
-      return {
-        data: {
-          success: errors.length === 0,
-          synced: results.length,
-          failed: errors.length,
-          results,
-          errors,
-        },
-        error: errors.length > 0 ? new Error(`${errors.length} codes failed`) : null,
-      };
-    } catch (error) {
-      console.error('[documentsService] syncLegifranceCodes error:', error);
-      return { data: null, error };
+      console.error('[documentsService] checkFileBeforeUpload error:', error);
+      return { isDuplicate: false, existingFile: null, contentHash: null, error };
     }
   },
 };
