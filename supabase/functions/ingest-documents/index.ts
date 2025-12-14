@@ -1,13 +1,17 @@
 // ╔══════════════════════════════════════════════════════════════════════════════╗
 // ║  INGEST-DOCUMENTS - Edge Function Supabase                                   ║
-// ║  Version: 4.0.0 - Support rag.document_tables                                ║
+// ║  Version: 4.1.0 - Support table_chunk (double insertion)                     ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
-// ║  Changements v4.0.0:                                                         ║
-// ║  - Support double destination via _DESTINATION                               ║
-// ║  - rag.documents : chunks texte + tableaux (avec embedding)                  ║
-// ║  - rag.document_tables : tableaux bruts (sans embedding)                     ║
-// ║  - Propagation source_file_id                                                ║
-// ║  - Support layer, status, quality_level                                      ║
+// ║  Changements v4.1.0:                                                         ║
+// ║  - Nouveau cas _DESTINATION: 'table_chunk'                                   ║
+// ║    → INSERT rag.documents (avec embedding, pour RAG)                         ║
+// ║    → INSERT rag.document_tables (sans embedding, stockage structuré)         ║
+// ║  - content_type: 'table_chunk' dans metadata                                 ║
+// ╠══════════════════════════════════════════════════════════════════════════════╣
+// ║  Destinations supportées:                                                    ║
+// ║  - 'rag.documents' (défaut) : chunks texte avec embedding                    ║
+// ║  - 'rag.document_tables'    : tableaux bruts sans embedding                  ║
+// ║  - 'table_chunk'            : DOUBLE insertion (documents + tables)          ║
 // ╚══════════════════════════════════════════════════════════════════════════════╝
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
@@ -47,10 +51,97 @@ serve(async (req) => {
     for (const doc of documents) {
       const destination = doc._DESTINATION || 'rag.documents'
       
+      // ════════════════════════════════════════════════════════════════════════
+      // CAS 1: table_chunk → Double insertion (NOUVEAU v4.1.0)
+      // ════════════════════════════════════════════════════════════════════════
+      
+      if (destination === 'table_chunk') {
+        
+        // Validation
+        if (!doc.content || doc.content.trim().length < 10) {
+          errors.push({ error: 'content manquant pour table_chunk', doc: doc.document_title })
+          continue
+        }
+        if (!doc.content_markdown || doc.content_markdown.trim().length < 10) {
+          errors.push({ error: 'content_markdown manquant pour table_chunk', doc: doc.document_title })
+          continue
+        }
+        
+        // ── A. Préparer pour rag.documents (searchable) ──
+        
+        let orgId = parseUUID(doc.org_id)
+        let targetApps = normalizeArray(doc.target_apps || [])
+        const userId = parseUUID(doc.created_by)
+        
+        // Enrichissement depuis profil si nécessaire
+        if (userId && (!orgId || targetApps.length === 0)) {
+          const { data: profile, error: profileError } = await supabase
+            .schema('core')
+            .from('profiles')
+            .select('org_id, app_id, app_role')
+            .eq('id', userId)
+            .single()
+          
+          if (profile && !profileError) {
+            if (!orgId) orgId = profile.org_id
+            if (targetApps.length === 0) {
+              targetApps = profile.app_role === 'super_admin' 
+                ? ['all'] 
+                : profile.app_id ? [profile.app_id] : ['default']
+            }
+          }
+        }
+        
+        if (targetApps.length === 0) targetApps = ['default']
+        
+        const targetProjects = normalizeUUIDArray(doc.target_projects)
+        
+        docsForRagDocuments.push({
+          content: doc.content.trim(),
+          target_apps: targetApps,
+          target_projects: targetProjects,
+          org_id: orgId,
+          created_by: userId,
+          layer: doc.layer || null,
+          status: doc.status || null,
+          quality_level: doc.quality_level || null,
+          metadata: {
+            source_file_id: doc.source_file_id || null,
+            content_type: 'table_chunk',
+            document_title: doc.document_title || null,
+            section_title: doc.section_title || null,
+            table_index: doc.table_index ?? 0,
+            row_count: doc.row_count || 0,
+            column_count: doc.column_count || 0,
+          },
+        })
+        
+        // ── B. Préparer pour rag.document_tables (stockage structuré) ──
+        
+        docsForRagTables.push({
+          source_file_id: parseUUID(doc.source_file_id),
+          content_markdown: doc.content_markdown.trim(),
+          content_json: doc.content_json || null,
+          document_title: doc.document_title || null,
+          section_title: doc.section_title || null,
+          preceding_text: doc.preceding_text || null,
+          table_index: doc.table_index ?? 0,
+          row_count: doc.row_count || 0,
+          column_count: doc.column_count || 0,
+          headers: doc.headers || [],
+          org_id: orgId,
+          created_by: userId,
+        })
+        
+        continue
+      }
+      
+      // ════════════════════════════════════════════════════════════════════════
+      // CAS 2: rag.document_tables (tableaux bruts, sans embedding)
+      // ════════════════════════════════════════════════════════════════════════
+      
       if (destination === 'rag.document_tables') {
-        // ──────────────────────────────────────────────────────────────────────
-        // Destination: rag.document_tables (tableaux bruts, sans embedding)
-        // ──────────────────────────────────────────────────────────────────────
+        
         if (!doc.content_markdown || doc.content_markdown.trim().length < 10) {
           errors.push({ error: 'content_markdown manquant ou trop court', doc })
           continue
@@ -71,69 +162,71 @@ serve(async (req) => {
           created_by: parseUUID(doc.created_by),
         })
         
-      } else {
-        // ──────────────────────────────────────────────────────────────────────
-        // Destination: rag.documents (chunks avec embedding)
-        // ──────────────────────────────────────────────────────────────────────
-        const content = doc.pageContent || doc.content
-        
-        if (!content || content.trim().length < 30) {
-          errors.push({ error: 'Contenu trop court', filename: doc.metadata?.filename })
-          continue
-        }
+        continue
+      }
+      
+      // ════════════════════════════════════════════════════════════════════════
+      // CAS 3: rag.documents (défaut - chunks texte avec embedding)
+      // ════════════════════════════════════════════════════════════════════════
+      
+      const content = doc.pageContent || doc.content
+      
+      if (!content || content.trim().length < 30) {
+        errors.push({ error: 'Contenu trop court', filename: doc.metadata?.filename })
+        continue
+      }
 
-        // Enrichissement depuis le profil Supabase
-        let orgId = parseUUID(doc.org_id) || parseUUID(doc.metadata?.org_id)
-        let targetApps = normalizeArray(doc.target_apps || doc.metadata?.target_apps || [])
-        const userId = parseUUID(doc.created_by) || parseUUID(doc.metadata?.user_id)
+      // Enrichissement depuis le profil Supabase
+      let orgId = parseUUID(doc.org_id) || parseUUID(doc.metadata?.org_id)
+      let targetApps = normalizeArray(doc.target_apps || doc.metadata?.target_apps || [])
+      const userId = parseUUID(doc.created_by) || parseUUID(doc.metadata?.user_id)
+      
+      // Si on a un user_id mais pas org_id ou target_apps, on enrichit depuis le profil
+      if (userId && (!orgId || targetApps.length === 0)) {
+        const { data: profile, error: profileError } = await supabase
+          .schema('core')
+          .from('profiles')
+          .select('org_id, app_id, app_role')
+          .eq('id', userId)
+          .single()
         
-        // Si on a un user_id mais pas org_id ou target_apps, on enrichit depuis le profil
-        if (userId && (!orgId || targetApps.length === 0)) {
-          const { data: profile, error: profileError } = await supabase
-            .schema('core')
-            .from('profiles')
-            .select('org_id, app_id, app_role')
-            .eq('id', userId)
-            .single()
+        if (profile && !profileError) {
+          if (!orgId) {
+            orgId = profile.org_id
+          }
           
-          if (profile && !profileError) {
-            if (!orgId) {
-              orgId = profile.org_id
-            }
-            
-            if (targetApps.length === 0) {
-              if (profile.app_role === 'super_admin') {
-                targetApps = ['all']
-              } else if (profile.app_id) {
-                targetApps = [profile.app_id]
-              } else {
-                targetApps = ['default']
-              }
+          if (targetApps.length === 0) {
+            if (profile.app_role === 'super_admin') {
+              targetApps = ['all']
+            } else if (profile.app_id) {
+              targetApps = [profile.app_id]
+            } else {
+              targetApps = ['default']
             }
           }
         }
-        
-        if (targetApps.length === 0) {
-          targetApps = ['default']
-        }
-
-        const targetProjects = normalizeUUIDArray(doc.target_projects || doc.metadata?.target_projects)
-
-        docsForRagDocuments.push({
-          content: content.trim(),
-          target_apps: targetApps,
-          target_projects: targetProjects,
-          org_id: orgId,
-          created_by: userId,
-          layer: doc.layer || null,
-          status: doc.status || null,
-          quality_level: doc.quality_level || null,
-          metadata: {
-            ...doc.metadata,
-            source_file_id: doc.source_file_id || doc.metadata?.source_file_id || null,
-          },
-        })
       }
+      
+      if (targetApps.length === 0) {
+        targetApps = ['default']
+      }
+
+      const targetProjects = normalizeUUIDArray(doc.target_projects || doc.metadata?.target_projects)
+
+      docsForRagDocuments.push({
+        content: content.trim(),
+        target_apps: targetApps,
+        target_projects: targetProjects,
+        org_id: orgId,
+        created_by: userId,
+        layer: doc.layer || null,
+        status: doc.status || null,
+        quality_level: doc.quality_level || null,
+        metadata: {
+          ...doc.metadata,
+          source_file_id: doc.source_file_id || doc.metadata?.source_file_id || null,
+        },
+      })
     }
 
     // ════════════════════════════════════════════════════════════════════════════
