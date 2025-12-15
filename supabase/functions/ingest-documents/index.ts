@@ -1,12 +1,15 @@
 // ╔══════════════════════════════════════════════════════════════════════════════╗
 // ║  INGEST-DOCUMENTS - Edge Function Supabase                                   ║
-// ║  Version: 4.1.0 - Support table_chunk (double insertion)                     ║
+// ║  Version: 5.0.2 - Fix metadata string parsing                                ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
-// ║  Changements v4.1.0:                                                         ║
-// ║  - Nouveau cas _DESTINATION: 'table_chunk'                                   ║
-// ║    → INSERT rag.documents (avec embedding, pour RAG)                         ║
-// ║    → INSERT rag.document_tables (sans embedding, stockage structuré)         ║
-// ║  - content_type: 'table_chunk' dans metadata                                 ║
+// ║  Changements v5.0.2:                                                         ║
+// ║  - Fix: Parse metadata si c'est une string JSON                              ║
+// ║  - Debug amélioré pour diagnostic                                            ║
+// ╠══════════════════════════════════════════════════════════════════════════════╣
+// ║  Changements v5.0.0:                                                         ║
+// ║  - Lecture metadata.concepts[] pour chaque chunk                             ║
+// ║  - INSERT rag.document_concepts après insertion documents                    ║
+// ║  - Résolution concept_id depuis config.concepts (par slug)                   ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
 // ║  Destinations supportées:                                                    ║
 // ║  - 'rag.documents' (défaut) : chunks texte avec embedding                    ║
@@ -20,6 +23,23 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// HELPER: Parse metadata (peut être string ou object)
+// ════════════════════════════════════════════════════════════════════════════════
+function parseMetadata(metadata: any): Record<string, any> {
+  if (!metadata) return {}
+  if (typeof metadata === 'object') return metadata
+  if (typeof metadata === 'string') {
+    try {
+      return JSON.parse(metadata)
+    } catch (e) {
+      console.log('[DEBUG] metadata parse error:', e.message)
+      return {}
+    }
+  }
+  return {}
 }
 
 serve(async (req) => {
@@ -40,6 +60,8 @@ serve(async (req) => {
     const payload = await req.json()
     const documents = Array.isArray(payload) ? payload : [payload]
     
+    console.log(`[ingest-documents] Reçu ${documents.length} document(s)`)
+    
     // ════════════════════════════════════════════════════════════════════════════
     // SÉPARATION PAR DESTINATION
     // ════════════════════════════════════════════════════════════════════════════
@@ -47,17 +69,28 @@ serve(async (req) => {
     const docsForRagDocuments: any[] = []
     const docsForRagTables: any[] = []
     const errors: any[] = []
+    
+    // v5.0.0 : Stocker les concepts par index pour insertion ultérieure
+    const conceptsByDocIndex: Map<number, string[]> = new Map()
 
     for (const doc of documents) {
+      // DEBUG v5.0.2
+      console.log(`[DEBUG] doc keys: ${Object.keys(doc).join(', ')}`)
+      console.log(`[DEBUG] doc.metadata type: ${typeof doc.metadata}`)
+      
       const destination = doc._DESTINATION || 'rag.documents'
       
+      // v5.0.2: Parser metadata si c'est une string
+      const metadata = parseMetadata(doc.metadata)
+      console.log(`[DEBUG] parsed metadata keys: ${Object.keys(metadata).join(', ')}`)
+      console.log(`[DEBUG] metadata.concepts: ${JSON.stringify(metadata.concepts)}`)
+      
       // ════════════════════════════════════════════════════════════════════════
-      // CAS 1: table_chunk → Double insertion (NOUVEAU v4.1.0)
+      // CAS 1: table_chunk → Double insertion
       // ════════════════════════════════════════════════════════════════════════
       
       if (destination === 'table_chunk') {
         
-        // Validation
         if (!doc.content || doc.content.trim().length < 10) {
           errors.push({ error: 'content manquant pour table_chunk', doc: doc.document_title })
           continue
@@ -67,13 +100,10 @@ serve(async (req) => {
           continue
         }
         
-        // ── A. Préparer pour rag.documents (searchable) ──
-        
         let orgId = parseUUID(doc.org_id)
         let targetApps = normalizeArray(doc.target_apps || [])
         const userId = parseUUID(doc.created_by)
         
-        // Enrichissement depuis profil si nécessaire
         if (userId && (!orgId || targetApps.length === 0)) {
           const { data: profile, error: profileError } = await supabase
             .schema('core')
@@ -96,6 +126,15 @@ serve(async (req) => {
         
         const targetProjects = normalizeUUIDArray(doc.target_projects)
         
+        // v5.0.2 : Extraire les concepts depuis metadata parsé
+        const concepts = normalizeArray(metadata.concepts || [])
+        console.log(`[DEBUG] table_chunk concepts: ${JSON.stringify(concepts)}`)
+        
+        const docIndex = docsForRagDocuments.length
+        if (concepts.length > 0) {
+          conceptsByDocIndex.set(docIndex, concepts)
+        }
+        
         docsForRagDocuments.push({
           content: doc.content.trim(),
           target_apps: targetApps,
@@ -113,10 +152,9 @@ serve(async (req) => {
             table_index: doc.table_index ?? 0,
             row_count: doc.row_count || 0,
             column_count: doc.column_count || 0,
+            concepts: concepts,
           },
         })
-        
-        // ── B. Préparer pour rag.document_tables (stockage structuré) ──
         
         docsForRagTables.push({
           source_file_id: parseUUID(doc.source_file_id),
@@ -172,16 +210,14 @@ serve(async (req) => {
       const content = doc.pageContent || doc.content
       
       if (!content || content.trim().length < 30) {
-        errors.push({ error: 'Contenu trop court', filename: doc.metadata?.filename })
+        errors.push({ error: 'Contenu trop court', filename: metadata.filename })
         continue
       }
 
-      // Enrichissement depuis le profil Supabase
-      let orgId = parseUUID(doc.org_id) || parseUUID(doc.metadata?.org_id)
-      let targetApps = normalizeArray(doc.target_apps || doc.metadata?.target_apps || [])
-      const userId = parseUUID(doc.created_by) || parseUUID(doc.metadata?.user_id)
+      let orgId = parseUUID(doc.org_id) || parseUUID(metadata.org_id)
+      let targetApps = normalizeArray(doc.target_apps || metadata.target_apps || [])
+      const userId = parseUUID(doc.created_by) || parseUUID(metadata.user_id)
       
-      // Si on a un user_id mais pas org_id ou target_apps, on enrichit depuis le profil
       if (userId && (!orgId || targetApps.length === 0)) {
         const { data: profile, error: profileError } = await supabase
           .schema('core')
@@ -211,7 +247,17 @@ serve(async (req) => {
         targetApps = ['default']
       }
 
-      const targetProjects = normalizeUUIDArray(doc.target_projects || doc.metadata?.target_projects)
+      const targetProjects = normalizeUUIDArray(doc.target_projects || metadata.target_projects)
+
+      // v5.0.2 : Extraire les concepts depuis metadata parsé
+      const concepts = normalizeArray(metadata.concepts || [])
+      console.log(`[DEBUG] rag.documents concepts: ${JSON.stringify(concepts)}`)
+      
+      const docIndex = docsForRagDocuments.length
+      if (concepts.length > 0) {
+        conceptsByDocIndex.set(docIndex, concepts)
+        console.log(`[DEBUG] Added concepts for docIndex ${docIndex}: ${JSON.stringify(concepts)}`)
+      }
 
       docsForRagDocuments.push({
         content: content.trim(),
@@ -223,8 +269,9 @@ serve(async (req) => {
         status: doc.status || null,
         quality_level: doc.quality_level || null,
         metadata: {
-          ...doc.metadata,
-          source_file_id: doc.source_file_id || doc.metadata?.source_file_id || null,
+          ...metadata,
+          source_file_id: doc.source_file_id || metadata.source_file_id || null,
+          concepts: concepts,
         },
       })
     }
@@ -287,6 +334,80 @@ serve(async (req) => {
     }
 
     // ════════════════════════════════════════════════════════════════════════════
+    // INSERTION rag.document_concepts (GraphRAG v5.0.0)
+    // ════════════════════════════════════════════════════════════════════════════
+    
+    let insertedConcepts = 0
+    
+    console.log(`[DEBUG] insertedDocs.length: ${insertedDocs.length}`)
+    console.log(`[DEBUG] conceptsByDocIndex.size: ${conceptsByDocIndex.size}`)
+    
+    if (insertedDocs.length > 0 && conceptsByDocIndex.size > 0) {
+      const allSlugs = new Set<string>()
+      conceptsByDocIndex.forEach(slugs => slugs.forEach(s => allSlugs.add(s)))
+      
+      console.log(`[DEBUG] allSlugs: ${JSON.stringify(Array.from(allSlugs))}`)
+      
+      const { data: conceptsData, error: conceptsError } = await supabase
+        .schema('config')
+        .from('concepts')
+        .select('id, slug')
+        .in('slug', Array.from(allSlugs))
+      
+      console.log(`[DEBUG] conceptsData count: ${conceptsData?.length || 0}`)
+      console.log(`[DEBUG] conceptsError: ${conceptsError?.message || 'null'}`)
+      
+      if (conceptsError) {
+        console.error(`[ingest-documents] Erreur récupération concepts: ${conceptsError.message}`)
+      } else if (conceptsData && conceptsData.length > 0) {
+        const slugToId = new Map<string, string>()
+        conceptsData.forEach((c: any) => slugToId.set(c.slug, c.id))
+        
+        const conceptRows: any[] = []
+        
+        conceptsByDocIndex.forEach((slugs, docIndex) => {
+          const documentId = insertedDocs[docIndex]?.id
+          console.log(`[DEBUG] docIndex ${docIndex}, documentId: ${documentId}`)
+          
+          if (!documentId) return
+          
+          slugs.forEach(slug => {
+            const conceptId = slugToId.get(slug)
+            if (conceptId) {
+              conceptRows.push({
+                document_id: documentId,
+                concept_id: conceptId,
+                relevance_score: 1.0,
+                created_at: new Date().toISOString(),
+              })
+            }
+          })
+        })
+        
+        console.log(`[DEBUG] conceptRows to insert: ${conceptRows.length}`)
+        
+        if (conceptRows.length > 0) {
+          const { error: insertConceptsError } = await supabase
+            .schema('rag')
+            .from('document_concepts')
+            .insert(conceptRows)
+          
+          if (insertConceptsError) {
+            console.error(`[ingest-documents] Erreur insertion document_concepts: ${insertConceptsError.message}`)
+            errors.push({ error: 'Insertion concepts échouée', details: insertConceptsError.message })
+          } else {
+            insertedConcepts = conceptRows.length
+            console.log(`[ingest-documents] rag.document_concepts: ${insertedConcepts} relations insérées`)
+          }
+        }
+      } else {
+        console.log(`[DEBUG] No conceptsData returned`)
+      }
+    } else {
+      console.log(`[DEBUG] Skipping concept insertion`)
+    }
+
+    // ════════════════════════════════════════════════════════════════════════════
     // INSERTION rag.document_tables (sans embedding)
     // ════════════════════════════════════════════════════════════════════════════
     
@@ -344,6 +465,7 @@ serve(async (req) => {
           total: totalInserted,
           rag_documents: insertedDocs.length,
           rag_document_tables: insertedTables.length,
+          rag_document_concepts: insertedConcepts,
         },
         ids: {
           documents: insertedDocs.map((d: any) => d.id),

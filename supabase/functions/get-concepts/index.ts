@@ -1,26 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 // Edge Function: get-concepts
-// Version: 1.0.0
-// Description: Récupère les concepts associés à une ou plusieurs apps
-// ═══════════════════════════════════════════════════════════════════════════════
-//
-// ENDPOINTS:
-//   GET  /get-concepts?app_id=arpet
-//   GET  /get-concepts?app_ids=arpet,perfec
-//   POST /get-concepts { "app_id": "arpet" }
-//   POST /get-concepts { "app_ids": ["arpet", "perfec"] }
-//
-// RESPONSE:
-// {
-//   "success": true,
-//   "concepts": [
-//     { "id": "uuid", "slug": "paiement_marche", "label": "Paiement des marchés", "description": "..." },
-//     ...
-//   ],
-//   "count": 21,
-//   "app_ids": ["arpet"]
-// }
-//
+// Version: 1.2.0
+// Description: Récupère les concepts associés à une ou plusieurs apps via RPC
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -102,76 +83,23 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // ─────────────────────────────────────────────────────────────────────────
-    // 3. Fetch concepts for the given app(s)
+    // 3. Call RPC function
     // ─────────────────────────────────────────────────────────────────────────
 
-    // Get concept_ids from config.apps for each app_id
-    const { data: apps, error: appsError } = await supabase
-      .from("apps")
-      .select("id, concept_ids")
-      .in("id", appIds);
-
-    if (appsError) {
-      console.error("[get-concepts] Error fetching apps:", appsError);
-      return errorResponse(`Database error: ${appsError.message}`, 500);
-    }
-
-    if (!apps || apps.length === 0) {
-      return errorResponse(`No apps found for: ${appIds.join(", ")}`, 404);
-    }
-
-    // Collect all unique concept_ids
-    const allConceptIds: string[] = [];
-    apps.forEach(app => {
-      if (app.concept_ids && Array.isArray(app.concept_ids)) {
-        app.concept_ids.forEach((id: string) => {
-          if (!allConceptIds.includes(id)) {
-            allConceptIds.push(id);
-          }
-        });
-      }
+    const { data, error } = await supabase.rpc("get_app_concepts", {
+      p_app_ids: appIds
     });
 
-    if (allConceptIds.length === 0) {
-      return jsonResponse({
-        success: true,
-        concepts: [],
-        count: 0,
-        app_ids: appIds,
-        message: "No concepts associated with these apps"
-      });
-    }
-
-    // Fetch concept details
-    const { data: concepts, error: conceptsError } = await supabase
-      .from("concepts")
-      .select("id, slug, label, description")
-      .in("id", allConceptIds)
-      .eq("status", "active")
-      .order("label");
-
-    if (conceptsError) {
-      console.error("[get-concepts] Error fetching concepts:", conceptsError);
-      return errorResponse(`Database error: ${conceptsError.message}`, 500);
+    if (error) {
+      console.error("[get-concepts] RPC error:", error);
+      return errorResponse(`Database error: ${error.message}`, 500);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // 4. Format response
+    // 4. Return response
     // ─────────────────────────────────────────────────────────────────────────
 
-    // Format for LLM consumption (compact)
-    const conceptsForLLM = concepts?.map(c => ({
-      slug: c.slug,
-      label: c.label,
-      description: c.description
-    })) || [];
-
-    return jsonResponse({
-      success: true,
-      concepts: conceptsForLLM,
-      count: conceptsForLLM.length,
-      app_ids: appIds
-    });
+    return jsonResponse(data);
 
   } catch (error) {
     console.error("[get-concepts] Unexpected error:", error);
