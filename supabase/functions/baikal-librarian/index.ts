@@ -1,17 +1,19 @@
 // ╔══════════════════════════════════════════════════════════════════════════════╗
-// ║  BAIKAL-LIBRARIAN v5.0 - Agent RAG avec Hybrid Search                        ║
-// ║  Edge Function Supabase pour ARPET                                           ║
+// ║  BAIKAL-LIBRARIAN v7.0 - Agent RAG avec GraphRAG Multi-Layer                ║
+// ║  Edge Function Supabase pour ARPET                                          ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
-// ║  Nouveautés v5.0 (Migration schémas):                                        ║
-// ║  - profiles → core.profiles                                                  ║
-// ║  - vertical_id → app_id                                                      ║
-// ║  - match_documents_v5 → rag.match_documents_v7                               ║
-// ║  - Rétro-compatibilité avec ancien nommage                                   ║
+// ║  Nouveautés v7.0:                                                            ║
+// ║  - match_documents_v8 → match_documents_v10 (multi-layer + RRF)              ║
+// ║  - Context Formatter intégré (formatage structuré par layer)                 ║
+// ║  - Support placeholder {{context}} dans les prompts                          ║
+// ║  - Filtres par layer (app, org, project, user)                               ║
+// ║  - Filtres par source_type                                                   ║
+// ║  - Expansion GraphRAG via hiérarchie concepts                                ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
 // ║  Historique:                                                                 ║
+// ║  - v6.0: GraphRAG expansion via concepts                                     ║
+// ║  - v5.0: Migration schémas (app_id, core.profiles, rag.match_documents_v7)   ║
 // ║  - v4.2: Recherche Hybride Vector + Full-text                                ║
-// ║  - v4.1: Poids configurables vector_weight / fulltext_weight                 ║
-// ║  - v4.0: Fallback sur v4/v3 si v5 non disponible                             ║
 // ╚══════════════════════════════════════════════════════════════════════════════╝
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
@@ -27,23 +29,34 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 }
 
-// Paramètres par défaut (peuvent être overridés par agent_prompts.parameters)
 const DEFAULT_CONFIG = {
-  match_threshold: 0.35,
-  match_count: 10,
+  match_threshold: 0.3,
+  match_count: 15,
   max_context_length: 12000,
   embedding_model: "text-embedding-3-small",
   llm_model: "gpt-4o-mini",
   temperature: 0.3,
   max_tokens: 2048,
-  // Poids pour la recherche hybride
-  vector_weight: 0.7,
-  fulltext_weight: 0.3,
+  // Layers par défaut
+  include_app_layer: true,
+  include_org_layer: true,
+  include_project_layer: true,
+  include_user_layer: false,
+  // GraphRAG
+  concept_match_count: 5,
+  concept_similarity_threshold: 0.5,
+  enable_concept_expansion: true,
 }
 
-// Prompt de fallback si aucun trouvé dans la base
-const FALLBACK_SYSTEM_PROMPT = `Tu es un assistant qui repond aux questions en te basant sur le contexte documentaire fourni.
-Base tes reponses sur le contexte. Ne jamais inventer. Cite les sources. Reponds en francais.`
+const FALLBACK_SYSTEM_PROMPT = `Tu es un assistant expert BTP et marchés publics.
+
+{{context}}
+
+RÈGLES:
+- Base tes réponses sur le contexte documentaire fourni
+- Cite tes sources avec les numéros [1], [2], etc.
+- Si l'information n'est pas dans le contexte, dis-le clairement
+- Réponds en français de manière professionnelle`
 
 // ============================================================================
 // TYPES
@@ -54,33 +67,34 @@ interface RequestBody {
   user_id: string
   org_id?: string
   project_id?: string
-  // MIGRATION: Support des deux nommages pour rétro-compatibilité
   app_id?: string
-  vertical_id?: string  // Deprecated, utiliser app_id
-  match_threshold?: number
+  // Options de recherche
   match_count?: number
-  vector_weight?: number
-  fulltext_weight?: number
+  match_threshold?: number
+  // Filtres par layer
+  include_app_layer?: boolean
+  include_org_layer?: boolean
+  include_project_layer?: boolean
+  include_user_layer?: boolean
+  // Filtres additionnels
+  filter_source_types?: string[]
+  filter_concepts?: string[]
+  // Options de formatage
+  include_metadata?: boolean
+  include_concepts?: boolean
+  include_scores?: boolean
 }
 
-interface AgentPromptResult {
-  id: string
-  name: string
-  system_prompt: string
-  parameters: {
-    temperature?: number
-    max_tokens?: number
-    model?: string
-    vector_weight?: number
-    fulltext_weight?: number
-  }
-  resolution_level: string
-}
-
-interface UserContext {
-  // MIGRATION: vertical_id → app_id
-  app_id: string | null
-  org_id: string
+interface DocumentResult {
+  id: number
+  content: string
+  similarity: number
+  metadata: Record<string, unknown>
+  layer: string
+  source_type: string | null
+  matched_concepts: string[]
+  rank_score: number
+  match_source: string
 }
 
 interface AgentConfig {
@@ -90,56 +104,161 @@ interface AgentConfig {
   model: string
   prompt_name: string
   resolution_level: string
-  vector_weight: number
-  fulltext_weight: number
-}
-
-interface DocumentMatch {
-  id: string
-  content: string
-  metadata: Record<string, unknown>
-  similarity: number
-  vector_score: number
-  fulltext_score: number
-  source_type: "document" | "qa_memory"
-  boost_level: string
-  target_projects: string[] | null
+  include_app_layer: boolean
+  include_org_layer: boolean
+  include_project_layer: boolean
+  include_user_layer: boolean
+  enable_concept_expansion: boolean
 }
 
 interface Source {
   id: string
-  type: "document" | "qa_memory"
+  type: string
   name: string
+  layer: string
+  source_type: string | null
   score: number
-  vector_score?: number
-  fulltext_score?: number
-  authority_label?: string
+  rank_score: number
+  match_source: string
+  matched_concepts: string[]
   content_preview: string
-  qa_id?: string
 }
 
-interface ResponsePayload {
-  response: string
-  sources: Source[]
-  knowledge_type: string
-  status: string
-  processing_time_ms: number
-  documents_found: number
-  qa_memory_found: number
-  model: string
-  embedding_model: string
-  search_type: "hybrid" | "vector_only"
-  prompt_used: string
-  prompt_resolution: string
-  // MIGRATION: vertical_id → app_id (gardé pour rétro-compatibilité réponse)
-  app_id: string | null
-  vertical_id?: string | null  // Deprecated
-  can_vote: boolean
-  vote_context?: {
-    question: string
-    answer: string
-    source_ids: string[]
+// ============================================================================
+// CONTEXT FORMATTER (intégré)
+// ============================================================================
+
+const LAYER_CONFIG: Record<string, { emoji: string; title: string; desc: string }> = {
+  app: {
+    emoji: '📜',
+    title: 'CADRE RÉGLEMENTAIRE & MÉTIER',
+    desc: 'Références normatives et contractuelles',
+  },
+  org: {
+    emoji: '🏢',
+    title: 'DOCUMENTS ORGANISATION',
+    desc: 'Procédures et documents internes',
+  },
+  project: {
+    emoji: '📋',
+    title: 'DOCUMENTS PROJET',
+    desc: 'Documents spécifiques au chantier',
+  },
+  user: {
+    emoji: '👤',
+    title: 'NOTES PERSONNELLES',
+    desc: 'Documents personnels',
+  },
+}
+
+function groupByLayer(documents: DocumentResult[]): Record<string, DocumentResult[]> {
+  const grouped: Record<string, DocumentResult[]> = { app: [], org: [], project: [], user: [] }
+  for (const doc of documents) {
+    if (grouped[doc.layer]) {
+      grouped[doc.layer].push(doc)
+    }
   }
+  return grouped
+}
+
+function formatDocument(doc: DocumentResult, index: number, options: { includeMetadata?: boolean; includeConcepts?: boolean; includeScores?: boolean }): string {
+  const lines: string[] = []
+  
+  // Titre
+  const title = (doc.metadata?.document_title as string) || (doc.metadata?.filename as string) || 'Document'
+  const section = doc.metadata?.current_section as string
+  let titleLine = `[${index + 1}] ${title}`
+  if (section) titleLine += ` - ${section}`
+  lines.push(titleLine)
+  
+  // Métadonnées
+  if (options.includeMetadata) {
+    const metaParts: string[] = []
+    if (doc.source_type) metaParts.push(`Type: ${doc.source_type}`)
+    if (doc.metadata?.chunk_index !== undefined) {
+      metaParts.push(`Partie ${(doc.metadata.chunk_index as number) + 1}/${doc.metadata.total_chunks}`)
+    }
+    if (metaParts.length > 0) lines.push(`  [${metaParts.join(' | ')}]`)
+  }
+  
+  // Scores (debug)
+  if (options.includeScores) {
+    lines.push(`  [Sim: ${(doc.similarity * 100).toFixed(1)}% | RRF: ${doc.rank_score.toFixed(4)} | Via: ${doc.match_source}]`)
+  }
+  
+  // Concepts
+  if (options.includeConcepts && doc.matched_concepts?.length > 0) {
+    lines.push(`  🏷️ Concepts: ${doc.matched_concepts.join(', ')}`)
+  }
+  
+  // Contenu
+  const contentLines = doc.content.split('\n').map(line => `> ${line}`).join('\n')
+  lines.push(contentLines)
+  
+  return lines.join('\n')
+}
+
+function formatContextForLLM(
+  documents: DocumentResult[],
+  options: { includeMetadata?: boolean; includeConcepts?: boolean; includeScores?: boolean; maxDocsPerLayer?: number } = {}
+): string {
+  const opts = {
+    includeMetadata: true,
+    includeConcepts: false,
+    includeScores: false,
+    maxDocsPerLayer: 5,
+    ...options,
+  }
+  
+  if (!documents || documents.length === 0) {
+    return '📭 Aucun document pertinent trouvé.'
+  }
+  
+  const grouped = groupByLayer(documents)
+  const layerOrder = ['app', 'org', 'project', 'user']
+  const sections: string[] = []
+  
+  // Header
+  sections.push(`# 📚 CONTEXTE DOCUMENTAIRE\n*${documents.length} documents pertinents trouvés*\n`)
+  
+  // Sections par layer
+  for (const layer of layerOrder) {
+    const docs = grouped[layer]
+    if (!docs || docs.length === 0) continue
+    
+    const config = LAYER_CONFIG[layer]
+    const lines: string[] = []
+    
+    lines.push(`## ${config.emoji} ${config.title}`)
+    lines.push(`*${config.desc}*`)
+    lines.push('')
+    
+    // Trier par rank_score décroissant
+    const sorted = [...docs].sort((a, b) => b.rank_score - a.rank_score)
+    const limited = sorted.slice(0, opts.maxDocsPerLayer)
+    
+    for (let i = 0; i < limited.length; i++) {
+      lines.push(formatDocument(limited[i], i, opts))
+      lines.push('')
+    }
+    
+    sections.push(lines.join('\n'))
+  }
+  
+  // Footer avec concepts
+  if (opts.includeConcepts) {
+    const allConcepts = new Set<string>()
+    for (const doc of documents) {
+      for (const concept of doc.matched_concepts || []) {
+        allConcepts.add(concept)
+      }
+    }
+    if (allConcepts.size > 0) {
+      sections.push(`## 🏷️ CONCEPTS IDENTIFIÉS\n${Array.from(allConcepts).join(', ')}`)
+    }
+  }
+  
+  return sections.join('\n---\n\n')
 }
 
 // ============================================================================
@@ -155,23 +274,13 @@ function jsonResponse(data: unknown, status = 200): Response {
 
 function errorResponse(message: string, status = 500): Response {
   console.error("[baikal-librarian] Erreur:", message)
-  return jsonResponse({ 
-    error: message, 
-    status: "error",
-    response: null,
-    sources: [] 
-  }, status)
+  return jsonResponse({ error: message, status: "error", response: null, sources: [] }, status)
 }
 
-/**
- * Récupère le contexte utilisateur depuis son profil
- * MIGRATION: profiles → core.profiles, vertical_id → app_id
- */
 async function getUserContext(
   supabase: ReturnType<typeof createClient>,
   userId: string
-): Promise<UserContext> {
-  // MIGRATION: Utilisation du schéma core et de app_id
+): Promise<{ app_id: string | null; org_id: string }> {
   const { data: profile, error } = await supabase
     .schema('core')
     .from("profiles")
@@ -184,24 +293,15 @@ async function getUserContext(
     return { app_id: null, org_id: "" }
   }
 
-  return {
-    app_id: profile.app_id,
-    org_id: profile.org_id
-  }
+  return { app_id: profile.app_id, org_id: profile.org_id }
 }
 
-/**
- * Récupère la configuration de l'agent (prompt + paramètres) depuis agent_prompts
- * Utilise la fonction SQL get_agent_prompt pour la résolution hiérarchique
- * MIGRATION: p_vertical_id → p_app_id
- */
 async function getAgentConfig(
   supabase: ReturnType<typeof createClient>,
   agentType: string,
   appId: string | null,
   orgId: string | null
 ): Promise<AgentConfig> {
-  // MIGRATION: Appel RPC avec p_app_id au lieu de p_vertical_id
   const { data, error } = await supabase
     .schema('config')
     .rpc("get_agent_prompt", {
@@ -214,7 +314,7 @@ async function getAgentConfig(
     console.error("[baikal-librarian] Erreur get_agent_prompt:", error)
   }
 
-  const result = data?.[0] as AgentPromptResult | undefined
+  const result = data?.[0]
 
   if (!result) {
     console.warn("[baikal-librarian] Aucun prompt trouvé, utilisation du fallback")
@@ -225,170 +325,53 @@ async function getAgentConfig(
       model: DEFAULT_CONFIG.llm_model,
       prompt_name: "Fallback",
       resolution_level: "fallback",
-      vector_weight: DEFAULT_CONFIG.vector_weight,
-      fulltext_weight: DEFAULT_CONFIG.fulltext_weight
+      include_app_layer: DEFAULT_CONFIG.include_app_layer,
+      include_org_layer: DEFAULT_CONFIG.include_org_layer,
+      include_project_layer: DEFAULT_CONFIG.include_project_layer,
+      include_user_layer: DEFAULT_CONFIG.include_user_layer,
+      enable_concept_expansion: DEFAULT_CONFIG.enable_concept_expansion,
     }
   }
 
   console.log(`[baikal-librarian] Prompt chargé: "${result.name}" (${result.resolution_level})`)
 
+  const params = result.parameters || {}
+
   return {
     system_prompt: result.system_prompt,
-    temperature: result.parameters?.temperature ?? DEFAULT_CONFIG.temperature,
-    max_tokens: result.parameters?.max_tokens ?? DEFAULT_CONFIG.max_tokens,
-    model: result.parameters?.model ?? DEFAULT_CONFIG.llm_model,
+    temperature: params.temperature ?? DEFAULT_CONFIG.temperature,
+    max_tokens: params.max_tokens ?? DEFAULT_CONFIG.max_tokens,
+    model: params.model ?? DEFAULT_CONFIG.llm_model,
     prompt_name: result.name,
     resolution_level: result.resolution_level,
-    vector_weight: result.parameters?.vector_weight ?? DEFAULT_CONFIG.vector_weight,
-    fulltext_weight: result.parameters?.fulltext_weight ?? DEFAULT_CONFIG.fulltext_weight
+    include_app_layer: params.include_app_layer ?? DEFAULT_CONFIG.include_app_layer,
+    include_org_layer: params.include_org_layer ?? DEFAULT_CONFIG.include_org_layer,
+    include_project_layer: params.include_project_layer ?? DEFAULT_CONFIG.include_project_layer,
+    include_user_layer: params.include_user_layer ?? DEFAULT_CONFIG.include_user_layer,
+    enable_concept_expansion: params.enable_concept_expansion ?? DEFAULT_CONFIG.enable_concept_expansion,
   }
 }
 
-/**
- * Construit le contexte pour le LLM avec distinction des types de sources
- */
-function buildContext(documents: DocumentMatch[], maxLength: number): string {
-  let context = ""
-  let currentLength = 0
-  
-  // Trier par score hybride (déjà fait en SQL, mais on s'assure)
-  const sorted = [...documents].sort((a, b) => b.similarity - a.similarity)
-  
-  for (const doc of sorted) {
-    let docText = ""
-    const metadata = doc.metadata || {}
-    
-    if (doc.source_type === "qa_memory") {
-      const authorityLabel = metadata.authority_label as string
-      const badge = authorityLabel === "expert" ? "⭐ Expert" 
-                  : authorityLabel === "team" ? "✓ Équipe" 
-                  : "Utilisateur"
-      docText = `\n---\n[Reponse validee ${badge}]\n${doc.content}\n`
-    } else {
-      // Document classique
-      const filename = (metadata.filename as string) 
-                    || (metadata.source_file as string)
-                    || (metadata.code_name ? `${metadata.code_name} - Art. ${metadata.article_num}` : null)
-                    || "Document"
-      
-      // Indicateur de match (vector vs fulltext)
-      const matchType = doc.fulltext_score > 0.1 ? "[FT+V]" : "[V]"
-      docText = `\n---\n${matchType} Source: ${filename}\n${doc.content}\n`
-    }
-    
-    if (currentLength + docText.length > maxLength) {
-      break
-    }
-    
-    context += docText
-    currentLength += docText.length
-  }
-  
-  return context
-}
-
-/**
- * Extrait les sources pour la réponse
- */
-function extractSources(documents: DocumentMatch[]): Source[] {
+function extractSources(documents: DocumentResult[]): Source[] {
   return documents.map(doc => {
     const metadata = doc.metadata || {}
-    
-    if (doc.source_type === "qa_memory") {
-      return {
-        id: `qa_${doc.id}`,
-        type: "qa_memory" as const,
-        name: `Q&A: "${(metadata.question as string || "").substring(0, 50)}${(metadata.question as string || "").length > 50 ? '...' : ''}"`,
-        score: doc.similarity,
-        vector_score: doc.vector_score,
-        fulltext_score: doc.fulltext_score,
-        authority_label: metadata.authority_label as string,
-        content_preview: doc.content.substring(0, 200),
-        qa_id: doc.id
-      }
-    }
-    
-    // Document classique
-    const name = (metadata.filename as string) 
-              || (metadata.source_file as string)
-              || (metadata.code_name ? `${metadata.code_name} - Art. ${metadata.article_num}` : null)
+    const name = (metadata.document_title as string) 
+              || (metadata.filename as string)
               || "Document"
     
     return {
       id: `doc_${doc.id}`,
-      type: "document" as const,
-      name: name,
+      type: "document",
+      name,
+      layer: doc.layer,
+      source_type: doc.source_type,
       score: doc.similarity,
-      vector_score: doc.vector_score,
-      fulltext_score: doc.fulltext_score,
-      content_preview: doc.content.substring(0, 200)
+      rank_score: doc.rank_score,
+      match_source: doc.match_source,
+      matched_concepts: doc.matched_concepts || [],
+      content_preview: doc.content.substring(0, 200),
     }
   })
-}
-
-/**
- * Détermine le type de connaissance principal
- */
-function determineKnowledgeType(
-  documents: DocumentMatch[],
-  userId: string,
-  projectId: string | undefined,
-  orgId: string
-): string {
-  if (documents.length === 0) return "none"
-  
-  // Vérifier si on a des qa_memory avec haut niveau d'autorité
-  const expertQA = documents.find(d => 
-    d.source_type === "qa_memory" && d.metadata?.authority_label === "expert"
-  )
-  if (expertQA) return "expert_validated"
-  
-  const teamQA = documents.find(d => 
-    d.source_type === "qa_memory" && d.metadata?.authority_label === "team"
-  )
-  if (teamQA) return "team_validated"
-  
-  // Vérifier les niveaux de documents
-  const userDoc = documents.find(d => 
-    d.source_type === "document" && d.metadata?.user_id === userId
-  )
-  if (userDoc) return "personal"
-  
-  const projectDoc = documents.find(d => 
-    d.source_type === "document" && 
-    projectId && 
-    (d.target_projects || []).includes(projectId)
-  )
-  if (projectDoc) return "project"
-  
-  const orgDoc = documents.find(d => 
-    d.source_type === "document" && d.metadata?.org_id === orgId
-  )
-  if (orgDoc) return "organization"
-  
-  return "shared"
-}
-
-/**
- * Log l'usage des qa_memory utilisées
- * MIGRATION: Appel RPC dans le schéma rag
- */
-async function logQAUsage(
-  supabase: ReturnType<typeof createClient>,
-  documents: DocumentMatch[]
-): Promise<void> {
-  const qaMemoryIds = documents
-    .filter(d => d.source_type === "qa_memory")
-    .map(d => d.id)
-  
-  for (const qaId of qaMemoryIds) {
-    try {
-      // MIGRATION: RPC dans le schéma rag
-      await supabase.schema('rag').rpc("log_qa_usage", { p_row_id: qaId })
-    } catch (e) {
-      console.warn("[baikal-librarian] Erreur log_qa_usage:", e)
-    }
-  }
 }
 
 // ============================================================================
@@ -396,7 +379,6 @@ async function logQAUsage(
 // ============================================================================
 
 serve(async (req: Request) => {
-  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders })
   }
@@ -411,14 +393,8 @@ serve(async (req: Request) => {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
     const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
 
-    if (!OPENAI_API_KEY) {
-      return errorResponse("OPENAI_API_KEY manquant dans les secrets", 500)
-    }
-    if (!SUPABASE_URL) {
-      return errorResponse("SUPABASE_URL manquant", 500)
-    }
-    if (!SUPABASE_SERVICE_KEY) {
-      return errorResponse("SUPABASE_SERVICE_ROLE_KEY manquant", 500)
+    if (!OPENAI_API_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+      return errorResponse("Configuration manquante", 500)
     }
 
     const body: RequestBody = await req.json()
@@ -427,62 +403,49 @@ serve(async (req: Request) => {
       user_id,
       org_id, 
       project_id,
-      match_threshold = DEFAULT_CONFIG.match_threshold,
       match_count = DEFAULT_CONFIG.match_count,
-      vector_weight,
-      fulltext_weight
+      match_threshold = DEFAULT_CONFIG.match_threshold,
+      filter_source_types,
+      filter_concepts,
+      include_metadata = true,
+      include_concepts = true,
+      include_scores = false,
     } = body
 
-    if (!query || query.trim().length === 0) {
-      return errorResponse("Le champ query est requis", 400)
-    }
-
-    if (!user_id || user_id.trim().length === 0) {
-      return errorResponse("Le champ user_id est requis", 400)
-    }
+    if (!query?.trim()) return errorResponse("Le champ query est requis", 400)
+    if (!user_id?.trim()) return errorResponse("Le champ user_id est requis", 400)
 
     console.log("[baikal-librarian] ========================================")
-    console.log("[baikal-librarian] v5.0 - Migration Schemas")
-    console.log("[baikal-librarian] Requete:", query.substring(0, 100))
-    console.log("[baikal-librarian] user_id:", user_id)
+    console.log("[baikal-librarian] v7.0 - GraphRAG Multi-Layer")
+    console.log("[baikal-librarian] Query:", query.substring(0, 100))
 
     // ========================================
-    // 2. RÉCUPÉRATION CONTEXTE UTILISATEUR
+    // 2. CONTEXTE UTILISATEUR & CONFIG
     // ========================================
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-    
     const userContext = await getUserContext(supabase, user_id)
     const effectiveOrgId = org_id || userContext.org_id
-    
-    // MIGRATION: Logs avec app_id
-    console.log("[baikal-librarian] app_id:", userContext.app_id)
+    const effectiveAppId = body.app_id || userContext.app_id || 'arpet'
+
+    console.log("[baikal-librarian] app_id:", effectiveAppId)
     console.log("[baikal-librarian] org_id:", effectiveOrgId)
     console.log("[baikal-librarian] project_id:", project_id)
 
-    // ========================================
-    // 3. CHARGEMENT CONFIG AGENT (PROMPT DYNAMIQUE)
-    // ========================================
-    // MIGRATION: Utilisation de app_id au lieu de vertical_id
-    const agentConfig = await getAgentConfig(
-      supabase,
-      "librarian",
-      userContext.app_id,
-      effectiveOrgId || null
-    )
+    const agentConfig = await getAgentConfig(supabase, "librarian", effectiveAppId, effectiveOrgId || null)
 
-    // Override des poids si fournis dans la requête
-    const effectiveVectorWeight = vector_weight ?? agentConfig.vector_weight
-    const effectiveFulltextWeight = fulltext_weight ?? agentConfig.fulltext_weight
+    // Override layers depuis la requête
+    const includeAppLayer = body.include_app_layer ?? agentConfig.include_app_layer
+    const includeOrgLayer = body.include_org_layer ?? agentConfig.include_org_layer
+    const includeProjectLayer = body.include_project_layer ?? agentConfig.include_project_layer
+    const includeUserLayer = body.include_user_layer ?? agentConfig.include_user_layer
 
     console.log("[baikal-librarian] Prompt:", agentConfig.prompt_name)
-    console.log("[baikal-librarian] Resolution:", agentConfig.resolution_level)
-    console.log("[baikal-librarian] Model:", agentConfig.model)
-    console.log("[baikal-librarian] Weights: vector=", effectiveVectorWeight, "fulltext=", effectiveFulltextWeight)
+    console.log("[baikal-librarian] Layers: app=", includeAppLayer, "org=", includeOrgLayer, "project=", includeProjectLayer)
 
     // ========================================
-    // 4. GÉNÉRATION DE L'EMBEDDING
+    // 3. GÉNÉRATION EMBEDDING
     // ========================================
-    console.log("[baikal-librarian] Generation de l'embedding...")
+    console.log("[baikal-librarian] Génération embedding...")
     
     const embeddingResponse = await fetch("https://api.openai.com/v1/embeddings", {
       method: "POST",
@@ -498,158 +461,117 @@ serve(async (req: Request) => {
 
     if (!embeddingResponse.ok) {
       const errorData = await embeddingResponse.json()
-      console.error("[baikal-librarian] OpenAI Embedding Error:", errorData)
-      return errorResponse(`Erreur OpenAI Embedding: ${errorData.error?.message || "Erreur inconnue"}`, 500)
+      return errorResponse(`Erreur OpenAI Embedding: ${errorData.error?.message}`, 500)
     }
 
     const embeddingData = await embeddingResponse.json()
     const queryEmbedding = embeddingData.data[0].embedding
-    console.log("[baikal-librarian] Embedding genere, dimensions:", queryEmbedding.length)
 
     // ========================================
-    // 5. RECHERCHE HYBRIDE (match_documents_v7)
+    // 4. RECHERCHE match_documents_v10
     // ========================================
-    // MIGRATION: match_documents_v5 → rag.match_documents_v7
-    console.log("[baikal-librarian] Recherche hybride v7...")
-    
-    let matchedDocs: DocumentMatch[] = []
-    let searchType: "hybrid" | "vector_only" = "hybrid"
+    console.log("[baikal-librarian] Recherche v10 (multi-layer + GraphRAG)...")
 
-    const rpcParamsV7: Record<string, unknown> = {
-      query_embedding: queryEmbedding,
-      query_text: query.trim(),
-      p_user_id: user_id,
-      match_threshold: match_threshold,
-      match_count: match_count,
-      vector_weight: effectiveVectorWeight,
-      fulltext_weight: effectiveFulltextWeight,
-    }
-
-    if (effectiveOrgId) {
-      rpcParamsV7.filter_org = effectiveOrgId
-    }
-    if (project_id) {
-      rpcParamsV7.filter_project = project_id
-    }
-
-    // MIGRATION: Appel au schéma rag avec la nouvelle fonction v7
-    const { data: documentsV7, error: searchErrorV7 } = await supabase
+    const { data: documents, error: searchError } = await supabase
       .schema('rag')
-      .rpc("match_documents_v7", rpcParamsV7)
+      .rpc("match_documents_v10", {
+        query_embedding: queryEmbedding,
+        query_text: query.trim(),
+        p_user_id: user_id,
+        p_org_id: effectiveOrgId || null,
+        p_project_id: project_id || null,
+        p_app_id: effectiveAppId,
+        match_count: match_count,
+        similarity_threshold: match_threshold,
+        include_app_layer: includeAppLayer,
+        include_org_layer: includeOrgLayer,
+        include_project_layer: includeProjectLayer,
+        include_user_layer: includeUserLayer,
+        filter_source_types: filter_source_types || null,
+        filter_concepts: filter_concepts || null,
+        enable_concept_expansion: agentConfig.enable_concept_expansion,
+      })
 
-    if (searchErrorV7) {
-      console.warn("[baikal-librarian] Erreur match_documents_v7, fallback sur v5:", searchErrorV7.message)
-      searchType = "vector_only"
-      
-      // Fallback sur v5 (ancienne version)
-      const { data: documentsV5, error: errorV5 } = await supabase
-        .rpc("match_documents_v5", rpcParamsV7)
-      
-      if (errorV5) {
-        console.warn("[baikal-librarian] Erreur match_documents_v5, fallback sur v4:", errorV5.message)
-        
-        // Fallback sur v4 (vector seul)
-        const rpcParamsV4: Record<string, unknown> = {
-          query_embedding: queryEmbedding,
-          p_user_id: user_id,
-          match_threshold: match_threshold,
-          match_count: match_count,
-        }
-        
-        if (effectiveOrgId) {
-          rpcParamsV4.filter_org = effectiveOrgId
-        }
-        if (project_id) {
-          rpcParamsV4.filter_project = project_id
-        }
-        
-        const { data: documentsV4, error: errorV4 } = await supabase
-          .rpc("match_documents_v4", rpcParamsV4)
-        
-        if (errorV4) {
-          console.warn("[baikal-librarian] Erreur match_documents_v4, fallback sur v3:", errorV4.message)
-          
-          const { data: documentsV3, error: errorV3 } = await supabase
-            .rpc("match_documents_v3", rpcParamsV4)
-          
-          if (errorV3) {
-            return errorResponse(`Erreur recherche: ${errorV3.message}`, 500)
-          }
-          
-          matchedDocs = (documentsV3 || []).map((d: Record<string, unknown>) => ({
-            ...d,
-            source_type: "document" as const,
-            vector_score: d.similarity as number,
-            fulltext_score: 0,
-            boost_level: "app",
-            target_projects: null
-          }))
-        } else {
-          matchedDocs = (documentsV4 || []).map((d: Record<string, unknown>) => ({
-            ...d,
-            vector_score: d.similarity as number,
-            fulltext_score: 0,
-          })) as DocumentMatch[]
-        }
-      } else {
-        matchedDocs = (documentsV5 as DocumentMatch[]) || []
-      }
-    } else {
-      matchedDocs = (documentsV7 as DocumentMatch[]) || []
+    if (searchError) {
+      console.error("[baikal-librarian] Erreur match_documents_v10:", searchError)
+      return errorResponse(`Erreur recherche: ${searchError.message}`, 500)
     }
 
-    // Compteurs
-    const docCount = matchedDocs.filter(d => d.source_type === "document").length
-    const qaCount = matchedDocs.filter(d => d.source_type === "qa_memory").length
-    const fulltextMatches = matchedDocs.filter(d => d.fulltext_score > 0.1).length
+    const matchedDocs: DocumentResult[] = documents || []
+
+    // ========================================
+    // 5. MÉTRIQUES & LOGS
+    // ========================================
+    const layerCounts = {
+      app: matchedDocs.filter(d => d.layer === 'app').length,
+      org: matchedDocs.filter(d => d.layer === 'org').length,
+      project: matchedDocs.filter(d => d.layer === 'project').length,
+      user: matchedDocs.filter(d => d.layer === 'user').length,
+    }
     
-    console.log(`[baikal-librarian] Resultats: ${docCount} docs, ${qaCount} qa_memory`)
-    console.log(`[baikal-librarian] Dont ${fulltextMatches} avec match full-text`)
+    const matchSourceCounts = {
+      vector: matchedDocs.filter(d => d.match_source === 'vector').length,
+      fulltext: matchedDocs.filter(d => d.match_source === 'fulltext').length,
+      graphrag: matchedDocs.filter(d => d.match_source === 'graphrag').length,
+    }
+
+    const allConcepts = new Set<string>()
+    matchedDocs.forEach(d => (d.matched_concepts || []).forEach(c => allConcepts.add(c)))
+
+    console.log(`[baikal-librarian] Résultats: ${matchedDocs.length} docs`)
+    console.log(`[baikal-librarian] Par layer: app=${layerCounts.app}, org=${layerCounts.org}, project=${layerCounts.project}`)
+    console.log(`[baikal-librarian] Par source: vector=${matchSourceCounts.vector}, fulltext=${matchSourceCounts.fulltext}, graphrag=${matchSourceCounts.graphrag}`)
+    if (allConcepts.size > 0) {
+      console.log(`[baikal-librarian] Concepts: ${Array.from(allConcepts).join(', ')}`)
+    }
 
     // ========================================
     // 6. CAS SANS RÉSULTATS
     // ========================================
     if (matchedDocs.length === 0) {
       return jsonResponse({
-        response: "Je n'ai trouve aucun document pertinent pour repondre a votre question. Pouvez-vous reformuler ou preciser votre demande ?",
+        response: "Je n'ai trouvé aucun document pertinent pour répondre à votre question. Pouvez-vous reformuler ou préciser votre demande ?",
         sources: [],
-        knowledge_type: "none",
         status: "success",
         processing_time_ms: Date.now() - startTime,
         documents_found: 0,
-        qa_memory_found: 0,
         model: agentConfig.model,
-        embedding_model: DEFAULT_CONFIG.embedding_model,
-        search_type: searchType,
         prompt_used: agentConfig.prompt_name,
-        prompt_resolution: agentConfig.resolution_level,
-        // MIGRATION: Retourne app_id + vertical_id pour rétro-compatibilité
-        app_id: userContext.app_id,
-        vertical_id: userContext.app_id,  // Deprecated, pour rétro-compatibilité
-        can_vote: true,
-        vote_context: { question: query, answer: "", source_ids: [] }
-      } as ResponsePayload)
+        app_id: effectiveAppId,
+        layer_counts: layerCounts,
+        match_source_counts: matchSourceCounts,
+      })
     }
 
     // ========================================
-    // 7. CONSTRUCTION CONTEXTE & SOURCES
+    // 7. FORMATAGE CONTEXTE
     // ========================================
-    const context = buildContext(matchedDocs, DEFAULT_CONFIG.max_context_length)
+    const formattedContext = formatContextForLLM(matchedDocs, {
+      includeMetadata: include_metadata,
+      includeConcepts: include_concepts,
+      includeScores: include_scores,
+      maxDocsPerLayer: 5,
+    })
+
+    // ========================================
+    // 8. INJECTION DANS LE PROMPT
+    // ========================================
+    let systemPrompt = agentConfig.system_prompt
+
+    // Remplacer le placeholder {{context}} par le contexte formaté
+    if (systemPrompt.includes('{{context}}')) {
+      systemPrompt = systemPrompt.replace('{{context}}', formattedContext)
+    } else {
+      // Si pas de placeholder, ajouter le contexte à la fin
+      systemPrompt = `${systemPrompt}\n\n${formattedContext}`
+    }
+
     const sources = extractSources(matchedDocs)
-    const knowledgeType = determineKnowledgeType(matchedDocs, user_id, project_id, effectiveOrgId)
 
     // ========================================
-    // 8. GÉNÉRATION RÉPONSE LLM
+    // 9. GÉNÉRATION LLM
     // ========================================
-    console.log("[baikal-librarian] Generation LLM avec", agentConfig.model)
-
-    const userPrompt = `CONTEXTE DOCUMENTAIRE:
-${context}
-
-QUESTION DE L'UTILISATEUR:
-${query}
-
-Reponds a la question en te basant sur le contexte fourni.`
+    console.log("[baikal-librarian] Génération LLM avec", agentConfig.model)
 
     const llmResponse = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -662,58 +584,52 @@ Reponds a la question en te basant sur le contexte fourni.`
         temperature: agentConfig.temperature,
         max_tokens: agentConfig.max_tokens,
         messages: [
-          { role: "system", content: agentConfig.system_prompt },
-          { role: "user", content: userPrompt }
+          { role: "system", content: systemPrompt },
+          { role: "user", content: query }
         ],
       }),
     })
 
     if (!llmResponse.ok) {
       const errorData = await llmResponse.json()
-      console.error("[baikal-librarian] OpenAI LLM Error:", errorData)
-      return errorResponse(`Erreur LLM: ${errorData.error?.message || "Erreur inconnue"}`, 500)
+      return errorResponse(`Erreur LLM: ${errorData.error?.message}`, 500)
     }
 
     const llmData = await llmResponse.json()
-    const answer = llmData.choices?.[0]?.message?.content || "Desole, je n'ai pas pu generer de reponse."
-
-    // ========================================
-    // 9. LOG USAGE QA_MEMORY
-    // ========================================
-    await logQAUsage(supabase, matchedDocs)
+    const answer = llmData.choices?.[0]?.message?.content || "Désolé, je n'ai pas pu générer de réponse."
 
     // ========================================
     // 10. RÉPONSE FINALE
     // ========================================
     const processingTime = Date.now() - startTime
-    console.log(`[baikal-librarian] Reponse generee en ${processingTime}ms (${searchType})`)
+    console.log(`[baikal-librarian] Réponse générée en ${processingTime}ms`)
 
     return jsonResponse({
       response: answer,
-      sources: sources,
-      knowledge_type: knowledgeType,
+      sources,
       status: "success",
       processing_time_ms: processingTime,
-      documents_found: docCount,
-      qa_memory_found: qaCount,
+      documents_found: matchedDocs.length,
       model: agentConfig.model,
       embedding_model: DEFAULT_CONFIG.embedding_model,
-      search_type: searchType,
       prompt_used: agentConfig.prompt_name,
       prompt_resolution: agentConfig.resolution_level,
-      // MIGRATION: Retourne app_id + vertical_id pour rétro-compatibilité
-      app_id: userContext.app_id,
-      vertical_id: userContext.app_id,  // Deprecated, pour rétro-compatibilité
+      app_id: effectiveAppId,
+      // Métriques v7.0
+      layer_counts: layerCounts,
+      match_source_counts: matchSourceCounts,
+      concepts_matched: Array.from(allConcepts),
+      // Vote context
       can_vote: true,
       vote_context: {
         question: query,
-        answer: answer,
-        source_ids: matchedDocs.map(d => d.id)
-      }
-    } as ResponsePayload)
+        answer,
+        source_ids: matchedDocs.map(d => String(d.id)),
+      },
+    })
 
   } catch (error) {
-    console.error("[baikal-librarian] Erreur non geree:", error)
+    console.error("[baikal-librarian] Erreur non gérée:", error)
     return errorResponse(String(error), 500)
   }
 })
