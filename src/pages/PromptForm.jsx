@@ -2,7 +2,7 @@
  * PromptForm.jsx - Baikal Console
  * ============================================================================
  * Formulaire de création et édition de prompts système.
- * VERSION: 2.0.0 - Ajout gemini_system_prompt
+ * VERSION: 2.1.0 - Fix agent_type 'librarian' pour bloc Gemini
  * ============================================================================
  */
 
@@ -109,7 +109,7 @@ function PromptForm() {
     vertical_id: '',
     org_id: '',
     system_prompt: '',
-    gemini_system_prompt: '',  // NOUVEAU: Prompt pour mode Gemini PDF complet
+    gemini_system_prompt: '',  // Prompt pour mode Gemini PDF complet
     is_active: true,
     parameters: { ...DEFAULT_PARAMETERS },
   });
@@ -153,7 +153,7 @@ function PromptForm() {
             vertical_id: promptData.vertical_id || '',
             org_id: promptData.org_id || '',
             system_prompt: promptData.system_prompt || '',
-            gemini_system_prompt: promptData.gemini_system_prompt || '',  // NOUVEAU
+            gemini_system_prompt: promptData.gemini_system_prompt || '',
             is_active: promptData.is_active ?? true,
             parameters: { ...DEFAULT_PARAMETERS, ...promptData.parameters },
           });
@@ -231,7 +231,7 @@ function PromptForm() {
         vertical_id: formData.vertical_id || null,
         org_id: formData.org_id || null,
         system_prompt: formData.system_prompt,
-        gemini_system_prompt: formData.gemini_system_prompt || null,  // NOUVEAU
+        gemini_system_prompt: formData.gemini_system_prompt || null,
         is_active: formData.is_active,
         parameters: formData.parameters,
       };
@@ -400,8 +400,8 @@ function PromptForm() {
             </CardContent>
           </Card>
 
-          {/* Prompt Gemini (mode PDF complet) - Seulement pour Bibliothécaire */}
-          {formData.agent_type === 'bibliothecaire' && (
+          {/* Prompt Gemini (mode PDF complet) - Seulement pour Bibliothécaire/Librarian */}
+          {formData.agent_type === 'librarian' && (
             <Card>
               <CardContent className="p-6 bg-baikal-surface border-baikal-border">
                 <div className="flex items-center justify-between mb-4">
