@@ -497,7 +497,18 @@ serve(async (req: Request) => {
       return errorResponse(`Erreur recherche: ${searchError.message}`, 500)
     }
 
-    const matchedDocs: DocumentResult[] = documents || []
+    // Mapper les colonnes out_* vers les noms attendus
+    const matchedDocs: DocumentResult[] = (documents || []).map((d: any) => ({
+      id: d.out_id,
+      content: d.out_content,
+      similarity: d.out_similarity,
+      metadata: d.out_metadata,
+      layer: d.out_layer,
+      source_type: d.out_source_type,
+      matched_concepts: d.out_matched_concepts || [],
+      rank_score: d.out_rank_score,
+      match_source: d.out_match_source,
+    }))
 
     // ========================================
     // 5. MÉTRIQUES & LOGS
