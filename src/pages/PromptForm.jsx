@@ -2,12 +2,13 @@
  * PromptForm.jsx - Baikal Console
  * ============================================================================
  * Formulaire de création et édition de prompts système.
+ * VERSION: 2.0.0 - Ajout gemini_system_prompt
  * ============================================================================
  */
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Save, AlertCircle, ChevronDown, ChevronUp, Sparkles, Loader2 } from 'lucide-react';
+import { ArrowLeft, Save, AlertCircle, ChevronDown, ChevronUp, Sparkles, Loader2, Cpu } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../hooks/useToast';
 import { Button } from '../components/ui/Button';
@@ -15,7 +16,6 @@ import { Input, Textarea } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Slider, SliderWithInput, WeightSlider } from '../components/ui/Slider';
 import { Card, CardContent } from '../components/ui/Card';
-import { Spinner } from '../components/ui/Spinner';
 import promptsService from '../services/prompts.service';
 import {
   canAccessPrompts,
@@ -109,6 +109,7 @@ function PromptForm() {
     vertical_id: '',
     org_id: '',
     system_prompt: '',
+    gemini_system_prompt: '',  // NOUVEAU: Prompt pour mode Gemini PDF complet
     is_active: true,
     parameters: { ...DEFAULT_PARAMETERS },
   });
@@ -152,6 +153,7 @@ function PromptForm() {
             vertical_id: promptData.vertical_id || '',
             org_id: promptData.org_id || '',
             system_prompt: promptData.system_prompt || '',
+            gemini_system_prompt: promptData.gemini_system_prompt || '',  // NOUVEAU
             is_active: promptData.is_active ?? true,
             parameters: { ...DEFAULT_PARAMETERS, ...promptData.parameters },
           });
@@ -229,6 +231,7 @@ function PromptForm() {
         vertical_id: formData.vertical_id || null,
         org_id: formData.org_id || null,
         system_prompt: formData.system_prompt,
+        gemini_system_prompt: formData.gemini_system_prompt || null,  // NOUVEAU
         is_active: formData.is_active,
         parameters: formData.parameters,
       };
@@ -373,10 +376,18 @@ function PromptForm() {
             </CardContent>
           </Card>
 
-          {/* Prompt système */}
+          {/* Prompt système (mode chunks - RAG classique) */}
           <Card>
             <CardContent className="p-6 bg-baikal-surface border-baikal-border">
-              <h2 className="text-lg font-semibold text-white font-mono mb-4">PROMPT_SYSTÈME</h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-white font-mono">PROMPT_SYSTÈME</h2>
+                <span className="text-xs text-baikal-text font-mono bg-baikal-bg px-2 py-1 rounded">
+                  Mode RAG classique
+                </span>
+              </div>
+              <p className="text-sm text-baikal-text mb-4">
+                Ce prompt est utilisé pour le mode RAG classique (recherche par chunks de texte).
+              </p>
               <Textarea
                 value={formData.system_prompt}
                 onChange={(e) => handleChange('system_prompt', e.target.value)}
@@ -388,6 +399,37 @@ function PromptForm() {
               <PromptLengthIndicator length={formData.system_prompt.length} />
             </CardContent>
           </Card>
+
+          {/* Prompt Gemini (mode PDF complet) - Seulement pour Bibliothécaire */}
+          {formData.agent_type === 'bibliothecaire' && (
+            <Card>
+              <CardContent className="p-6 bg-baikal-surface border-baikal-border">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Cpu className="w-5 h-5 text-purple-400" />
+                    <h2 className="text-lg font-semibold text-white font-mono">PROMPT_GEMINI</h2>
+                  </div>
+                  <span className="text-xs text-purple-400 font-mono bg-purple-400/10 px-2 py-1 rounded">
+                    Mode PDF complet
+                  </span>
+                </div>
+                <p className="text-sm text-baikal-text mb-4">
+                  Ce prompt est utilisé quand Gemini lit les documents PDF complets (mode "Retrieve then Read").
+                  Laissez vide pour utiliser le prompt par défaut.
+                </p>
+                <Textarea
+                  value={formData.gemini_system_prompt}
+                  onChange={(e) => handleChange('gemini_system_prompt', e.target.value)}
+                  placeholder="Tu es un assistant expert qui analyse des documents PDF complets..."
+                  rows={12}
+                  className="font-mono text-sm"
+                />
+                {formData.gemini_system_prompt && (
+                  <PromptLengthIndicator length={formData.gemini_system_prompt.length} />
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Paramètres LLM */}
           <CollapsibleSection title="Paramètres LLM" icon={Sparkles} defaultOpen={false}>

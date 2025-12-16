@@ -2,6 +2,7 @@
  * Prompts Service - Baikal Console
  * ============================================================================
  * MIGRATION PHASE 3 - vertical → app
+ * VERSION: 2.0.0 - Ajout gemini_system_prompt
  * 
  * MODIFICATIONS:
  * - agent_prompts → config.agent_prompts (schéma)
@@ -9,6 +10,7 @@
  * - verticals → config.apps (table + schéma)
  * - organizations → core.organizations (schéma)
  * - Jointures: verticals:vertical_id → apps:app_id
+ * - NOUVEAU: gemini_system_prompt pour le mode PDF complet
  * ============================================================================
  */
 
@@ -180,6 +182,7 @@ export const createPrompt = async (promptData) => {
         app_id: appId,
         org_id: orgId,
         system_prompt: promptData.system_prompt,
+        gemini_system_prompt: promptData.gemini_system_prompt || null,  // NOUVEAU
         parameters,
         is_active: promptData.is_active ?? true,
       })
@@ -250,6 +253,8 @@ export const updatePrompt = async (id, promptData) => {
     }
     if (promptData.org_id !== undefined) updateData.org_id = promptData.org_id || null;
     if (promptData.system_prompt !== undefined) updateData.system_prompt = promptData.system_prompt;
+    // NOUVEAU: gemini_system_prompt
+    if (promptData.gemini_system_prompt !== undefined) updateData.gemini_system_prompt = promptData.gemini_system_prompt || null;
     if (promptData.parameters !== undefined) updateData.parameters = promptData.parameters;
     if (promptData.is_active !== undefined) updateData.is_active = promptData.is_active;
 
@@ -344,6 +349,7 @@ export const duplicatePrompt = async (id, overrides = {}) => {
       app_id: overrides.app_id ?? overrides.vertical_id ?? original.app_id,
       org_id: overrides.org_id ?? original.org_id,
       system_prompt: overrides.system_prompt || original.system_prompt,
+      gemini_system_prompt: overrides.gemini_system_prompt ?? original.gemini_system_prompt,  // NOUVEAU
       parameters: overrides.parameters || original.parameters,
       is_active: overrides.is_active ?? false, // Désactivé par défaut
     };

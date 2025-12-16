@@ -2,8 +2,13 @@
 // ║  BAIKAL-BRAIN - Routeur Sémantique Intelligent                               ║
 // ║  Edge Function Supabase pour ARPET                                           ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
-// ║  Version: 3.0.0 - Migration schémas (app_id)                                 ║
+// ║  Version: 4.0.0 - Support generation_mode (chunks/gemini)                    ║
 // ║  Route vers: BIBLIOTHECAIRE (baikal-librarian) ou ANALYSTE (futur)           ║
+// ╠══════════════════════════════════════════════════════════════════════════════╣
+// ║  Nouveautés v4.0.0:                                                          ║
+// ║  - Décision automatique du generation_mode                                   ║
+// ║  - "gemini" : Analyse PDF complet via Google Context Caching                 ║
+// ║  - "chunks" : RAG classique GPT-4o (comportement existant)                   ║
 // ╚══════════════════════════════════════════════════════════════════════════════╝
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
@@ -25,12 +30,10 @@ const ROUTING_MODEL = 'gpt-4o-mini'
 // ============================================================================
 
 const SYSTEM_PROMPT = `Tu es un routeur intelligent pour un assistant BTP. 
-Analyse la question et détermine quel agent doit la traiter.
+Analyse la question et détermine quel agent doit la traiter et comment.
 
 RÉPONDS UNIQUEMENT en JSON valide, sans markdown ni explication:
-{"destination": "BIBLIOTHECAIRE", "reasoning": "explication courte"}
-ou
-{"destination": "ANALYSTE", "reasoning": "explication courte"}
+{"destination": "BIBLIOTHECAIRE", "generation_mode": "chunks", "reasoning": "explication courte"}
 
 RÈGLES DE ROUTAGE:
 
@@ -44,7 +47,26 @@ ANALYSTE - Pour les questions nécessitant:
 - Calculs numériques (métrés, quantités, coûts)
 - Analyse de données chiffrées
 - Statistiques, tableaux, graphiques
-- Traitement de fichiers Excel/CSV`
+- Traitement de fichiers Excel/CSV
+
+MODE DE GÉNÉRATION (pour BIBLIOTHECAIRE uniquement):
+- "gemini" : Analyse approfondie d'un document complet, lecture intégrale d'un PDF, 
+  synthèse globale, questions mentionnant un fichier spécifique (CCTP, cahier des charges, 
+  marché, contrat, notice, rapport), demande de résumé complet, analyse exhaustive
+- "chunks" : Questions rapides, définitions, recherches générales, points précis,
+  questions sur des normes ou réglementations, informations ponctuelles
+
+EXEMPLES:
+- "Résume le CCTP lot 10" → destination: BIBLIOTHECAIRE, generation_mode: gemini
+- "C'est quoi un DTU ?" → destination: BIBLIOTHECAIRE, generation_mode: chunks
+- "Quelles sont les clauses de garantie du document ?" → destination: BIBLIOTHECAIRE, generation_mode: gemini
+- "Quel est le délai de paiement légal ?" → destination: BIBLIOTHECAIRE, generation_mode: chunks
+- "Analyse complète du cahier des charges" → destination: BIBLIOTHECAIRE, generation_mode: gemini
+- "Que dit le CCTP sur les enduits ?" → destination: BIBLIOTHECAIRE, generation_mode: gemini
+- "Quelles sont les normes applicables ?" → destination: BIBLIOTHECAIRE, generation_mode: chunks
+- "Fais-moi une synthèse du document" → destination: BIBLIOTHECAIRE, generation_mode: gemini
+- "Calcule le métré du lot 3" → destination: ANALYSTE, generation_mode: chunks
+- "Liste les responsabilités de l'entrepreneur" → destination: BIBLIOTHECAIRE, generation_mode: gemini`
 
 // ============================================================================
 // TYPES
@@ -60,10 +82,13 @@ interface RequestBody {
   vertical_id?: string       // Deprecated, utiliser app_id
   match_threshold?: number
   match_count?: number
+  // Peut être forcé par le client (override la décision du routeur)
+  generation_mode?: 'chunks' | 'gemini'
 }
 
 interface RoutingDecision {
   destination: 'BIBLIOTHECAIRE' | 'ANALYSTE'
+  generation_mode: 'chunks' | 'gemini'
   reasoning: string
 }
 
@@ -96,7 +121,7 @@ async function routeQuery(query: string, openaiApiKey: string): Promise<RoutingD
     body: JSON.stringify({
       model: ROUTING_MODEL,
       temperature: 0,
-      max_tokens: 100,
+      max_tokens: 150,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: query }
@@ -112,10 +137,21 @@ async function routeQuery(query: string, openaiApiKey: string): Promise<RoutingD
   const content = data.choices?.[0]?.message?.content || ''
 
   try {
-    return JSON.parse(content.trim()) as RoutingDecision
+    const parsed = JSON.parse(content.trim()) as RoutingDecision
+    // Valider et normaliser
+    return {
+      destination: parsed.destination || 'BIBLIOTHECAIRE',
+      generation_mode: parsed.generation_mode || 'chunks',
+      reasoning: parsed.reasoning || 'aucune raison fournie'
+    }
   } catch {
-    // Fallback sur le bibliothécaire en cas d'erreur de parsing
-    return { destination: 'BIBLIOTHECAIRE', reasoning: 'fallback - erreur parsing' }
+    // Fallback sur le bibliothécaire en mode chunks en cas d'erreur de parsing
+    console.warn(`[baikal-brain] Erreur parsing JSON: ${content}`)
+    return { 
+      destination: 'BIBLIOTHECAIRE', 
+      generation_mode: 'chunks',
+      reasoning: 'fallback - erreur parsing' 
+    }
   }
 }
 
@@ -123,7 +159,8 @@ async function routeQuery(query: string, openaiApiKey: string): Promise<RoutingD
  * Appelle l'agent Bibliothécaire (baikal-librarian)
  */
 async function callLibrarian(
-  body: RequestBody, 
+  body: RequestBody,
+  decision: RoutingDecision,
   supabaseUrl: string, 
   authHeader: string,
   apiKey: string
@@ -132,11 +169,14 @@ async function callLibrarian(
   
   console.log(`[baikal-brain] Appel du Bibliothécaire: ${librarianUrl}`)
   console.log(`[baikal-brain] user_id transmis: ${body.user_id}`)
+  console.log(`[baikal-brain] generation_mode: ${decision.generation_mode}`)
   
   // MIGRATION: Normaliser app_id / vertical_id avant transmission
+  // Le client peut forcer le generation_mode, sinon on utilise la décision du routeur
   const normalizedBody = {
     ...body,
     app_id: body.app_id || body.vertical_id,  // Priorité à app_id
+    generation_mode: body.generation_mode || decision.generation_mode,  // Client override ou décision routeur
   }
   
   const response = await fetch(librarianUrl, {
@@ -153,7 +193,9 @@ async function callLibrarian(
   const data = await response.json()
   return jsonResponse({
     ...data,
-    routed_to: 'BIBLIOTHECAIRE'
+    routed_to: 'BIBLIOTHECAIRE',
+    generation_mode: normalizedBody.generation_mode,
+    routing_reasoning: decision.reasoning
   }, response.status)
 }
 
@@ -192,28 +234,31 @@ serve(async (req: Request): Promise<Response> => {
     const apiKey = req.headers.get('apikey') || ''
 
     const body: RequestBody = await req.json()
-    const { query, user_id } = body
+    const { query, user_id, generation_mode: clientMode } = body
 
     if (!query || query.trim().length === 0) {
       return errorResponse('Le champ "query" est requis', 400)
     }
 
-    console.log(`[baikal-brain] v3.0.0 - Migration Schemas`)
+    console.log(`[baikal-brain] v4.0.0 - Support generation_mode`)
     console.log(`[baikal-brain] Requête reçue: "${query.substring(0, 80)}..."`)
     console.log(`[baikal-brain] user_id: ${user_id}`)
+    if (clientMode) {
+      console.log(`[baikal-brain] Mode forcé par client: ${clientMode}`)
+    }
 
     // ========================================
     // 2. ROUTAGE SÉMANTIQUE
     // ========================================
     console.log('[baikal-brain] Analyse du routage...')
     const decision = await routeQuery(query, openaiApiKey)
-    console.log(`[baikal-brain] Décision: ${decision.destination} - ${decision.reasoning}`)
+    console.log(`[baikal-brain] Décision: ${decision.destination} | Mode: ${decision.generation_mode} | Raison: ${decision.reasoning}`)
 
     // ========================================
     // 3. DÉLÉGATION À L'AGENT
     // ========================================
     if (decision.destination === 'BIBLIOTHECAIRE') {
-      return await callLibrarian(body, supabaseUrl, authHeader, apiKey)
+      return await callLibrarian(body, decision, supabaseUrl, authHeader, apiKey)
     } 
     else if (decision.destination === 'ANALYSTE') {
       // L'analyste n'est pas encore implémenté
@@ -221,6 +266,7 @@ serve(async (req: Request): Promise<Response> => {
         response: "🚧 L'Agent Analyste est en cours de développement. Pour les calculs et analyses de données, cette fonctionnalité sera bientôt disponible. En attendant, je peux vous aider avec des questions sur la documentation et les normes BTP.",
         sources: [],
         routed_to: 'ANALYSTE',
+        generation_mode: decision.generation_mode,
         status: 'not_implemented',
         reasoning: decision.reasoning,
         processing_time_ms: Date.now() - startTime
@@ -228,7 +274,7 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     // Fallback (ne devrait jamais arriver)
-    return await callLibrarian(body, supabaseUrl, authHeader, apiKey)
+    return await callLibrarian(body, decision, supabaseUrl, authHeader, apiKey)
 
   } catch (error) {
     console.error('[baikal-brain] Erreur non gérée:', error)
