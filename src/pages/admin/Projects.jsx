@@ -14,7 +14,8 @@
  * 
  * CORRECTIONS 17/12/2025:
  * - Fix appels projectsService avec bons noms de paramètres
- *   (name au lieu de p_name, orgId au lieu de p_org_id, etc.)
+ * - Boutons d'actions directs (Modifier, Archiver, Gérer)
+ * - Suppression filtre "Terminés" (non utilisé en base)
  * ============================================================================
  */
 
@@ -35,14 +36,13 @@ import {
     X,
     Check,
     ChevronLeft,
-    MoreVertical,
     Archive,
     CheckCircle2,
-    Clock,
     UserPlus,
     UserMinus,
     Crown,
     Eye,
+    Pencil,
 } from 'lucide-react';
 
 // ============================================================================
@@ -52,7 +52,6 @@ import {
 const PROJECT_STATUSES = [
     { value: 'active', label: 'Actif', color: 'bg-green-500/20 text-green-400', icon: CheckCircle2 },
     { value: 'archived', label: 'Archivé', color: 'bg-gray-500/20 text-gray-400', icon: Archive },
-    { value: 'completed', label: 'Terminé', color: 'bg-blue-500/20 text-blue-400', icon: Check },
 ];
 
 const PROJECT_ROLES = [
@@ -65,7 +64,6 @@ const STATUS_FILTERS = [
     { value: 'all', label: 'Tous' },
     { value: 'active', label: 'Actifs' },
     { value: 'archived', label: 'Archivés' },
-    { value: 'completed', label: 'Terminés' },
 ];
 
 // ============================================================================
@@ -127,8 +125,6 @@ function ProjectRoleBadge({ role }) {
  * Ligne du tableau projet
  */
 function ProjectRow({ project, onEdit, onManageMembers, onArchive, onDelete, showOrg = true }) {
-    const [showMenu, setShowMenu] = useState(false);
-
     return (
         <tr className="border-b border-baikal-border hover:bg-baikal-surface/50 transition-colors">
             {/* Nom & Description */}
@@ -173,58 +169,49 @@ function ProjectRow({ project, onEdit, onManageMembers, onArchive, onDelete, sho
                 </span>
             </td>
 
-            {/* Actions */}
+            {/* Actions - Boutons directs */}
             <td className="px-4 py-4">
-                <div className="relative">
+                <div className="flex items-center justify-end gap-2">
+                    {/* Modifier */}
                     <button
-                        onClick={() => setShowMenu(!showMenu)}
-                        className="p-2 text-baikal-text hover:text-white hover:bg-baikal-bg rounded-md transition-colors"
+                        onClick={() => onEdit(project)}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-mono text-baikal-text hover:text-white hover:bg-baikal-bg border border-baikal-border rounded transition-colors"
+                        title="Modifier le projet"
                     >
-                        <MoreVertical className="w-4 h-4" />
+                        <Pencil className="w-3.5 h-3.5" />
+                        Modifier
                     </button>
 
-                    {showMenu && (
-                        <>
-                            <div 
-                                className="fixed inset-0 z-10" 
-                                onClick={() => setShowMenu(false)}
-                            />
-                            
-                            <div className="absolute right-0 top-full mt-1 w-48 bg-baikal-surface border border-baikal-border rounded-md shadow-lg z-20">
-                                <button
-                                    onClick={() => { onEdit(project); setShowMenu(false); }}
-                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-left text-baikal-text hover:text-white hover:bg-baikal-bg transition-colors"
-                                >
-                                    <Edit2 className="w-4 h-4" />
-                                    Modifier
-                                </button>
-                                <button
-                                    onClick={() => { onManageMembers(project); setShowMenu(false); }}
-                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-left text-baikal-text hover:text-white hover:bg-baikal-bg transition-colors"
-                                >
-                                    <Users className="w-4 h-4" />
-                                    Gérer les membres
-                                </button>
-                                {project.status === 'active' && (
-                                    <button
-                                        onClick={() => { onArchive(project); setShowMenu(false); }}
-                                        className="w-full flex items-center gap-2 px-4 py-2 text-sm text-left text-baikal-text hover:text-white hover:bg-baikal-bg transition-colors"
-                                    >
-                                        <Archive className="w-4 h-4" />
-                                        Archiver
-                                    </button>
-                                )}
-                                <hr className="border-baikal-border" />
-                                <button
-                                    onClick={() => { onDelete(project); setShowMenu(false); }}
-                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-left text-red-400 hover:bg-red-900/20 transition-colors"
-                                >
-                                    <Trash2 className="w-4 h-4" />
-                                    Supprimer
-                                </button>
-                            </div>
-                        </>
+                    {/* Archiver (si actif) */}
+                    {project.status === 'active' && (
+                        <button
+                            onClick={() => onArchive(project)}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-mono text-amber-400 hover:text-white hover:bg-amber-900/30 border border-amber-500/30 rounded transition-colors"
+                            title="Archiver le projet"
+                        >
+                            <Archive className="w-3.5 h-3.5" />
+                            Archiver
+                        </button>
                     )}
+
+                    {/* Gérer les membres */}
+                    <button
+                        onClick={() => onManageMembers(project)}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-mono text-blue-400 hover:text-white hover:bg-blue-900/30 border border-blue-500/30 rounded transition-colors"
+                        title="Gérer les membres"
+                    >
+                        <Users className="w-3.5 h-3.5" />
+                        Gérer
+                    </button>
+
+                    {/* Supprimer */}
+                    <button
+                        onClick={() => onDelete(project)}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-mono text-red-400 hover:text-white hover:bg-red-900/30 border border-red-500/30 rounded transition-colors"
+                        title="Supprimer le projet"
+                    >
+                        <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                 </div>
             </td>
         </tr>
@@ -283,14 +270,12 @@ function ProjectModal({ isOpen, onClose, project, organizations, defaultOrgId, o
             let result;
 
             if (isEdit) {
-                // ✅ CORRIGÉ: Utiliser les bons noms de paramètres pour updateProject
                 result = await projectsService.updateProject(project.id, {
                     name: formData.name.trim(),
                     description: formData.description.trim() || null,
                     status: formData.status,
                 });
             } else {
-                // ✅ CORRIGÉ: Utiliser les bons noms de paramètres pour createProject
                 result = await projectsService.createProject({
                     name: formData.name.trim(),
                     description: formData.description.trim() || null,
@@ -359,7 +344,6 @@ function ProjectModal({ isOpen, onClose, project, organizations, defaultOrgId, o
                             value={formData.name}
                             onChange={(e) => {
                                 setFormData({ ...formData, name: e.target.value });
-                                // Effacer l'erreur quand l'utilisateur tape
                                 if (error) setError(null);
                             }}
                             placeholder="Mon Projet"
@@ -479,7 +463,6 @@ function ProjectMembersModal({ isOpen, onClose, project, onUpdate }) {
         setError(null);
 
         try {
-            // ✅ CORRIGÉ: Utiliser le bon nom de paramètre pour getProjectMembers
             const membersResult = await projectsService.getProjectMembers(project.id);
 
             if (membersResult.error) {
@@ -518,7 +501,6 @@ function ProjectMembersModal({ isOpen, onClose, project, onUpdate }) {
         setError(null);
 
         try {
-            // ✅ CORRIGÉ: Utiliser les bons noms de paramètres pour assignUserToProject
             const result = await projectsService.assignUserToProject(
                 project.id,
                 selectedUserId,
@@ -549,7 +531,6 @@ function ProjectMembersModal({ isOpen, onClose, project, onUpdate }) {
 
     const handleRemoveMember = async (userId) => {
         try {
-            // ✅ CORRIGÉ: Utiliser les bons noms de paramètres pour removeUserFromProject
             const result = await projectsService.removeUserFromProject(project.id, userId);
 
             if (result.error) {
@@ -776,7 +757,6 @@ function DeleteConfirmModal({ isOpen, onClose, project, onConfirm }) {
         setError(null);
 
         try {
-            // ✅ CORRIGÉ: Utiliser les bons paramètres pour deleteProject
             const result = await projectsService.deleteProject(project.id, true);
 
             if (result.error) {
@@ -938,7 +918,6 @@ export default function Projects() {
         setError(null);
 
         try {
-            // ✅ CORRIGÉ: Utiliser les bons noms de paramètres pour getProjects
             const params = {
                 orgId: isSuperAdmin ? (orgFilter || null) : profile?.org_id,
                 includeArchived: statusFilter === 'archived' || statusFilter === 'all',
@@ -982,7 +961,6 @@ export default function Projects() {
 
     const handleArchive = async (project) => {
         try {
-            // ✅ CORRIGÉ: Utiliser les bons paramètres pour updateProject
             const result = await projectsService.updateProject(project.id, {
                 status: 'archived',
             });
