@@ -13,6 +13,10 @@
  * - Retirer un utilisateur de son organisation
  * - Recherche et filtres
  * 
+ * MODIFICATIONS 17/12/2025:
+ * - Suppression colonne "Rôle Business" (inutile)
+ * - Boutons d'actions directs (Modifier, Supprimer) au lieu du menu
+ * 
  * Route : /admin/users
  * Accès : super_admin / org_admin
  * ============================================================================
@@ -28,7 +32,6 @@ import {
     UserMinus,
     UserCog,
     Search,
-    Filter,
     Building2,
     Shield,
     AlertCircle,
@@ -36,11 +39,11 @@ import {
     X,
     Check,
     ChevronLeft,
-    MoreVertical,
     Clock,
-    Mail,
     Calendar,
     AlertTriangle,
+    Pencil,
+    Trash2,
 } from 'lucide-react';
 
 // ============================================================================
@@ -52,11 +55,6 @@ const APP_ROLES = [
     { value: 'team_leader', label: 'Team Leader', level: 3, color: 'text-blue-400' },
     { value: 'org_admin', label: 'Org Admin', level: 2, color: 'text-violet-400' },
     { value: 'super_admin', label: 'Super Admin', level: 1, color: 'text-amber-400' },
-];
-
-const BUSINESS_ROLES = [
-    { value: 'provider', label: 'Provider' },
-    { value: 'client', label: 'Client' },
 ];
 
 // ============================================================================
@@ -94,18 +92,6 @@ function AppRoleBadge({ role }) {
     return (
         <span className={`text-xs font-mono uppercase ${config.color}`}>
             {config.label}
-        </span>
-    );
-}
-
-/**
- * Badge de rôle business
- */
-function BusinessRoleBadge({ role }) {
-    if (!role) return <span className="text-xs text-baikal-text">-</span>;
-    return (
-        <span className="text-xs font-mono text-blue-400 uppercase">
-            {role}
         </span>
     );
 }
@@ -188,8 +174,6 @@ function PendingUserRow({ user, onAssign }) {
  * Ligne utilisateur standard
  */
 function UserRow({ user, onEditRole, onRemove, showOrg = true, canEdit = true }) {
-    const [showMenu, setShowMenu] = useState(false);
-
     return (
         <tr className="border-b border-baikal-border hover:bg-baikal-surface/50 transition-colors">
             {/* User */}
@@ -220,11 +204,6 @@ function UserRow({ user, onEditRole, onRemove, showOrg = true, canEdit = true })
                 <AppRoleBadge role={user.app_role} />
             </td>
 
-            {/* Rôle Business */}
-            <td className="px-4 py-4">
-                <BusinessRoleBadge role={user.business_role} />
-            </td>
-
             {/* Date */}
             <td className="px-4 py-4">
                 <span className="text-sm text-baikal-text">
@@ -234,42 +213,27 @@ function UserRow({ user, onEditRole, onRemove, showOrg = true, canEdit = true })
 
             {/* Actions */}
             <td className="px-4 py-4">
-                {canEdit && (
-                    <div className="relative">
+                {canEdit ? (
+                    <div className="flex items-center justify-end gap-2">
                         <button
-                            onClick={() => setShowMenu(!showMenu)}
-                            className="p-2 text-baikal-text hover:text-white hover:bg-baikal-bg rounded-md transition-colors"
+                            onClick={() => onEditRole(user)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-mono text-baikal-text hover:text-white hover:bg-baikal-bg border border-baikal-border rounded transition-colors"
+                            title="Modifier le rôle"
                         >
-                            <MoreVertical className="w-4 h-4" />
+                            <Pencil className="w-3.5 h-3.5" />
+                            Modifier
                         </button>
-
-                        {showMenu && (
-                            <>
-                                <div 
-                                    className="fixed inset-0 z-10" 
-                                    onClick={() => setShowMenu(false)}
-                                />
-                                
-                                <div className="absolute right-0 top-full mt-1 w-48 bg-baikal-surface border border-baikal-border rounded-md shadow-lg z-20">
-                                    <button
-                                        onClick={() => { onEditRole(user); setShowMenu(false); }}
-                                        className="w-full flex items-center gap-2 px-4 py-2 text-sm text-left text-baikal-text hover:text-white hover:bg-baikal-bg transition-colors"
-                                    >
-                                        <UserCog className="w-4 h-4" />
-                                        Modifier le rôle
-                                    </button>
-                                    <hr className="border-baikal-border" />
-                                    <button
-                                        onClick={() => { onRemove(user); setShowMenu(false); }}
-                                        className="w-full flex items-center gap-2 px-4 py-2 text-sm text-left text-red-400 hover:bg-red-900/20 transition-colors"
-                                    >
-                                        <UserMinus className="w-4 h-4" />
-                                        Retirer de l'org
-                                    </button>
-                                </div>
-                            </>
-                        )}
+                        <button
+                            onClick={() => onRemove(user)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-mono text-red-400 hover:text-white hover:bg-red-900/30 border border-red-500/30 rounded transition-colors"
+                            title="Retirer de l'organisation"
+                        >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            Supprimer
+                        </button>
                     </div>
+                ) : (
+                    <span className="text-xs text-baikal-text/50 font-mono">-</span>
                 )}
             </td>
         </tr>
@@ -435,7 +399,6 @@ function AssignOrgModal({ isOpen, onClose, user, organizations, onAssign }) {
  */
 function EditRoleModal({ isOpen, onClose, user, onSave, allowedRoles }) {
     const [appRole, setAppRole] = useState('user');
-    const [businessRole, setBusinessRole] = useState('');
     const [reason, setReason] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -443,7 +406,6 @@ function EditRoleModal({ isOpen, onClose, user, onSave, allowedRoles }) {
     useEffect(() => {
         if (isOpen && user) {
             setAppRole(user.app_role || 'user');
-            setBusinessRole(user.business_role || '');
             setReason('');
             setError(null);
         }
@@ -458,7 +420,7 @@ function EditRoleModal({ isOpen, onClose, user, onSave, allowedRoles }) {
             const result = await usersService.updateUserRole({
                 p_target_user_id: user.id,
                 p_new_app_role: appRole,
-                p_new_business_role: businessRole || null,
+                p_new_business_role: null,
                 p_reason: reason.trim() || null,
             });
 
@@ -536,25 +498,6 @@ function EditRoleModal({ isOpen, onClose, user, onSave, allowedRoles }) {
                             className="w-full px-4 py-2.5 bg-baikal-bg border border-baikal-border rounded-md text-white focus:outline-none focus:border-baikal-cyan transition-colors"
                         >
                             {availableRoles.map((role) => (
-                                <option key={role.value} value={role.value}>
-                                    {role.label}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-
-                    {/* Business Role */}
-                    <div>
-                        <label className="block text-sm font-mono text-baikal-text mb-2">
-                            Rôle business
-                        </label>
-                        <select
-                            value={businessRole}
-                            onChange={(e) => setBusinessRole(e.target.value)}
-                            className="w-full px-4 py-2.5 bg-baikal-bg border border-baikal-border rounded-md text-white focus:outline-none focus:border-baikal-cyan transition-colors"
-                        >
-                            <option value="">-- Aucun --</option>
-                            {BUSINESS_ROLES.map((role) => (
                                 <option key={role.value} value={role.value}>
                                     {role.label}
                                 </option>
@@ -956,7 +899,6 @@ export default function UsersPage() {
                                         <tr className="bg-baikal-bg/50 border-b border-baikal-border">
                                             <th className="px-4 py-3 text-left text-xs font-mono font-semibold text-baikal-text uppercase">Utilisateur</th>
                                             <th className="px-4 py-3 text-left text-xs font-mono font-semibold text-baikal-text uppercase">Rôle App</th>
-                                            <th className="px-4 py-3 text-left text-xs font-mono font-semibold text-baikal-text uppercase">Rôle Business</th>
                                             <th className="px-4 py-3 text-left text-xs font-mono font-semibold text-baikal-text uppercase">Inscrit le</th>
                                             <th className="px-4 py-3 text-right text-xs font-mono font-semibold text-baikal-text uppercase">Actions</th>
                                         </tr>
@@ -1209,7 +1151,6 @@ export default function UsersPage() {
                                                 <th className="px-4 py-3 text-left text-xs font-mono font-semibold text-baikal-text uppercase">Utilisateur</th>
                                                 <th className="px-4 py-3 text-left text-xs font-mono font-semibold text-baikal-text uppercase">Organisation</th>
                                                 <th className="px-4 py-3 text-left text-xs font-mono font-semibold text-baikal-text uppercase">Rôle App</th>
-                                                <th className="px-4 py-3 text-left text-xs font-mono font-semibold text-baikal-text uppercase">Rôle Business</th>
                                                 <th className="px-4 py-3 text-left text-xs font-mono font-semibold text-baikal-text uppercase">Inscrit le</th>
                                                 <th className="px-4 py-3 text-right text-xs font-mono font-semibold text-baikal-text uppercase">Actions</th>
                                             </tr>
