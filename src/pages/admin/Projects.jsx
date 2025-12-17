@@ -16,6 +16,7 @@
  * - Fix appels projectsService avec bons noms de paramètres
  * - Boutons d'actions directs (Modifier, Archiver, Gérer)
  * - Suppression filtre "Terminés" (non utilisé en base)
+ * - Correction texte modal suppression (clarification membres)
  * ============================================================================
  */
 
@@ -27,7 +28,6 @@ import {
     FolderOpen,
     Plus,
     Search,
-    Edit2,
     Trash2,
     Users,
     Building2,
@@ -257,7 +257,6 @@ function ProjectModal({ isOpen, onClose, project, organizations, defaultOrgId, o
     const handleSubmit = async (e) => {
         e.preventDefault();
         
-        // Validation côté client
         if (!formData.name.trim()) {
             setError('Le nom du projet est requis');
             return;
@@ -326,7 +325,6 @@ function ProjectModal({ isOpen, onClose, project, organizations, defaultOrgId, o
 
                 {/* Form */}
                 <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                    {/* Erreur */}
                     {error && (
                         <div className="p-3 bg-red-900/20 border border-red-500/50 rounded-md flex items-center gap-2 text-red-300 text-sm">
                             <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -334,7 +332,6 @@ function ProjectModal({ isOpen, onClose, project, organizations, defaultOrgId, o
                         </div>
                     )}
 
-                    {/* Nom */}
                     <div>
                         <label className="block text-sm font-mono text-baikal-text mb-2">
                             Nom du projet *
@@ -352,7 +349,6 @@ function ProjectModal({ isOpen, onClose, project, organizations, defaultOrgId, o
                         />
                     </div>
 
-                    {/* Description */}
                     <div>
                         <label className="block text-sm font-mono text-baikal-text mb-2">
                             Description
@@ -366,7 +362,6 @@ function ProjectModal({ isOpen, onClose, project, organizations, defaultOrgId, o
                         />
                     </div>
 
-                    {/* Organisation (création uniquement, super_admin) */}
                     {!isEdit && organizations.length > 0 && (
                         <div>
                             <label className="block text-sm font-mono text-baikal-text mb-2">
@@ -387,7 +382,6 @@ function ProjectModal({ isOpen, onClose, project, organizations, defaultOrgId, o
                         </div>
                     )}
 
-                    {/* Statut (modification uniquement) */}
                     {isEdit && (
                         <div>
                             <label className="block text-sm font-mono text-baikal-text mb-2">
@@ -407,7 +401,6 @@ function ProjectModal({ isOpen, onClose, project, organizations, defaultOrgId, o
                         </div>
                     )}
 
-                    {/* Actions */}
                     <div className="flex items-center justify-end gap-3 pt-4">
                         <button
                             type="button"
@@ -445,13 +438,11 @@ function ProjectMembersModal({ isOpen, onClose, project, onUpdate }) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     
-    // Ajout membre
     const [showAddForm, setShowAddForm] = useState(false);
     const [selectedUserId, setSelectedUserId] = useState('');
     const [selectedRole, setSelectedRole] = useState('member');
     const [addingMember, setAddingMember] = useState(false);
 
-    // Charger les membres et utilisateurs disponibles
     useEffect(() => {
         if (isOpen && project) {
             loadData();
@@ -472,7 +463,6 @@ function ProjectMembersModal({ isOpen, onClose, project, onUpdate }) {
             const projectMembers = membersResult.data || [];
             setMembers(projectMembers);
 
-            // Charger les utilisateurs de l'org pour le select
             if (project.org_id) {
                 const usersResult = await usersService.getUsersForAdmin({
                     orgId: project.org_id,
@@ -480,7 +470,6 @@ function ProjectMembersModal({ isOpen, onClose, project, onUpdate }) {
 
                 if (usersResult.data) {
                     const users = usersResult.data?.users || usersResult.data || [];
-                    // Filtrer les utilisateurs déjà membres
                     const memberIds = projectMembers.map(m => m.user_id || m.id);
                     const available = users.filter(u => !memberIds.includes(u.id));
                     setAvailableUsers(available);
@@ -515,7 +504,6 @@ function ProjectMembersModal({ isOpen, onClose, project, onUpdate }) {
                 throw new Error(result.data.error || 'Erreur lors de l\'ajout');
             }
 
-            // Recharger les données
             await loadData();
             setShowAddForm(false);
             setSelectedUserId('');
@@ -559,7 +547,6 @@ function ProjectMembersModal({ isOpen, onClose, project, onUpdate }) {
             />
 
             <div className="relative w-full max-w-2xl mx-4 bg-baikal-surface border border-baikal-border rounded-lg shadow-xl max-h-[80vh] flex flex-col">
-                {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-baikal-border">
                     <div>
                         <h2 className="text-lg font-mono font-semibold text-white">
@@ -575,9 +562,7 @@ function ProjectMembersModal({ isOpen, onClose, project, onUpdate }) {
                     </button>
                 </div>
 
-                {/* Content */}
                 <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                    {/* Erreur */}
                     {error && (
                         <div className="p-3 bg-red-900/20 border border-red-500/50 rounded-md flex items-center gap-2 text-red-300 text-sm">
                             <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -585,7 +570,6 @@ function ProjectMembersModal({ isOpen, onClose, project, onUpdate }) {
                         </div>
                     )}
 
-                    {/* Bouton ajouter */}
                     {!showAddForm && availableUsers.length > 0 && (
                         <button
                             onClick={() => setShowAddForm(true)}
@@ -596,7 +580,6 @@ function ProjectMembersModal({ isOpen, onClose, project, onUpdate }) {
                         </button>
                     )}
 
-                    {/* Formulaire ajout */}
                     {showAddForm && (
                         <div className="p-4 bg-baikal-bg border border-baikal-border rounded-md space-y-4">
                             <h3 className="text-sm font-mono text-white">Ajouter un membre</h3>
@@ -661,14 +644,12 @@ function ProjectMembersModal({ isOpen, onClose, project, onUpdate }) {
                         </div>
                     )}
 
-                    {/* Loading */}
                     {loading && (
                         <div className="flex items-center justify-center py-8">
                             <Loader2 className="w-6 h-6 text-baikal-cyan animate-spin" />
                         </div>
                     )}
 
-                    {/* Liste des membres */}
                     {!loading && members.length === 0 && (
                         <div className="text-center py-8">
                             <Users className="w-10 h-10 text-baikal-text mx-auto mb-3" />
@@ -718,7 +699,6 @@ function ProjectMembersModal({ isOpen, onClose, project, onUpdate }) {
                     )}
                 </div>
 
-                {/* Footer */}
                 <div className="px-6 py-4 border-t border-baikal-border bg-baikal-bg/30">
                     <div className="flex items-center justify-between">
                         <span className="text-sm text-baikal-text font-mono">
@@ -789,7 +769,6 @@ function DeleteConfirmModal({ isOpen, onClose, project, onConfirm }) {
             />
 
             <div className="relative w-full max-w-md mx-4 bg-baikal-surface border border-red-500/50 rounded-lg shadow-xl">
-                {/* Header */}
                 <div className="flex items-center gap-3 px-6 py-4 border-b border-baikal-border bg-red-900/20">
                     <div className="p-2 bg-red-500/20 rounded-md">
                         <Trash2 className="w-5 h-5 text-red-400" />
@@ -799,7 +778,6 @@ function DeleteConfirmModal({ isOpen, onClose, project, onConfirm }) {
                     </h2>
                 </div>
 
-                {/* Content */}
                 <div className="p-6 space-y-4">
                     <div className="p-4 bg-red-900/20 border border-red-500/30 rounded-md">
                         <p className="text-sm text-red-300">
@@ -807,7 +785,7 @@ function DeleteConfirmModal({ isOpen, onClose, project, onConfirm }) {
                         </p>
                         <p className="text-sm text-red-300 mt-2">
                             Le projet <strong className="font-mono">{project.name}</strong> sera 
-                            définitivement supprimé avec tous ses membres.
+                            définitivement supprimé. Les membres ne seront plus associés à ce projet.
                         </p>
                     </div>
 
@@ -868,24 +846,20 @@ export default function Projects() {
     const [searchParams, setSearchParams] = useSearchParams();
     const { isSuperAdmin, isOrgAdmin, profile } = useAuth();
 
-    // États
     const [projects, setProjects] = useState([]);
     const [organizations, setOrganizations] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
-    // Filtres
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
     const [orgFilter, setOrgFilter] = useState('');
 
-    // Modals
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [editingProject, setEditingProject] = useState(null);
     const [managingMembers, setManagingMembers] = useState(null);
     const [deletingProject, setDeletingProject] = useState(null);
 
-    // Vérifier les query params
     useEffect(() => {
         if (searchParams.get('action') === 'create') {
             setShowCreateModal(true);
@@ -893,7 +867,6 @@ export default function Projects() {
         }
     }, [searchParams, setSearchParams]);
 
-    // Charger les organisations
     useEffect(() => {
         async function loadOrganizations() {
             if (!isSuperAdmin) return;
@@ -912,7 +885,6 @@ export default function Projects() {
         loadOrganizations();
     }, [isSuperAdmin]);
 
-    // Charger les projets
     const loadProjects = useCallback(async () => {
         setLoading(true);
         setError(null);
@@ -932,7 +904,6 @@ export default function Projects() {
 
             let data = result.data || [];
 
-            // Filtrer par statut côté client
             if (statusFilter !== 'all') {
                 data = data.filter(p => p.status === statusFilter);
             }
@@ -950,7 +921,6 @@ export default function Projects() {
         loadProjects();
     }, [loadProjects]);
 
-    // Handlers
     const handleEdit = (project) => {
         setEditingProject(project);
     };
@@ -992,12 +962,10 @@ export default function Projects() {
         loadProjects();
     };
 
-    // Org par défaut pour la création
     const defaultOrgId = !isSuperAdmin ? profile?.org_id : '';
 
     return (
         <div className="min-h-screen bg-baikal-bg">
-            {/* Header */}
             <header className="bg-baikal-surface border-b border-baikal-border sticky top-0 z-30">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex items-center justify-between h-16">
@@ -1034,11 +1002,8 @@ export default function Projects() {
                 </div>
             </header>
 
-            {/* Contenu */}
             <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                {/* Filtres */}
                 <div className="flex flex-col sm:flex-row gap-4 mb-6">
-                    {/* Recherche */}
                     <div className="relative flex-1">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-baikal-text" />
                         <input
@@ -1050,7 +1015,6 @@ export default function Projects() {
                         />
                     </div>
 
-                    {/* Filtre statut */}
                     <div className="flex gap-2 overflow-x-auto pb-2 sm:pb-0">
                         {STATUS_FILTERS.map((filter) => (
                             <button
@@ -1069,7 +1033,6 @@ export default function Projects() {
                         ))}
                     </div>
 
-                    {/* Filtre org (super_admin) */}
                     {isSuperAdmin && organizations.length > 0 && (
                         <select
                             value={orgFilter}
@@ -1086,7 +1049,6 @@ export default function Projects() {
                     )}
                 </div>
 
-                {/* Erreur */}
                 {error && (
                     <div className="mb-6 p-4 bg-red-900/20 border border-red-500/50 rounded-md flex items-center gap-3 text-red-300">
                         <AlertCircle className="w-5 h-5 flex-shrink-0" />
@@ -1100,14 +1062,12 @@ export default function Projects() {
                     </div>
                 )}
 
-                {/* Loading */}
                 {loading && (
                     <div className="flex items-center justify-center py-12">
                         <Loader2 className="w-8 h-8 text-baikal-cyan animate-spin" />
                     </div>
                 )}
 
-                {/* Liste vide */}
                 {!loading && projects.length === 0 && (
                     <div className="bg-baikal-surface border border-baikal-border rounded-md p-12 text-center">
                         <FolderOpen className="w-12 h-12 text-baikal-text mx-auto mb-4" />
@@ -1132,7 +1092,6 @@ export default function Projects() {
                     </div>
                 )}
 
-                {/* Tableau */}
                 {!loading && projects.length > 0 && (
                     <div className="bg-baikal-surface border border-baikal-border rounded-md overflow-hidden">
                         <div className="overflow-x-auto">
@@ -1184,7 +1143,6 @@ export default function Projects() {
                 )}
             </main>
 
-            {/* Modal Créer */}
             <ProjectModal
                 isOpen={showCreateModal}
                 onClose={() => setShowCreateModal(false)}
@@ -1194,7 +1152,6 @@ export default function Projects() {
                 onSave={handleSave}
             />
 
-            {/* Modal Modifier */}
             <ProjectModal
                 isOpen={!!editingProject}
                 onClose={() => setEditingProject(null)}
@@ -1204,7 +1161,6 @@ export default function Projects() {
                 onSave={handleSave}
             />
 
-            {/* Modal Membres */}
             <ProjectMembersModal
                 isOpen={!!managingMembers}
                 onClose={() => setManagingMembers(null)}
@@ -1212,7 +1168,6 @@ export default function Projects() {
                 onUpdate={handleMembersUpdate}
             />
 
-            {/* Modal Supprimer */}
             <DeleteConfirmModal
                 isOpen={!!deletingProject}
                 onClose={() => setDeletingProject(null)}
