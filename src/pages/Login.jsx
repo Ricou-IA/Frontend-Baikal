@@ -7,6 +7,9 @@
  * - Toggle Connexion/Inscription
  * - Réinitialisation mot de passe
  * - Support des codes d'invitation (?invite=CODE)
+ * 
+ * CORRECTION 17/12/2025:
+ * - Correction appel validateInvitationCode (string au lieu d'objet)
  * ============================================================================
  */
 
@@ -62,7 +65,7 @@ export default function Login() {
 
   // États invitation
   const [inviteCode, setInviteCode] = useState('');
-  const [inviteValidation, setInviteValidation] = useState(null); // { valid, org_name, org_id, default_app_role, default_business_role, error }
+  const [inviteValidation, setInviteValidation] = useState(null); // { valid, org_name, org_id, default_app_role, error }
   const [validatingInvite, setValidatingInvite] = useState(false);
 
   const { signIn, signUp, signInWithGoogle, resetPassword, loading, error, clearError, isAuthenticated, hasProfile, isOnboarded } = useAuth();
@@ -86,7 +89,8 @@ export default function Login() {
     setInviteValidation(null);
 
     try {
-      const result = await invitationsService.validateInvitationCode({ p_code: code });
+      // CORRECTION: passer le code directement, pas un objet
+      const result = await invitationsService.validateInvitationCode(code);
 
       if (result.error) {
         setInviteValidation({
@@ -104,7 +108,6 @@ export default function Login() {
           org_name: data.org_name,
           org_id: data.org_id,
           default_app_role: data.default_app_role,
-          default_business_role: data.default_business_role,
         });
       } else {
         setInviteValidation({
