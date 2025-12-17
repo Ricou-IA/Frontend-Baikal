@@ -244,16 +244,16 @@ function OrganizationModal({ isOpen, onClose, organization, apps, onSave }) {
 
             if (isEdit) {
                 result = await organizationService.updateOrganization({
-                    p_org_id: organization.id,
-                    p_name: formData.name.trim(),
-                    p_plan: formData.plan,
-                    p_app_id: formData.app_id || null,
+                    orgId: organization.id,
+                    name: formData.name.trim(),
+                    plan: formData.plan,
+                    appId: formData.app_id || null,
                 });
             } else {
                 result = await organizationService.createOrganization({
-                    p_name: formData.name.trim(),
-                    p_plan: formData.plan,
-                    p_app_id: formData.app_id || null,
+                    name: formData.name.trim(),
+                    plan: formData.plan,
+                    appId: formData.app_id || null,
                 });
             }
 
@@ -414,8 +414,8 @@ function DeleteConfirmModal({ isOpen, onClose, organization, onConfirm }) {
 
         try {
             const result = await organizationService.deleteOrganization({
-                p_org_id: organization.id,
-                p_confirm: true,
+                orgId: organization.id,
+                confirm: true,
             });
 
             if (result.error) {
@@ -565,7 +565,8 @@ export default function Organizations() {
     useEffect(() => {
         async function loadApps() {
             try {
-                const data = await getApps();
+                const { data, error } = await getApps();
+                if (error) throw error;
                 setApps(data || []);
             } catch (err) {
                 console.error('[Organizations] Error loading apps:', err);
@@ -580,16 +581,17 @@ export default function Organizations() {
         setError(null);
 
         try {
+            // Utiliser les noms de paramètres camelCase du service
             const result = await organizationService.getOrganizations({
-                p_include_inactive: includeInactive,
-                p_search: search.trim() || null,
+                includeInactive: includeInactive,
+                search: search.trim() || null,
             });
 
             if (result.error) {
                 throw new Error(result.error.message || result.error);
             }
 
-            // La fonction retourne maintenant un array JSONB directement
+            // Le service retourne { data: [...], error: null }
             const data = result.data || [];
             setOrganizations(Array.isArray(data) ? data : []);
         } catch (err) {
@@ -612,8 +614,8 @@ export default function Organizations() {
     const handleToggleStatus = async (org) => {
         try {
             const result = await organizationService.updateOrganization({
-                p_org_id: org.id,
-                p_is_active: !org.is_active,
+                orgId: org.id,
+                isActive: !org.is_active,
             });
 
             if (result.error) {
