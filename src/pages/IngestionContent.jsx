@@ -8,9 +8,11 @@
  * - Upload de fichiers (PDF, Word, Excel, etc.)
  * - Légifrance (codes juridiques) - super_admin uniquement
  * 
- * MIGRATION PHASE 3:
- * - 'vertical' → 'app' dans LayerSelector
- * - canUploadVertical → canUploadApp
+ * MODIFICATIONS 17/12/2025:
+ * - org_admin : App auto-sélectionnée (profile.app_id), pas de sélecteur
+ * - org_admin : Layer "Verticale Métier" masqué
+ * - Ajout ProjectSelector (multi-select)
+ * - Layer "project" : au moins 1 projet obligatoire
  * ============================================================================
  */
 
@@ -18,6 +20,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { documentsService } from '../services/documents.service';
 import { referentielsService } from '../services/referentiels.service';
+import { projectsService } from '../services/projects.service';
 import {
     LAYER_LABELS,
     LAYER_COLORS,
@@ -36,6 +39,7 @@ import {
     Database,
     BookOpen,
     Building2,
+    FolderOpen,
     X,
     CheckCircle2,
     AlertCircle,
@@ -136,7 +140,7 @@ function SourceCard({ source, isActive, onClick, disabled }) {
 }
 
 // ============================================================================
-// COMPOSANT SÉLECTEUR DE VERTICALES (Multi-select)
+// COMPOSANT SÉLECTEUR DE VERTICALES (Multi-select) - SUPER_ADMIN UNIQUEMENT
 // ============================================================================
 
 function VerticalSelector({ verticals, selectedVerticals, onToggle, loading }) {
@@ -185,39 +189,39 @@ function VerticalSelector({ verticals, selectedVerticals, onToggle, loading }) {
 
 // ============================================================================
 // COMPOSANT SÉLECTEUR DE COUCHE (LAYER)
-// MIGRATION: 'vertical' → 'app'
 // ============================================================================
 
 function LayerSelector({ selectedLayer, onSelect, availableLayers }) {
-    // ⭐ CORRIGÉ: 'app' au lieu de 'vertical'
     const layers = [
         { id: 'app', icon: BookOpen, label: 'Verticale Métier', description: 'Partagé entre organisations' },
         { id: 'org', icon: Building2, label: 'Organisation', description: "Interne à l'organisation" },
+        { id: 'project', icon: FolderOpen, label: 'Projet', description: "Restreint aux membres des projets" },
     ];
+
+    // Filtrer les layers disponibles
+    const visibleLayers = layers.filter(l => availableLayers.includes(l.id));
 
     return (
         <div className="space-y-3">
             <label className="block text-xs font-mono text-baikal-text uppercase">
                 Couche de destination *
             </label>
-            <div className="grid grid-cols-2 gap-3">
-                {layers.map((layer) => {
+            <div className={`grid gap-3 ${visibleLayers.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                {visibleLayers.map((layer) => {
                     const Icon = layer.icon;
-                    const isAvailable = availableLayers.includes(layer.id);
                     const isSelected = selectedLayer === layer.id;
 
                     return (
                         <button
                             key={layer.id}
-                            onClick={() => isAvailable && onSelect(layer.id)}
-                            disabled={!isAvailable}
+                            onClick={() => onSelect(layer.id)}
                             className={`
                                 relative p-4 rounded-md border-2 text-left transition-all
                                 ${isSelected 
                                     ? 'border-baikal-cyan bg-baikal-cyan/10' 
                                     : 'border-baikal-border bg-baikal-surface hover:border-baikal-cyan/50'
                                 }
-                                ${!isAvailable ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+                                cursor-pointer
                             `}
                         >
                             <div className="flex items-center gap-3">
@@ -238,6 +242,80 @@ function LayerSelector({ selectedLayer, onSelect, availableLayers }) {
                     );
                 })}
             </div>
+        </div>
+    );
+}
+
+// ============================================================================
+// COMPOSANT SÉLECTEUR DE PROJETS (Multi-select)
+// ============================================================================
+
+function ProjectSelector({ projects, selectedProjects, onToggle, loading, required = false }) {
+    if (loading) {
+        return (
+            <div className="space-y-3">
+                <label className="block text-xs font-mono text-baikal-text uppercase">
+                    Projets cibles {required && '*'}
+                </label>
+                <div className="flex items-center gap-2 text-baikal-text">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span className="text-sm font-sans">Chargement des projets...</span>
+                </div>
+            </div>
+        );
+    }
+
+    if (!projects || projects.length === 0) {
+        return (
+            <div className="space-y-3">
+                <label className="block text-xs font-mono text-baikal-text uppercase">
+                    Projets cibles {required && '*'}
+                </label>
+                <div className="p-4 bg-baikal-surface border border-baikal-border rounded-md text-center">
+                    <FolderOpen className="w-8 h-8 text-baikal-text mx-auto mb-2" />
+                    <p className="text-sm text-baikal-text font-sans">Aucun projet disponible</p>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-3">
+            <label className="block text-xs font-mono text-baikal-text uppercase">
+                Projets cibles {required && <span className="text-red-400">*</span>}
+            </label>
+            <p className="text-xs text-baikal-text font-sans -mt-1">
+                {required 
+                    ? "Sélectionnez au moins un projet (obligatoire pour ce layer)"
+                    : "Optionnel : restreindre l'accès à certains projets"
+                }
+            </p>
+            <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto p-2 bg-baikal-bg border border-baikal-border rounded-md">
+                {projects.map((project) => {
+                    const isSelected = selectedProjects.includes(project.id);
+                    return (
+                        <button
+                            key={project.id}
+                            onClick={() => onToggle(project.id)}
+                            className={`
+                                flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-all font-sans
+                                ${isSelected 
+                                    ? 'bg-baikal-cyan text-black' 
+                                    : 'bg-baikal-surface border border-baikal-border text-baikal-text hover:border-baikal-cyan/50'
+                                }
+                            `}
+                        >
+                            <FolderOpen className="w-3.5 h-3.5" />
+                            {project.name}
+                        </button>
+                    );
+                })}
+            </div>
+            {selectedProjects.length > 0 && (
+                <p className="text-xs text-baikal-cyan font-mono">
+                    {selectedProjects.length} projet{selectedProjects.length > 1 ? 's' : ''} sélectionné{selectedProjects.length > 1 ? 's' : ''}
+                </p>
+            )}
         </div>
     );
 }
@@ -669,12 +747,15 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
     // États - Référentiels
     const [verticals, setVerticals] = useState([]);
     const [categories, setCategories] = useState([]);
+    const [projects, setProjects] = useState([]);
     const [loadingReferentiels, setLoadingReferentiels] = useState(true);
+    const [loadingProjects, setLoadingProjects] = useState(true);
 
     // États - Formulaire commun
     const [activeSource, setActiveSource] = useState('file-upload');
     const [selectedVerticals, setSelectedVerticals] = useState([]);
     const [selectedLayer, setSelectedLayer] = useState('org');
+    const [selectedProjects, setSelectedProjects] = useState([]);
 
     // États - Upload fichier
     const [file, setFile] = useState(null);
@@ -692,17 +773,23 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
     const [isUploading, setIsUploading] = useState(false);
     const [uploadResult, setUploadResult] = useState(null);
 
-    // Permissions
-    const userRole = profile?.app_role || 'member';
-    const permissions = getPermissions(userRole);
-    
-    // ⭐ CORRIGÉ: canUploadApp au lieu de canUploadVertical, 'app' au lieu de 'vertical'
+    // Permissions et layers disponibles
     const availableLayers = useMemo(() => {
-        const layers = [];
-        if (permissions.canUploadApp) layers.push('app');
-        if (permissions.canUploadOrg) layers.push('org');
-        return layers;
-    }, [permissions.canUploadApp, permissions.canUploadOrg]);
+        if (isSuperAdmin) {
+            return ['app', 'org', 'project'];
+        }
+        // org_admin : pas de layer "app"
+        return ['org', 'project'];
+    }, [isSuperAdmin]);
+
+    // App ID : auto pour org_admin, sélection pour super_admin
+    const effectiveAppId = useMemo(() => {
+        if (isSuperAdmin) {
+            return selectedVerticals[0] || null;
+        }
+        // org_admin : utiliser l'app_id du profil
+        return profile?.app_id || null;
+    }, [isSuperAdmin, selectedVerticals, profile?.app_id]);
 
     // Filtrer les sources disponibles
     const availableSources = useMemo(() => {
@@ -724,7 +811,8 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
                 setVerticals(verticalsRes.data || []);
                 setCategories(categoriesRes.data || []);
                 
-                if (verticalsRes.data?.length > 0 && selectedVerticals.length === 0) {
+                // Super admin : sélectionner la première verticale par défaut
+                if (isSuperAdmin && verticalsRes.data?.length > 0 && selectedVerticals.length === 0) {
                     setSelectedVerticals([verticalsRes.data[0].id]);
                 }
             } catch (err) {
@@ -734,13 +822,47 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
             }
         }
         loadReferentiels();
-    }, []);
+    }, [isSuperAdmin]);
 
+    // Charger les projets de l'organisation
+    useEffect(() => {
+        async function loadProjects() {
+            if (!orgId) {
+                setProjects([]);
+                setLoadingProjects(false);
+                return;
+            }
+
+            setLoadingProjects(true);
+            try {
+                const result = await projectsService.getProjects({
+                    orgId: orgId,
+                    includeArchived: false,
+                });
+                setProjects(result.data || []);
+            } catch (err) {
+                console.error('Erreur chargement projets:', err);
+                setProjects([]);
+            } finally {
+                setLoadingProjects(false);
+            }
+        }
+        loadProjects();
+    }, [orgId]);
+
+    // Mettre à jour le layer par défaut
     useEffect(() => {
         if (availableLayers.length > 0 && !availableLayers.includes(selectedLayer)) {
             setSelectedLayer(availableLayers[0]);
         }
     }, [availableLayers, selectedLayer]);
+
+    // Reset projets sélectionnés quand on change de layer (sauf pour 'project')
+    useEffect(() => {
+        if (selectedLayer !== 'project') {
+            setSelectedProjects([]);
+        }
+    }, [selectedLayer]);
 
     // Toggle verticale
     const toggleVertical = (verticalId) => {
@@ -748,6 +870,15 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
             prev.includes(verticalId)
                 ? prev.filter(id => id !== verticalId)
                 : [...prev, verticalId]
+        );
+    };
+
+    // Toggle projet
+    const toggleProject = (projectId) => {
+        setSelectedProjects(prev => 
+            prev.includes(projectId)
+                ? prev.filter(id => id !== projectId)
+                : [...prev, projectId]
         );
     };
 
@@ -802,9 +933,21 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
 
     const handleSubmit = async () => {
         const newErrors = {};
-        if (selectedVerticals.length === 0) newErrors.vertical = 'Veuillez sélectionner au moins une application';
-        if (!file) newErrors.file = 'Veuillez sélectionner un fichier';
-        if (!metadata.title) newErrors.title = 'Le titre est obligatoire';
+        
+        // Validation
+        if (isSuperAdmin && selectedVerticals.length === 0) {
+            newErrors.vertical = 'Veuillez sélectionner au moins une application';
+        }
+        if (!file) {
+            newErrors.file = 'Veuillez sélectionner un fichier';
+        }
+        if (!metadata.title) {
+            newErrors.title = 'Le titre est obligatoire';
+        }
+        // Layer project : au moins 1 projet obligatoire
+        if (selectedLayer === 'project' && selectedProjects.length === 0) {
+            newErrors.projects = 'Veuillez sélectionner au moins un projet';
+        }
 
         if (Object.keys(newErrors).length > 0) {
             setErrors(newErrors);
@@ -815,13 +958,18 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
         setUploadResult(null);
 
         try {
-            const uploadPromises = selectedVerticals.map(appId =>
+            // Déterminer les apps à cibler
+            const targetApps = isSuperAdmin ? selectedVerticals : [effectiveAppId];
+
+            const uploadPromises = targetApps.map(appId =>
                 documentsService.uploadDocument({
                     file,
                     layer: selectedLayer,
                     appId: appId,
                     orgId: orgId,
                     userId: profile?.id,
+                    // Passer les projets sélectionnés (le service gère le tableau)
+                    projectIds: selectedProjects.length > 0 ? selectedProjects : null,
                     metadata: {
                         title: metadata.title,
                         category: metadata.category,
@@ -843,13 +991,15 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
 
             setUploadResult({
                 success: true,
-                message: `Document uploadé avec succès pour ${selectedVerticals.length} application(s) !`,
+                message: `Document uploadé avec succès${targetApps.length > 1 ? ` pour ${targetApps.length} application(s)` : ''} !`,
                 path: results[0]?.path
             });
 
+            // Reset formulaire
             setFile(null);
             setMetadata({ title: '', category: '', description: '', version: '', extractToc: false });
             setDuplicateInfo(null);
+            setSelectedProjects([]);
         } catch (err) {
             setUploadResult({
                 success: false,
@@ -860,7 +1010,7 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
         }
     };
 
-    const isSelectionValid = selectedVerticals.length > 0 && selectedLayer;
+    const isSelectionValid = (isSuperAdmin ? selectedVerticals.length > 0 : effectiveAppId) && selectedLayer;
 
     return (
         <div className="space-y-6">
@@ -899,21 +1049,51 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
 
                     {/* Sélection commune */}
                     <div className="space-y-6 pb-6 border-b border-baikal-border">
-                        <VerticalSelector
-                            verticals={verticals}
-                            selectedVerticals={selectedVerticals}
-                            onToggle={toggleVertical}
-                            loading={loadingReferentiels}
-                        />
-                        {errors?.vertical && (
-                            <p className="text-sm text-red-400 -mt-3 font-mono">{errors.vertical}</p>
+                        {/* Sélecteur de verticales - SUPER_ADMIN uniquement */}
+                        {isSuperAdmin && (
+                            <>
+                                <VerticalSelector
+                                    verticals={verticals}
+                                    selectedVerticals={selectedVerticals}
+                                    onToggle={toggleVertical}
+                                    loading={loadingReferentiels}
+                                />
+                                {errors?.vertical && (
+                                    <p className="text-sm text-red-400 -mt-3 font-mono">{errors.vertical}</p>
+                                )}
+                            </>
                         )}
 
+                        {/* Affichage de l'app pour org_admin (lecture seule) */}
+                        {!isSuperAdmin && effectiveAppId && (
+                            <div className="space-y-3">
+                                <label className="block text-xs font-mono text-baikal-text uppercase">
+                                    Application
+                                </label>
+                                <div className="px-3 py-2 bg-baikal-surface border border-baikal-border rounded-md">
+                                    <span className="text-white font-mono uppercase">{effectiveAppId}</span>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Sélecteur de couche */}
                         <LayerSelector
                             selectedLayer={selectedLayer}
                             onSelect={setSelectedLayer}
                             availableLayers={availableLayers}
                         />
+
+                        {/* Sélecteur de projets */}
+                        <ProjectSelector
+                            projects={projects}
+                            selectedProjects={selectedProjects}
+                            onToggle={toggleProject}
+                            loading={loadingProjects}
+                            required={selectedLayer === 'project'}
+                        />
+                        {errors?.projects && (
+                            <p className="text-sm text-red-400 -mt-3 font-mono">{errors.projects}</p>
+                        )}
                     </div>
 
                     {/* Contenu spécifique */}
@@ -981,7 +1161,7 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
 
                     {activeSource === 'legifrance' && isSelectionValid && (
                         <LegifranceInterface
-                            selectedVertical={selectedVerticals[0]}
+                            selectedVertical={isSuperAdmin ? selectedVerticals[0] : effectiveAppId}
                             selectedLayer={selectedLayer}
                             verticals={verticals}
                         />

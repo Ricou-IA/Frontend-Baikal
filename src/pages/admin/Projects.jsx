@@ -7,16 +7,17 @@
  * - Liste des projets avec filtres (org, statut, recherche)
  * - Création / Modification / Suppression de projets
  * - Gestion des membres du projet
- * - Archivage de projets
+ * - Archivage / Réactivation de projets
  * 
  * Route : /admin/projects
  * Accès : super_admin (toutes orgs) / org_admin (son org)
  * 
  * CORRECTIONS 17/12/2025:
  * - Fix appels projectsService avec bons noms de paramètres
- * - Boutons d'actions directs (Modifier, Archiver, Gérer)
+ * - Boutons d'actions directs (Modifier, Archiver/Réactiver, Gérer)
  * - Suppression filtre "Terminés" (non utilisé en base)
  * - Correction texte modal suppression (clarification membres)
+ * - Ajout bouton Réactiver pour projets archivés
  * ============================================================================
  */
 
@@ -43,6 +44,7 @@ import {
     Crown,
     Eye,
     Pencil,
+    RotateCcw,
 } from 'lucide-react';
 
 // ============================================================================
@@ -124,7 +126,7 @@ function ProjectRoleBadge({ role }) {
 /**
  * Ligne du tableau projet
  */
-function ProjectRow({ project, onEdit, onManageMembers, onArchive, onDelete, showOrg = true }) {
+function ProjectRow({ project, onEdit, onManageMembers, onArchive, onReactivate, onDelete, showOrg = true }) {
     return (
         <tr className="border-b border-baikal-border hover:bg-baikal-surface/50 transition-colors">
             {/* Nom & Description */}
@@ -191,6 +193,18 @@ function ProjectRow({ project, onEdit, onManageMembers, onArchive, onDelete, sho
                         >
                             <Archive className="w-3.5 h-3.5" />
                             Archiver
+                        </button>
+                    )}
+
+                    {/* Réactiver (si archivé) */}
+                    {project.status === 'archived' && (
+                        <button
+                            onClick={() => onReactivate(project)}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-mono text-green-400 hover:text-white hover:bg-green-900/30 border border-green-500/30 rounded transition-colors"
+                            title="Réactiver le projet"
+                        >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            Réactiver
                         </button>
                     )}
 
@@ -310,7 +324,6 @@ function ProjectModal({ isOpen, onClose, project, organizations, defaultOrgId, o
             />
 
             <div className="relative w-full max-w-lg mx-4 bg-baikal-surface border border-baikal-border rounded-lg shadow-xl">
-                {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-baikal-border">
                     <h2 className="text-lg font-mono font-semibold text-white">
                         {isEdit ? 'MODIFIER_PROJET' : 'NOUVEAU_PROJET'}
@@ -323,7 +336,6 @@ function ProjectModal({ isOpen, onClose, project, organizations, defaultOrgId, o
                     </button>
                 </div>
 
-                {/* Form */}
                 <form onSubmit={handleSubmit} className="p-6 space-y-4">
                     {error && (
                         <div className="p-3 bg-red-900/20 border border-red-500/50 rounded-md flex items-center gap-2 text-red-300 text-sm">
@@ -946,6 +958,23 @@ export default function Projects() {
         }
     };
 
+    const handleReactivate = async (project) => {
+        try {
+            const result = await projectsService.updateProject(project.id, {
+                status: 'active',
+            });
+
+            if (result.error) {
+                throw new Error(result.error.message || result.error);
+            }
+
+            loadProjects();
+        } catch (err) {
+            console.error('[Projects] Error reactivating:', err);
+            setError(err.message);
+        }
+    };
+
     const handleDelete = (project) => {
         setDeletingProject(project);
     };
@@ -1129,6 +1158,7 @@ export default function Projects() {
                                             onEdit={handleEdit}
                                             onManageMembers={handleManageMembers}
                                             onArchive={handleArchive}
+                                            onReactivate={handleReactivate}
                                             onDelete={handleDelete}
                                         />
                                     ))}

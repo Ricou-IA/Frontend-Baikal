@@ -12,6 +12,10 @@
  * - Ajout storage_bucket dans payload webhook n8n
  * - Layer ajouté à la RACINE du payload (pas seulement metadata)
  * - target_layer → layer (renommé dans syncLegifranceCodes)
+ * 
+ * MODIFICATIONS 17/12/2025:
+ * - projectId → projectIds (tableau) pour support multi-projets
+ * - target_projects reçoit maintenant un tableau complet
  * ============================================================================
  */
 
@@ -379,8 +383,23 @@ export const documentsService = {
    * ============================================================================
    * IMPORTANT: Le payload webhook inclut 'layer' à la RACINE
    * pour être lu correctement par le nœud 0.2 de N8N
+   * 
+   * MODIFICATION 17/12/2025:
+   * - projectId → projectIds (tableau) pour support multi-projets
+   * - target_projects reçoit le tableau complet
+   * - project_id dans sources.files = premier projet du tableau (ou null)
    * ============================================================================
    * @param {Object} params - Paramètres d'upload
+   * @param {File} params.file - Fichier à uploader
+   * @param {string} params.layer - Couche cible ('app', 'org', 'project')
+   * @param {string} params.appId - ID de l'application
+   * @param {string} params.orgId - ID de l'organisation
+   * @param {string} params.userId - ID de l'utilisateur
+   * @param {Array<string>} [params.projectIds] - IDs des projets cibles (tableau)
+   * @param {Object} [params.metadata] - Métadonnées du document
+   * @param {string} [params.qualityLevel='premium'] - Niveau de qualité
+   * @param {string} [params.status='approved'] - Statut initial
+   * @param {string} [params.bucket='premium-sources'] - Bucket de stockage
    * @returns {Promise<{data: Object, path: string, error: Error|null}>}
    */
   async uploadDocument(params) {
@@ -390,7 +409,7 @@ export const documentsService = {
       appId,
       orgId,
       userId,
-      projectId = null,
+      projectIds = null, // ⭐ MODIFIÉ: tableau au lieu de singulier
       metadata = {},
       qualityLevel = 'premium',
       status = 'approved',
@@ -399,6 +418,11 @@ export const documentsService = {
 
     // Normaliser le layer (vertical → app)
     const normalizedLayer = normalizeLayer(layer);
+
+    // ⭐ Normaliser projectIds en tableau
+    const normalizedProjectIds = Array.isArray(projectIds) 
+      ? projectIds.filter(Boolean) 
+      : (projectIds ? [projectIds] : []);
 
     try {
       // 1. Calculer le hash du fichier
@@ -409,6 +433,7 @@ export const documentsService = {
       if (uploadError) throw uploadError;
 
       // 3. Créer l'entrée source file
+      // ⭐ project_id = premier projet du tableau (pour rétrocompatibilité avec la colonne UUID simple)
       const { data: sourceFile, error: sourceError } = await supabase
         .from('files')
         .insert({
@@ -421,10 +446,14 @@ export const documentsService = {
           layer: normalizedLayer,
           app_id: appId,
           org_id: orgId,
-          project_id: projectId,
+          project_id: normalizedProjectIds[0] || null, // ⭐ Premier projet ou null
           created_by: userId,
           processing_status: 'pending',
-          metadata,
+          metadata: {
+            ...metadata,
+            // ⭐ Stocker tous les projets dans les metadata si multi-projets
+            target_project_ids: normalizedProjectIds.length > 0 ? normalizedProjectIds : undefined,
+          },
         })
         .select()
         .single();
@@ -434,6 +463,7 @@ export const documentsService = {
       // 4. Déclencher le traitement via webhook n8n
       // =========================================================================
       // IMPORTANT: 'layer' est à la RACINE du payload pour le nœud 0.2
+      // ⭐ target_projects reçoit maintenant le tableau complet
       // =========================================================================
       try {
         const webhookResponse = await fetch(N8N_WEBHOOK_URL, {
@@ -456,7 +486,7 @@ export const documentsService = {
 
             // Ciblage RAG
             target_apps: appId ? [appId] : null,
-            target_projects: projectId ? [projectId] : null,
+            target_projects: normalizedProjectIds.length > 0 ? normalizedProjectIds : null, // ⭐ Tableau complet
 
             // Metadata enrichie
             metadata: {
