@@ -11,7 +11,7 @@
  * MODIFICATIONS 17/12/2025:
  * - org_admin : App auto-sélectionnée (profile.app_id), pas de sélecteur
  * - org_admin : Layer "Verticale Métier" masqué
- * - Ajout ProjectSelector (multi-select)
+ * - Ajout ProjectSelector (multi-select) - UNIQUEMENT si layer = project
  * - Layer "project" : au moins 1 projet obligatoire
  * ============================================================================
  */
@@ -22,21 +22,16 @@ import { documentsService } from '../services/documents.service';
 import { referentielsService } from '../services/referentiels.service';
 import { projectsService } from '../services/projects.service';
 import {
-    LAYER_LABELS,
-    LAYER_COLORS,
-    LAYER_ICONS,
     ACCEPTED_MIME_TYPES,
     ACCEPTED_EXTENSIONS,
     MAX_FILE_SIZE_MB,
     MAX_FILE_SIZE_BYTES,
     formatFileSize,
-    getPermissions,
 } from '../config/rag-layers.config';
 import {
     Upload,
     FileText,
     Scale,
-    Database,
     BookOpen,
     Building2,
     FolderOpen,
@@ -48,12 +43,9 @@ import {
     Image,
     FileSpreadsheet,
     AlertTriangle,
-    Info,
     Globe,
     Link2,
-    Layers,
     Search,
-    Clock,
     Play,
 } from 'lucide-react';
 
@@ -250,12 +242,12 @@ function LayerSelector({ selectedLayer, onSelect, availableLayers }) {
 // COMPOSANT SÉLECTEUR DE PROJETS (Multi-select)
 // ============================================================================
 
-function ProjectSelector({ projects, selectedProjects, onToggle, loading, required = false }) {
+function ProjectSelector({ projects, selectedProjects, onToggle, loading }) {
     if (loading) {
         return (
             <div className="space-y-3">
                 <label className="block text-xs font-mono text-baikal-text uppercase">
-                    Projets cibles {required && '*'}
+                    Projets cibles <span className="text-red-400">*</span>
                 </label>
                 <div className="flex items-center gap-2 text-baikal-text">
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -269,11 +261,12 @@ function ProjectSelector({ projects, selectedProjects, onToggle, loading, requir
         return (
             <div className="space-y-3">
                 <label className="block text-xs font-mono text-baikal-text uppercase">
-                    Projets cibles {required && '*'}
+                    Projets cibles <span className="text-red-400">*</span>
                 </label>
                 <div className="p-4 bg-baikal-surface border border-baikal-border rounded-md text-center">
                     <FolderOpen className="w-8 h-8 text-baikal-text mx-auto mb-2" />
                     <p className="text-sm text-baikal-text font-sans">Aucun projet disponible</p>
+                    <p className="text-xs text-baikal-text/70 font-sans mt-1">Créez d'abord un projet dans l'onglet Projets</p>
                 </div>
             </div>
         );
@@ -282,13 +275,10 @@ function ProjectSelector({ projects, selectedProjects, onToggle, loading, requir
     return (
         <div className="space-y-3">
             <label className="block text-xs font-mono text-baikal-text uppercase">
-                Projets cibles {required && <span className="text-red-400">*</span>}
+                Projets cibles <span className="text-red-400">*</span>
             </label>
             <p className="text-xs text-baikal-text font-sans -mt-1">
-                {required 
-                    ? "Sélectionnez au moins un projet (obligatoire pour ce layer)"
-                    : "Optionnel : restreindre l'accès à certains projets"
-                }
+                Sélectionnez au moins un projet
             </p>
             <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto p-2 bg-baikal-bg border border-baikal-border rounded-md">
                 {projects.map((project) => {
@@ -857,11 +847,9 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
         }
     }, [availableLayers, selectedLayer]);
 
-    // Reset projets sélectionnés quand on change de layer (sauf pour 'project')
+    // Reset projets sélectionnés quand on change de layer
     useEffect(() => {
-        if (selectedLayer !== 'project') {
-            setSelectedProjects([]);
-        }
+        setSelectedProjects([]);
     }, [selectedLayer]);
 
     // Toggle verticale
@@ -968,8 +956,8 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
                     appId: appId,
                     orgId: orgId,
                     userId: profile?.id,
-                    // Passer les projets sélectionnés (le service gère le tableau)
-                    projectIds: selectedProjects.length > 0 ? selectedProjects : null,
+                    // Passer les projets sélectionnés uniquement si layer = project
+                    projectIds: selectedLayer === 'project' ? selectedProjects : null,
                     metadata: {
                         title: metadata.title,
                         category: metadata.category,
@@ -1083,16 +1071,19 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
                             availableLayers={availableLayers}
                         />
 
-                        {/* Sélecteur de projets */}
-                        <ProjectSelector
-                            projects={projects}
-                            selectedProjects={selectedProjects}
-                            onToggle={toggleProject}
-                            loading={loadingProjects}
-                            required={selectedLayer === 'project'}
-                        />
-                        {errors?.projects && (
-                            <p className="text-sm text-red-400 -mt-3 font-mono">{errors.projects}</p>
+                        {/* Sélecteur de projets - UNIQUEMENT si layer = project */}
+                        {selectedLayer === 'project' && (
+                            <>
+                                <ProjectSelector
+                                    projects={projects}
+                                    selectedProjects={selectedProjects}
+                                    onToggle={toggleProject}
+                                    loading={loadingProjects}
+                                />
+                                {errors?.projects && (
+                                    <p className="text-sm text-red-400 -mt-3 font-mono">{errors.projects}</p>
+                                )}
+                            </>
                         )}
                     </div>
 
