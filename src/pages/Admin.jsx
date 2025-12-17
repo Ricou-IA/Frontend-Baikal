@@ -5,10 +5,11 @@
  * 
  * Onglets :
  * - Dashboard (stats, vue d'ensemble) - tous les admins
- * - Utilisateurs (gestion membres) - tous les admins (scope différent)
  * - Organisation (paramètres) - tous les admins
  * - Connaissances → Route vers /admin/ingestion
  * - Prompts (config agents) - super_admin uniquement
+ * 
+ * Note: L'onglet Utilisateurs a été supprimé car accessible via le Dashboard
  * 
  * Accès :
  * - super_admin : tout voir, toutes les orgs, toutes les couches
@@ -23,17 +24,13 @@ import { useOrganization } from '../hooks/useOrganization';
 import { documentsService } from '../services/documents.service';
 import {
     AdminDashboard,
-    MembersList,
-    InviteMemberModal,
     OrganizationSettings,
     ProfileSwitcher,
-    UsersList
 } from '../components/admin';
 import Prompts from './Prompts';
 import IngestionContent from './IngestionContent';
 import {
     LayoutDashboard,
-    Users,
     Building2,
     BookOpen,
     MessageSquareCode,
@@ -60,12 +57,6 @@ const getTabs = (isSuperAdmin, pendingCount = 0) => {
             label: 'Dashboard',
             icon: LayoutDashboard,
             description: 'Vue d\'ensemble'
-        },
-        {
-            id: 'users',
-            label: 'Utilisateurs',
-            icon: Users,
-            description: 'Gérer les utilisateurs'
         },
         {
             id: 'organization',
@@ -105,7 +96,6 @@ export default function Admin() {
     
     // État local
     const [activeTab, setActiveTab] = useState('dashboard');
-    const [showInviteModal, setShowInviteModal] = useState(false);
     const [effectiveOrgId, setEffectiveOrgId] = useState(profile?.org_id || null);
     const [pendingCount, setPendingCount] = useState(0);
 
@@ -117,14 +107,9 @@ export default function Admin() {
     // Hook pour la gestion de l'organisation
     const {
         organization,
-        members,
         loading,
         error,
         refresh,
-        inviteMember,
-        revokeMember,
-        updateMemberRole,
-        resendInvitation,
         updateOrganizationName
     } = useOrganization(effectiveOrgId);
 
@@ -298,24 +283,6 @@ export default function Admin() {
                     />
                 )}
 
-                {/* Onglet Utilisateurs */}
-                {activeTab === 'users' && !loading && (
-                    isSuperAdmin ? (
-                        <UsersList />
-                    ) : (
-                        <MembersList
-                            members={members}
-                            loading={loading}
-                            currentUserId={user?.id || ''}
-                            currentUserRole={currentUserRole}
-                            onInvite={() => setShowInviteModal(true)}
-                            onRevoke={revokeMember}
-                            onUpdateRole={updateMemberRole}
-                            onResendInvitation={resendInvitation}
-                        />
-                    )
-                )}
-
                 {/* Onglet Organisation */}
                 {activeTab === 'organization' && !loading && (
                     <OrganizationSettings
@@ -339,15 +306,6 @@ export default function Admin() {
                     <Prompts embedded={true} />
                 )}
             </main>
-
-            {/* Modal d'invitation */}
-            <InviteMemberModal
-                isOpen={showInviteModal}
-                onClose={() => setShowInviteModal(false)}
-                onInvite={inviteMember}
-                currentUserRole={currentUserRole}
-                organizationName={organization?.name || 'Mon Organisation'}
-            />
         </div>
     );
 }
