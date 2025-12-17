@@ -6,6 +6,9 @@
  * MODIFICATIONS:
  * - profiles → core.profiles (schéma)
  * - organizations → core.organizations (schéma)
+ * 
+ * CORRECTION 17/12/2025:
+ * - isOnboarded : users avec org_id + app_id (invités) skip l'onboarding
  * ============================================================================
  */
 
@@ -295,7 +298,7 @@ export function AuthProvider({ children }) {
       const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/dashboard`,
+          redirectTo: `${window.location.origin}/admin`,
         },
       });
 
@@ -398,14 +401,22 @@ export function AuthProvider({ children }) {
   // VALEURS DÉRIVÉES
   // ========================================================================
 
-  // L'onboarding est bypassé si on est en impersonation
-  const isOnboarded = isImpersonating ? true : !!effectiveProfile?.business_role;
+  // Un user est "onboardé" si :
+  // - Il est en impersonation, OU
+  // - Il a une org ET une app (invité via code), OU
+  // - Il a un business_role (onboarding classique)
+  const isOnboarded = isImpersonating 
+    ? true 
+    : !!(effectiveProfile?.org_id && effectiveProfile?.app_id) || !!effectiveProfile?.business_role;
 
   // isSuperAdmin est TOUJOURS basé sur le profil RÉEL (pas impersoné)
   const isSuperAdmin = profile?.app_role === 'super_admin';
 
   // isOrgAdmin est basé sur le profil effectif
   const isOrgAdmin = effectiveProfile?.app_role === 'org_admin' || effectiveProfile?.app_role === 'super_admin';
+
+  // Accès à la console admin (super_admin ou org_admin)
+  const hasConsoleAccess = ['super_admin', 'org_admin'].includes(effectiveProfile?.app_role);
 
   // ========================================================================
   // VALEUR DU CONTEXTE
@@ -428,6 +439,7 @@ export function AuthProvider({ children }) {
     isOrgAdmin,
     isSuperAdmin, // Toujours basé sur le profil réel
     hasProfile: !!effectiveProfile,
+    hasConsoleAccess, // Nouveau flag pour accès admin
 
     // Impersonation
     isImpersonating,
