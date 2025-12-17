@@ -1,26 +1,34 @@
 // ╔══════════════════════════════════════════════════════════════════════════════╗
-// ║  BAIKAL-LIBRARIAN v8.0 - Agent RAG avec Gemini Context Caching              ║
+// ║  BAIKAL-LIBRARIAN v8.6 - Agent RAG avec Gemini Context Caching              ║
 // ║  Edge Function Supabase pour ARPET                                          ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
+// ║  Nouveautés v8.6:                                                            ║
+// ║  - Ajout generation_mode et cache_status dans les réponses API              ║
+// ║  - Support frontend pour affichage badge RAG                                 ║
+// ║  Nouveautés v8.5:                                                            ║
+// ║  - Fix: utiliser get() au lieu de update() pour vérifier le cache           ║
+// ║  - Workaround bug SDK update() avec ttlSeconds                              ║
+// ║  Nouveautés v8.4:                                                            ║
+// ║  - Fix updateCacheTTL: format ttl string avec suffixe 's'                   ║
+// ║  Nouveautés v8.3:                                                            ║
+// ║  - Debug logging pour upsert DB (diagnostic cache non sauvegardé)           ║
+// ║  Nouveautés v8.2:                                                            ║
+// ║  - Fix: system_instruction dans CachedContent (pas dans generateContent)    ║
+// ║  - Modèle gemini-2.0-flash pour Context Caching                             ║
+// ║  Nouveautés v8.1:                                                            ║
+// ║  - Fix import GoogleAICacheManager depuis @google/generative-ai/server      ║
 // ║  Nouveautés v8.0:                                                            ║
 // ║  - Mode 'gemini' : Retrieve then Read avec Context Caching                   ║
 // ║  - Mode 'chunks' : RAG classique GPT-4o (comportement existant)              ║
 // ║  - Workflow Hybrid : Gemini pour docs avec fichier, chunks pour les autres   ║
 // ║  - Table rag.active_caches pour suivi des caches Google                      ║
 // ║  - Fallback automatique si erreur Gemini                                     ║
-// ╠══════════════════════════════════════════════════════════════════════════════╣
-// ║  Historique:                                                                 ║
-// ║  - v7.0: match_documents_v10, Context Formatter, GraphRAG                    ║
-// ║  - v6.0: GraphRAG expansion via concepts                                     ║
-// ║  - v5.0: Migration schémas (app_id, core.profiles)                           ║
 // ╚══════════════════════════════════════════════════════════════════════════════╝
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-import { 
-  GoogleGenerativeAI,
-  GoogleAICacheManager
-} from "npm:@google/generative-ai@0.21.0"
+import { GoogleGenerativeAI } from "npm:@google/generative-ai@0.21.0"
+import { GoogleAICacheManager } from "npm:@google/generative-ai@0.21.0/server"
 
 // ============================================================================
 // CONFIGURATION
@@ -56,8 +64,8 @@ const DEFAULT_CONFIG = {
   concept_match_count: 5,
   concept_similarity_threshold: 0.5,
   enable_concept_expansion: true,
-  // Gemini Config
-  gemini_model: "gemini-1.5-flash-001",
+  // Gemini Config - v8.2: gemini-2.0-flash pour Context Caching
+  gemini_model: "gemini-2.0-flash",
   gemini_max_files: 3,
   cache_ttl_seconds: 3600, // 1 heure
 }
@@ -100,19 +108,16 @@ interface RequestBody {
   project_id?: string
   app_id?: string
   agent_id?: string
-  // Configuration optionnelle
   match_threshold?: number
   match_count?: number
   temperature?: number
   max_tokens?: number
-  // Filtres
   include_app_layer?: boolean
   include_org_layer?: boolean
   include_project_layer?: boolean
   include_user_layer?: boolean
   filter_source_types?: string[]
   filter_concepts?: string[]
-  // NOUVEAU v8.0 : Mode de génération
   generation_mode?: 'chunks' | 'gemini'
 }
 
@@ -140,12 +145,6 @@ interface FileResult {
   chunk_count: number
   layers: string[]
   sample_content: string
-}
-
-interface CacheEntry {
-  file_path: string
-  google_cache_name: string
-  expires_at: string
 }
 
 interface GeminiCacheInfo {
@@ -231,10 +230,6 @@ function initGoogleAI() {
 // GOOGLE AI - FILE UPLOAD (fetch car SDK nécessite filesystem)
 // ============================================================================
 
-/**
- * Upload un fichier vers Google AI File Manager via API REST
- * (Le SDK GoogleAIFileManager nécessite un chemin fichier, pas un ArrayBuffer)
- */
 async function uploadToGoogleFiles(
   fileBuffer: ArrayBuffer, 
   filename: string, 
@@ -242,7 +237,6 @@ async function uploadToGoogleFiles(
 ): Promise<string> {
   console.log(`[Gemini] Upload fichier: ${filename} (${mimeType})`)
   
-  // Étape 1: Initier l'upload resumable
   const initResponse = await fetch(
     `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${GEMINI_API_KEY}`,
     {
@@ -270,7 +264,6 @@ async function uploadToGoogleFiles(
     throw new Error("Missing upload URL from Google")
   }
 
-  // Étape 2: Upload le contenu
   const uploadResponse = await fetch(uploadUrl, {
     method: "PUT",
     headers: {
@@ -294,14 +287,13 @@ async function uploadToGoogleFiles(
 
 // ============================================================================
 // GOOGLE AI - CACHE MANAGER (SDK)
+// v8.2: Inclure systemInstruction dans le cache
 // ============================================================================
 
-/**
- * Créer un cache Google Context Caching via SDK
- */
 async function createGoogleCache(
   fileUri: string, 
   filename: string,
+  systemPrompt: string,
   ttlSeconds: number = 3600
 ): Promise<string> {
   console.log(`[Gemini] Création cache pour: ${filename}`)
@@ -309,8 +301,9 @@ async function createGoogleCache(
   const { cacheManager } = initGoogleAI()
   
   const cache = await cacheManager!.create({
-    model: `models/${DEFAULT_CONFIG.gemini_model}`,
+    model: DEFAULT_CONFIG.gemini_model,
     displayName: filename,
+    systemInstruction: systemPrompt,
     contents: [
       {
         role: "user",
@@ -329,26 +322,26 @@ async function createGoogleCache(
   
   console.log(`[Gemini] Cache créé: ${cache.name}`)
   
-  return cache.name! // Format: "cachedContents/xxx"
+  return cache.name!
 }
 
-/**
- * Mettre à jour le TTL d'un cache existant via SDK
- */
 async function updateCacheTTL(cacheName: string, ttlSeconds: number = 3600): Promise<boolean> {
-  console.log(`[Gemini] Update TTL cache: ${cacheName}`)
+  console.log(`[Gemini] Vérification cache: ${cacheName}`)
   
   try {
     const { cacheManager } = initGoogleAI()
     
-    await cacheManager!.update(cacheName, {
-      ttlSeconds: ttlSeconds
-    })
+    // v8.5: Simplement vérifier que le cache existe (get), pas d'update TTL
+    // Le SDK update() a un bug avec ttlSeconds
+    const cache = await cacheManager!.get(cacheName)
     
-    console.log(`[Gemini] TTL mis à jour pour ${cacheName}`)
-    return true
+    if (cache && cache.name) {
+      console.log(`[Gemini] Cache valide: ${cacheName}`)
+      return true
+    }
+    
+    return false
   } catch (error) {
-    // Cache n'existe plus, retourner false pour déclencher recréation
     console.warn(`[Gemini] Cache ${cacheName} introuvable ou expiré:`, error)
     return false
   }
@@ -356,15 +349,12 @@ async function updateCacheTTL(cacheName: string, ttlSeconds: number = 3600): Pro
 
 // ============================================================================
 // GOOGLE AI - GENERATION (SDK)
+// v8.2: PAS de systemInstruction ici (déjà dans le cache)
 // ============================================================================
 
-/**
- * Générer une réponse avec Gemini en utilisant les caches via SDK
- */
 async function generateWithGemini(
   query: string,
   cacheNames: string[],
-  systemPrompt: string,
   temperature: number = 0.3,
   maxTokens: number = 2048
 ): Promise<string> {
@@ -372,11 +362,9 @@ async function generateWithGemini(
   
   const { cacheManager, genAI } = initGoogleAI()
   
-  // Récupérer le cache
   const cacheName = cacheNames[0]
   const cache = await cacheManager!.get(cacheName)
   
-  // Créer le modèle avec le cache
   const model = genAI!.getGenerativeModelFromCachedContent(cache, {
     generationConfig: {
       temperature: temperature,
@@ -384,15 +372,13 @@ async function generateWithGemini(
     }
   })
   
-  // Générer la réponse
   const result = await model.generateContent({
     contents: [
       {
         role: "user",
         parts: [{ text: query }]
       }
-    ],
-    systemInstruction: systemPrompt
+    ]
   })
   
   const response = result.response
@@ -407,11 +393,13 @@ async function generateWithGemini(
 
 // ============================================================================
 // WORKFLOW GEMINI - Cache Strategy
+// v8.2: Passer le systemPrompt lors de la création du cache
 // ============================================================================
 
 async function processCacheStrategy(
   supabase: ReturnType<typeof createClient>,
-  files: FileResult[]
+  files: FileResult[],
+  systemPrompt: string
 ): Promise<GeminiCacheInfo[]> {
   const results: GeminiCacheInfo[] = []
   
@@ -430,7 +418,6 @@ async function processCacheStrategy(
       .single()
     
     if (existingCache && !cacheError) {
-      // CACHE HIT - Mettre à jour le TTL
       console.log(`[Cache] HIT pour ${file.original_filename}`)
       
       const ttlUpdated = await updateCacheTTL(
@@ -439,7 +426,6 @@ async function processCacheStrategy(
       )
       
       if (ttlUpdated) {
-        // Mettre à jour expires_at dans notre table
         const newExpiry = new Date(Date.now() + DEFAULT_CONFIG.cache_ttl_seconds * 1000)
         await supabase
           .schema('rag')
@@ -450,12 +436,11 @@ async function processCacheStrategy(
         results.push({
           file_path: filePath,
           cache_name: existingCache.google_cache_name,
-          is_new: false
+          is_new: false  // CACHE HIT
         })
         continue
       }
       
-      // TTL update failed → cache expiré côté Google, on doit recréer
       console.log(`[Cache] Cache expiré côté Google, recréation nécessaire`)
       await supabase
         .schema('rag')
@@ -468,7 +453,6 @@ async function processCacheStrategy(
     console.log(`[Cache] MISS pour ${file.original_filename}`)
     
     try {
-      // Télécharger depuis Supabase Storage
       const { data: fileData, error: downloadError } = await supabase
         .storage
         .from(file.storage_bucket)
@@ -481,24 +465,28 @@ async function processCacheStrategy(
       
       const fileBuffer = await fileData.arrayBuffer()
       
-      // Upload vers Google Files
       const googleFileUri = await uploadToGoogleFiles(
         fileBuffer,
         file.original_filename,
         file.mime_type || 'application/pdf'
       )
       
-      // Créer le cache
       const cacheName = await createGoogleCache(
         googleFileUri,
         file.original_filename,
+        systemPrompt,
         DEFAULT_CONFIG.cache_ttl_seconds
       )
       
-      // Sauvegarder dans notre table
       const expiresAt = new Date(Date.now() + DEFAULT_CONFIG.cache_ttl_seconds * 1000)
       
-      await supabase
+      console.log(`[Cache] Tentative sauvegarde DB:`, {
+        file_path: filePath,
+        google_cache_name: cacheName,
+        expires_at: expiresAt.toISOString(),
+      })
+      
+      const { data: upsertData, error: upsertError } = await supabase
         .schema('rag')
         .from('active_caches')
         .upsert({
@@ -510,17 +498,23 @@ async function processCacheStrategy(
           mime_type: file.mime_type,
           file_size_bytes: file.file_size,
         })
+        .select()
+      
+      if (upsertError) {
+        console.error(`[Cache] ERREUR upsert DB:`, upsertError)
+      } else {
+        console.log(`[Cache] Sauvegardé en DB:`, upsertData)
+      }
       
       results.push({
         file_path: filePath,
         cache_name: cacheName,
-        is_new: true,
+        is_new: true,  // CACHE MISS - nouveau cache créé
         google_file_uri: googleFileUri
       })
       
     } catch (error) {
       console.error(`[Cache] Erreur création cache pour ${file.original_filename}:`, error)
-      // Continuer avec les autres fichiers
     }
   }
   
@@ -618,7 +612,8 @@ async function generateWithOpenAI(
 }
 
 // ============================================================================
-// EXECUTE CHUNKS MODE - Fonction réutilisable pour RAG classique
+// EXECUTE CHUNKS MODE
+// v8.6: Ajout generation_mode et cache_status dans la réponse
 // ============================================================================
 
 async function executeChunksMode(
@@ -646,7 +641,6 @@ async function executeChunksMode(
   
   console.log(`[baikal-librarian] Mode CHUNKS ${isFallback ? '(FALLBACK)' : '(classique)'}`)
 
-  // Recherche vectorielle avec match_documents_v10
   const { data: documents, error: searchError } = await supabase
     .schema('rag')
     .rpc("match_documents_v10", {
@@ -690,10 +684,8 @@ async function executeChunksMode(
     return errorResponse("Aucun document pertinent trouvé", 404)
   }
 
-  // Formater le contexte
   const context = formatContext(matchedDocs, agentConfig.max_context_length || DEFAULT_CONFIG.max_context_length)
 
-  // Générer la réponse avec OpenAI
   const response = await generateWithOpenAI(
     query,
     context,
@@ -703,7 +695,6 @@ async function executeChunksMode(
     agentConfig.llm_model || DEFAULT_CONFIG.llm_model
   )
 
-  // Métriques
   const layerCounts = {
     app: matchedDocs.filter(d => d.layer === 'app').length,
     org: matchedDocs.filter(d => d.layer === 'org').length,
@@ -711,8 +702,11 @@ async function executeChunksMode(
     user: matchedDocs.filter(d => d.layer === 'user').length,
   }
 
+  // v8.6: Ajout generation_mode et cache_status
   return successResponse({
     response: response,
+    generation_mode: isFallback ? 'chunks-fallback' : 'chunks',
+    cache_status: null,  // Pas de cache en mode chunks
     metrics: {
       mode: 'chunks',
       fallback: isFallback,
@@ -733,13 +727,11 @@ async function executeChunksMode(
 // ============================================================================
 
 serve(async (req) => {
-  // CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders })
   }
 
   try {
-    // Parse request
     const body: RequestBody = await req.json()
     const {
       query,
@@ -748,7 +740,7 @@ serve(async (req) => {
       project_id,
       app_id,
       agent_id,
-      generation_mode = 'chunks', // Default: comportement existant
+      generation_mode = 'chunks',
       match_threshold = DEFAULT_CONFIG.match_threshold,
       match_count = DEFAULT_CONFIG.match_count,
       temperature = DEFAULT_CONFIG.temperature,
@@ -761,7 +753,6 @@ serve(async (req) => {
       filter_concepts,
     } = body
 
-    // Validation
     if (!query?.trim()) {
       return errorResponse("Query is required")
     }
@@ -771,7 +762,6 @@ serve(async (req) => {
 
     console.log(`[baikal-librarian] Mode: ${generation_mode}, Query: "${query.substring(0, 50)}..."`)
 
-    // Init Supabase client
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
     // ========================================
@@ -787,10 +777,9 @@ serve(async (req) => {
     const effectiveOrgId = org_id || profile?.org_id
     const effectiveAppId = app_id || profile?.app_id || 'arpet'
 
-    // Charger config agent si agent_id fourni
     let agentConfig = { ...DEFAULT_CONFIG }
     let systemPrompt = FALLBACK_SYSTEM_PROMPT
-    let geminiSystemPrompt = GEMINI_SYSTEM_PROMPT  // Prompt Gemini par défaut
+    let geminiSystemPrompt = GEMINI_SYSTEM_PROMPT
 
     if (agent_id) {
       const { data: agent } = await supabase
@@ -803,7 +792,6 @@ serve(async (req) => {
       if (agent) {
         agentConfig = { ...agentConfig, ...agent.config }
         systemPrompt = agent.system_prompt || FALLBACK_SYSTEM_PROMPT
-        // Utiliser le prompt Gemini de l'agent si disponible
         geminiSystemPrompt = agent.gemini_system_prompt || GEMINI_SYSTEM_PROMPT
       }
     }
@@ -819,26 +807,18 @@ serve(async (req) => {
     // ========================================
 
     if (generation_mode === 'gemini') {
-      // ════════════════════════════════════════
-      // MODE GEMINI - Retrieve then Read
-      // ════════════════════════════════════════
-      
       console.log("[baikal-librarian] Mode GEMINI activé")
 
-      // Vérifier que la clé Google est configurée
       if (!GEMINI_API_KEY) {
         console.warn("[baikal-librarian] GEMINI_API_KEY non configurée, fallback vers chunks")
-        // Fallback vers mode chunks
         return await executeChunksMode(
           supabase, query, queryEmbedding, user_id, effectiveOrgId, project_id,
           effectiveAppId, match_threshold, match_count, temperature, max_tokens,
           include_app_layer, include_org_layer, include_project_layer, include_user_layer,
-          filter_source_types, filter_concepts, agentConfig, systemPrompt,
-          true // isFallback
+          filter_source_types, filter_concepts, agentConfig, systemPrompt, true
         )
       }
 
-      // 3a. Rechercher les fichiers avec source_file_id
       const { data: filesWithSource, error: filesError } = await supabase
         .schema('rag')
         .rpc('match_files_v1', {
@@ -857,13 +837,11 @@ serve(async (req) => {
 
       if (filesError) {
         console.error("[baikal-librarian] Erreur match_files_v1:", filesError)
-        // Fallback vers mode chunks
         return await executeChunksMode(
           supabase, query, queryEmbedding, user_id, effectiveOrgId, project_id,
           effectiveAppId, match_threshold, match_count, temperature, max_tokens,
           include_app_layer, include_org_layer, include_project_layer, include_user_layer,
-          filter_source_types, filter_concepts, agentConfig, systemPrompt,
-          true // isFallback
+          filter_source_types, filter_concepts, agentConfig, systemPrompt, true
         )
       }
 
@@ -883,34 +861,32 @@ serve(async (req) => {
 
       console.log(`[baikal-librarian] ${files.length} fichier(s) trouvé(s) avec source`)
 
-      // 3b. Si aucun fichier avec source, fallback vers chunks
       if (files.length === 0) {
         console.log("[baikal-librarian] Aucun fichier avec source, fallback vers chunks")
         return await executeChunksMode(
           supabase, query, queryEmbedding, user_id, effectiveOrgId, project_id,
           effectiveAppId, match_threshold, match_count, temperature, max_tokens,
           include_app_layer, include_org_layer, include_project_layer, include_user_layer,
-          filter_source_types, filter_concepts, agentConfig, systemPrompt,
-          true // isFallback
+          filter_source_types, filter_concepts, agentConfig, systemPrompt, true
         )
       }
 
-      // 3c. Traiter les fichiers avec Google Cache
+      // v8.6: Stocker les cacheInfos pour déterminer cache_status
+      let cacheInfos: GeminiCacheInfo[] = []
+      let validCaches: GeminiCacheInfo[] = []
       let geminiResponse = ""
       let geminiSuccess = false
 
       try {
-        const cacheInfos = await processCacheStrategy(supabase, files)
-        const validCaches = cacheInfos.filter(c => c.cache_name)
+        cacheInfos = await processCacheStrategy(supabase, files, geminiSystemPrompt)
+        validCaches = cacheInfos.filter(c => c.cache_name)
 
         if (validCaches.length > 0) {
           console.log(`[baikal-librarian] ${validCaches.length} cache(s) prêt(s)`)
           
-          // Générer avec Gemini
           geminiResponse = await generateWithGemini(
             query,
             validCaches.map(c => c.cache_name!),
-            geminiSystemPrompt,  // Utilise le prompt personnalisé de l'agent
             temperature,
             max_tokens
           )
@@ -920,22 +896,19 @@ serve(async (req) => {
         }
       } catch (geminiError) {
         console.error("[baikal-librarian] Erreur Gemini:", geminiError)
-        // geminiSuccess reste false, on va fallback
       }
 
-      // 3d. Si Gemini a échoué, fallback vers match_documents_v10
       if (!geminiSuccess) {
         console.log("[baikal-librarian] Échec Gemini, fallback vers match_documents_v10")
         return await executeChunksMode(
           supabase, query, queryEmbedding, user_id, effectiveOrgId, project_id,
           effectiveAppId, match_threshold, match_count, temperature, max_tokens,
           include_app_layer, include_org_layer, include_project_layer, include_user_layer,
-          filter_source_types, filter_concepts, agentConfig, systemPrompt,
-          true // isFallback
+          filter_source_types, filter_concepts, agentConfig, systemPrompt, true
         )
       }
 
-      // 3e. Succès Gemini - Rechercher aussi les chunks orphelins pour enrichir
+      // Succès Gemini - Rechercher chunks orphelins
       const { data: chunksWithoutSource } = await supabase
         .schema('rag')
         .rpc('match_documents_orphans_v1', {
@@ -961,7 +934,6 @@ serve(async (req) => {
         source_type: d.out_source_type,
       }))
 
-      // 3f. Mode hybrid: combiner Gemini + chunks orphelins si pertinents
       let finalResponse = geminiResponse
       if (orphanChunks.length > 2) {
         finalResponse += `\n\n---\n**Sources complémentaires (base documentaire):**\n`
@@ -972,35 +944,47 @@ serve(async (req) => {
         }
       }
 
-      // Métriques
-      const metrics = {
-        mode: 'gemini',
-        fallback: false,
-        files_found: files.length,
-        orphan_chunks: orphanChunks.length,
-        files: files.map(f => ({
-          filename: f.original_filename,
-          similarity: f.max_similarity,
-          chunks: f.chunk_count
-        }))
+      // v8.6: Calcul du cache_status basé sur les cacheInfos
+      const cacheHits = validCaches.filter(c => !c.is_new).length
+      const cacheMisses = validCaches.filter(c => c.is_new).length
+      
+      // Déterminer le statut global du cache
+      let cacheStatus: 'hit' | 'miss' | 'partial'
+      if (cacheHits > 0 && cacheMisses === 0) {
+        cacheStatus = 'hit'
+      } else if (cacheHits === 0 && cacheMisses > 0) {
+        cacheStatus = 'miss'
+      } else {
+        cacheStatus = 'partial'
       }
 
+      // v8.6: Réponse enrichie avec generation_mode et cache_status
       return successResponse({
         response: finalResponse,
-        metrics: metrics,
+        generation_mode: 'gemini',
+        cache_status: cacheStatus,
+        metrics: {
+          mode: 'gemini',
+          fallback: false,
+          cache_hits: cacheHits,
+          cache_misses: cacheMisses,
+          files_found: files.length,
+          orphan_chunks: orphanChunks.length,
+          files: files.map(f => ({
+            filename: f.original_filename,
+            similarity: f.max_similarity,
+            chunks: f.chunk_count
+          }))
+        },
       })
 
     } else {
-      // ════════════════════════════════════════
-      // MODE CHUNKS - RAG Classique (existant)
-      // ════════════════════════════════════════
-      
+      // MODE CHUNKS
       return await executeChunksMode(
         supabase, query, queryEmbedding, user_id, effectiveOrgId, project_id,
         effectiveAppId, match_threshold, match_count, temperature, max_tokens,
         include_app_layer, include_org_layer, include_project_layer, include_user_layer,
-        filter_source_types, filter_concepts, agentConfig, systemPrompt,
-        false // pas un fallback
+        filter_source_types, filter_concepts, agentConfig, systemPrompt, false
       )
     }
 

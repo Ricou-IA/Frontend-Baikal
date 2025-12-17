@@ -6,13 +6,14 @@
  * MODIFICATIONS:
  * - Ajout des exports pour les nouveaux noms (apps vs verticals)
  * - Aliases de compatibilité conservés
+ * - Ajout services Administration (invitations, users, projects, admin)
  * 
  * Tous les services retournent un objet { data, error } pour une gestion
  * d'erreur uniforme.
  * 
  * @example
  * // Import groupé (nouveau nommage)
- * import { documentsService, ragService, profileService } from '@/services';
+ * import { documentsService, profileService, adminService } from '@/services';
  * 
  * // Import individuel
  * import { documentsService } from '@/services/documents.service';
@@ -87,5 +88,36 @@ export {
   togglePromptStatus,
 } from './prompts.service';
 
-// Re-export getVerticals depuis prompts.service pour compatibilité
-// (ce service a sa propre fonction getVerticals qui devra aussi être migrée)
+// ============================================================================
+// SERVICES ADMINISTRATION (Gestion Users/Orgs/Projets via RPC)
+// ============================================================================
+
+// Service Invitations (codes d'invitation par organisation)
+// Utilise les RPC: create_invitation, validate_invitation_code, get_invitations, revoke_invitation
+export { 
+  invitationsService,
+  INVITATION_APP_ROLES,
+  INVITATION_BUSINESS_ROLES,
+} from './invitations.service';
+
+// Service Utilisateurs Admin (gestion des users par super_admin/org_admin)
+// Utilise les RPC: get_pending_users, get_users_for_admin, assign_user_to_org, update_user_role, remove_user_from_org
+// ⚠️ Les modifications de rôle impactent les permissions sur les Layers RAG
+export { 
+  usersService,
+  APP_ROLES,
+  BUSINESS_ROLES,
+} from './users.service';
+
+// Service Projets (gestion des projets et membres)
+// Utilise les RPC: create_project, update_project, delete_project, get_projects, assign_user_to_project, etc.
+// ⚠️ Les membres de projet ont accès aux documents de la couche PROJECT
+export { 
+  projectsService,
+  PROJECT_STATUSES,
+  PROJECT_ROLES,
+} from './projects.service';
+
+// Service Admin (statistiques et dashboard)
+// Utilise la vue: core.admin_users_stats
+export { adminService } from './admin.service';
