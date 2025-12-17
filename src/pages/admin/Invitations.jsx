@@ -12,6 +12,12 @@
  * 
  * Route : /admin/invitations
  * Accès : super_admin (toutes orgs) / org_admin (son org)
+ * 
+ * CORRECTIONS 17/12/2025:
+ * - Suppression du champ "Rôle business"
+ * - super_admin peut inviter: org_admin, team_leader, user
+ * - org_admin peut inviter: team_leader, user
+ * - Correction affichage org_name
  * ============================================================================
  */
 
@@ -49,14 +55,14 @@ import {
 // CONFIGURATION
 // ============================================================================
 
-const APP_ROLES = [
-    { value: 'user', label: 'User', description: 'Membre standard' },
+/**
+ * Rôles disponibles pour les invitations
+ * Filtrés dynamiquement selon le rôle de l'utilisateur connecté
+ */
+const ALL_APP_ROLES = [
+    { value: 'org_admin', label: 'Admin Organisation', description: 'Administrateur de l\'organisation', forSuperAdminOnly: true },
     { value: 'team_leader', label: 'Team Leader', description: 'Chef de projet' },
-];
-
-const BUSINESS_ROLES = [
-    { value: 'provider', label: 'Provider', description: 'Prestataire' },
-    { value: 'client', label: 'Client', description: 'Client' },
+    { value: 'user', label: 'User', description: 'Membre standard' },
 ];
 
 const STATUS_FILTERS = [
@@ -76,7 +82,7 @@ const STATUS_FILTERS = [
  */
 function getInvitationUrl(code) {
     const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
-    return `${baseUrl}/signup?invite=${code}`;
+    return `${baseUrl}/login?invite=${code}`;
 }
 
 /**
@@ -115,6 +121,17 @@ function formatRelativeDate(dateStr) {
     } else {
         return `Expire dans ${diffDays} jours`;
     }
+}
+
+/**
+ * Retourne les rôles disponibles selon le rôle de l'utilisateur
+ */
+function getAvailableRoles(isSuperAdmin) {
+    if (isSuperAdmin) {
+        return ALL_APP_ROLES;
+    }
+    // org_admin ne peut pas inviter d'org_admin
+    return ALL_APP_ROLES.filter(role => !role.forSuperAdminOnly);
 }
 
 // ============================================================================
@@ -224,7 +241,7 @@ function InvitationRow({ invitation, onCopyLink, onRevoke, showOrg = true }) {
                 <td className="px-4 py-4">
                     <div className="flex items-center gap-2 text-baikal-text">
                         <Building2 className="w-4 h-4" />
-                        <span className="text-sm">{invitation.organization?.name || '-'}</span>
+                        <span className="text-sm">{invitation.organization?.name || invitation.org_name || '-'}</span>
                     </div>
                 </td>
             )}
@@ -255,16 +272,11 @@ function InvitationRow({ invitation, onCopyLink, onRevoke, showOrg = true }) {
                 </div>
             </td>
 
-            {/* Rôles */}
+            {/* Rôle */}
             <td className="px-4 py-4">
-                <div className="flex flex-col gap-1">
-                    <span className="text-xs font-mono text-violet-400">
-                        {invitation.default_app_role || 'user'}
-                    </span>
-                    <span className="text-xs font-mono text-blue-400">
-                        {invitation.default_business_role || '-'}
-                    </span>
-                </div>
+                <span className="text-xs font-mono text-violet-400">
+                    {invitation.default_app_role || 'user'}
+                </span>
             </td>
 
             {/* Statut */}
@@ -299,14 +311,15 @@ function InvitationRow({ invitation, onCopyLink, onRevoke, showOrg = true }) {
 /**
  * Modal de création d'invitation
  */
-function CreateInvitationModal({ isOpen, onClose, organizations, defaultOrgId, onCreated }) {
+function CreateInvitationModal({ isOpen, onClose, organizations, defaultOrgId, onCreated, isSuperAdmin }) {
+    const availableRoles = getAvailableRoles(isSuperAdmin);
+    
     const [formData, setFormData] = useState({
         org_id: defaultOrgId || '',
         label: '',
         max_uses: '',
         expires_in_days: '7',
         default_app_role: 'user',
-        default_business_role: '',
     });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -321,7 +334,6 @@ function CreateInvitationModal({ isOpen, onClose, organizations, defaultOrgId, o
                 max_uses: '',
                 expires_in_days: '7',
                 default_app_role: 'user',
-                default_business_role: '',
             });
             setError(null);
             setCreatedInvitation(null);
@@ -334,16 +346,13 @@ function CreateInvitationModal({ isOpen, onClose, organizations, defaultOrgId, o
         setError(null);
 
         try {
-            const payload = {
-                p_org_id: formData.org_id || null,
-                p_label: formData.label.trim() || null,
-                p_max_uses: formData.max_uses ? parseInt(formData.max_uses, 10) : null,
-                p_expires_in_days: formData.expires_in_days ? parseInt(formData.expires_in_days, 10) : null,
-                p_default_app_role: formData.default_app_role || 'user',
-                p_default_business_role: formData.default_business_role || null,
-            };
-
-            const result = await invitationsService.createInvitation(payload);
+            const result = await invitationsService.createInvitation({
+                orgId: formData.org_id || null,
+                label: formData.label.trim() || null,
+                maxUses: formData.max_uses ? parseInt(formData.max_uses, 10) : null,
+                expiresInDays: formData.expires_in_days ? parseInt(formData.expires_in_days, 10) : null,
+                defaultAppRole: formData.default_app_role || 'user',
+            });
 
             if (result.error) {
                 throw new Error(result.error.message || result.error);
@@ -423,6 +432,9 @@ function CreateInvitationModal({ isOpen, onClose, organizations, defaultOrgId, o
                         <div className="p-4 bg-baikal-bg/50 border border-baikal-border rounded-md">
                             <h4 className="text-sm font-mono text-white mb-2">Récapitulatif</h4>
                             <ul className="text-sm text-baikal-text space-y-1">
+                                {createdInvitation.org_name && (
+                                    <li>Organisation : <span className="text-white">{createdInvitation.org_name}</span></li>
+                                )}
                                 {createdInvitation.label && (
                                     <li>Label : <span className="text-white">{createdInvitation.label}</span></li>
                                 )}
@@ -440,17 +452,10 @@ function CreateInvitationModal({ isOpen, onClose, organizations, defaultOrgId, o
                                     </span>
                                 </li>
                                 <li>
-                                    Rôle app : <span className="text-violet-400 font-mono">
+                                    Rôle : <span className="text-violet-400 font-mono">
                                         {createdInvitation.default_app_role}
                                     </span>
                                 </li>
-                                {createdInvitation.default_business_role && (
-                                    <li>
-                                        Rôle business : <span className="text-blue-400 font-mono">
-                                            {createdInvitation.default_business_role}
-                                        </span>
-                                    </li>
-                                )}
                             </ul>
                         </div>
 
@@ -505,11 +510,12 @@ function CreateInvitationModal({ isOpen, onClose, organizations, defaultOrgId, o
                     {organizations.length > 0 && (
                         <div>
                             <label className="block text-sm font-mono text-baikal-text mb-2">
-                                Organisation cible
+                                Organisation cible *
                             </label>
                             <select
                                 value={formData.org_id}
                                 onChange={(e) => setFormData({ ...formData, org_id: e.target.value })}
+                                required
                                 className="w-full px-4 py-2.5 bg-baikal-bg border border-baikal-border rounded-md text-white focus:outline-none focus:border-baikal-cyan transition-colors"
                             >
                                 <option value="">-- Sélectionner une organisation --</option>
@@ -576,42 +582,25 @@ function CreateInvitationModal({ isOpen, onClose, organizations, defaultOrgId, o
                         </div>
                     </div>
 
-                    {/* Rôles */}
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-mono text-baikal-text mb-2">
-                                Rôle app par défaut
-                            </label>
-                            <select
-                                value={formData.default_app_role}
-                                onChange={(e) => setFormData({ ...formData, default_app_role: e.target.value })}
-                                className="w-full px-4 py-2.5 bg-baikal-bg border border-baikal-border rounded-md text-white focus:outline-none focus:border-baikal-cyan transition-colors"
-                            >
-                                {APP_ROLES.map((role) => (
-                                    <option key={role.value} value={role.value}>
-                                        {role.label}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-mono text-baikal-text mb-2">
-                                Rôle business
-                            </label>
-                            <select
-                                value={formData.default_business_role}
-                                onChange={(e) => setFormData({ ...formData, default_business_role: e.target.value })}
-                                className="w-full px-4 py-2.5 bg-baikal-bg border border-baikal-border rounded-md text-white focus:outline-none focus:border-baikal-cyan transition-colors"
-                            >
-                                <option value="">-- Aucun --</option>
-                                {BUSINESS_ROLES.map((role) => (
-                                    <option key={role.value} value={role.value}>
-                                        {role.label}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
+                    {/* Rôle app */}
+                    <div>
+                        <label className="block text-sm font-mono text-baikal-text mb-2">
+                            Rôle attribué
+                        </label>
+                        <select
+                            value={formData.default_app_role}
+                            onChange={(e) => setFormData({ ...formData, default_app_role: e.target.value })}
+                            className="w-full px-4 py-2.5 bg-baikal-bg border border-baikal-border rounded-md text-white focus:outline-none focus:border-baikal-cyan transition-colors"
+                        >
+                            {availableRoles.map((role) => (
+                                <option key={role.value} value={role.value}>
+                                    {role.label} - {role.description}
+                                </option>
+                            ))}
+                        </select>
+                        <p className="mt-1 text-xs text-baikal-text">
+                            Tous les utilisateurs utilisant ce code auront ce rôle
+                        </p>
                     </div>
 
                     {/* Info */}
@@ -619,7 +608,7 @@ function CreateInvitationModal({ isOpen, onClose, organizations, defaultOrgId, o
                         <p className="text-xs text-baikal-text">
                             <strong className="text-white">Note :</strong> Le code d'invitation sera 
                             généré automatiquement. L'utilisateur pourra s'inscrire via le lien 
-                            <code className="mx-1 px-1 bg-baikal-surface rounded text-baikal-cyan">/signup?invite=CODE</code>
+                            <code className="mx-1 px-1 bg-baikal-surface rounded text-baikal-cyan">/login?invite=CODE</code>
                         </p>
                     </div>
 
@@ -635,7 +624,7 @@ function CreateInvitationModal({ isOpen, onClose, organizations, defaultOrgId, o
                         </button>
                         <button
                             type="submit"
-                            disabled={loading}
+                            disabled={loading || (organizations.length > 0 && !formData.org_id)}
                             className="flex items-center gap-2 px-4 py-2 bg-baikal-cyan text-black font-medium rounded-md hover:bg-baikal-cyan/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-mono"
                         >
                             {loading ? (
@@ -717,7 +706,7 @@ function RevokeConfirmModal({ isOpen, onClose, invitation, onConfirm }) {
                         )}
                         <p className="text-sm text-baikal-text mt-2">
                             {invitation.use_count || 0} utilisation(s) • 
-                            {invitation.organization?.name || 'Sans org'}
+                            {invitation.organization?.name || invitation.org_name || 'Sans org'}
                         </p>
                     </div>
 
@@ -805,7 +794,7 @@ export default function Invitations() {
             }
 
             try {
-                const result = await organizationService.getOrganizations({ include_inactive: false });
+                const result = await organizationService.getOrganizations({ includeInactive: false });
                 if (result.data?.organizations) {
                     setOrganizations(result.data.organizations);
                 } else if (Array.isArray(result.data)) {
@@ -824,19 +813,17 @@ export default function Invitations() {
         setError(null);
 
         try {
-            const params = {
-                p_org_id: orgFilter || null,
-                p_include_inactive: statusFilter === 'revoked' || statusFilter === 'all',
-                p_include_expired: statusFilter === 'expired' || statusFilter === 'all',
-            };
-
-            const result = await invitationsService.getInvitations(params);
+            const result = await invitationsService.getInvitations({
+                orgId: orgFilter || null,
+                includeInactive: statusFilter === 'revoked' || statusFilter === 'all',
+                includeExpired: statusFilter === 'expired' || statusFilter === 'all',
+            });
 
             if (result.error) {
                 throw new Error(result.error.message || result.error);
             }
 
-            let data = result.data?.invitations || result.data || [];
+            let data = result.data || [];
 
             // Filtrer côté client selon le statut
             if (statusFilter !== 'all') {
@@ -1019,7 +1006,7 @@ export default function Invitations() {
                                             Expiration
                                         </th>
                                         <th className="px-4 py-3 text-left text-xs font-mono font-semibold text-baikal-text uppercase tracking-wider">
-                                            Rôles
+                                            Rôle
                                         </th>
                                         <th className="px-4 py-3 text-left text-xs font-mono font-semibold text-baikal-text uppercase tracking-wider">
                                             Statut
@@ -1057,6 +1044,7 @@ export default function Invitations() {
                 organizations={isSuperAdmin ? organizations : []}
                 defaultOrgId={defaultOrgId}
                 onCreated={handleCreated}
+                isSuperAdmin={isSuperAdmin}
             />
 
             {/* Modal Révoquer */}
