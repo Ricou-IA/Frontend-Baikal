@@ -4,10 +4,10 @@
  * Page de gestion des organisations (super_admin uniquement).
  * 
  * Fonctionnalités :
- * - Liste des organisations avec recherche et filtres
- * - Création / Modification / Suppression d'organisations
- * - Affichage des stats (membres, projets)
- * - Gestion du statut (actif/inactif)
+ * - Liste des organisations avec filtres
+ * - Création / Modification / Suppression
+ * - Assignation d'une App
+ * - Gestion des plans
  * 
  * Route : /admin/organizations
  * Accès : super_admin uniquement
@@ -17,16 +17,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { organizationService } from '../../services';
+import { organizationService, getApps } from '../../services';
 import {
     Building2,
     Plus,
     Search,
-    Filter,
     Edit2,
     Trash2,
-    Power,
-    PowerOff,
     Users,
     FolderOpen,
     AlertCircle,
@@ -35,8 +32,9 @@ import {
     Check,
     ChevronLeft,
     MoreVertical,
-    Copy,
-    ExternalLink,
+    Power,
+    PowerOff,
+    Layers,
 } from 'lucide-react';
 
 // ============================================================================
@@ -51,44 +49,54 @@ const PLANS = [
 ];
 
 // ============================================================================
-// COMPOSANTS INTERNES
+// UTILITAIRES
 // ============================================================================
 
-/**
- * Badge de statut
- */
-function StatusBadge({ isActive }) {
-    return (
-        <span className={`
-            inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-mono
-            ${isActive 
-                ? 'bg-green-500/20 text-green-400' 
-                : 'bg-red-500/20 text-red-400'
-            }
-        `}>
-            {isActive ? <Power className="w-3 h-3" /> : <PowerOff className="w-3 h-3" />}
-            {isActive ? 'ACTIF' : 'INACTIF'}
-        </span>
-    );
+function getPlanConfig(plan) {
+    return PLANS.find(p => p.value === plan) || PLANS[0];
 }
+
+// ============================================================================
+// COMPOSANTS INTERNES
+// ============================================================================
 
 /**
  * Badge de plan
  */
 function PlanBadge({ plan }) {
-    const planConfig = PLANS.find(p => p.value === plan) || PLANS[0];
+    const config = getPlanConfig(plan);
     return (
-        <span className={`text-xs font-mono uppercase ${planConfig.color}`}>
-            {planConfig.label}
+        <span className={`text-xs font-mono uppercase ${config.color}`}>
+            {config.label}
         </span>
     );
 }
 
 /**
- * Ligne du tableau organisation
+ * Badge de statut
  */
-function OrganizationRow({ org, onEdit, onToggleStatus, onDelete }) {
+function StatusBadge({ isActive }) {
+    return isActive ? (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono bg-green-500/20 text-green-400">
+            <Power className="w-3 h-3" />
+            ACTIF
+        </span>
+    ) : (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono bg-red-500/20 text-red-400">
+            <PowerOff className="w-3 h-3" />
+            INACTIF
+        </span>
+    );
+}
+
+/**
+ * Ligne du tableau
+ */
+function OrganizationRow({ org, apps, onEdit, onToggleStatus, onDelete }) {
     const [showMenu, setShowMenu] = useState(false);
+    
+    // Trouver le nom de l'app
+    const appName = apps.find(a => a.id === org.app_id)?.name || '-';
 
     return (
         <tr className="border-b border-baikal-border hover:bg-baikal-surface/50 transition-colors">
@@ -97,6 +105,14 @@ function OrganizationRow({ org, onEdit, onToggleStatus, onDelete }) {
                 <div>
                     <p className="font-medium text-white">{org.name}</p>
                     <p className="text-xs text-baikal-text font-mono">{org.slug}</p>
+                </div>
+            </td>
+
+            {/* App */}
+            <td className="px-4 py-4">
+                <div className="flex items-center gap-2 text-baikal-text">
+                    <Layers className="w-4 h-4" />
+                    <span className="text-sm">{appName}</span>
                 </div>
             </td>
 
@@ -138,13 +154,11 @@ function OrganizationRow({ org, onEdit, onToggleStatus, onDelete }) {
 
                     {showMenu && (
                         <>
-                            {/* Overlay pour fermer le menu */}
                             <div 
                                 className="fixed inset-0 z-10" 
                                 onClick={() => setShowMenu(false)}
                             />
                             
-                            {/* Menu dropdown */}
                             <div className="absolute right-0 top-full mt-1 w-48 bg-baikal-surface border border-baikal-border rounded-md shadow-lg z-20">
                                 <button
                                     onClick={() => { onEdit(org); setShowMenu(false); }}
@@ -189,37 +203,36 @@ function OrganizationRow({ org, onEdit, onToggleStatus, onDelete }) {
 /**
  * Modal de création/modification d'organisation
  */
-function OrganizationModal({ isOpen, onClose, organization, onSave }) {
+function OrganizationModal({ isOpen, onClose, organization, apps, onSave }) {
     const isEdit = !!organization;
     
     const [formData, setFormData] = useState({
         name: '',
-        description: '',
         plan: 'free',
-        settings: '',
+        app_id: '',
     });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
-    // Initialiser le formulaire
+    // Reset form when modal opens
     useEffect(() => {
-        if (organization) {
-            setFormData({
-                name: organization.name || '',
-                description: organization.description || '',
-                plan: organization.plan || 'free',
-                settings: organization.settings ? JSON.stringify(organization.settings, null, 2) : '',
-            });
-        } else {
-            setFormData({
-                name: '',
-                description: '',
-                plan: 'free',
-                settings: '',
-            });
+        if (isOpen) {
+            if (organization) {
+                setFormData({
+                    name: organization.name || '',
+                    plan: organization.plan || 'free',
+                    app_id: organization.app_id || '',
+                });
+            } else {
+                setFormData({
+                    name: '',
+                    plan: 'free',
+                    app_id: apps.length > 0 ? apps[0].id : '',
+                });
+            }
+            setError(null);
         }
-        setError(null);
-    }, [organization, isOpen]);
+    }, [isOpen, organization, apps]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -227,39 +240,33 @@ function OrganizationModal({ isOpen, onClose, organization, onSave }) {
         setError(null);
 
         try {
-            // Valider le JSON si présent
-            let settings = null;
-            if (formData.settings.trim()) {
-                try {
-                    settings = JSON.parse(formData.settings);
-                } catch (jsonErr) {
-                    throw new Error('Le champ Settings doit être un JSON valide');
-                }
-            }
-
-            const payload = {
-                name: formData.name.trim(),
-                description: formData.description.trim() || null,
-                plan: formData.plan,
-                settings,
-            };
-
             let result;
+
             if (isEdit) {
-                result = await organizationService.updateOrganization(organization.id, payload);
+                result = await organizationService.updateOrganization({
+                    p_org_id: organization.id,
+                    p_name: formData.name.trim(),
+                    p_plan: formData.plan,
+                    p_app_id: formData.app_id || null,
+                });
             } else {
-                result = await organizationService.createOrganization(payload);
+                result = await organizationService.createOrganization({
+                    p_name: formData.name.trim(),
+                    p_plan: formData.plan,
+                    p_app_id: formData.app_id || null,
+                });
             }
 
             if (result.error) {
                 throw new Error(result.error.message || result.error);
             }
 
+            // Vérifier le retour JSONB
             if (result.data?.success === false) {
                 throw new Error(result.data.error || 'Erreur inconnue');
             }
 
-            onSave(result.data);
+            onSave();
             onClose();
         } catch (err) {
             console.error('[OrganizationModal] Error:', err);
@@ -280,7 +287,7 @@ function OrganizationModal({ isOpen, onClose, organization, onSave }) {
             />
 
             {/* Modal */}
-            <div className="relative w-full max-w-lg mx-4 bg-baikal-surface border border-baikal-border rounded-lg shadow-xl">
+            <div className="relative w-full max-w-md mx-4 bg-baikal-surface border border-baikal-border rounded-lg shadow-xl">
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-baikal-border">
                     <h2 className="text-lg font-mono font-semibold text-white">
@@ -317,23 +324,26 @@ function OrganizationModal({ isOpen, onClose, organization, onSave }) {
                             required
                             className="w-full px-4 py-2.5 bg-baikal-bg border border-baikal-border rounded-md text-white placeholder-baikal-text/50 focus:outline-none focus:border-baikal-cyan transition-colors"
                         />
-                        <p className="mt-1 text-xs text-baikal-text">
-                            Le slug sera généré automatiquement
-                        </p>
                     </div>
 
-                    {/* Description */}
+                    {/* App */}
                     <div>
                         <label className="block text-sm font-mono text-baikal-text mb-2">
-                            Description
+                            Application *
                         </label>
-                        <textarea
-                            value={formData.description}
-                            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                            placeholder="Description de l'organisation..."
-                            rows={3}
-                            className="w-full px-4 py-2.5 bg-baikal-bg border border-baikal-border rounded-md text-white placeholder-baikal-text/50 focus:outline-none focus:border-baikal-cyan transition-colors resize-none"
-                        />
+                        <select
+                            value={formData.app_id}
+                            onChange={(e) => setFormData({ ...formData, app_id: e.target.value })}
+                            required
+                            className="w-full px-4 py-2.5 bg-baikal-bg border border-baikal-border rounded-md text-white focus:outline-none focus:border-baikal-cyan transition-colors"
+                        >
+                            <option value="">-- Sélectionner une app --</option>
+                            {apps.map((app) => (
+                                <option key={app.id} value={app.id}>
+                                    {app.name}
+                                </option>
+                            ))}
+                        </select>
                     </div>
 
                     {/* Plan */}
@@ -354,20 +364,6 @@ function OrganizationModal({ isOpen, onClose, organization, onSave }) {
                         </select>
                     </div>
 
-                    {/* Settings JSON (optionnel) */}
-                    <div>
-                        <label className="block text-sm font-mono text-baikal-text mb-2">
-                            Settings (JSON)
-                        </label>
-                        <textarea
-                            value={formData.settings}
-                            onChange={(e) => setFormData({ ...formData, settings: e.target.value })}
-                            placeholder='{"feature_flags": {...}}'
-                            rows={4}
-                            className="w-full px-4 py-2.5 bg-baikal-bg border border-baikal-border rounded-md text-white placeholder-baikal-text/50 focus:outline-none focus:border-baikal-cyan transition-colors resize-none font-mono text-sm"
-                        />
-                    </div>
-
                     {/* Actions */}
                     <div className="flex items-center justify-end gap-3 pt-4">
                         <button
@@ -380,7 +376,7 @@ function OrganizationModal({ isOpen, onClose, organization, onSave }) {
                         </button>
                         <button
                             type="submit"
-                            disabled={loading || !formData.name.trim()}
+                            disabled={loading || !formData.name.trim() || !formData.app_id}
                             className="flex items-center gap-2 px-4 py-2 bg-baikal-cyan text-black font-medium rounded-md hover:bg-baikal-cyan/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-mono"
                         >
                             {loading ? (
@@ -403,14 +399,24 @@ function OrganizationModal({ isOpen, onClose, organization, onSave }) {
 function DeleteConfirmModal({ isOpen, onClose, organization, onConfirm }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
-    const [confirmText, setConfirmText] = useState('');
+    const [confirmSlug, setConfirmSlug] = useState('');
+
+    useEffect(() => {
+        if (isOpen) {
+            setConfirmSlug('');
+            setError(null);
+        }
+    }, [isOpen]);
 
     const handleConfirm = async () => {
         setLoading(true);
         setError(null);
 
         try {
-            const result = await organizationService.deleteOrganization(organization.id, true);
+            const result = await organizationService.deleteOrganization({
+                p_org_id: organization.id,
+                p_confirm: true,
+            });
 
             if (result.error) {
                 throw new Error(result.error.message || result.error);
@@ -430,26 +436,17 @@ function DeleteConfirmModal({ isOpen, onClose, organization, onConfirm }) {
         }
     };
 
-    useEffect(() => {
-        if (isOpen) {
-            setConfirmText('');
-            setError(null);
-        }
-    }, [isOpen]);
-
     if (!isOpen || !organization) return null;
 
-    const canDelete = confirmText === organization.slug;
+    const canDelete = confirmSlug.toLowerCase() === organization.slug.toLowerCase();
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-            {/* Backdrop */}
             <div 
                 className="absolute inset-0 bg-black/70 backdrop-blur-sm"
                 onClick={onClose}
             />
 
-            {/* Modal */}
             <div className="relative w-full max-w-md mx-4 bg-baikal-surface border border-red-500/50 rounded-lg shadow-xl">
                 {/* Header */}
                 <div className="flex items-center gap-3 px-6 py-4 border-b border-baikal-border bg-red-900/20">
@@ -463,7 +460,6 @@ function DeleteConfirmModal({ isOpen, onClose, organization, onConfirm }) {
 
                 {/* Content */}
                 <div className="p-6 space-y-4">
-                    {/* Warning */}
                     <div className="p-4 bg-red-900/20 border border-red-500/30 rounded-md">
                         <p className="text-sm text-red-300">
                             <strong>Attention !</strong> Cette action est irréversible.
@@ -475,11 +471,9 @@ function DeleteConfirmModal({ isOpen, onClose, organization, onConfirm }) {
                         <ul className="mt-2 text-sm text-red-300 list-disc list-inside">
                             <li>{organization.member_count || 0} membre(s)</li>
                             <li>{organization.project_count || 0} projet(s)</li>
-                            <li>Toutes les invitations associées</li>
                         </ul>
                     </div>
 
-                    {/* Erreur */}
                     {error && (
                         <div className="p-3 bg-red-900/20 border border-red-500/50 rounded-md flex items-center gap-2 text-red-300 text-sm">
                             <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -487,21 +481,19 @@ function DeleteConfirmModal({ isOpen, onClose, organization, onConfirm }) {
                         </div>
                     )}
 
-                    {/* Confirmation */}
                     <div>
                         <label className="block text-sm text-baikal-text mb-2">
                             Tapez <span className="font-mono text-white">{organization.slug}</span> pour confirmer
                         </label>
                         <input
                             type="text"
-                            value={confirmText}
-                            onChange={(e) => setConfirmText(e.target.value)}
+                            value={confirmSlug}
+                            onChange={(e) => setConfirmSlug(e.target.value)}
                             placeholder={organization.slug}
-                            className="w-full px-4 py-2.5 bg-baikal-bg border border-baikal-border rounded-md text-white placeholder-baikal-text/50 focus:outline-none focus:border-red-500 transition-colors font-mono"
+                            className="w-full px-4 py-2.5 bg-baikal-bg border border-baikal-border rounded-md text-white placeholder-baikal-text/50 focus:outline-none focus:border-red-500 transition-colors"
                         />
                     </div>
 
-                    {/* Actions */}
                     <div className="flex items-center justify-end gap-3 pt-2">
                         <button
                             type="button"
@@ -541,9 +533,10 @@ export default function Organizations() {
 
     // États
     const [organizations, setOrganizations] = useState([]);
+    const [apps, setApps] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    
+
     // Filtres
     const [search, setSearch] = useState('');
     const [includeInactive, setIncludeInactive] = useState(false);
@@ -553,6 +546,13 @@ export default function Organizations() {
     const [editingOrg, setEditingOrg] = useState(null);
     const [deletingOrg, setDeletingOrg] = useState(null);
 
+    // Vérifier l'accès super_admin
+    useEffect(() => {
+        if (!isSuperAdmin) {
+            navigate('/admin', { replace: true });
+        }
+    }, [isSuperAdmin, navigate]);
+
     // Vérifier les query params pour ouvrir la modal de création
     useEffect(() => {
         if (searchParams.get('action') === 'create') {
@@ -561,6 +561,19 @@ export default function Organizations() {
         }
     }, [searchParams, setSearchParams]);
 
+    // Charger les apps
+    useEffect(() => {
+        async function loadApps() {
+            try {
+                const data = await getApps();
+                setApps(data || []);
+            } catch (err) {
+                console.error('[Organizations] Error loading apps:', err);
+            }
+        }
+        loadApps();
+    }, []);
+
     // Charger les organisations
     const loadOrganizations = useCallback(async () => {
         setLoading(true);
@@ -568,26 +581,24 @@ export default function Organizations() {
 
         try {
             const result = await organizationService.getOrganizations({
-                include_inactive: includeInactive,
-                search: search.trim() || null,
+                p_include_inactive: includeInactive,
+                p_search: search.trim() || null,
             });
 
             if (result.error) {
                 throw new Error(result.error.message || result.error);
             }
 
-            if (result.data?.success === false) {
-                throw new Error(result.data.error || 'Erreur lors du chargement');
-            }
-
-            setOrganizations(result.data?.organizations || result.data || []);
+            // La fonction retourne maintenant un array JSONB directement
+            const data = result.data || [];
+            setOrganizations(Array.isArray(data) ? data : []);
         } catch (err) {
             console.error('[Organizations] Error loading:', err);
             setError(err.message);
         } finally {
             setLoading(false);
         }
-    }, [search, includeInactive]);
+    }, [includeInactive, search]);
 
     useEffect(() => {
         loadOrganizations();
@@ -600,8 +611,9 @@ export default function Organizations() {
 
     const handleToggleStatus = async (org) => {
         try {
-            const result = await organizationService.updateOrganization(org.id, {
-                is_active: !org.is_active,
+            const result = await organizationService.updateOrganization({
+                p_org_id: org.id,
+                p_is_active: !org.is_active,
             });
 
             if (result.error) {
@@ -627,22 +639,20 @@ export default function Organizations() {
         loadOrganizations();
     };
 
-    // Rediriger si pas super_admin
+    // Filtrer localement par recherche (en plus du filtre serveur)
+    const filteredOrgs = organizations.filter(org => {
+        if (!search) return true;
+        const s = search.toLowerCase();
+        return org.name.toLowerCase().includes(s) || org.slug.toLowerCase().includes(s);
+    });
+
+    // Accès refusé si pas super_admin
     if (!isSuperAdmin) {
         return (
             <div className="min-h-screen bg-baikal-bg flex items-center justify-center">
                 <div className="text-center">
                     <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
-                    <h1 className="text-xl font-mono text-white mb-2">ACCÈS_REFUSÉ</h1>
-                    <p className="text-baikal-text mb-4">
-                        Cette page est réservée aux super_admin.
-                    </p>
-                    <button
-                        onClick={() => navigate('/admin')}
-                        className="px-4 py-2 bg-baikal-cyan text-black font-medium rounded-md hover:bg-baikal-cyan/90 transition-colors font-mono"
-                    >
-                        RETOUR
-                    </button>
+                    <p className="text-white font-mono">ACCÈS_REFUSÉ</p>
                 </div>
             </div>
         );
@@ -705,13 +715,13 @@ export default function Organizations() {
                         />
                     </div>
 
-                    {/* Filtre inactifs */}
-                    <label className="flex items-center gap-2 px-4 py-2.5 bg-baikal-surface border border-baikal-border rounded-md cursor-pointer hover:border-baikal-cyan transition-colors">
+                    {/* Toggle inactives */}
+                    <label className="flex items-center gap-2 px-4 py-2 bg-baikal-surface border border-baikal-border rounded-md cursor-pointer hover:border-baikal-cyan transition-colors">
                         <input
                             type="checkbox"
                             checked={includeInactive}
                             onChange={(e) => setIncludeInactive(e.target.checked)}
-                            className="w-4 h-4 rounded border-baikal-border bg-baikal-bg text-baikal-cyan focus:ring-baikal-cyan focus:ring-offset-0"
+                            className="w-4 h-4 rounded border-baikal-border bg-baikal-bg text-baikal-cyan focus:ring-baikal-cyan"
                         />
                         <span className="text-sm text-baikal-text whitespace-nowrap">
                             Inclure inactives
@@ -741,7 +751,7 @@ export default function Organizations() {
                 )}
 
                 {/* Liste vide */}
-                {!loading && organizations.length === 0 && (
+                {!loading && filteredOrgs.length === 0 && (
                     <div className="bg-baikal-surface border border-baikal-border rounded-md p-12 text-center">
                         <Building2 className="w-12 h-12 text-baikal-text mx-auto mb-4" />
                         <h3 className="text-lg font-mono font-medium text-white mb-2">
@@ -766,7 +776,7 @@ export default function Organizations() {
                 )}
 
                 {/* Tableau */}
-                {!loading && organizations.length > 0 && (
+                {!loading && filteredOrgs.length > 0 && (
                     <div className="bg-baikal-surface border border-baikal-border rounded-md overflow-hidden">
                         <div className="overflow-x-auto">
                             <table className="w-full">
@@ -774,6 +784,9 @@ export default function Organizations() {
                                     <tr className="bg-baikal-bg/50 border-b border-baikal-border">
                                         <th className="px-4 py-3 text-left text-xs font-mono font-semibold text-baikal-text uppercase tracking-wider">
                                             Organisation
+                                        </th>
+                                        <th className="px-4 py-3 text-left text-xs font-mono font-semibold text-baikal-text uppercase tracking-wider">
+                                            App
                                         </th>
                                         <th className="px-4 py-3 text-left text-xs font-mono font-semibold text-baikal-text uppercase tracking-wider">
                                             Plan
@@ -793,10 +806,11 @@ export default function Organizations() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {organizations.map((org) => (
+                                    {filteredOrgs.map((org) => (
                                         <OrganizationRow
                                             key={org.id}
                                             org={org}
+                                            apps={apps}
                                             onEdit={handleEdit}
                                             onToggleStatus={handleToggleStatus}
                                             onDelete={handleDelete}
@@ -808,7 +822,7 @@ export default function Organizations() {
 
                         {/* Footer stats */}
                         <div className="px-4 py-3 bg-baikal-bg/30 border-t border-baikal-border text-sm text-baikal-text font-mono">
-                            {organizations.length} organisation{organizations.length > 1 ? 's' : ''}
+                            {filteredOrgs.length} organisation{filteredOrgs.length > 1 ? 's' : ''}
                         </div>
                     </div>
                 )}
@@ -819,6 +833,7 @@ export default function Organizations() {
                 isOpen={showCreateModal}
                 onClose={() => setShowCreateModal(false)}
                 organization={null}
+                apps={apps}
                 onSave={handleSave}
             />
 
@@ -827,6 +842,7 @@ export default function Organizations() {
                 isOpen={!!editingOrg}
                 onClose={() => setEditingOrg(null)}
                 organization={editingOrg}
+                apps={apps}
                 onSave={handleSave}
             />
 
