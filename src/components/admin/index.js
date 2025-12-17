@@ -4,9 +4,21 @@
  * Export centralisé des composants d'administration.
  * 
  * @example
- * import { MembersList, OrganizationSettings, LegifranceAdmin } from '@/components/admin';
+ * import { 
+ *   AdminDashboard,
+ *   MembersList, 
+ *   OrganizationSettings, 
+ *   LegifranceAdmin 
+ * } from '@/components/admin';
  * ============================================================================
  */
+
+// ============================================================================
+// DASHBOARD
+// ============================================================================
+
+// Dashboard d'administration (stats, actions rapides)
+export { default as AdminDashboard } from './AdminDashboard';
 
 // ============================================================================
 // GESTION DES MEMBRES
@@ -15,7 +27,8 @@
 // Liste des membres de l'organisation
 export { default as MembersList } from './MembersList';
 
-// Modal d'invitation de membre
+// Modal d'invitation de membre (ancien système - deprecated)
+// TODO: Remplacer par le nouveau système d'invitations par code
 export { default as InviteMemberModal } from './InviteMemberModal';
 
 // ============================================================================
