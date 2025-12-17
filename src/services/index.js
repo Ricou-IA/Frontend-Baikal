@@ -7,6 +7,7 @@
  * - Ajout des exports pour les nouveaux noms (apps vs verticals)
  * - Aliases de compatibilité conservés
  * - Ajout services Administration (invitations, users, projects, admin)
+ * - Refactorisation organizationService pour utiliser les RPC
  * 
  * Tous les services retournent un objet { data, error } pour une gestion
  * d'erreur uniforme.
@@ -59,9 +60,9 @@ export { authService } from './auth.service';
 // MIGRATION: Utilise maintenant core.profiles
 export { profileService } from './profile.service';
 
-// Service Organisations
-// MIGRATION: Utilise maintenant core.organizations
-export { organizationService } from './organization.service';
+// Service Organisations (refactorisé pour utiliser les RPC)
+// MIGRATION: Utilise maintenant les RPC core.create_organization, etc.
+export { organizationService, ORGANIZATION_PLANS } from './organization.service';
 
 // ============================================================================
 // SERVICES STOCKAGE & FICHIERS
