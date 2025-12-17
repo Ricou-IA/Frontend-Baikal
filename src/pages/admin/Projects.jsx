@@ -148,7 +148,7 @@ function ProjectRow({ project, onEdit, onManageMembers, onArchive, onDelete, sho
                 <td className="px-4 py-4">
                     <div className="flex items-center gap-2 text-baikal-text">
                         <Building2 className="w-4 h-4" />
-                        <span className="text-sm">{project.organization?.name || '-'}</span>
+                        <span className="text-sm">{project.organization?.name || project.org_name || '-'}</span>
                     </div>
                 </td>
             )}
