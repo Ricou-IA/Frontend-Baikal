@@ -23,7 +23,8 @@
  * // Créer une organisation
  * const { data, error } = await organizationService.createOrganization({
  *   name: 'Mon Entreprise',
- *   plan: 'starter'
+ *   plan: 'starter',
+ *   appId: 'arpet'
  * });
  * 
  * // Lister les organisations
@@ -249,13 +250,15 @@ export const organizationService = {
    * @param {string} [params.description] - Description
    * @param {string} [params.plan='free'] - Plan (free, starter, pro, enterprise)
    * @param {Object} [params.settings] - Paramètres JSON personnalisés
+   * @param {string} [params.appId] - ID de l'application associée
    * @returns {Promise<{data: Object|null, error: Error|null}>}
    * 
    * @example
    * const { data, error } = await organizationService.createOrganization({
    *   name: 'Mon Entreprise BTP',
    *   description: 'Entreprise générale de bâtiment',
-   *   plan: 'starter'
+   *   plan: 'starter',
+   *   appId: 'arpet'
    * });
    * 
    * if (data?.success) {
@@ -269,6 +272,7 @@ export const organizationService = {
     description = null,
     plan = 'free',
     settings = null,
+    appId = null,
   }) {
     try {
       if (!name || name.trim() === '') {
@@ -293,6 +297,7 @@ export const organizationService = {
         p_description: description,
         p_plan: plan,
         p_settings: settings,
+        p_app_id: appId,
       });
 
       if (error) throw error;
@@ -324,12 +329,14 @@ export const organizationService = {
    * @param {string} [params.plan] - Nouveau plan (super_admin only)
    * @param {Object} [params.settings] - Nouveaux paramètres
    * @param {boolean} [params.isActive] - Activer/désactiver (super_admin only)
+   * @param {string} [params.appId] - ID de l'application associée
    * @returns {Promise<{data: Object|null, error: Error|null}>}
    * 
    * @example
    * const { data, error } = await organizationService.updateOrganization(orgId, {
    *   name: 'Nouveau Nom',
-   *   plan: 'pro'
+   *   plan: 'pro',
+   *   appId: 'arpet'
    * });
    */
   async updateOrganization(orgId, { 
@@ -337,7 +344,8 @@ export const organizationService = {
     description = null, 
     plan = null, 
     settings = null, 
-    isActive = null 
+    isActive = null,
+    appId = null,
   }) {
     try {
       if (!orgId) {
@@ -365,6 +373,7 @@ export const organizationService = {
         p_plan: plan,
         p_settings: settings,
         p_is_active: isActive,
+        p_app_id: appId,
       });
 
       if (error) throw error;

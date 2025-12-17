@@ -243,13 +243,14 @@ function OrganizationModal({ isOpen, onClose, organization, apps, onSave }) {
             let result;
 
             if (isEdit) {
-                result = await organizationService.updateOrganization({
-                    orgId: organization.id,
+                // updateOrganization(orgId, { name, plan, appId, ... })
+                result = await organizationService.updateOrganization(organization.id, {
                     name: formData.name.trim(),
                     plan: formData.plan,
                     appId: formData.app_id || null,
                 });
             } else {
+                // createOrganization({ name, plan, appId, ... })
                 result = await organizationService.createOrganization({
                     name: formData.name.trim(),
                     plan: formData.plan,
@@ -413,10 +414,8 @@ function DeleteConfirmModal({ isOpen, onClose, organization, onConfirm }) {
         setError(null);
 
         try {
-            const result = await organizationService.deleteOrganization({
-                orgId: organization.id,
-                confirm: true,
-            });
+            // deleteOrganization(orgId, confirm)
+            const result = await organizationService.deleteOrganization(organization.id, true);
 
             if (result.error) {
                 throw new Error(result.error.message || result.error);
@@ -613,8 +612,8 @@ export default function Organizations() {
 
     const handleToggleStatus = async (org) => {
         try {
-            const result = await organizationService.updateOrganization({
-                orgId: org.id,
+            // updateOrganization(orgId, { isActive })
+            const result = await organizationService.updateOrganization(org.id, {
                 isActive: !org.is_active,
             });
 
