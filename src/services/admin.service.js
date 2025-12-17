@@ -8,19 +8,21 @@
  * - Statistiques organisations
  * - Statistiques projets
  * 
- * Vue utilisée :
- * - core.admin_users_stats (accessible aux super_admin et org_admin)
+ * RPC utilisée :
+ * - core.get_admin_stats(p_org_id) - Stats filtrées par org ou globales
+ * 
+ * CORRECTION 17/12/2025:
+ * - Utilisation de la RPC get_admin_stats au lieu de la vue
+ * - Filtrage des cards selon le rôle (org_admin vs super_admin)
  * 
  * @example
  * import { adminService } from '@/services';
  * 
- * // Récupérer les stats du dashboard
+ * // Récupérer les stats du dashboard (super_admin = globales)
  * const { data, error } = await adminService.getAdminStats();
  * 
- * if (data) {
- *   console.log(`${data.pending_users} utilisateurs en attente`);
- *   console.log(`${data.total_organizations} organisations actives`);
- * }
+ * // Récupérer les stats pour une org spécifique (org_admin)
+ * const { data, error } = await adminService.getAdminStats(orgId);
  * ============================================================================
  */
 
@@ -35,41 +37,32 @@ import { supabase } from '../lib/supabaseClient';
  */
 export const adminService = {
   /**
-   * Récupère les statistiques globales pour le dashboard admin
+   * Récupère les statistiques pour le dashboard admin
    * 
-   * La vue `core.admin_users_stats` retourne :
-   * - pending_users : Utilisateurs sans organisation
+   * La RPC `get_admin_stats(p_org_id)` retourne :
+   * - pending_users : Utilisateurs sans organisation (0 si filtré par org)
    * - assigned_users : Utilisateurs avec organisation
-   * - super_admins : Nombre de super admins
+   * - super_admins : Nombre de super admins (0 si filtré par org)
    * - org_admins : Nombre d'admins organisation
    * - team_leaders : Nombre de chefs d'équipe
    * - users : Nombre d'utilisateurs standards
    * - total_users : Total des utilisateurs
-   * - total_organizations : Organisations actives
+   * - total_organizations : Organisations actives (1 si filtré par org)
    * - total_projects : Projets actifs
+   * - is_filtered : true si stats filtrées par org
    * 
+   * @param {string|null} orgId - ID de l'org (null = stats globales pour super_admin)
    * @returns {Promise<{data: Object|null, error: Error|null}>}
-   * 
-   * @example
-   * const { data, error } = await adminService.getAdminStats();
-   * 
-   * if (data) {
-   *   // Afficher les cards du dashboard
-   *   console.log('En attente:', data.pending_users);
-   *   console.log('Total users:', data.total_users);
-   *   console.log('Organisations:', data.total_organizations);
-   *   console.log('Projets:', data.total_projects);
-   * }
    */
-  async getAdminStats() {
+  async getAdminStats(orgId = null) {
     try {
-      const { data, error } = await supabase
-        .from('admin_users_stats')
-        .select('*')
-        .single();
+      const { data, error } = await supabase.rpc('get_admin_stats', {
+        p_org_id: orgId
+      });
 
       if (error) throw error;
 
+      // La RPC retourne un JSONB
       return { data, error: null };
     } catch (error) {
       console.error('[adminService.getAdminStats]', error);
@@ -80,25 +73,30 @@ export const adminService = {
   /**
    * Récupère les statistiques formatées pour les cards du dashboard
    * 
+   * @param {Object} options - Options
+   * @param {string|null} options.orgId - ID de l'org (null = globales)
+   * @param {boolean} options.isSuperAdmin - Est super_admin
    * @returns {Promise<{data: Array|null, error: Error|null}>}
    * 
    * @example
-   * const { data: cards, error } = await adminService.getDashboardCards();
+   * // Super admin - toutes les cards
+   * const { data: cards } = await adminService.getDashboardCards({ isSuperAdmin: true });
    * 
-   * // cards = [
-   * //   { id: 'pending', label: 'En attente', value: 5, ... },
-   * //   { id: 'total_users', label: 'Total utilisateurs', value: 42, ... },
-   * //   ...
-   * // ]
+   * // Org admin - cards filtrées
+   * const { data: cards } = await adminService.getDashboardCards({ 
+   *   orgId: 'xxx', 
+   *   isSuperAdmin: false 
+   * });
    */
-  async getDashboardCards() {
+  async getDashboardCards({ orgId = null, isSuperAdmin = false } = {}) {
     try {
-      const { data: stats, error } = await this.getAdminStats();
+      const { data: stats, error } = await this.getAdminStats(orgId);
 
       if (error) throw error;
       if (!stats) return { data: [], error: null };
 
-      const cards = [
+      // Toutes les cards possibles
+      const allCards = [
         {
           id: 'pending',
           label: 'En attente',
@@ -111,12 +109,15 @@ export const adminService = {
           borderColor: 'border-amber-400/30',
           link: '/admin/users?tab=pending',
           priority: stats.pending_users > 0 ? 'high' : 'normal',
+          superAdminOnly: true, // Uniquement pour super_admin
         },
         {
           id: 'total_users',
           label: 'Utilisateurs',
           value: stats.total_users || 0,
-          description: `${stats.assigned_users || 0} assignés`,
+          description: stats.is_filtered 
+            ? 'Membres de l\'organisation' 
+            : `${stats.assigned_users || 0} assignés`,
           icon: 'Users',
           color: 'blue',
           bgColor: 'bg-blue-400/10',
@@ -124,6 +125,7 @@ export const adminService = {
           borderColor: 'border-blue-400/30',
           link: '/admin/users',
           priority: 'normal',
+          superAdminOnly: false,
         },
         {
           id: 'organizations',
@@ -137,6 +139,7 @@ export const adminService = {
           borderColor: 'border-emerald-400/30',
           link: '/admin/organizations',
           priority: 'normal',
+          superAdminOnly: true, // Uniquement pour super_admin
         },
         {
           id: 'projects',
@@ -150,8 +153,14 @@ export const adminService = {
           borderColor: 'border-violet-400/30',
           link: '/admin/projects',
           priority: 'normal',
+          superAdminOnly: false,
         },
       ];
+
+      // Filtrer selon le rôle
+      const cards = isSuperAdmin 
+        ? allCards 
+        : allCards.filter(card => !card.superAdminOnly);
 
       return { data: cards, error: null };
     } catch (error) {
@@ -163,31 +172,27 @@ export const adminService = {
   /**
    * Récupère la répartition des utilisateurs par rôle
    * 
+   * @param {Object} options - Options
+   * @param {string|null} options.orgId - ID de l'org (null = globales)
+   * @param {boolean} options.isSuperAdmin - Est super_admin
    * @returns {Promise<{data: Array|null, error: Error|null}>}
-   * 
-   * @example
-   * const { data: roles, error } = await adminService.getUsersByRole();
-   * 
-   * // roles = [
-   * //   { role: 'super_admin', count: 2, label: 'Super Admin', ... },
-   * //   { role: 'org_admin', count: 5, label: 'Admin Org', ... },
-   * //   ...
-   * // ]
    */
-  async getUsersByRole() {
+  async getUsersByRole({ orgId = null, isSuperAdmin = false } = {}) {
     try {
-      const { data: stats, error } = await this.getAdminStats();
+      const { data: stats, error } = await this.getAdminStats(orgId);
 
       if (error) throw error;
       if (!stats) return { data: [], error: null };
 
-      const roles = [
+      // Tous les rôles possibles
+      const allRoles = [
         {
           role: 'super_admin',
           count: stats.super_admins || 0,
           label: 'Super Admin',
           color: 'text-red-400',
           bgColor: 'bg-red-400/10',
+          superAdminOnly: true, // Ne pas afficher pour org_admin
         },
         {
           role: 'org_admin',
@@ -195,6 +200,7 @@ export const adminService = {
           label: 'Admin Org',
           color: 'text-amber-400',
           bgColor: 'bg-amber-400/10',
+          superAdminOnly: false,
         },
         {
           role: 'team_leader',
@@ -202,6 +208,7 @@ export const adminService = {
           label: 'Chef d\'équipe',
           color: 'text-blue-400',
           bgColor: 'bg-blue-400/10',
+          superAdminOnly: false,
         },
         {
           role: 'user',
@@ -209,8 +216,14 @@ export const adminService = {
           label: 'Utilisateur',
           color: 'text-slate-400',
           bgColor: 'bg-slate-400/10',
+          superAdminOnly: false,
         },
       ];
+
+      // Filtrer selon le rôle
+      const roles = isSuperAdmin 
+        ? allRoles 
+        : allRoles.filter(role => !role.superAdminOnly);
 
       return { data: roles, error: null };
     } catch (error) {
@@ -222,11 +235,12 @@ export const adminService = {
   /**
    * Récupère un résumé rapide pour l'affichage dans le header/sidebar
    * 
+   * @param {string|null} orgId - ID de l'org (null = globales)
    * @returns {Promise<{data: Object|null, error: Error|null}>}
    */
-  async getQuickSummary() {
+  async getQuickSummary(orgId = null) {
     try {
-      const { data: stats, error } = await this.getAdminStats();
+      const { data: stats, error } = await this.getAdminStats(orgId);
 
       if (error) throw error;
       if (!stats) return { data: null, error: null };
@@ -238,6 +252,7 @@ export const adminService = {
           totalOrgs: stats.total_organizations || 0,
           totalProjects: stats.total_projects || 0,
           hasPendingActions: (stats.pending_users || 0) > 0,
+          isFiltered: stats.is_filtered || false,
         },
         error: null,
       };

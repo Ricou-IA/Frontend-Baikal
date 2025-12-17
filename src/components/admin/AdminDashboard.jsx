@@ -8,9 +8,10 @@
  * - Répartition des utilisateurs par rôle (graphique)
  * - Actions rapides selon le contexte
  * 
- * Utilise :
- * - adminService.getDashboardCards()
- * - adminService.getUsersByRole()
+ * CORRECTION 17/12/2025:
+ * - Stats filtrées par org pour org_admin
+ * - Cards "En attente" et "Organisations" masquées pour org_admin
+ * - Répartition des rôles filtrée (sans super_admin pour org_admin)
  * 
  * @example
  * <AdminDashboard 
@@ -247,7 +248,7 @@ export default function AdminDashboard({
   // Charger les données
   useEffect(() => {
     loadDashboardData();
-  }, []);
+  }, [isSuperAdmin, orgId]);
 
   /**
    * Charge les données du dashboard
@@ -256,9 +257,15 @@ export default function AdminDashboard({
     try {
       setError(null);
       
+      // Paramètres selon le rôle
+      const params = {
+        orgId: isSuperAdmin ? null : orgId, // org_admin = filtré par son org
+        isSuperAdmin,
+      };
+
       const [cardsResult, rolesResult] = await Promise.all([
-        adminService.getDashboardCards(),
-        adminService.getUsersByRole(),
+        adminService.getDashboardCards(params),
+        adminService.getUsersByRole(params),
       ]);
 
       if (cardsResult.error) throw cardsResult.error;
@@ -295,7 +302,7 @@ export default function AdminDashboard({
   // Calculer le total des utilisateurs pour les pourcentages
   const totalUsers = roles.reduce((sum, r) => sum + r.count, 0);
 
-  // Trouver le nombre de pending users
+  // Trouver le nombre de pending users (seulement pour super_admin)
   const pendingCard = cards.find(c => c.id === 'pending');
   const hasPendingUsers = pendingCard && pendingCard.value > 0;
 
@@ -367,7 +374,7 @@ export default function AdminDashboard({
         </button>
       </div>
 
-      {/* Alerte utilisateurs en attente */}
+      {/* Alerte utilisateurs en attente (super_admin uniquement) */}
       {hasPendingUsers && isSuperAdmin && (
         <div className="bg-amber-900/20 border border-amber-500/50 rounded-lg p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -393,7 +400,7 @@ export default function AdminDashboard({
       )}
 
       {/* Cards statistiques */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 ${isSuperAdmin ? 'lg:grid-cols-4' : 'lg:grid-cols-2'}`}>
         {cards.map((card) => (
           <StatCard 
             key={card.id} 
@@ -452,7 +459,7 @@ export default function AdminDashboard({
               onClick={() => handleNavigate('/admin/invitations?action=create')}
             />
 
-            {/* Action : Créer une organisation (super_admin) */}
+            {/* Action : Créer une organisation (super_admin uniquement) */}
             {isSuperAdmin && (
               <QuickAction
                 icon={Building2}
