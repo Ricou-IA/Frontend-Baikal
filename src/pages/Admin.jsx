@@ -22,6 +22,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useOrganization } from '../hooks/useOrganization';
 import { documentsService } from '../services/documents.service';
 import {
+    AdminDashboard,
     MembersList,
     InviteMemberModal,
     OrganizationSettings,
@@ -39,13 +40,6 @@ import {
     Shield,
     AlertCircle,
     Loader2,
-    FileText,
-    CheckCircle2,
-    Clock,
-    TrendingUp,
-    Upload,
-    Eye,
-    ChevronRight,
     LogOut,
     Settings,
 } from 'lucide-react';
@@ -100,169 +94,6 @@ const getTabs = (isSuperAdmin, pendingCount = 0) => {
 
     return tabs;
 };
-
-// ============================================================================
-// COMPOSANT STATISTIQUES DASHBOARD
-// ============================================================================
-
-function StatCard({ label, value, icon: Icon, color = 'indigo', subValue = null, highlight = false }) {
-    const colorClasses = {
-        indigo: 'bg-baikal-cyan/20 text-baikal-cyan',
-        green: 'bg-green-500/20 text-green-400',
-        amber: 'bg-amber-500/20 text-amber-400',
-        red: 'bg-red-500/20 text-red-400',
-        blue: 'bg-blue-500/20 text-blue-400',
-        violet: 'bg-violet-500/20 text-violet-400',
-    };
-
-    return (
-        <div className={`
-            bg-baikal-surface rounded-md p-5 border transition-all duration-200
-            ${highlight ? 'border-amber-500/50' : 'border-baikal-border'}
-        `}>
-            <div className="flex items-center gap-3">
-                <div className={`p-2.5 rounded-md ${colorClasses[color]}`}>
-                    <Icon className="w-5 h-5" />
-                </div>
-                <div>
-                    <p className="text-2xl font-bold font-mono text-white">{value}</p>
-                    <p className="text-sm text-baikal-text font-sans">{label}</p>
-                    {subValue && (
-                        <p className="text-xs text-baikal-text font-mono">{subValue}</p>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-}
-
-// ============================================================================
-// COMPOSANT DASHBOARD TAB
-// ============================================================================
-
-function DashboardTab({ orgId, isSuperAdmin, onNavigate }) {
-    const [stats, setStats] = useState({
-        documents: 0,
-        pending: 0,
-        approved: 0,
-        users: 0
-    });
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        async function loadStats() {
-            if (!orgId) {
-                setLoading(false);
-                return;
-            }
-            
-            try {
-                const { data } = await documentsService.getLayerStats(orgId);
-                if (data) {
-                    const totalDocs = Object.values(data).reduce((sum, s) => sum + (s.total || 0), 0);
-                    const totalPending = Object.values(data).reduce((sum, s) => sum + (s.pending || 0), 0);
-                    const totalApproved = Object.values(data).reduce((sum, s) => sum + (s.approved || 0), 0);
-                    
-                    setStats({
-                        documents: totalDocs,
-                        pending: totalPending,
-                        approved: totalApproved,
-                        users: 0 // TODO: charger depuis un autre service
-                    });
-                }
-            } catch (err) {
-                console.error('Error loading dashboard stats:', err);
-            } finally {
-                setLoading(false);
-            }
-        }
-        loadStats();
-    }, [orgId]);
-
-    if (loading) {
-        return (
-            <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-8 h-8 text-baikal-cyan animate-spin" />
-            </div>
-        );
-    }
-
-    return (
-        <div className="space-y-6">
-            {/* En-tête */}
-            <div>
-                <h2 className="text-xl font-mono font-semibold text-white">TABLEAU_DE_BORD</h2>
-                <p className="text-baikal-text text-sm mt-1 font-sans">Vue d'ensemble de votre organisation</p>
-            </div>
-
-            {/* Statistiques principales */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <StatCard
-                    label="Documents"
-                    value={stats.documents}
-                    icon={FileText}
-                    color="indigo"
-                />
-                <StatCard
-                    label="Approuvés"
-                    value={stats.approved}
-                    icon={CheckCircle2}
-                    color="green"
-                />
-                <StatCard
-                    label="En attente"
-                    value={stats.pending}
-                    icon={Clock}
-                    color="amber"
-                    highlight={stats.pending > 0}
-                />
-                <StatCard
-                    label="Utilisateurs"
-                    value={stats.users || '-'}
-                    icon={Users}
-                    color="blue"
-                />
-            </div>
-
-            {/* Alerte documents en attente */}
-            {stats.pending > 0 && (
-                <div className="bg-amber-900/20 border border-amber-500/50 rounded-md p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-amber-500/20 rounded-md">
-                            <Clock className="w-5 h-5 text-amber-400" />
-                        </div>
-                        <div>
-                            <p className="font-medium text-amber-300 font-mono">
-                                {stats.pending} document{stats.pending > 1 ? 's' : ''} en attente
-                            </p>
-                            <p className="text-sm text-amber-400 font-sans">
-                                Des documents nécessitent votre validation
-                            </p>
-                        </div>
-                    </div>
-                    <button
-                        onClick={() => onNavigate('/admin/validation')}
-                        className="px-4 py-2 bg-amber-500 text-white rounded-md hover:bg-amber-600 transition-colors font-medium font-mono"
-                    >
-                        VALIDER
-                    </button>
-                </div>
-            )}
-
-            {/* Placeholder pour futur contenu */}
-            <div className="bg-baikal-surface border-2 border-dashed border-baikal-border rounded-md p-12 text-center">
-                <LayoutDashboard className="w-12 h-12 text-baikal-text mx-auto mb-4" />
-                <h3 className="text-lg font-mono font-medium text-white mb-2">
-                    DASHBOARD_EN_CONSTRUCTION
-                </h3>
-                <p className="text-baikal-text font-sans">
-                    Cette section affichera bientôt des statistiques détaillées,
-                    des graphiques et des indicateurs clés.
-                </p>
-            </div>
-        </div>
-    );
-}
 
 // ============================================================================
 // PAGE ADMIN PRINCIPALE
@@ -459,9 +290,10 @@ export default function Admin() {
 
                 {/* Onglet Dashboard */}
                 {activeTab === 'dashboard' && (
-                    <DashboardTab 
-                        orgId={effectiveOrgId} 
+                    <AdminDashboard 
                         isSuperAdmin={isSuperAdmin}
+                        isOrgAdmin={isOrgAdmin}
+                        orgId={effectiveOrgId}
                         onNavigate={handleDashboardNavigate}
                     />
                 )}
@@ -493,8 +325,6 @@ export default function Admin() {
                         onUpdateName={updateOrganizationName}
                     />
                 )}
-
-                {/* Note: L'onglet "knowledge" n'est plus rendu ici car il route vers /admin/ingestion */}
 
                 {/* Onglet Connaissances */}
                 {activeTab === 'knowledge' && (

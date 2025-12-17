@@ -29,6 +29,12 @@ import Prompts from './pages/Prompts';
 import PromptForm from './pages/PromptForm';
 import Baikal from './pages/marketing/Baikal';
 
+// Pages Admin - Gestion Users/Orgs/Projets
+import Organizations from './pages/admin/Organizations';
+import Invitations from './pages/admin/Invitations';
+import UsersPage from './pages/admin/Users';
+import Projects from './pages/admin/Projects';
+
 function App() {
   return (
     <BrowserRouter
@@ -177,6 +183,50 @@ function App() {
             element={
               <AdminRoute>
                 <PromptForm />
+              </AdminRoute>
+            }
+          />
+
+          {/* ============================================ */}
+          {/* ROUTES ADMIN - GESTION USERS/ORGS/PROJETS */}
+          {/* ============================================ */}
+
+          {/* Admin - Organisations (super_admin) */}
+          <Route
+            path="/admin/organizations"
+            element={
+              <AdminRoute>
+                <Organizations />
+              </AdminRoute>
+            }
+          />
+
+          {/* Admin - Invitations */}
+          <Route
+            path="/admin/invitations"
+            element={
+              <AdminRoute>
+                <Invitations />
+              </AdminRoute>
+            }
+          />
+
+          {/* Admin - Utilisateurs */}
+          <Route
+            path="/admin/users"
+            element={
+              <AdminRoute>
+                <UsersPage />
+              </AdminRoute>
+            }
+          />
+
+          {/* Admin - Projets */}
+          <Route
+            path="/admin/projects"
+            element={
+              <AdminRoute>
+                <Projects />
               </AdminRoute>
             }
           />

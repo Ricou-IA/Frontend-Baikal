@@ -6,12 +6,14 @@
  * - Option Google SSO
  * - Toggle Connexion/Inscription
  * - Réinitialisation mot de passe
+ * - Support des codes d'invitation (?invite=CODE)
  * ============================================================================
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { invitationsService } from '../services';
 import PlatformLayout from '../layouts/PlatformLayout';
 import { 
   Mail, 
@@ -20,7 +22,11 @@ import {
   Eye, 
   EyeOff, 
   Loader2,
-  AlertCircle
+  AlertCircle,
+  Building2,
+  CheckCircle2,
+  XCircle,
+  Ticket,
 } from 'lucide-react';
 
 /**
@@ -38,6 +44,9 @@ function translateError(message) {
 }
 
 export default function Login() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  
+  // États formulaire
   const [isSignUp, setIsSignUp] = useState(false);
   const [isResetPassword, setIsResetPassword] = useState(false);
   const [email, setEmail] = useState('');
@@ -51,8 +60,77 @@ export default function Login() {
   const [isRedirecting, setIsRedirecting] = useState(false);
   const wasAuthenticatedRef = useRef(false);
 
+  // États invitation
+  const [inviteCode, setInviteCode] = useState('');
+  const [inviteValidation, setInviteValidation] = useState(null); // { valid, org_name, org_id, default_app_role, default_business_role, error }
+  const [validatingInvite, setValidatingInvite] = useState(false);
+
   const { signIn, signUp, signInWithGoogle, resetPassword, loading, error, clearError, isAuthenticated, hasProfile, isOnboarded } = useAuth();
   const navigate = useNavigate();
+
+  // Détecter le code d'invitation dans l'URL
+  useEffect(() => {
+    const code = searchParams.get('invite');
+    if (code) {
+      setInviteCode(code);
+      setIsSignUp(true); // Basculer automatiquement en mode inscription
+      validateInvitationCode(code);
+    }
+  }, [searchParams]);
+
+  /**
+   * Valide le code d'invitation
+   */
+  const validateInvitationCode = async (code) => {
+    setValidatingInvite(true);
+    setInviteValidation(null);
+
+    try {
+      const result = await invitationsService.validateInvitationCode({ p_code: code });
+
+      if (result.error) {
+        setInviteValidation({
+          valid: false,
+          error: result.error.message || 'Code d\'invitation invalide',
+        });
+        return;
+      }
+
+      const data = result.data;
+
+      if (data?.valid) {
+        setInviteValidation({
+          valid: true,
+          org_name: data.org_name,
+          org_id: data.org_id,
+          default_app_role: data.default_app_role,
+          default_business_role: data.default_business_role,
+        });
+      } else {
+        setInviteValidation({
+          valid: false,
+          error: data?.error || 'Code d\'invitation invalide ou expiré',
+        });
+      }
+    } catch (err) {
+      console.error('[Login] Error validating invite:', err);
+      setInviteValidation({
+        valid: false,
+        error: 'Erreur lors de la validation du code',
+      });
+    } finally {
+      setValidatingInvite(false);
+    }
+  };
+
+  /**
+   * Retire le code d'invitation et passe en mode inscription normale
+   */
+  const clearInviteCode = () => {
+    setInviteCode('');
+    setInviteValidation(null);
+    setSearchParams({});
+  };
 
   // Redirection après authentification
   useEffect(() => {
@@ -63,7 +141,7 @@ export default function Login() {
           if (!isOnboarded) {
             navigate('/onboarding', { replace: true });
           } else {
-            navigate('/admin', { replace: true }); // ← Changé de /dashboard vers /admin
+            navigate('/admin', { replace: true });
           }
         }
       }, 500);
@@ -103,14 +181,32 @@ export default function Login() {
 
     try {
       if (isSignUp) {
-        const result = await signUp(email, password, { full_name: fullName });
+        // Préparer les metadata avec le code d'invitation si présent et valide
+        const metadata = { 
+          full_name: fullName,
+        };
+
+        // Ajouter le code d'invitation si valide
+        if (inviteCode && inviteValidation?.valid) {
+          metadata.invitation_code = inviteCode;
+        }
+
+        const result = await signUp(email, password, metadata);
         const { data, error } = result || {};
         
         if (error) {
           const errorMessage = error?.message || error?.toString() || 'Une erreur est survenue lors de l\'inscription.';
           setFormError(errorMessage);
         } else {
-          setSuccessMessage('Compte créé avec succès ! Vérifiez votre email pour confirmer votre inscription.');
+          if (inviteCode && inviteValidation?.valid) {
+            setSuccessMessage(
+              `Compte créé avec succès ! Vous serez automatiquement ajouté à l'organisation "${inviteValidation.org_name}". Vérifiez votre email pour confirmer votre inscription.`
+            );
+          } else {
+            setSuccessMessage(
+              'Compte créé avec succès ! Vérifiez votre email pour confirmer votre inscription. Un administrateur vous assignera à une organisation.'
+            );
+          }
         }
       } else {
         const { error } = await signIn(email, password);
@@ -176,7 +272,6 @@ export default function Login() {
   };
 
   // Loading state - seulement pendant le chargement initial, pas pendant la redirection
-  // La redirection sera gérée par les guards qui afficheront leur propre écran de chargement
   if (loading && !isAuthenticated) {
     return (
       <PlatformLayout>
@@ -299,6 +394,73 @@ export default function Login() {
               </p>
             </div>
 
+            {/* Banner invitation - Validation en cours */}
+            {isSignUp && inviteCode && validatingInvite && (
+              <div className="mb-6 p-4 bg-baikal-bg border border-baikal-border rounded">
+                <div className="flex items-center gap-3">
+                  <Loader2 className="w-5 h-5 text-baikal-cyan animate-spin" />
+                  <div>
+                    <p className="text-sm font-mono text-white">VALIDATION_CODE...</p>
+                    <p className="text-xs text-baikal-text">{inviteCode}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Banner invitation - Code valide */}
+            {isSignUp && inviteCode && !validatingInvite && inviteValidation?.valid && (
+              <div className="mb-6 p-4 bg-green-900/20 border border-green-500/50 rounded">
+                <div className="flex items-start gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm font-mono text-green-400">INVITATION_VALIDE</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Building2 className="w-4 h-4 text-green-300" />
+                      <span className="text-sm text-green-300">{inviteValidation.org_name}</span>
+                    </div>
+                    <p className="text-xs text-green-400/70 mt-1">
+                      Vous serez automatiquement ajouté à cette organisation.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Banner invitation - Code invalide */}
+            {isSignUp && inviteCode && !validatingInvite && inviteValidation && !inviteValidation.valid && (
+              <div className="mb-6 p-4 bg-red-900/20 border border-red-500/50 rounded">
+                <div className="flex items-start gap-3">
+                  <XCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm font-mono text-red-400">INVITATION_INVALIDE</p>
+                    <p className="text-xs text-red-300 mt-1">{inviteValidation.error}</p>
+                    <button
+                      type="button"
+                      onClick={clearInviteCode}
+                      className="text-xs text-red-400 hover:text-red-300 mt-2 underline"
+                    >
+                      Continuer sans code d'invitation →
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Info inscription sans code */}
+            {isSignUp && !inviteCode && (
+              <div className="mb-6 p-4 bg-amber-900/20 border border-amber-500/50 rounded">
+                <div className="flex items-start gap-3">
+                  <Ticket className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-mono text-amber-400">INSCRIPTION_LIBRE</p>
+                    <p className="text-xs text-amber-300/70 mt-1">
+                      Sans code d'invitation, votre compte sera créé en attente d'assignation par un administrateur.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Messages */}
             {(formError || error) && (
               <div className="mb-6 p-4 bg-red-900/20 border border-red-500/50 rounded flex items-center gap-3 text-red-400 text-sm font-mono">
@@ -395,7 +557,7 @@ export default function Login() {
               {/* Bouton submit */}
               <button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSubmitting || (isSignUp && inviteCode && validatingInvite)}
                 className="w-full py-3 bg-baikal-cyan text-black font-mono font-bold hover:opacity-80 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {isSubmitting ? (
@@ -447,6 +609,13 @@ export default function Login() {
                   setPassword('');
                   setFullName('');
                   setShowPassword(false);
+                  // Conserver le code d'invitation si on repasse en inscription
+                  if (!isSignUp && inviteCode) {
+                    // On garde le code
+                  } else if (isSignUp) {
+                    // Si on passe de inscription à connexion, on peut nettoyer
+                    // clearInviteCode(); // Optionnel: décommenter si on veut nettoyer
+                  }
                   if (clearError) clearError();
                 }}
                 className="text-baikal-cyan hover:text-baikal-cyan/80 transition-colors"
