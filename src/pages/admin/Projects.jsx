@@ -11,6 +11,10 @@
  * 
  * Route : /admin/projects
  * Accès : super_admin (toutes orgs) / org_admin (son org)
+ * 
+ * CORRECTIONS 17/12/2025:
+ * - Fix appels projectsService avec bons noms de paramètres
+ *   (name au lieu de p_name, orgId au lieu de p_org_id, etc.)
  * ============================================================================
  */
 
@@ -265,6 +269,13 @@ function ProjectModal({ isOpen, onClose, project, organizations, defaultOrgId, o
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        
+        // Validation côté client
+        if (!formData.name.trim()) {
+            setError('Le nom du projet est requis');
+            return;
+        }
+        
         setLoading(true);
         setError(null);
 
@@ -272,17 +283,18 @@ function ProjectModal({ isOpen, onClose, project, organizations, defaultOrgId, o
             let result;
 
             if (isEdit) {
-                result = await projectsService.updateProject({
-                    p_project_id: project.id,
-                    p_name: formData.name.trim(),
-                    p_description: formData.description.trim() || null,
-                    p_status: formData.status,
+                // ✅ CORRIGÉ: Utiliser les bons noms de paramètres pour updateProject
+                result = await projectsService.updateProject(project.id, {
+                    name: formData.name.trim(),
+                    description: formData.description.trim() || null,
+                    status: formData.status,
                 });
             } else {
+                // ✅ CORRIGÉ: Utiliser les bons noms de paramètres pour createProject
                 result = await projectsService.createProject({
-                    p_name: formData.name.trim(),
-                    p_description: formData.description.trim() || null,
-                    p_org_id: formData.org_id || null,
+                    name: formData.name.trim(),
+                    description: formData.description.trim() || null,
+                    orgId: formData.org_id || null,
                 });
             }
 
@@ -345,7 +357,11 @@ function ProjectModal({ isOpen, onClose, project, organizations, defaultOrgId, o
                         <input
                             type="text"
                             value={formData.name}
-                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                            onChange={(e) => {
+                                setFormData({ ...formData, name: e.target.value });
+                                // Effacer l'erreur quand l'utilisateur tape
+                                if (error) setError(null);
+                            }}
                             placeholder="Mon Projet"
                             required
                             className="w-full px-4 py-2.5 bg-baikal-bg border border-baikal-border rounded-md text-white placeholder-baikal-text/50 focus:outline-none focus:border-baikal-cyan transition-colors"
@@ -463,22 +479,20 @@ function ProjectMembersModal({ isOpen, onClose, project, onUpdate }) {
         setError(null);
 
         try {
-            // Charger les membres du projet
-            const membersResult = await projectsService.getProjectMembers({
-                p_project_id: project.id,
-            });
+            // ✅ CORRIGÉ: Utiliser le bon nom de paramètre pour getProjectMembers
+            const membersResult = await projectsService.getProjectMembers(project.id);
 
             if (membersResult.error) {
                 throw new Error(membersResult.error.message || membersResult.error);
             }
 
-            const projectMembers = membersResult.data?.members || membersResult.data || [];
+            const projectMembers = membersResult.data || [];
             setMembers(projectMembers);
 
             // Charger les utilisateurs de l'org pour le select
             if (project.org_id) {
                 const usersResult = await usersService.getUsersForAdmin({
-                    p_org_id: project.org_id,
+                    orgId: project.org_id,
                 });
 
                 if (usersResult.data) {
@@ -504,11 +518,12 @@ function ProjectMembersModal({ isOpen, onClose, project, onUpdate }) {
         setError(null);
 
         try {
-            const result = await projectsService.assignUserToProject({
-                p_project_id: project.id,
-                p_user_id: selectedUserId,
-                p_role: selectedRole,
-            });
+            // ✅ CORRIGÉ: Utiliser les bons noms de paramètres pour assignUserToProject
+            const result = await projectsService.assignUserToProject(
+                project.id,
+                selectedUserId,
+                selectedRole
+            );
 
             if (result.error) {
                 throw new Error(result.error.message || result.error);
@@ -534,10 +549,8 @@ function ProjectMembersModal({ isOpen, onClose, project, onUpdate }) {
 
     const handleRemoveMember = async (userId) => {
         try {
-            const result = await projectsService.removeUserFromProject({
-                p_project_id: project.id,
-                p_user_id: userId,
-            });
+            // ✅ CORRIGÉ: Utiliser les bons noms de paramètres pour removeUserFromProject
+            const result = await projectsService.removeUserFromProject(project.id, userId);
 
             if (result.error) {
                 throw new Error(result.error.message || result.error);
@@ -763,10 +776,8 @@ function DeleteConfirmModal({ isOpen, onClose, project, onConfirm }) {
         setError(null);
 
         try {
-            const result = await projectsService.deleteProject({
-                p_project_id: project.id,
-                p_confirm: true,
-            });
+            // ✅ CORRIGÉ: Utiliser les bons paramètres pour deleteProject
+            const result = await projectsService.deleteProject(project.id, true);
 
             if (result.error) {
                 throw new Error(result.error.message || result.error);
@@ -908,7 +919,7 @@ export default function Projects() {
             if (!isSuperAdmin) return;
 
             try {
-                const result = await organizationService.getOrganizations({ include_inactive: false });
+                const result = await organizationService.getOrganizations({ includeInactive: false });
                 if (result.data?.organizations) {
                     setOrganizations(result.data.organizations);
                 } else if (Array.isArray(result.data)) {
@@ -927,10 +938,11 @@ export default function Projects() {
         setError(null);
 
         try {
+            // ✅ CORRIGÉ: Utiliser les bons noms de paramètres pour getProjects
             const params = {
-                p_org_id: isSuperAdmin ? (orgFilter || null) : profile?.org_id,
-                p_include_archived: statusFilter === 'archived' || statusFilter === 'all',
-                p_search: search.trim() || null,
+                orgId: isSuperAdmin ? (orgFilter || null) : profile?.org_id,
+                includeArchived: statusFilter === 'archived' || statusFilter === 'all',
+                search: search.trim() || null,
             };
 
             const result = await projectsService.getProjects(params);
@@ -939,7 +951,7 @@ export default function Projects() {
                 throw new Error(result.error.message || result.error);
             }
 
-            let data = result.data?.projects || result.data || [];
+            let data = result.data || [];
 
             // Filtrer par statut côté client
             if (statusFilter !== 'all') {
@@ -970,9 +982,9 @@ export default function Projects() {
 
     const handleArchive = async (project) => {
         try {
-            const result = await projectsService.updateProject({
-                p_project_id: project.id,
-                p_status: 'archived',
+            // ✅ CORRIGÉ: Utiliser les bons paramètres pour updateProject
+            const result = await projectsService.updateProject(project.id, {
+                status: 'archived',
             });
 
             if (result.error) {
