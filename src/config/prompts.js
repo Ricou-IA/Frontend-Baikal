@@ -2,6 +2,7 @@
  * Configuration Prompts - Core RAG Engine
  * ============================================================================
  * Constantes et configuration pour la gestion des prompts d'agents RAG.
+ * VERSION: 2.0.0 - Ajout paramètres Retrieval + Gemini
  * ============================================================================
  */
 
@@ -93,21 +94,118 @@ export const getMaxTokensLimit = (modelId) => {
 };
 
 // ============================================
+// MODÈLES GEMINI
+// ============================================
+
+export const GEMINI_MODELS = Object.freeze({
+  'gemini-2.0-flash': {
+    id: 'gemini-2.0-flash',
+    label: 'Gemini 2.0 Flash',
+    contextWindow: 1000000,
+  },
+  'gemini-2.5-flash': {
+    id: 'gemini-2.5-flash',
+    label: 'Gemini 2.5 Flash (recommandé)',
+    contextWindow: 1000000,
+  },
+});
+
+export const GEMINI_MODEL_OPTIONS = Object.values(GEMINI_MODELS).map(model => ({
+  value: model.id,
+  label: model.label,
+}));
+
+// ============================================
 // PARAMÈTRES PAR DÉFAUT
 // ============================================
 
 export const DEFAULT_PARAMETERS = Object.freeze({
+  // LLM (OpenAI)
   temperature: 0.3,
   max_tokens: 2048,
   model: 'gpt-4o-mini',
+  
+  // Poids de recherche
   vector_weight: 0.7,
   fulltext_weight: 0.3,
+  
+  // Retrieval
+  match_count: 15,
+  match_threshold: 0.3,
+  enable_concept_expansion: true,
+  
+  // Gemini
+  gemini_model: 'gemini-2.0-flash',
+  gemini_max_files: 5,
+  cache_ttl_minutes: 60,
 });
 
+// ============================================
+// LIMITES DES PARAMÈTRES
+// ============================================
+
 export const PARAMETER_LIMITS = Object.freeze({
-  temperature: { min: 0, max: 1, step: 0.05, default: 0.3, label: 'Température', description: 'Créativité du modèle (0 = déterministe, 1 = créatif)' },
-  max_tokens: { min: 256, max: 16384, step: 256, default: 2048, label: 'Tokens maximum', description: 'Longueur maximale de la réponse' },
-  vector_weight: { min: 0, max: 1, step: 0.05, default: 0.7, label: 'Poids vectoriel', description: 'Importance de la recherche sémantique' },
+  // LLM
+  temperature: { 
+    min: 0, 
+    max: 1, 
+    step: 0.05, 
+    default: 0.3, 
+    label: 'Température', 
+    description: 'Créativité du modèle (0 = déterministe, 1 = créatif)' 
+  },
+  max_tokens: { 
+    min: 256, 
+    max: 16384, 
+    step: 256, 
+    default: 2048, 
+    label: 'Tokens maximum', 
+    description: 'Longueur maximale de la réponse' 
+  },
+  vector_weight: { 
+    min: 0, 
+    max: 1, 
+    step: 0.05, 
+    default: 0.7, 
+    label: 'Poids vectoriel', 
+    description: 'Importance de la recherche sémantique' 
+  },
+  
+  // Retrieval
+  match_count: { 
+    min: 5, 
+    max: 30, 
+    step: 1, 
+    default: 15, 
+    label: 'Nombre de chunks', 
+    description: 'Nombre maximum de documents à récupérer' 
+  },
+  match_threshold: { 
+    min: 0.1, 
+    max: 0.9, 
+    step: 0.05, 
+    default: 0.3, 
+    label: 'Seuil de similarité', 
+    description: 'Score minimum pour inclure un document (0.1 = permissif, 0.9 = strict)' 
+  },
+  
+  // Gemini
+  gemini_max_files: { 
+    min: 1, 
+    max: 10, 
+    step: 1, 
+    default: 5, 
+    label: 'Fichiers max', 
+    description: 'Nombre maximum de PDF à analyser simultanément' 
+  },
+  cache_ttl_minutes: { 
+    min: 15, 
+    max: 120, 
+    step: 15, 
+    default: 60, 
+    label: 'Durée du cache (min)', 
+    description: 'Durée de conservation en cache (coût vs fraîcheur)' 
+  },
 });
 
 // ============================================

@@ -2,13 +2,13 @@
  * PromptForm.jsx - Baikal Console
  * ============================================================================
  * Formulaire de création et édition de prompts système.
- * VERSION: 2.1.0 - Fix agent_type 'librarian' pour bloc Gemini
+ * VERSION: 3.0.0 - Ajout sections Paramètres Retrieval + Gemini
  * ============================================================================
  */
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Save, AlertCircle, ChevronDown, ChevronUp, Sparkles, Loader2, Cpu } from 'lucide-react';
+import { ArrowLeft, Save, AlertCircle, ChevronDown, ChevronUp, Sparkles, Loader2, Cpu, Search } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../hooks/useToast';
 import { Button } from '../components/ui/Button';
@@ -21,6 +21,7 @@ import {
   canAccessPrompts,
   AGENT_TYPE_OPTIONS,
   LLM_MODEL_OPTIONS,
+  GEMINI_MODEL_OPTIONS,
   DEFAULT_PARAMETERS,
   PARAMETER_LIMITS,
   PROMPT_CONFIG,
@@ -33,7 +34,7 @@ import {
 // COMPOSANT SECTION REPLIABLE
 // ============================================================================
 
-function CollapsibleSection({ title, icon: Icon, children, defaultOpen = false }) {
+function CollapsibleSection({ title, icon: Icon, children, defaultOpen = false, badge = null }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
@@ -46,6 +47,11 @@ function CollapsibleSection({ title, icon: Icon, children, defaultOpen = false }
         <div className="flex items-center gap-2">
           {Icon && <Icon className="w-4 h-4 text-baikal-cyan" />}
           <span className="font-medium text-white font-mono">{title}</span>
+          {badge && (
+            <span className="text-xs text-baikal-text font-mono bg-baikal-bg px-2 py-0.5 rounded">
+              {badge}
+            </span>
+          )}
         </div>
         {isOpen ? <ChevronUp className="w-4 h-4 text-baikal-cyan" /> : <ChevronDown className="w-4 h-4 text-baikal-cyan" />}
       </button>
@@ -91,6 +97,40 @@ function PromptLengthIndicator({ length }) {
 }
 
 // ============================================================================
+// COMPOSANT TOGGLE SWITCH
+// ============================================================================
+
+function ToggleSwitch({ label, description, checked, onChange, disabled = false }) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <div className="flex-1">
+        <span className="text-sm font-medium text-white font-mono">{label}</span>
+        {description && (
+          <p className="text-xs text-baikal-text mt-0.5">{description}</p>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={() => !disabled && onChange(!checked)}
+        disabled={disabled}
+        className={`
+          relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0
+          ${checked ? 'bg-baikal-cyan' : 'bg-baikal-border'}
+          ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+        `}
+      >
+        <span
+          className={`
+            inline-block h-4 w-4 transform rounded-full bg-white transition-transform
+            ${checked ? 'translate-x-6' : 'translate-x-1'}
+          `}
+        />
+      </button>
+    </div>
+  );
+}
+
+// ============================================================================
 // FORMULAIRE PRINCIPAL
 // ============================================================================
 
@@ -109,7 +149,7 @@ function PromptForm() {
     vertical_id: '',
     org_id: '',
     system_prompt: '',
-    gemini_system_prompt: '',  // Prompt pour mode Gemini PDF complet
+    gemini_system_prompt: '',
     is_active: true,
     parameters: { ...DEFAULT_PARAMETERS },
   });
@@ -121,6 +161,11 @@ function PromptForm() {
   const [organizations, setOrganizations] = useState([]);
 
   const hasAccess = canAccessPrompts(profile);
+  
+  // Helpers pour vérifier le type d'agent
+  const isLibrarian = formData.agent_type === 'librarian';
+  const isRouter = formData.agent_type === 'router';
+  const needsRetrievalParams = isLibrarian || formData.agent_type === 'analyst';
 
   useEffect(() => {
     if (hasAccess) loadInitialData();
@@ -382,11 +427,14 @@ function PromptForm() {
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-white font-mono">PROMPT_SYSTÈME</h2>
                 <span className="text-xs text-baikal-text font-mono bg-baikal-bg px-2 py-1 rounded">
-                  Mode RAG classique
+                  {isRouter ? 'Routeur sémantique' : 'Mode RAG classique'}
                 </span>
               </div>
               <p className="text-sm text-baikal-text mb-4">
-                Ce prompt est utilisé pour le mode RAG classique (recherche par chunks de texte).
+                {isRouter 
+                  ? 'Ce prompt détermine comment le routeur analyse et oriente les requêtes vers les agents.'
+                  : 'Ce prompt est utilisé pour le mode RAG classique (recherche par chunks de texte).'
+                }
               </p>
               <Textarea
                 value={formData.system_prompt}
@@ -400,8 +448,8 @@ function PromptForm() {
             </CardContent>
           </Card>
 
-          {/* Prompt Gemini (mode PDF complet) - Seulement pour Bibliothécaire/Librarian */}
-          {formData.agent_type === 'librarian' && (
+          {/* Prompt Gemini (mode PDF complet) - Seulement pour Bibliothécaire */}
+          {isLibrarian && (
             <Card>
               <CardContent className="p-6 bg-baikal-surface border-baikal-border">
                 <div className="flex items-center justify-between mb-4">
@@ -431,52 +479,140 @@ function PromptForm() {
             </Card>
           )}
 
-          {/* Paramètres LLM */}
-          <CollapsibleSection title="Paramètres LLM" icon={Sparkles} defaultOpen={false}>
-            <div className="space-y-6">
-              {/* Modèle */}
-              <Select
-                label="Modèle"
-                value={formData.parameters.model || DEFAULT_PARAMETERS.model}
-                onChange={(e) => handleParameterChange('model', e.target.value)}
-                options={LLM_MODEL_OPTIONS}
-              />
+          {/* Paramètres LLM - Pas pour le routeur */}
+          {!isRouter && (
+            <CollapsibleSection title="Paramètres LLM" icon={Sparkles} defaultOpen={false}>
+              <div className="space-y-6">
+                {/* Modèle */}
+                <Select
+                  label="Modèle"
+                  value={formData.parameters.model || DEFAULT_PARAMETERS.model}
+                  onChange={(e) => handleParameterChange('model', e.target.value)}
+                  options={LLM_MODEL_OPTIONS}
+                />
 
-              {/* Tokens max */}
-              <SliderWithInput
-                label={PARAMETER_LIMITS.max_tokens.label}
-                value={formData.parameters.max_tokens ?? DEFAULT_PARAMETERS.max_tokens}
-                onChange={(value) => handleParameterChange('max_tokens', value)}
-                min={PARAMETER_LIMITS.max_tokens.min}
-                max={PARAMETER_LIMITS.max_tokens.max}
-                step={PARAMETER_LIMITS.max_tokens.step}
-                helperText={PARAMETER_LIMITS.max_tokens.description}
-              />
+                {/* Tokens max */}
+                <SliderWithInput
+                  label={PARAMETER_LIMITS.max_tokens.label}
+                  value={formData.parameters.max_tokens ?? DEFAULT_PARAMETERS.max_tokens}
+                  onChange={(value) => handleParameterChange('max_tokens', value)}
+                  min={PARAMETER_LIMITS.max_tokens.min}
+                  max={PARAMETER_LIMITS.max_tokens.max}
+                  step={PARAMETER_LIMITS.max_tokens.step}
+                  helperText={PARAMETER_LIMITS.max_tokens.description}
+                />
 
-              {/* Température */}
-              <Slider
-                label={PARAMETER_LIMITS.temperature.label}
-                value={formData.parameters.temperature ?? DEFAULT_PARAMETERS.temperature}
-                onChange={(value) => handleParameterChange('temperature', value)}
-                min={PARAMETER_LIMITS.temperature.min}
-                max={PARAMETER_LIMITS.temperature.max}
-                step={PARAMETER_LIMITS.temperature.step}
-                helperText={PARAMETER_LIMITS.temperature.description}
-              />
+                {/* Température */}
+                <Slider
+                  label={PARAMETER_LIMITS.temperature.label}
+                  value={formData.parameters.temperature ?? DEFAULT_PARAMETERS.temperature}
+                  onChange={(value) => handleParameterChange('temperature', value)}
+                  min={PARAMETER_LIMITS.temperature.min}
+                  max={PARAMETER_LIMITS.temperature.max}
+                  step={PARAMETER_LIMITS.temperature.step}
+                  helperText={PARAMETER_LIMITS.temperature.description}
+                />
 
-              <hr className="border-baikal-border" />
+                <hr className="border-baikal-border" />
 
-              {/* Poids de recherche */}
-              <div>
-                <h3 className="text-sm font-medium text-white font-mono mb-4">POIDS_DE_RECHERCHE</h3>
-                <WeightSlider
-                  value={formData.parameters.vector_weight ?? DEFAULT_PARAMETERS.vector_weight}
-                  onChange={handleVectorWeightChange}
-                  step={PARAMETER_LIMITS.vector_weight.step}
+                {/* Poids de recherche */}
+                <div>
+                  <h3 className="text-sm font-medium text-white font-mono mb-4">POIDS_DE_RECHERCHE</h3>
+                  <WeightSlider
+                    value={formData.parameters.vector_weight ?? DEFAULT_PARAMETERS.vector_weight}
+                    onChange={handleVectorWeightChange}
+                    step={PARAMETER_LIMITS.vector_weight.step}
+                  />
+                </div>
+              </div>
+            </CollapsibleSection>
+          )}
+
+          {/* Paramètres Retrieval - Pour Bibliothécaire et Analyste */}
+          {needsRetrievalParams && (
+            <CollapsibleSection 
+              title="Paramètres Retrieval" 
+              icon={Search} 
+              defaultOpen={false}
+              badge="RAG"
+            >
+              <div className="space-y-6">
+                {/* Nombre de chunks */}
+                <SliderWithInput
+                  label={PARAMETER_LIMITS.match_count.label}
+                  value={formData.parameters.match_count ?? DEFAULT_PARAMETERS.match_count}
+                  onChange={(value) => handleParameterChange('match_count', value)}
+                  min={PARAMETER_LIMITS.match_count.min}
+                  max={PARAMETER_LIMITS.match_count.max}
+                  step={PARAMETER_LIMITS.match_count.step}
+                  helperText={PARAMETER_LIMITS.match_count.description}
+                />
+
+                {/* Seuil de similarité */}
+                <Slider
+                  label={PARAMETER_LIMITS.match_threshold.label}
+                  value={formData.parameters.match_threshold ?? DEFAULT_PARAMETERS.match_threshold}
+                  onChange={(value) => handleParameterChange('match_threshold', value)}
+                  min={PARAMETER_LIMITS.match_threshold.min}
+                  max={PARAMETER_LIMITS.match_threshold.max}
+                  step={PARAMETER_LIMITS.match_threshold.step}
+                  helperText={PARAMETER_LIMITS.match_threshold.description}
+                />
+
+                <hr className="border-baikal-border" />
+
+                {/* Expansion des concepts (GraphRAG) */}
+                <ToggleSwitch
+                  label="Expansion des concepts (GraphRAG)"
+                  description="Active la recherche de documents liés par concepts sémantiques"
+                  checked={formData.parameters.enable_concept_expansion ?? DEFAULT_PARAMETERS.enable_concept_expansion}
+                  onChange={(value) => handleParameterChange('enable_concept_expansion', value)}
                 />
               </div>
-            </div>
-          </CollapsibleSection>
+            </CollapsibleSection>
+          )}
+
+          {/* Paramètres Gemini - Uniquement pour Bibliothécaire */}
+          {isLibrarian && (
+            <CollapsibleSection 
+              title="Paramètres Gemini" 
+              icon={Cpu} 
+              defaultOpen={false}
+              badge="PDF complet"
+            >
+              <div className="space-y-6">
+                {/* Modèle Gemini */}
+                <Select
+                  label="Modèle Gemini"
+                  value={formData.parameters.gemini_model || DEFAULT_PARAMETERS.gemini_model}
+                  onChange={(e) => handleParameterChange('gemini_model', e.target.value)}
+                  options={GEMINI_MODEL_OPTIONS}
+                />
+
+                {/* Fichiers max */}
+                <SliderWithInput
+                  label={PARAMETER_LIMITS.gemini_max_files.label}
+                  value={formData.parameters.gemini_max_files ?? DEFAULT_PARAMETERS.gemini_max_files}
+                  onChange={(value) => handleParameterChange('gemini_max_files', value)}
+                  min={PARAMETER_LIMITS.gemini_max_files.min}
+                  max={PARAMETER_LIMITS.gemini_max_files.max}
+                  step={PARAMETER_LIMITS.gemini_max_files.step}
+                  helperText={PARAMETER_LIMITS.gemini_max_files.description}
+                />
+
+                {/* Durée du cache */}
+                <SliderWithInput
+                  label={PARAMETER_LIMITS.cache_ttl_minutes.label}
+                  value={formData.parameters.cache_ttl_minutes ?? DEFAULT_PARAMETERS.cache_ttl_minutes}
+                  onChange={(value) => handleParameterChange('cache_ttl_minutes', value)}
+                  min={PARAMETER_LIMITS.cache_ttl_minutes.min}
+                  max={PARAMETER_LIMITS.cache_ttl_minutes.max}
+                  step={PARAMETER_LIMITS.cache_ttl_minutes.step}
+                  helperText={PARAMETER_LIMITS.cache_ttl_minutes.description}
+                />
+              </div>
+            </CollapsibleSection>
+          )}
 
           {/* Actions */}
           <div className="flex items-center justify-end gap-4 pt-4">
