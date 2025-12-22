@@ -18,6 +18,12 @@
  * - Suppression filtre "Terminés" (non utilisé en base)
  * - Correction texte modal suppression (clarification membres)
  * - Ajout bouton Réactiver pour projets archivés
+ * 
+ * PHASE 2 (21/12/2025):
+ * - Ajout champs identité projet (market_type, project_type, description)
+ * - Validation obligatoire des champs identité
+ * - Suppression description générale (une seule description dans identity)
+ * - Suppression corps d'état (doublon avec type de projet)
  * ============================================================================
  */
 
@@ -133,9 +139,9 @@ function ProjectRow({ project, onEdit, onManageMembers, onArchive, onReactivate,
             <td className="px-4 py-4">
                 <div>
                     <p className="font-medium text-white">{project.name}</p>
-                    {project.description && (
+                    {project.identity?.description && (
                         <p className="text-xs text-baikal-text mt-0.5 line-clamp-1">
-                            {project.description}
+                            {project.identity.description}
                         </p>
                     )}
                 </div>
@@ -234,45 +240,101 @@ function ProjectRow({ project, onEdit, onManageMembers, onArchive, onReactivate,
 
 /**
  * Modal de création/modification de projet
+ * PHASE 2: Identité projet simplifiée (market_type, project_type, description)
  */
 function ProjectModal({ isOpen, onClose, project, organizations, defaultOrgId, onSave }) {
     const isEdit = !!project;
     
     const [formData, setFormData] = useState({
         name: '',
-        description: '',
         org_id: defaultOrgId || '',
         status: 'active',
+        // IDENTITÉ PROJET (PHASE 2 - SIMPLIFIÉ)
+        identity: {
+            market_type: '',
+            project_type: '',
+            description: '',
+        },
     });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+    const [identityErrors, setIdentityErrors] = useState({});
 
     useEffect(() => {
         if (isOpen) {
             if (project) {
                 setFormData({
                     name: project.name || '',
-                    description: project.description || '',
                     org_id: project.org_id || defaultOrgId || '',
                     status: project.status || 'active',
+                    identity: project.identity || {
+                        market_type: '',
+                        project_type: '',
+                        description: '',
+                    },
                 });
             } else {
                 setFormData({
                     name: '',
-                    description: '',
                     org_id: defaultOrgId || '',
                     status: 'active',
+                    identity: {
+                        market_type: '',
+                        project_type: '',
+                        description: '',
+                    },
                 });
             }
             setError(null);
+            setIdentityErrors({});
         }
     }, [isOpen, project, defaultOrgId]);
+
+    const handleIdentityChange = (field, value) => {
+        setFormData(prev => ({
+            ...prev,
+            identity: {
+                ...prev.identity,
+                [field]: value,
+            },
+        }));
+        // Clear error for this field
+        if (identityErrors[field]) {
+            setIdentityErrors(prev => {
+                const newErrors = { ...prev };
+                delete newErrors[field];
+                return newErrors;
+            });
+        }
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         
+        // Validation de base
         if (!formData.name.trim()) {
             setError('Le nom du projet est requis');
+            return;
+        }
+
+        // Validation identité projet (Phase 2)
+        const newIdentityErrors = {};
+        
+        if (!formData.identity.market_type) {
+            newIdentityErrors.market_type = 'Type de marché requis';
+        }
+        
+        if (!formData.identity.project_type) {
+            newIdentityErrors.project_type = 'Type de projet requis';
+        }
+        
+        if (!formData.identity.description || formData.identity.description.trim().length === 0) {
+            newIdentityErrors.description = 'Description requise';
+        }
+
+        if (Object.keys(newIdentityErrors).length > 0) {
+            setIdentityErrors(newIdentityErrors);
+            setError('Veuillez remplir tous les champs obligatoires de l\'identité projet');
             return;
         }
         
@@ -285,14 +347,14 @@ function ProjectModal({ isOpen, onClose, project, organizations, defaultOrgId, o
             if (isEdit) {
                 result = await projectsService.updateProject(project.id, {
                     name: formData.name.trim(),
-                    description: formData.description.trim() || null,
                     status: formData.status,
+                    identity: formData.identity,
                 });
             } else {
                 result = await projectsService.createProject({
                     name: formData.name.trim(),
-                    description: formData.description.trim() || null,
                     orgId: formData.org_id || null,
+                    identity: formData.identity,
                 });
             }
 
@@ -323,8 +385,8 @@ function ProjectModal({ isOpen, onClose, project, organizations, defaultOrgId, o
                 onClick={onClose}
             />
 
-            <div className="relative w-full max-w-lg mx-4 bg-baikal-surface border border-baikal-border rounded-lg shadow-xl">
-                <div className="flex items-center justify-between px-6 py-4 border-b border-baikal-border">
+            <div className="relative w-full max-w-2xl mx-4 bg-baikal-surface border border-baikal-border rounded-lg shadow-xl max-h-[90vh] overflow-y-auto">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-baikal-border sticky top-0 bg-baikal-surface z-10">
                     <h2 className="text-lg font-mono font-semibold text-white">
                         {isEdit ? 'MODIFIER_PROJET' : 'NOUVEAU_PROJET'}
                     </h2>
@@ -336,7 +398,7 @@ function ProjectModal({ isOpen, onClose, project, organizations, defaultOrgId, o
                     </button>
                 </div>
 
-                <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                <form onSubmit={handleSubmit} className="p-6 space-y-6">
                     {error && (
                         <div className="p-3 bg-red-900/20 border border-red-500/50 rounded-md flex items-center gap-2 text-red-300 text-sm">
                             <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -344,88 +406,143 @@ function ProjectModal({ isOpen, onClose, project, organizations, defaultOrgId, o
                         </div>
                     )}
 
-                    <div>
-                        <label className="block text-sm font-mono text-baikal-text mb-2">
-                            Nom du projet *
-                        </label>
-                        <input
-                            type="text"
-                            value={formData.name}
-                            onChange={(e) => {
-                                setFormData({ ...formData, name: e.target.value });
-                                if (error) setError(null);
-                            }}
-                            placeholder="Mon Projet"
-                            required
-                            className="w-full px-4 py-2.5 bg-baikal-bg border border-baikal-border rounded-md text-white placeholder-baikal-text/50 focus:outline-none focus:border-baikal-cyan transition-colors"
-                        />
-                    </div>
+                    {/* SECTION: Informations générales */}
+                    <div className="space-y-4">
+                        <h3 className="text-sm font-mono font-semibold text-baikal-cyan uppercase">
+                            Informations générales
+                        </h3>
 
-                    <div>
-                        <label className="block text-sm font-mono text-baikal-text mb-2">
-                            Description
-                        </label>
-                        <textarea
-                            value={formData.description}
-                            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                            placeholder="Description du projet..."
-                            rows={3}
-                            className="w-full px-4 py-2.5 bg-baikal-bg border border-baikal-border rounded-md text-white placeholder-baikal-text/50 focus:outline-none focus:border-baikal-cyan transition-colors resize-none"
-                        />
-                    </div>
-
-                    {!isEdit && organizations.length > 0 && (
                         <div>
                             <label className="block text-sm font-mono text-baikal-text mb-2">
-                                Organisation
+                                Nom du projet *
+                            </label>
+                            <input
+                                type="text"
+                                value={formData.name}
+                                onChange={(e) => {
+                                    setFormData({ ...formData, name: e.target.value });
+                                    if (error) setError(null);
+                                }}
+                                placeholder="Mon Projet"
+                                required
+                                className="w-full px-4 py-2.5 bg-baikal-bg border border-baikal-border rounded-md text-white placeholder-baikal-text/50 focus:outline-none focus:border-baikal-cyan transition-colors"
+                            />
+                        </div>
+
+                        {!isEdit && organizations.length > 0 && (
+                            <div>
+                                <label className="block text-sm font-mono text-baikal-text mb-2">
+                                    Organisation
+                                </label>
+                                <select
+                                    value={formData.org_id}
+                                    onChange={(e) => setFormData({ ...formData, org_id: e.target.value })}
+                                    className="w-full px-4 py-2.5 bg-baikal-bg border border-baikal-border rounded-md text-white focus:outline-none focus:border-baikal-cyan transition-colors"
+                                >
+                                    <option value="">-- Sélectionner --</option>
+                                    {organizations.map((org) => (
+                                        <option key={org.id} value={org.id}>
+                                            {org.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* SECTION: Identité Projet (PHASE 2 - SIMPLIFIÉ) */}
+                    <div className="space-y-4 pt-4 border-t border-baikal-border">
+                        <div className="flex items-center gap-2">
+                            <h3 className="text-sm font-mono font-semibold text-baikal-cyan uppercase">
+                                Identité du Projet
+                            </h3>
+                            <span className="text-xs text-baikal-text font-mono">
+                                (obligatoire pour personnaliser les réponses)
+                            </span>
+                        </div>
+
+                        {/* Type de marché */}
+                        <div>
+                            <label className="block text-sm font-mono text-baikal-text mb-2">
+                                Type de marché *
                             </label>
                             <select
-                                value={formData.org_id}
-                                onChange={(e) => setFormData({ ...formData, org_id: e.target.value })}
-                                className="w-full px-4 py-2.5 bg-baikal-bg border border-baikal-border rounded-md text-white focus:outline-none focus:border-baikal-cyan transition-colors"
+                                value={formData.identity.market_type}
+                                onChange={(e) => handleIdentityChange('market_type', e.target.value)}
+                                className={`w-full px-4 py-2.5 bg-baikal-bg border rounded-md text-white focus:outline-none focus:border-baikal-cyan transition-colors ${
+                                    identityErrors.market_type ? 'border-red-500' : 'border-baikal-border'
+                                }`}
                             >
                                 <option value="">-- Sélectionner --</option>
-                                {organizations.map((org) => (
-                                    <option key={org.id} value={org.id}>
-                                        {org.name}
-                                    </option>
-                                ))}
+                                <option value="public">Marché Public</option>
+                                <option value="prive">Marché Privé</option>
                             </select>
+                            {identityErrors.market_type && (
+                                <p className="text-xs text-red-400 mt-1">{identityErrors.market_type}</p>
+                            )}
                         </div>
-                    )}
 
-                    {isEdit && (
+                        {/* Type de projet */}
                         <div>
                             <label className="block text-sm font-mono text-baikal-text mb-2">
-                                Statut
+                                Type de projet *
                             </label>
                             <select
-                                value={formData.status}
-                                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                                className="w-full px-4 py-2.5 bg-baikal-bg border border-baikal-border rounded-md text-white focus:outline-none focus:border-baikal-cyan transition-colors"
+                                value={formData.identity.project_type}
+                                onChange={(e) => handleIdentityChange('project_type', e.target.value)}
+                                className={`w-full px-4 py-2.5 bg-baikal-bg border rounded-md text-white focus:outline-none focus:border-baikal-cyan transition-colors ${
+                                    identityErrors.project_type ? 'border-red-500' : 'border-baikal-border'
+                                }`}
                             >
-                                {PROJECT_STATUSES.map((status) => (
-                                    <option key={status.value} value={status.value}>
-                                        {status.label}
-                                    </option>
-                                ))}
+                                <option value="">-- Sélectionner --</option>
+                                <option value="entreprise_generale">Entreprise Générale</option>
+                                <option value="macro_lot">Macro-Lot</option>
+                                <option value="gros_oeuvre">Gros-Œuvre</option>
+                                <option value="lots_techniques">Lots Techniques</option>
+                                <option value="lots_architecturaux">Lots Architecturaux</option>
                             </select>
+                            {identityErrors.project_type && (
+                                <p className="text-xs text-red-400 mt-1">{identityErrors.project_type}</p>
+                            )}
                         </div>
-                    )}
 
-                    <div className="flex items-center justify-end gap-3 pt-4">
+                        {/* Description projet */}
+                        <div>
+                            <label className="block text-sm font-mono text-baikal-text mb-2">
+                                Description du projet *
+                            </label>
+                            <textarea
+                                value={formData.identity.description}
+                                onChange={(e) => handleIdentityChange('description', e.target.value)}
+                                placeholder="Ex: École primaire 12 classes, ZAC des Lilas, construction neuve R+2, livraison Q3 2026, surface 2500m²..."
+                                rows={4}
+                                className={`w-full px-4 py-2.5 bg-baikal-bg border rounded-md text-white placeholder-baikal-text/50 focus:outline-none focus:border-baikal-cyan transition-colors resize-none ${
+                                    identityErrors.description ? 'border-red-500' : 'border-baikal-border'
+                                }`}
+                            />
+                            {identityErrors.description && (
+                                <p className="text-xs text-red-400 mt-1">{identityErrors.description}</p>
+                            )}
+                            <p className="text-xs text-baikal-text/60 mt-1">
+                                Cette description sera utilisée pour contextualiser les réponses de BAIKAL
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center justify-end gap-3 pt-4 border-t border-baikal-border">
                         <button
                             type="button"
                             onClick={onClose}
                             disabled={loading}
-                            className="px-4 py-2 text-baikal-text hover:text-white transition-colors font-mono"
+                            className="px-4 py-2 bg-baikal-surface text-white font-medium rounded-md hover:bg-baikal-border transition-colors font-mono disabled:opacity-50"
                         >
                             ANNULER
                         </button>
                         <button
                             type="submit"
-                            disabled={loading || !formData.name.trim()}
-                            className="flex items-center gap-2 px-4 py-2 bg-baikal-cyan text-black font-medium rounded-md hover:bg-baikal-cyan/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-mono"
+                            disabled={loading}
+                            className="inline-flex items-center gap-2 px-4 py-2 bg-baikal-cyan text-black font-medium rounded-md hover:bg-baikal-cyan/90 transition-colors font-mono disabled:opacity-50"
                         >
                             {loading ? (
                                 <Loader2 className="w-4 h-4 animate-spin" />

@@ -2,9 +2,17 @@
 // ║  BAIKAL-BRAIN - Routeur Sémantique Intelligent                               ║
 // ║  Edge Function Supabase pour ARPET                                           ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
-// ║  Version: 4.2.0 - Lecture prompt routeur depuis DB + conversation_id         ║
+// ║  Version: 4.3.2 - Transmission contexte projet à librarian (Phase 2)         ║
 // ║  Route vers: BIBLIOTHECAIRE (baikal-librarian) ou ANALYSTE (futur)           ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
+// ║  Nouveautés v4.3.2:                                                          ║
+// ║  - Transmission du project_context à baikal-librarian                        ║
+// ║  Nouveautés v4.3.1:                                                          ║
+// ║  - CORRECTION: .schema('core') sur récupération identité projet              ║
+// ║  Nouveautés v4.3.0 (Phase 2):                                                ║
+// ║  - Récupération de l'identité projet (identity JSONB)                        ║
+// ║  - Formatage et injection dans le prompt via {{project_context}}             ║
+// ║  - Simplification: market_type, project_type, description (sans main_trades) ║
 // ║  Nouveautés v4.2.0:                                                          ║
 // ║  - Lecture du prompt routeur depuis config.agent_prompts                     ║
 // ║  - Paramètres (model, temperature) configurables depuis DB                   ║
@@ -107,6 +115,12 @@ interface RouterConfig {
   max_tokens: number
 }
 
+interface ProjectIdentity {
+  market_type?: string
+  project_type?: string
+  description?: string
+}
+
 // ============================================================================
 // FONCTIONS UTILITAIRES
 // ============================================================================
@@ -121,6 +135,89 @@ function jsonResponse(data: unknown, status = 200): Response {
 function errorResponse(message: string, status = 500): Response {
   console.error(`[baikal-brain] Erreur: ${message}`)
   return jsonResponse({ error: message, status: 'error' }, status)
+}
+
+// ============================================================================
+// PHASE 2: FORMATAGE IDENTITÉ PROJET (SIMPLIFIÉ - SANS main_trades)
+// ============================================================================
+
+/**
+ * Formate l'identité du projet pour injection dans le prompt
+ */
+function formatProjectIdentity(identity: ProjectIdentity | null): string {
+  if (!identity || Object.keys(identity).length === 0) {
+    return 'Aucune identité projet définie.';
+  }
+
+  const marketTypeLabels: Record<string, string> = {
+    public: 'Marché Public',
+    prive: 'Marché Privé',
+  };
+
+  const projectTypeLabels: Record<string, string> = {
+    entreprise_generale: 'Entreprise Générale',
+    macro_lot: 'Macro-Lot',
+    gros_oeuvre: 'Gros-Œuvre',
+    lots_techniques: 'Lots Techniques',
+    lots_architecturaux: 'Lots Architecturaux',
+  };
+
+  const parts: string[] = [];
+
+  // Type de marché
+  if (identity.market_type) {
+    const label = marketTypeLabels[identity.market_type] || identity.market_type;
+    parts.push(`**Type de marché**: ${label}`);
+  }
+
+  // Type de projet
+  if (identity.project_type) {
+    const label = projectTypeLabels[identity.project_type] || identity.project_type;
+    parts.push(`**Type de projet**: ${label}`);
+  }
+
+  // Description
+  if (identity.description) {
+    parts.push(`**Description**: ${identity.description}`);
+  }
+
+  return parts.join('\n');
+}
+
+/**
+ * Récupère l'identité du projet depuis la base de données
+ * CORRECTION v4.3.1: Ajout .schema('core') pour chercher dans core.projects
+ */
+async function getProjectIdentity(
+  supabase: ReturnType<typeof createClient>,
+  project_id: string | undefined
+): Promise<string> {
+  if (!project_id) {
+    return 'Aucune identité projet.';
+  }
+
+  try {
+    const { data: project, error } = await supabase
+      .schema('core')
+      .from('projects')
+      .select('identity')
+      .eq('id', project_id)
+      .single();
+
+    if (error) {
+      console.warn(`[baikal-brain] Erreur récupération identité projet: ${error.message}`);
+      return 'Aucune identité projet.';
+    }
+
+    if (!project || !project.identity) {
+      return 'Aucune identité projet définie.';
+    }
+
+    return formatProjectIdentity(project.identity as ProjectIdentity);
+  } catch (error) {
+    console.warn(`[baikal-brain] Erreur formatage identité: ${error}`);
+    return 'Aucune identité projet.';
+  }
 }
 
 // ============================================================================
@@ -218,9 +315,14 @@ async function getRouterConfig(
 async function routeQuery(
   query: string, 
   openaiApiKey: string,
-  config: RouterConfig
+  config: RouterConfig,
+  projectContext: string
 ): Promise<RoutingDecision> {
   console.log(`[baikal-brain] Routage avec model=${config.model}, temp=${config.temperature}`)
+  
+  // PHASE 2: Injecter le contexte projet dans le prompt système
+  const systemPromptWithContext = config.system_prompt
+    .replace('{{project_context}}', projectContext);
   
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -233,7 +335,7 @@ async function routeQuery(
       temperature: config.temperature,
       max_tokens: config.max_tokens,
       messages: [
-        { role: 'system', content: config.system_prompt },
+        { role: 'system', content: systemPromptWithContext },
         { role: 'user', content: query }
       ],
     }),
@@ -267,25 +369,35 @@ async function routeQuery(
 // APPEL AGENT BIBLIOTHÉCAIRE
 // ============================================================================
 
+/**
+ * Appelle l'agent Bibliothécaire (baikal-librarian)
+ * v4.3.2: Ajout transmission project_context
+ */
 async function callLibrarian(
   body: RequestBody,
   decision: RoutingDecision,
   supabaseUrl: string, 
   authHeader: string,
-  apiKey: string
+  apiKey: string,
+  projectContext: string  // ← AJOUT v4.3.2
 ): Promise<Response> {
   const librarianUrl = `${supabaseUrl}/functions/v1/baikal-librarian`
   
   console.log(`[baikal-brain] Appel du Bibliothécaire: ${librarianUrl}`)
   console.log(`[baikal-brain] user_id transmis: ${body.user_id}`)
+  console.log(`[baikal-brain] project_id transmis: ${body.project_id || 'aucun'}`)
   console.log(`[baikal-brain] conversation_id transmis: ${body.conversation_id || 'aucun (nouvelle conversation)'}`)
   console.log(`[baikal-brain] generation_mode: ${decision.generation_mode}`)
+  console.log(`[baikal-brain] project_context transmis (${projectContext.length} chars): ${projectContext.substring(0, 100)}...`)
   
+  // MIGRATION: Normaliser app_id / vertical_id avant transmission
+  // Le client peut forcer le generation_mode, sinon on utilise la décision du routeur
+  // v4.3.2: Ajout project_context dans le body
   const normalizedBody = {
     ...body,
-    app_id: body.app_id || body.vertical_id,
-    generation_mode: body.generation_mode || decision.generation_mode,
-    conversation_id: body.conversation_id,
+    app_id: body.app_id || body.vertical_id,  // Priorité à app_id
+    generation_mode: body.generation_mode || decision.generation_mode,  // Client override ou décision routeur
+    project_context: projectContext,  // ← AJOUT CRITIQUE v4.3.2
   }
   
   const response = await fetch(librarianUrl, {
@@ -298,6 +410,7 @@ async function callLibrarian(
     body: JSON.stringify(normalizedBody),
   })
 
+  // Retransmet la réponse du bibliothécaire
   const data = await response.json()
   return jsonResponse({
     ...data,
@@ -342,7 +455,7 @@ serve(async (req: Request): Promise<Response> => {
     const apiKey = req.headers.get('apikey') || ''
 
     const body: RequestBody = await req.json()
-    const { query, user_id, org_id, conversation_id, generation_mode: clientMode } = body
+    const { query, user_id, org_id, project_id, conversation_id, generation_mode: clientMode } = body
 
     if (!query || query.trim().length === 0) {
       return errorResponse('Le champ "query" est requis', 400)
@@ -350,34 +463,46 @@ serve(async (req: Request): Promise<Response> => {
 
     const effectiveAppId = body.app_id || body.vertical_id || 'arpet'
 
-    console.log(`[baikal-brain] v4.2.0 - Lecture prompt depuis DB`)
+    console.log(`[baikal-brain] v4.3.2 - Transmission contexte projet à librarian`)
     console.log(`[baikal-brain] Requête reçue: "${query.substring(0, 80)}..."`)
     console.log(`[baikal-brain] user_id: ${user_id}`)
+    console.log(`[baikal-brain] project_id: ${project_id || 'aucun'}`)
     console.log(`[baikal-brain] conversation_id: ${conversation_id || 'nouvelle conversation'}`)
     if (clientMode) {
       console.log(`[baikal-brain] Mode forcé par client: ${clientMode}`)
     }
 
     // ========================================
-    // 2. RÉCUPÉRER CONFIG ROUTEUR DEPUIS DB
+    // 2. INITIALISER SUPABASE CLIENT
     // ========================================
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
+    // ========================================
+    // 3. PHASE 2: RÉCUPÉRER IDENTITÉ PROJET
+    // ========================================
+    const projectContext = await getProjectIdentity(supabase, project_id)
+    console.log(`[baikal-brain] Contexte projet: ${projectContext}`)
+
+    // ========================================
+    // 4. RÉCUPÉRER CONFIG ROUTEUR DEPUIS DB
+    // ========================================
     const routerConfig = await getRouterConfig(supabase, effectiveAppId, org_id)
 
     // ========================================
-    // 3. ROUTAGE SÉMANTIQUE
+    // 5. ROUTAGE SÉMANTIQUE
     // ========================================
     console.log('[baikal-brain] Analyse du routage...')
-    const decision = await routeQuery(query, openaiApiKey, routerConfig)
+    const decision = await routeQuery(query, openaiApiKey, routerConfig, projectContext)
     console.log(`[baikal-brain] Décision: ${decision.destination} | Mode: ${decision.generation_mode} | Raison: ${decision.reasoning}`)
 
     // ========================================
-    // 4. DÉLÉGATION À L'AGENT
+    // 6. DÉLÉGATION À L'AGENT
     // ========================================
     if (decision.destination === 'BIBLIOTHECAIRE') {
-      return await callLibrarian(body, decision, supabaseUrl, authHeader, apiKey)
+      return await callLibrarian(body, decision, supabaseUrl, authHeader, apiKey, projectContext)  // ← AJOUT projectContext v4.3.2
     } 
     else if (decision.destination === 'ANALYSTE') {
+      // L'analyste n'est pas encore implémenté
       return jsonResponse({
         response: "🚧 L'Agent Analyste est en cours de développement. Pour les calculs et analyses de données, cette fonctionnalité sera bientôt disponible. En attendant, je peux vous aider avec des questions sur la documentation et les normes BTP.",
         sources: [],
@@ -389,8 +514,8 @@ serve(async (req: Request): Promise<Response> => {
       })
     }
 
-    // Fallback
-    return await callLibrarian(body, decision, supabaseUrl, authHeader, apiKey)
+    // Fallback (ne devrait jamais arriver)
+    return await callLibrarian(body, decision, supabaseUrl, authHeader, apiKey, projectContext)  // ← AJOUT projectContext v4.3.2
 
   } catch (error) {
     console.error('[baikal-brain] Erreur non gérée:', error)

@@ -1,7 +1,10 @@
 // ╔══════════════════════════════════════════════════════════════════════════════╗
-// ║  BAIKAL-LIBRARIAN v8.9.3 - Agent RAG avec Mémoire Conversationnelle         ║
+// ║  BAIKAL-LIBRARIAN v8.10.0 - Agent RAG avec Contexte Projet                  ║
 // ║  Edge Function Supabase pour ARPET                                          ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
+// ║  Nouveautés v8.10.0:                                                         ║
+// ║  - PHASE 2: Réception et injection du contexte projet dans les prompts      ║
+// ║  - Support {{project_context}} dans system_prompt et gemini_system_prompt   ║
 // ║  Nouveautés v8.9.3:                                                          ║
 // ║  - Fix: Appel LLM même sans documents (mémoire + échanges cordiaux)          ║
 // ║  - UX: Réponses naturelles aux salutations et small talk                     ║
@@ -105,6 +108,7 @@ interface RequestBody {
   app_id?: string
   agent_id?: string
   conversation_id?: string
+  project_context?: string  // ← AJOUT v8.10.0 (Phase 2)
   match_threshold?: number
   match_count?: number
   temperature?: number
@@ -295,6 +299,29 @@ async function getAgentConfig(
     systemPrompt: promptData?.system_prompt || FALLBACK_SYSTEM_PROMPT,
     geminiSystemPrompt: promptData?.gemini_system_prompt || GEMINI_SYSTEM_PROMPT,
   }
+}
+
+// ============================================================================
+// PHASE 2: INJECTION CONTEXTE PROJET DANS LES PROMPTS
+// ============================================================================
+
+/**
+ * Injecte le contexte projet dans un prompt système
+ * v8.10.0: Support {{project_context}} ou ajout en préfixe
+ */
+function injectProjectContext(prompt: string, projectContext: string): string {
+  if (!projectContext || projectContext === 'Aucune identité projet.' || projectContext === 'Aucune identité projet définie.') {
+    // Pas de contexte projet, on retire le placeholder s'il existe
+    return prompt.replace('{{project_context}}', '').replace(/\n\n+/g, '\n\n').trim()
+  }
+  
+  // Si le prompt contient le placeholder {{project_context}}, on le remplace
+  if (prompt.includes('{{project_context}}')) {
+    return prompt.replace('{{project_context}}', projectContext)
+  }
+  
+  // Sinon, on ajoute le contexte en préfixe
+  return `CONTEXTE PROJET:\n${projectContext}\n\n---\n\n${prompt}`
 }
 
 // ============================================================================
@@ -1019,6 +1046,7 @@ serve(async (req) => {
       project_id,
       app_id,
       conversation_id: inputConversationId,
+      project_context,  // ← AJOUT v8.10.0 (Phase 2)
       generation_mode = 'chunks',
       include_app_layer = DEFAULT_CONFIG.include_app_layer,
       include_org_layer = DEFAULT_CONFIG.include_org_layer,
@@ -1035,9 +1063,10 @@ serve(async (req) => {
       return errorResponse("user_id is required")
     }
 
-    console.log(`[baikal-librarian] v8.9.3 - LLM toujours appelé + échanges cordiaux`)
+    console.log(`[baikal-librarian] v8.10.0 - PHASE 2: Contexte projet`)
     console.log(`[baikal-librarian] Mode: ${generation_mode}, Query: "${query.substring(0, 50)}..."`)
     console.log(`[baikal-librarian] conversation_id reçu: ${inputConversationId || 'aucun'}`)
+    console.log(`[baikal-librarian] project_context reçu (${project_context?.length || 0} chars): ${project_context?.substring(0, 100) || 'aucun'}...`)
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
@@ -1057,11 +1086,20 @@ serve(async (req) => {
     // ========================================
     // 2. RÉCUPÉRER CONFIG AGENT DEPUIS DB
     // ========================================
-    const { config: agentConfig, systemPrompt, geminiSystemPrompt } = await getAgentConfig(
+    const { config: agentConfig, systemPrompt: rawSystemPrompt, geminiSystemPrompt: rawGeminiSystemPrompt } = await getAgentConfig(
       supabase,
       effectiveAppId,
       effectiveOrgId
     )
+
+    // ========================================
+    // 2.5 PHASE 2: INJECTER CONTEXTE PROJET
+    // ========================================
+    const systemPrompt = injectProjectContext(rawSystemPrompt, project_context || '')
+    const geminiSystemPrompt = injectProjectContext(rawGeminiSystemPrompt, project_context || '')
+    
+    console.log(`[baikal-librarian] Prompt système avec contexte projet (${systemPrompt.length} chars)`)
+    console.log(`[baikal-librarian] Prompt Gemini avec contexte projet (${geminiSystemPrompt.length} chars)`)
 
     // ========================================
     // 3. GESTION CONVERSATION
@@ -1190,7 +1228,7 @@ serve(async (req) => {
               cacheInfos = await processCacheStrategy(
                 supabase, 
                 files, 
-                geminiSystemPrompt,
+                geminiSystemPrompt,  // ← Utilise le prompt Gemini avec contexte projet
                 agentConfig.gemini_model,
                 agentConfig.cache_ttl_minutes
               )
