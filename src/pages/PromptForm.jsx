@@ -2,7 +2,7 @@
  * PromptForm.jsx - Baikal Console
  * ============================================================================
  * Formulaire de création et édition de prompts système.
- * VERSION: 3.0.0 - Ajout sections Paramètres Retrieval + Gemini
+ * VERSION: 3.1.0 - Migration vertical_id → app_id (Phase 3)
  * ============================================================================
  */
 
@@ -146,7 +146,7 @@ function PromptForm() {
     name: '',
     description: '',
     agent_type: '',
-    vertical_id: '',
+    app_id: '',  // ← CHANGÉ: vertical_id → app_id
     org_id: '',
     system_prompt: '',
     gemini_system_prompt: '',
@@ -157,7 +157,7 @@ function PromptForm() {
   const [loading, setLoading] = useState(isEditing);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState({});
-  const [verticals, setVerticals] = useState([]);
+  const [apps, setApps] = useState([]);  // ← CHANGÉ: verticals → apps
   const [organizations, setOrganizations] = useState([]);
 
   const hasAccess = canAccessPrompts(profile);
@@ -172,19 +172,19 @@ function PromptForm() {
   }, [hasAccess, id]);
 
   useEffect(() => {
-    if (formData.vertical_id) {
-      loadOrganizations(formData.vertical_id);
+    if (formData.app_id) {  // ← CHANGÉ: vertical_id → app_id
+      loadOrganizations(formData.app_id);
     } else {
       setOrganizations([]);
       setFormData((prev) => ({ ...prev, org_id: '' }));
     }
-  }, [formData.vertical_id]);
+  }, [formData.app_id]);  // ← CHANGÉ: vertical_id → app_id
 
   const loadInitialData = async () => {
     setLoading(true);
     try {
-      const { data: verticalsData } = await promptsService.getVerticals();
-      setVerticals(verticalsData || []);
+      const { data: appsData } = await promptsService.getApps();  // ← CHANGÉ: getVerticals → getApps
+      setApps(appsData || []);  // ← CHANGÉ: setVerticals → setApps
 
       if (isEditing) {
         const { data: promptData, error: promptError } = await promptsService.getPromptById(id);
@@ -195,7 +195,7 @@ function PromptForm() {
             name: promptData.name || '',
             description: promptData.description || '',
             agent_type: promptData.agent_type || '',
-            vertical_id: promptData.vertical_id || '',
+            app_id: promptData.app_id || '',  // ← CHANGÉ: vertical_id → app_id
             org_id: promptData.org_id || '',
             system_prompt: promptData.system_prompt || '',
             gemini_system_prompt: promptData.gemini_system_prompt || '',
@@ -203,8 +203,8 @@ function PromptForm() {
             parameters: { ...DEFAULT_PARAMETERS, ...promptData.parameters },
           });
 
-          if (promptData.vertical_id) {
-            await loadOrganizations(promptData.vertical_id);
+          if (promptData.app_id) {  // ← CHANGÉ: vertical_id → app_id
+            await loadOrganizations(promptData.app_id);
           }
         }
       }
@@ -216,8 +216,8 @@ function PromptForm() {
     }
   };
 
-  const loadOrganizations = async (verticalId) => {
-    const { data } = await promptsService.getOrganizations(verticalId);
+  const loadOrganizations = async (appId) => {  // ← CHANGÉ: verticalId → appId
+    const { data } = await promptsService.getOrganizations(appId);
     setOrganizations(data || []);
   };
 
@@ -257,7 +257,7 @@ function PromptForm() {
 
     const { exists } = await promptsService.checkPromptExists(
       formData.agent_type,
-      formData.vertical_id || null,
+      formData.app_id || null,  // ← CHANGÉ: vertical_id → app_id
       formData.org_id || null,
       isEditing ? id : null
     );
@@ -273,7 +273,7 @@ function PromptForm() {
         name: formData.name.trim(),
         description: formData.description.trim() || null,
         agent_type: formData.agent_type,
-        vertical_id: formData.vertical_id || null,
+        app_id: formData.app_id || null,  // ← CHANGÉ: vertical_id → app_id
         org_id: formData.org_id || null,
         system_prompt: formData.system_prompt,
         gemini_system_prompt: formData.gemini_system_prompt || null,
@@ -324,13 +324,13 @@ function PromptForm() {
     );
   }
 
-  const verticalOptions = [
+  const appOptions = [  // ← CHANGÉ: verticalOptions → appOptions
     { value: '', label: 'Aucune (défaut global)' },
-    ...verticals.map((v) => ({ value: v.id, label: v.name })),
+    ...apps.map((v) => ({ value: v.id, label: v.name })),  // ← CHANGÉ: verticals → apps
   ];
 
   const organizationOptions = [
-    { value: '', label: 'Aucune (défaut verticale)' },
+    { value: '', label: 'Aucune (défaut application)' },  // ← CHANGÉ: "défaut verticale" → "défaut application"
     ...organizations.map((o) => ({ value: o.id, label: o.name })),
   ];
 
@@ -383,10 +383,10 @@ function PromptForm() {
                   required
                 />
                 <Select
-                  label="Verticale"
-                  value={formData.vertical_id}
-                  onChange={(e) => handleChange('vertical_id', e.target.value)}
-                  options={verticalOptions}
+                  label="Application"  // ← CHANGÉ: "Verticale" → "Application"
+                  value={formData.app_id}  // ← CHANGÉ: vertical_id → app_id
+                  onChange={(e) => handleChange('app_id', e.target.value)}  // ← CHANGÉ
+                  options={appOptions}  // ← CHANGÉ: verticalOptions → appOptions
                   helperText="Laissez vide pour un prompt global"
                 />
                 <Select
@@ -394,8 +394,8 @@ function PromptForm() {
                   value={formData.org_id}
                   onChange={(e) => handleChange('org_id', e.target.value)}
                   options={organizationOptions}
-                  disabled={!formData.vertical_id}
-                  helperText={!formData.vertical_id ? 'Sélectionnez d\'abord une verticale' : ''}
+                  disabled={!formData.app_id}  // ← CHANGÉ: vertical_id → app_id
+                  helperText={!formData.app_id ? 'Sélectionnez d\'abord une application' : ''}  // ← CHANGÉ
                 />
                 <div className="md:col-span-2">
                   <Textarea
