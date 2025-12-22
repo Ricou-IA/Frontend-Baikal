@@ -2,9 +2,14 @@
  * Prompts Service - Baikal Console
  * ============================================================================
  * MIGRATION PHASE 3 - vertical → app
- * VERSION: 2.0.0 - Ajout gemini_system_prompt
+ * VERSION: 2.1.0 - Ajout .schema('config') sur toutes les opérations
  * 
- * MODIFICATIONS:
+ * MODIFICATIONS v2.1.0:
+ * - Ajout .schema('config') sur TOUS les appels à agent_prompts
+ * - Ajout .schema('config') sur apps
+ * - Ajout .schema('core') sur organizations
+ * 
+ * MODIFICATIONS v2.0.0:
  * - agent_prompts → config.agent_prompts (schéma)
  * - vertical_id → app_id (colonne)
  * - verticals → config.apps (table + schéma)
@@ -33,6 +38,7 @@ export const getPrompts = async (filters = {}) => {
   try {
     // Requête principale sans jointures (les vues ne supportent pas les relations PostgREST)
     let query = supabase
+      .schema('config')  // ← AJOUTÉ
       .from('agent_prompts')
       .select('*')
       .order('agent_type', { ascending: true })
@@ -66,6 +72,7 @@ export const getPrompts = async (filters = {}) => {
 
     if (orgIds.length > 0) {
       const { data: orgsData } = await supabase
+        .schema('core')  // ← AJOUTÉ
         .from('organizations')
         .select('id, name')
         .in('id', orgIds);
@@ -76,6 +83,7 @@ export const getPrompts = async (filters = {}) => {
 
     if (appIds.length > 0) {
       const { data: appsData } = await supabase
+        .schema('config')  // ← AJOUTÉ
         .from('apps')
         .select('id, name')
         .in('id', appIds);
@@ -110,6 +118,7 @@ export const getPromptById = async (id) => {
   try {
     // Requête principale sans jointures (les vues ne supportent pas les relations PostgREST)
     const { data, error } = await supabase
+      .schema('config')  // ← AJOUTÉ
       .from('agent_prompts')
       .select('*')
       .eq('id', id)
@@ -123,6 +132,7 @@ export const getPromptById = async (id) => {
 
     if (data?.org_id) {
       const { data: orgData } = await supabase
+        .schema('core')  // ← AJOUTÉ
         .from('organizations')
         .select('id, name')
         .eq('id', data.org_id)
@@ -132,6 +142,7 @@ export const getPromptById = async (id) => {
 
     if (data?.app_id) {
       const { data: appData } = await supabase
+        .schema('config')  // ← AJOUTÉ
         .from('apps')
         .select('id, name')
         .eq('id', data.app_id)
@@ -174,6 +185,7 @@ export const createPrompt = async (promptData) => {
 
     // Insert sans jointures (les vues ne supportent pas les relations PostgREST)
     const { data, error } = await supabase
+      .schema('config')  // ← AJOUTÉ (CRITIQUE!)
       .from('agent_prompts')
       .insert({
         name: promptData.name,
@@ -182,7 +194,7 @@ export const createPrompt = async (promptData) => {
         app_id: appId,
         org_id: orgId,
         system_prompt: promptData.system_prompt,
-        gemini_system_prompt: promptData.gemini_system_prompt || null,  // NOUVEAU
+        gemini_system_prompt: promptData.gemini_system_prompt || null,
         parameters,
         is_active: promptData.is_active ?? true,
       })
@@ -197,6 +209,7 @@ export const createPrompt = async (promptData) => {
 
     if (orgId) {
       const { data: orgData } = await supabase
+        .schema('core')  // ← AJOUTÉ
         .from('organizations')
         .select('id, name')
         .eq('id', orgId)
@@ -206,6 +219,7 @@ export const createPrompt = async (promptData) => {
 
     if (appId) {
       const { data: appData } = await supabase
+        .schema('config')  // ← AJOUTÉ
         .from('apps')
         .select('id, name')
         .eq('id', appId)
@@ -260,6 +274,7 @@ export const updatePrompt = async (id, promptData) => {
 
     // Update sans jointures (les vues ne supportent pas les relations PostgREST)
     const { data, error } = await supabase
+      .schema('config')  // ← AJOUTÉ (CRITIQUE!)
       .from('agent_prompts')
       .update(updateData)
       .eq('id', id)
@@ -274,6 +289,7 @@ export const updatePrompt = async (id, promptData) => {
 
     if (data?.org_id) {
       const { data: orgData } = await supabase
+        .schema('core')  // ← AJOUTÉ
         .from('organizations')
         .select('id, name')
         .eq('id', data.org_id)
@@ -283,6 +299,7 @@ export const updatePrompt = async (id, promptData) => {
 
     if (data?.app_id) {
       const { data: appData } = await supabase
+        .schema('config')  // ← AJOUTÉ
         .from('apps')
         .select('id, name')
         .eq('id', data.app_id)
@@ -313,8 +330,8 @@ export const updatePrompt = async (id, promptData) => {
  */
 export const deletePrompt = async (id) => {
   try {
-    // MIGRATION: config.agent_prompts
     const { error } = await supabase
+      .schema('config')  // ← AJOUTÉ
       .from('agent_prompts')
       .delete()
       .eq('id', id);
@@ -349,7 +366,7 @@ export const duplicatePrompt = async (id, overrides = {}) => {
       app_id: overrides.app_id ?? overrides.vertical_id ?? original.app_id,
       org_id: overrides.org_id ?? original.org_id,
       system_prompt: overrides.system_prompt || original.system_prompt,
-      gemini_system_prompt: overrides.gemini_system_prompt ?? original.gemini_system_prompt,  // NOUVEAU
+      gemini_system_prompt: overrides.gemini_system_prompt ?? original.gemini_system_prompt,
       parameters: overrides.parameters || original.parameters,
       is_active: overrides.is_active ?? false, // Désactivé par défaut
     };
@@ -382,8 +399,8 @@ export const togglePromptStatus = async (id, isActive) => {
  */
 export const getApps = async () => {
   try {
-    // MIGRATION: verticals → config.apps
     const { data, error } = await supabase
+      .schema('config')  // ← AJOUTÉ
       .from('apps')
       .select('id, name, description, icon, color')
       .eq('is_active', true)
@@ -419,8 +436,8 @@ export const getVerticals = async () => {
  */
 export const getOrganizations = async (appId = null) => {
   try {
-    // MIGRATION: organizations → core.organizations
     let query = supabase
+      .schema('core')  // ← AJOUTÉ
       .from('organizations')
       .select('id, name, plan')
       .order('name', { ascending: true });
@@ -457,8 +474,8 @@ export const getOrganizations = async (appId = null) => {
  */
 export const checkPromptExists = async (agentType, appId, orgId, excludeId = null) => {
   try {
-    // MIGRATION: config.agent_prompts, app_id
     let query = supabase
+      .schema('config')  // ← AJOUTÉ
       .from('agent_prompts')
       .select('id')
       .eq('agent_type', agentType);

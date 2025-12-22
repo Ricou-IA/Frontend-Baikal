@@ -1,6 +1,9 @@
 // ╔══════════════════════════════════════════════════════════════════════════════╗
 // ║  INGEST-DOCUMENTS - Edge Function Supabase                                   ║
-// ║  Version: 5.0.2 - Fix metadata string parsing                                ║
+// ║  Version: 5.0.3 - Fix source_file_id au niveau racine                        ║
+// ╠══════════════════════════════════════════════════════════════════════════════╣
+// ║  Changements v5.0.3:                                                         ║
+// ║  - Fix: source_file_id ajouté au niveau racine de l'insertion                ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
 // ║  Changements v5.0.2:                                                         ║
 // ║  - Fix: Parse metadata si c'est une string JSON                              ║
@@ -77,6 +80,7 @@ serve(async (req) => {
       // DEBUG v5.0.2
       console.log(`[DEBUG] doc keys: ${Object.keys(doc).join(', ')}`)
       console.log(`[DEBUG] doc.metadata type: ${typeof doc.metadata}`)
+      console.log(`[DEBUG] doc.source_file_id: ${doc.source_file_id}`)
       
       const destination = doc._DESTINATION || 'rag.documents'
       
@@ -103,6 +107,7 @@ serve(async (req) => {
         let orgId = parseUUID(doc.org_id)
         let targetApps = normalizeArray(doc.target_apps || [])
         const userId = parseUUID(doc.created_by)
+        const sourceFileId = parseUUID(doc.source_file_id)
         
         if (userId && (!orgId || targetApps.length === 0)) {
           const { data: profile, error: profileError } = await supabase
@@ -141,11 +146,12 @@ serve(async (req) => {
           target_projects: targetProjects,
           org_id: orgId,
           created_by: userId,
+          source_file_id: sourceFileId,
           layer: doc.layer || null,
           status: doc.status || null,
           quality_level: doc.quality_level || null,
           metadata: {
-            source_file_id: doc.source_file_id || null,
+            source_file_id: sourceFileId,
             content_type: 'table_chunk',
             document_title: doc.document_title || null,
             section_title: doc.section_title || null,
@@ -157,7 +163,7 @@ serve(async (req) => {
         })
         
         docsForRagTables.push({
-          source_file_id: parseUUID(doc.source_file_id),
+          source_file_id: sourceFileId,
           content_markdown: doc.content_markdown.trim(),
           content_json: doc.content_json || null,
           document_title: doc.document_title || null,
@@ -217,6 +223,9 @@ serve(async (req) => {
       let orgId = parseUUID(doc.org_id) || parseUUID(metadata.org_id)
       let targetApps = normalizeArray(doc.target_apps || metadata.target_apps || [])
       const userId = parseUUID(doc.created_by) || parseUUID(metadata.user_id)
+      const sourceFileId = parseUUID(doc.source_file_id) || parseUUID(metadata.source_file_id)
+      
+      console.log(`[DEBUG] sourceFileId resolved: ${sourceFileId}`)
       
       if (userId && (!orgId || targetApps.length === 0)) {
         const { data: profile, error: profileError } = await supabase
@@ -265,12 +274,13 @@ serve(async (req) => {
         target_projects: targetProjects,
         org_id: orgId,
         created_by: userId,
+        source_file_id: sourceFileId,
         layer: doc.layer || null,
         status: doc.status || null,
         quality_level: doc.quality_level || null,
         metadata: {
           ...metadata,
-          source_file_id: doc.source_file_id || metadata.source_file_id || null,
+          source_file_id: sourceFileId,
           concepts: concepts,
         },
       })
@@ -311,6 +321,7 @@ serve(async (req) => {
         target_projects: doc.target_projects,
         org_id: doc.org_id,
         created_by: doc.created_by,
+        source_file_id: doc.source_file_id,
         layer: doc.layer,
         status: doc.status,
         quality_level: doc.quality_level,
