@@ -1,10 +1,14 @@
 // ╔══════════════════════════════════════════════════════════════════════════════╗
 // ║  BAIKAL-BRAIN - Routeur Sémantique Intelligent                               ║
-// ║  Edge Function Supabase pour ARPET                                           ║
+// ║  Edge Function Supabase                                                      ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
-// ║  Version: 4.3.2 - Transmission contexte projet à librarian (Phase 2)         ║
+// ║  Version: 4.4.0 - Classification d'intention + suggestion mode               ║
 // ║  Route vers: BIBLIOTHECAIRE (baikal-librarian) ou ANALYSTE (futur)           ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
+// ║  Nouveautés v4.4.0:                                                          ║
+// ║  - Nouveau champ "intent" (synthesis, factual, comparison, citation, conv.)  ║
+// ║  - generation_mode devient une SUGGESTION (Librarian peut override)          ║
+// ║  - Prompts GÉNÉRIQUES (spécialisation métier via config.agent_prompts)       ║
 // ║  Nouveautés v4.3.2:                                                          ║
 // ║  - Transmission du project_context à baikal-librarian                        ║
 // ║  Nouveautés v4.3.1:                                                          ║
@@ -12,17 +16,6 @@
 // ║  Nouveautés v4.3.0 (Phase 2):                                                ║
 // ║  - Récupération de l'identité projet (identity JSONB)                        ║
 // ║  - Formatage et injection dans le prompt via {{project_context}}             ║
-// ║  - Simplification: market_type, project_type, description (sans main_trades) ║
-// ║  Nouveautés v4.2.0:                                                          ║
-// ║  - Lecture du prompt routeur depuis config.agent_prompts                     ║
-// ║  - Paramètres (model, temperature) configurables depuis DB                   ║
-// ║  - Fallback sur prompt hardcodé si pas de config en DB                       ║
-// ║  Nouveautés v4.1.0:                                                          ║
-// ║  - Transmission du conversation_id pour la mémoire contextuelle              ║
-// ║  Nouveautés v4.0.0:                                                          ║
-// ║  - Décision automatique du generation_mode                                   ║
-// ║  - "gemini" : Analyse PDF complet via Google Context Caching                 ║
-// ║  - "chunks" : RAG classique GPT-4o (comportement existant)                   ║
 // ╚══════════════════════════════════════════════════════════════════════════════╝
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
@@ -38,52 +31,113 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Configuration par défaut (fallback si pas de prompt en DB)
 const DEFAULT_CONFIG = {
   model: 'gpt-4o-mini',
   temperature: 0,
-  max_tokens: 150,
+  max_tokens: 200,
 }
 
-// Prompt de routage par défaut (fallback)
-const FALLBACK_SYSTEM_PROMPT = `Tu es un routeur intelligent pour un assistant BTP. 
-Analyse la question et détermine quel agent doit la traiter et comment.
+// ============================================================================
+// PROMPT GÉNÉRIQUE (Fallback - spécialisation métier via DB)
+// ============================================================================
+
+const FALLBACK_SYSTEM_PROMPT = `Tu es un routeur intelligent pour un assistant documentaire.
+Analyse la question et détermine:
+1. L'INTENTION de l'utilisateur
+2. L'agent qui doit traiter la demande
+3. Le mode de génération suggéré
 
 RÉPONDS UNIQUEMENT en JSON valide, sans markdown ni explication:
-{"destination": "BIBLIOTHECAIRE", "generation_mode": "chunks", "reasoning": "explication courte"}
+{
+  "destination": "BIBLIOTHECAIRE",
+  "intent": "synthesis",
+  "generation_mode": "gemini",
+  "reasoning": "explication courte"
+}
 
-RÈGLES DE ROUTAGE:
+═══════════════════════════════════════════════════════════════
+INTENTIONS POSSIBLES (champ "intent"):
+═══════════════════════════════════════════════════════════════
 
-BIBLIOTHECAIRE - Pour les questions sur:
-- Documents, normes, réglementations (DTU, CCTP, etc.)
+"synthesis" - Demande de vue d'ensemble, résumé, explication globale
+  → Mots-clés: résume, synthèse, explique, présente, décris, c'est quoi ce document
+  → Exemples: "Résume ce document", "Explique-moi ce fichier", "C'est quoi ce rapport ?"
+
+"factual" - Question précise sur un fait, chiffre, délai, définition
+  → Mots-clés: quel est, combien, quand, où, définition, montant, délai, durée
+  → Exemples: "Quel est le délai mentionné ?", "C'est quoi ce terme ?", "Quel montant ?"
+
+"comparison" - Comparaison entre éléments, sections, documents
+  → Mots-clés: compare, différence, versus, entre, par rapport à
+  → Exemples: "Compare les sections 3 et 7", "Différence entre ces deux documents ?"
+
+"citation" - Demande de citation exacte, référence précise
+  → Mots-clés: cite, article, extrait, texte exact, que dit, selon
+  → Exemples: "Cite le passage sur...", "Que dit exactement le document sur..."
+
+"conversational" - Salutation, remerciement, question hors-sujet
+  → Exemples: "Bonjour", "Merci", "Comment ça va ?", "Au revoir"
+
+═══════════════════════════════════════════════════════════════
+AGENTS (champ "destination"):
+═══════════════════════════════════════════════════════════════
+
+BIBLIOTHECAIRE - Pour:
+- Documents, normes, réglementations
 - Informations textuelles, définitions, procédures
-- Recherche dans la documentation technique
-- Questions générales sur le BTP
+- Recherche dans la documentation
+- Questions générales nécessitant des sources
 
-ANALYSTE - Pour les questions nécessitant:
-- Calculs numériques (métrés, quantités, coûts)
+ANALYSTE - Pour:
+- Calculs numériques (quantités, coûts, statistiques)
 - Analyse de données chiffrées
-- Statistiques, tableaux, graphiques
+- Tableaux, graphiques
 - Traitement de fichiers Excel/CSV
 
-MODE DE GÉNÉRATION (pour BIBLIOTHECAIRE uniquement):
-- "gemini" : Analyse approfondie d'un document complet, lecture intégrale d'un PDF, 
-  synthèse globale, questions mentionnant un fichier spécifique (CCTP, cahier des charges, 
-  marché, contrat, notice, rapport), demande de résumé complet, analyse exhaustive
-- "chunks" : Questions rapides, définitions, recherches générales, points précis,
-  questions sur des normes ou réglementations, informations ponctuelles
+═══════════════════════════════════════════════════════════════
+MODE DE GÉNÉRATION (champ "generation_mode"):
+Note: C'est une SUGGESTION, le Librarian peut l'adapter selon le volume de pages
+═══════════════════════════════════════════════════════════════
 
+"gemini" - Suggéré pour:
+  - intent = "synthesis" (résumés, vues d'ensemble)
+  - intent = "comparison" (besoin de voir plusieurs sections)
+  - Analyse approfondie d'un document complet
+  - Questions mentionnant un fichier spécifique par son nom
+
+"chunks" - Suggéré pour:
+  - intent = "factual" (recherche précise)
+  - intent = "citation" (extrait exact)
+  - intent = "conversational" (réponse rapide)
+  - Questions rapides, définitions, informations ponctuelles
+
+═══════════════════════════════════════════════════════════════
 EXEMPLES:
-- "Résume le CCTP lot 10" → destination: BIBLIOTHECAIRE, generation_mode: gemini
-- "C'est quoi un DTU ?" → destination: BIBLIOTHECAIRE, generation_mode: chunks
-- "Quelles sont les clauses de garantie du document ?" → destination: BIBLIOTHECAIRE, generation_mode: gemini
-- "Quel est le délai de paiement légal ?" → destination: BIBLIOTHECAIRE, generation_mode: chunks
-- "Analyse complète du cahier des charges" → destination: BIBLIOTHECAIRE, generation_mode: gemini
-- "Que dit le CCTP sur les enduits ?" → destination: BIBLIOTHECAIRE, generation_mode: gemini
-- "Quelles sont les normes applicables ?" → destination: BIBLIOTHECAIRE, generation_mode: chunks
-- "Fais-moi une synthèse du document" → destination: BIBLIOTHECAIRE, generation_mode: gemini
-- "Calcule le métré du lot 3" → destination: ANALYSTE, generation_mode: chunks
-- "Liste les responsabilités de l'entrepreneur" → destination: BIBLIOTHECAIRE, generation_mode: gemini`
+═══════════════════════════════════════════════════════════════
+
+"Résume ce document" 
+→ {"destination":"BIBLIOTHECAIRE","intent":"synthesis","generation_mode":"gemini","reasoning":"demande de résumé global"}
+
+"Quel est le délai mentionné à l'article 19 ?"
+→ {"destination":"BIBLIOTHECAIRE","intent":"factual","generation_mode":"chunks","reasoning":"question précise sur un délai"}
+
+"C'est quoi ce terme ?"
+→ {"destination":"BIBLIOTHECAIRE","intent":"factual","generation_mode":"chunks","reasoning":"définition demandée"}
+
+"Compare les sections 3 et 7"
+→ {"destination":"BIBLIOTHECAIRE","intent":"comparison","generation_mode":"gemini","reasoning":"comparaison nécessitant lecture des deux"}
+
+"Cite le passage sur les pénalités"
+→ {"destination":"BIBLIOTHECAIRE","intent":"citation","generation_mode":"chunks","reasoning":"extrait précis demandé"}
+
+"Bonjour !"
+→ {"destination":"BIBLIOTHECAIRE","intent":"conversational","generation_mode":"chunks","reasoning":"salutation"}
+
+"Explique-moi ce document en détail"
+→ {"destination":"BIBLIOTHECAIRE","intent":"synthesis","generation_mode":"gemini","reasoning":"explication détaillée demandée"}
+
+"Calcule les totaux de ce tableau"
+→ {"destination":"ANALYSTE","intent":"factual","generation_mode":"chunks","reasoning":"calcul numérique requis"}`
 
 // ============================================================================
 // TYPES
@@ -104,6 +158,7 @@ interface RequestBody {
 
 interface RoutingDecision {
   destination: 'BIBLIOTHECAIRE' | 'ANALYSTE'
+  intent: 'synthesis' | 'factual' | 'comparison' | 'citation' | 'conversational'
   generation_mode: 'chunks' | 'gemini'
   reasoning: string
 }
@@ -138,12 +193,9 @@ function errorResponse(message: string, status = 500): Response {
 }
 
 // ============================================================================
-// PHASE 2: FORMATAGE IDENTITÉ PROJET (SIMPLIFIÉ - SANS main_trades)
+// FORMATAGE IDENTITÉ PROJET
 // ============================================================================
 
-/**
- * Formate l'identité du projet pour injection dans le prompt
- */
 function formatProjectIdentity(identity: ProjectIdentity | null): string {
   if (!identity || Object.keys(identity).length === 0) {
     return 'Aucune identité projet définie.';
@@ -164,19 +216,16 @@ function formatProjectIdentity(identity: ProjectIdentity | null): string {
 
   const parts: string[] = [];
 
-  // Type de marché
   if (identity.market_type) {
     const label = marketTypeLabels[identity.market_type] || identity.market_type;
     parts.push(`**Type de marché**: ${label}`);
   }
 
-  // Type de projet
   if (identity.project_type) {
     const label = projectTypeLabels[identity.project_type] || identity.project_type;
     parts.push(`**Type de projet**: ${label}`);
   }
 
-  // Description
   if (identity.description) {
     parts.push(`**Description**: ${identity.description}`);
   }
@@ -184,10 +233,6 @@ function formatProjectIdentity(identity: ProjectIdentity | null): string {
   return parts.join('\n');
 }
 
-/**
- * Récupère l'identité du projet depuis la base de données
- * CORRECTION v4.3.1: Ajout .schema('core') pour chercher dans core.projects
- */
 async function getProjectIdentity(
   supabase: ReturnType<typeof createClient>,
   project_id: string | undefined
@@ -231,17 +276,14 @@ async function getRouterConfig(
 ): Promise<RouterConfig> {
   console.log(`[baikal-brain] Recherche prompt routeur pour app=${app_id}, org=${org_id || 'null'}`)
   
-  // Chercher le prompt le plus spécifique (hiérarchie: org > app > global)
-  let query = supabase
-    .schema('config')
-    .from('agent_prompts')
-    .select('system_prompt, parameters')
-    .eq('agent_type', 'router')
-    .eq('is_active', true)
-  
   // Priorité 1: Prompt spécifique à l'organisation
   if (org_id) {
-    const { data: orgPrompt } = await query
+    const { data: orgPrompt } = await supabase
+      .schema('config')
+      .from('agent_prompts')
+      .select('system_prompt, parameters')
+      .eq('agent_type', 'router')
+      .eq('is_active', true)
       .eq('org_id', org_id)
       .single()
     
@@ -277,7 +319,7 @@ async function getRouterConfig(
     }
   }
   
-  // Priorité 3: Prompt global (pas d'app_id, pas d'org_id)
+  // Priorité 3: Prompt global
   const { data: globalPrompt } = await supabase
     .schema('config')
     .from('agent_prompts')
@@ -298,8 +340,7 @@ async function getRouterConfig(
     }
   }
   
-  // Fallback: utiliser le prompt hardcodé
-  console.log('[baikal-brain] Aucun prompt routeur en DB, utilisation du fallback')
+  console.log('[baikal-brain] Aucun prompt routeur en DB, utilisation du fallback générique')
   return {
     system_prompt: FALLBACK_SYSTEM_PROMPT,
     model: DEFAULT_CONFIG.model,
@@ -309,7 +350,7 @@ async function getRouterConfig(
 }
 
 // ============================================================================
-// ROUTAGE SÉMANTIQUE
+// ROUTAGE SÉMANTIQUE v4.4.0
 // ============================================================================
 
 async function routeQuery(
@@ -320,7 +361,6 @@ async function routeQuery(
 ): Promise<RoutingDecision> {
   console.log(`[baikal-brain] Routage avec model=${config.model}, temp=${config.temperature}`)
   
-  // PHASE 2: Injecter le contexte projet dans le prompt système
   const systemPromptWithContext = config.system_prompt
     .replace('{{project_context}}', projectContext);
   
@@ -349,16 +389,20 @@ async function routeQuery(
   const content = data.choices?.[0]?.message?.content || ''
 
   try {
-    const parsed = JSON.parse(content.trim()) as RoutingDecision
+    // Nettoyer le JSON (parfois entouré de ```)
+    const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+    const parsed = JSON.parse(cleanContent) as RoutingDecision
     return {
       destination: parsed.destination || 'BIBLIOTHECAIRE',
+      intent: parsed.intent || 'factual',
       generation_mode: parsed.generation_mode || 'chunks',
       reasoning: parsed.reasoning || 'aucune raison fournie'
     }
   } catch {
     console.warn(`[baikal-brain] Erreur parsing JSON: ${content}`)
     return { 
-      destination: 'BIBLIOTHECAIRE', 
+      destination: 'BIBLIOTHECAIRE',
+      intent: 'factual',
       generation_mode: 'chunks',
       reasoning: 'fallback - erreur parsing' 
     }
@@ -366,38 +410,34 @@ async function routeQuery(
 }
 
 // ============================================================================
-// APPEL AGENT BIBLIOTHÉCAIRE
+// APPEL AGENT BIBLIOTHÉCAIRE v4.4.0
 // ============================================================================
 
-/**
- * Appelle l'agent Bibliothécaire (baikal-librarian)
- * v4.3.2: Ajout transmission project_context
- */
 async function callLibrarian(
   body: RequestBody,
   decision: RoutingDecision,
   supabaseUrl: string, 
   authHeader: string,
   apiKey: string,
-  projectContext: string  // ← AJOUT v4.3.2
+  projectContext: string
 ): Promise<Response> {
   const librarianUrl = `${supabaseUrl}/functions/v1/baikal-librarian`
   
   console.log(`[baikal-brain] Appel du Bibliothécaire: ${librarianUrl}`)
-  console.log(`[baikal-brain] user_id transmis: ${body.user_id}`)
-  console.log(`[baikal-brain] project_id transmis: ${body.project_id || 'aucun'}`)
-  console.log(`[baikal-brain] conversation_id transmis: ${body.conversation_id || 'aucun (nouvelle conversation)'}`)
-  console.log(`[baikal-brain] generation_mode: ${decision.generation_mode}`)
-  console.log(`[baikal-brain] project_context transmis (${projectContext.length} chars): ${projectContext.substring(0, 100)}...`)
+  console.log(`[baikal-brain] user_id: ${body.user_id}`)
+  console.log(`[baikal-brain] project_id: ${body.project_id || 'aucun'}`)
+  console.log(`[baikal-brain] conversation_id: ${body.conversation_id || 'nouvelle conversation'}`)
+  console.log(`[baikal-brain] intent: ${decision.intent}`)
+  console.log(`[baikal-brain] generation_mode (suggestion): ${decision.generation_mode}`)
+  console.log(`[baikal-brain] project_context (${projectContext.length} chars)`)
   
-  // MIGRATION: Normaliser app_id / vertical_id avant transmission
-  // Le client peut forcer le generation_mode, sinon on utilise la décision du routeur
-  // v4.3.2: Ajout project_context dans le body
+  // v4.4.0: Transmet l'intent au Librarian
   const normalizedBody = {
     ...body,
-    app_id: body.app_id || body.vertical_id,  // Priorité à app_id
-    generation_mode: body.generation_mode || decision.generation_mode,  // Client override ou décision routeur
-    project_context: projectContext,  // ← AJOUT CRITIQUE v4.3.2
+    app_id: body.app_id || body.vertical_id,
+    generation_mode: body.generation_mode || decision.generation_mode,
+    intent: decision.intent,
+    project_context: projectContext,
   }
   
   const response = await fetch(librarianUrl, {
@@ -410,12 +450,12 @@ async function callLibrarian(
     body: JSON.stringify(normalizedBody),
   })
 
-  // Retransmet la réponse du bibliothécaire
   const data = await response.json()
   return jsonResponse({
     ...data,
     routed_to: 'BIBLIOTHECAIRE',
-    generation_mode: normalizedBody.generation_mode,
+    intent: decision.intent,
+    suggested_mode: decision.generation_mode,
     routing_reasoning: decision.reasoning
   }, response.status)
 }
@@ -427,7 +467,6 @@ async function callLibrarian(
 serve(async (req: Request): Promise<Response> => {
   const startTime = Date.now()
 
-  // Gestion CORS
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -463,10 +502,9 @@ serve(async (req: Request): Promise<Response> => {
 
     const effectiveAppId = body.app_id || body.vertical_id || 'arpet'
 
-    console.log(`[baikal-brain] v4.3.2 - Transmission contexte projet à librarian`)
-    console.log(`[baikal-brain] Requête reçue: "${query.substring(0, 80)}..."`)
-    console.log(`[baikal-brain] user_id: ${user_id}`)
-    console.log(`[baikal-brain] project_id: ${project_id || 'aucun'}`)
+    console.log(`[baikal-brain] v4.4.0 - Classification d'intention + suggestion mode`)
+    console.log(`[baikal-brain] Requête: "${query.substring(0, 80)}..."`)
+    console.log(`[baikal-brain] user_id: ${user_id}, project_id: ${project_id || 'aucun'}`)
     console.log(`[baikal-brain] conversation_id: ${conversation_id || 'nouvelle conversation'}`)
     if (clientMode) {
       console.log(`[baikal-brain] Mode forcé par client: ${clientMode}`)
@@ -478,13 +516,13 @@ serve(async (req: Request): Promise<Response> => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     // ========================================
-    // 3. PHASE 2: RÉCUPÉRER IDENTITÉ PROJET
+    // 3. RÉCUPÉRER IDENTITÉ PROJET
     // ========================================
     const projectContext = await getProjectIdentity(supabase, project_id)
-    console.log(`[baikal-brain] Contexte projet: ${projectContext}`)
+    console.log(`[baikal-brain] Contexte projet: ${projectContext.substring(0, 100)}...`)
 
     // ========================================
-    // 4. RÉCUPÉRER CONFIG ROUTEUR DEPUIS DB
+    // 4. RÉCUPÉRER CONFIG ROUTEUR
     // ========================================
     const routerConfig = await getRouterConfig(supabase, effectiveAppId, org_id)
 
@@ -493,20 +531,21 @@ serve(async (req: Request): Promise<Response> => {
     // ========================================
     console.log('[baikal-brain] Analyse du routage...')
     const decision = await routeQuery(query, openaiApiKey, routerConfig, projectContext)
-    console.log(`[baikal-brain] Décision: ${decision.destination} | Mode: ${decision.generation_mode} | Raison: ${decision.reasoning}`)
+    console.log(`[baikal-brain] Décision: ${decision.destination} | Intent: ${decision.intent} | Mode suggéré: ${decision.generation_mode}`)
+    console.log(`[baikal-brain] Raison: ${decision.reasoning}`)
 
     // ========================================
     // 6. DÉLÉGATION À L'AGENT
     // ========================================
     if (decision.destination === 'BIBLIOTHECAIRE') {
-      return await callLibrarian(body, decision, supabaseUrl, authHeader, apiKey, projectContext)  // ← AJOUT projectContext v4.3.2
+      return await callLibrarian(body, decision, supabaseUrl, authHeader, apiKey, projectContext)
     } 
     else if (decision.destination === 'ANALYSTE') {
-      // L'analyste n'est pas encore implémenté
       return jsonResponse({
-        response: "🚧 L'Agent Analyste est en cours de développement. Pour les calculs et analyses de données, cette fonctionnalité sera bientôt disponible. En attendant, je peux vous aider avec des questions sur la documentation et les normes BTP.",
+        response: "🚧 L'Agent Analyste est en cours de développement. Pour les calculs et analyses de données, cette fonctionnalité sera bientôt disponible.",
         sources: [],
         routed_to: 'ANALYSTE',
+        intent: decision.intent,
         generation_mode: decision.generation_mode,
         status: 'not_implemented',
         reasoning: decision.reasoning,
@@ -514,8 +553,8 @@ serve(async (req: Request): Promise<Response> => {
       })
     }
 
-    // Fallback (ne devrait jamais arriver)
-    return await callLibrarian(body, decision, supabaseUrl, authHeader, apiKey, projectContext)  // ← AJOUT projectContext v4.3.2
+    // Fallback
+    return await callLibrarian(body, decision, supabaseUrl, authHeader, apiKey, projectContext)
 
   } catch (error) {
     console.error('[baikal-brain] Erreur non gérée:', error)
