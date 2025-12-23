@@ -8,7 +8,8 @@
  *   AdminDashboard,
  *   MembersList, 
  *   OrganizationSettings, 
- *   LegifranceAdmin 
+ *   LegifranceAdmin,
+ *   IndexationSettings,
  * } from '@/components/admin';
  * ============================================================================
  */
@@ -50,6 +51,13 @@ export { default as UsersList } from './UsersList';
 
 // Administration Légifrance (super_admin)
 export { default as LegifranceAdmin } from './LegifranceAdmin';
+
+// ============================================================================
+// INDEXATION (CONCEPTS & CATÉGORIES)
+// ============================================================================
+
+// Interface de gestion des concepts et catégories par application
+export { default as IndexationSettings } from './IndexationSettings';
 
 // ============================================================================
 // SOUS-COMPOSANTS LÉGIFRANCE

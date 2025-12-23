@@ -9,6 +9,9 @@
  * - document_categories → config.document_categories (schéma changé)
  * - Ajout de .schema('config') pour toutes les requêtes apps/categories
  * 
+ * MODIFICATIONS V2 (Phase 1.1):
+ * - getDocumentCategories: ajout target_apps, target_layers, linked_concept_id
+ * 
  * @example
  * import { referentielsService } from '@/services';
  * 
@@ -95,13 +98,15 @@ export const getVerticalById = getAppById;
  * 
  * MIGRATION: document_categories → config.document_categories
  * - Ajout .schema('config')
+ * 
+ * V2: Ajout target_apps, target_layers, linked_concept_id pour filtrage par app
  */
 export async function getDocumentCategories() {
     try {
         const { data, error } = await supabase
-            .from('document_categories')
-            .select('id, slug, label, description, icon, sort_order')
-            .eq('is_active', true)
+            .from('v_config_document_categories')  // ⭐ V2: Vue exposée dans public
+            // ⭐ V2: Ajout target_apps, target_layers, linked_concept_id
+            .select('id, slug, label, description, sort_order, target_apps, target_layers, linked_concept_id')
             .order('sort_order', { ascending: true });
 
         if (error) throw error;
@@ -135,7 +140,7 @@ export const getCategories = getDocumentCategories;
 export async function getCategoryBySlug(slug) {
     try {
         const { data, error } = await supabase
-            .from('document_categories')
+            .from('v_config_document_categories')  // ⭐ Vue exposée dans public
             .select('*')
             .eq('slug', slug)
             .single();

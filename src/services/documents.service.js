@@ -16,6 +16,10 @@
  * MODIFICATIONS 17/12/2025:
  * - projectId → projectIds (tableau) pour support multi-projets
  * - target_projects reçoit maintenant un tableau complet
+ * 
+ * MODIFICATIONS V2 (Phase 1.1):
+ * - Ajout document_title à la RACINE du payload webhook
+ * - Ajout category_slug à la RACINE du payload webhook
  * ============================================================================
  */
 
@@ -54,6 +58,30 @@ async function computeFileHash(file) {
 function normalizeLayer(layer) {
   if (layer === 'vertical') return 'app';
   return layer || 'org';
+}
+
+/**
+ * Génère un filename_clean depuis le titre
+ * @param {string} title - Titre du document
+ * @param {string} originalFilename - Nom de fichier original
+ * @returns {string} Filename nettoyé
+ */
+function generateFilenameClean(title, originalFilename) {
+  if (!title) return originalFilename;
+  
+  // Extraire l'extension du fichier original
+  const ext = originalFilename.split('.').pop()?.toLowerCase() || '';
+  
+  // Slugifier le titre
+  const slug = title
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // Supprimer les accents
+    .replace(/[^a-z0-9]+/g, '_')     // Remplacer caractères spéciaux par _
+    .replace(/^_|_$/g, '')            // Supprimer _ en début/fin
+    .substring(0, 100);               // Limiter la longueur
+  
+  return ext ? `${slug}.${ext}` : slug;
 }
 
 // ============================================================================
@@ -388,6 +416,11 @@ export const documentsService = {
    * - projectId → projectIds (tableau) pour support multi-projets
    * - target_projects reçoit le tableau complet
    * - project_id dans sources.files = premier projet du tableau (ou null)
+   * 
+   * MODIFICATION V2 (Phase 1.1):
+   * - document_title ajouté à la RACINE du payload
+   * - category_slug ajouté à la RACINE du payload
+   * - filename_clean généré depuis le titre
    * ============================================================================
    * @param {Object} params - Paramètres d'upload
    * @param {File} params.file - Fichier à uploader
@@ -409,7 +442,7 @@ export const documentsService = {
       appId,
       orgId,
       userId,
-      projectIds = null, // ⭐ MODIFIÉ: tableau au lieu de singulier
+      projectIds = null,
       metadata = {},
       qualityLevel = 'premium',
       status = 'approved',
@@ -419,10 +452,17 @@ export const documentsService = {
     // Normaliser le layer (vertical → app)
     const normalizedLayer = normalizeLayer(layer);
 
-    // ⭐ Normaliser projectIds en tableau
+    // Normaliser projectIds en tableau
     const normalizedProjectIds = Array.isArray(projectIds) 
       ? projectIds.filter(Boolean) 
       : (projectIds ? [projectIds] : []);
+
+    // ⭐ V2: Extraire document_title et category_slug depuis metadata
+    const documentTitle = metadata.title || null;
+    const categorySlug = metadata.category || null;  // metadata.category contient maintenant le SLUG
+    
+    // ⭐ V2: Générer filename_clean depuis le titre
+    const filenameClean = generateFilenameClean(documentTitle, file.name);
 
     try {
       // 1. Calculer le hash du fichier
@@ -433,7 +473,6 @@ export const documentsService = {
       if (uploadError) throw uploadError;
 
       // 3. Créer l'entrée source file
-      // ⭐ project_id = premier projet du tableau (pour rétrocompatibilité avec la colonne UUID simple)
       const { data: sourceFile, error: sourceError } = await supabase
         .from('files')
         .insert({
@@ -446,13 +485,16 @@ export const documentsService = {
           layer: normalizedLayer,
           app_id: appId,
           org_id: orgId,
-          project_id: normalizedProjectIds[0] || null, // ⭐ Premier projet ou null
+          project_id: normalizedProjectIds[0] || null,
           created_by: userId,
           processing_status: 'pending',
           metadata: {
             ...metadata,
-            // ⭐ Stocker tous les projets dans les metadata si multi-projets
             target_project_ids: normalizedProjectIds.length > 0 ? normalizedProjectIds : undefined,
+            // ⭐ V2: Stocker aussi dans les metadata de sources.files
+            document_title: documentTitle,
+            category_slug: categorySlug,
+            filename_clean: filenameClean,
           },
         })
         .select()
@@ -462,8 +504,7 @@ export const documentsService = {
 
       // 4. Déclencher le traitement via webhook n8n
       // =========================================================================
-      // IMPORTANT: 'layer' est à la RACINE du payload pour le nœud 0.2
-      // ⭐ target_projects reçoit maintenant le tableau complet
+      // ⭐ V2: document_title, category_slug, filename_clean à la RACINE
       // =========================================================================
       try {
         const webhookResponse = await fetch(N8N_WEBHOOK_URL, {
@@ -475,20 +516,26 @@ export const documentsService = {
             // Identifiants
             user_id: userId,
             org_id: orgId,
+            source_file_id: sourceFile.id,
 
             // Fichier
             filename: file.name,
             path: path,
             storage_bucket: bucket,
 
-            // ⭐ LAYER À LA RACINE (pour nœud 0.2 N8N)
+            // LAYER À LA RACINE (pour nœud 0.2 N8N)
             layer: normalizedLayer,
 
             // Ciblage RAG
             target_apps: appId ? [appId] : null,
-            target_projects: normalizedProjectIds.length > 0 ? normalizedProjectIds : null, // ⭐ Tableau complet
+            target_projects: normalizedProjectIds.length > 0 ? normalizedProjectIds : null,
 
-            // Metadata enrichie
+            // ⭐ V2: NOUVEAUX CHAMPS À LA RACINE
+            document_title: documentTitle,
+            category_slug: categorySlug,
+            filename_clean: filenameClean,
+
+            // Metadata enrichie (pour rétrocompatibilité)
             metadata: {
               ...metadata,
               source_file_id: sourceFile.id,
@@ -496,6 +543,10 @@ export const documentsService = {
               file_size: file.size,
               layer: normalizedLayer,
               quality_level: qualityLevel,
+              // ⭐ V2: Aussi dans metadata pour double sécurité
+              document_title: documentTitle,
+              category_slug: categorySlug,
+              filename_clean: filenameClean,
             },
           }),
         });
@@ -544,7 +595,6 @@ export const documentsService = {
               code_id: codeId,
               sync_type: 'full',
               target_apps: appId ? [appId] : null,
-              // ⭐ CORRIGÉ: 'layer' au lieu de 'target_layer'
               layer: normalizedLayer,
             },
           });

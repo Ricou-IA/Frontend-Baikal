@@ -1,18 +1,15 @@
 // ╔══════════════════════════════════════════════════════════════════════════════╗
 // ║  INGEST-DOCUMENTS - Edge Function Supabase                                   ║
-// ║  Version: 5.0.3 - Fix source_file_id au niveau racine                        ║
+// ║  Version: 6.0.1 - Support V2 complet + déduplication concepts                ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
-// ║  Changements v5.0.3:                                                         ║
-// ║  - Fix: source_file_id ajouté au niveau racine de l'insertion                ║
+// ║  Changements v6.0.1:                                                         ║
+// ║  - Déduplication concepts (category prioritaire sur llm)                     ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
-// ║  Changements v5.0.2:                                                         ║
-// ║  - Fix: Parse metadata si c'est une string JSON                              ║
-// ║  - Debug amélioré pour diagnostic                                            ║
-// ╠══════════════════════════════════════════════════════════════════════════════╣
-// ║  Changements v5.0.0:                                                         ║
-// ║  - Lecture metadata.concepts[] pour chaque chunk                             ║
-// ║  - INSERT rag.document_concepts après insertion documents                    ║
-// ║  - Résolution concept_id depuis config.concepts (par slug)                   ║
+// ║  Changements v6.0.0:                                                         ║
+// ║  - Auto-assign concept primaire depuis category_slug (confiance 1.0)         ║
+// ║  - Champ 'source' dans document_concepts ('category' | 'llm' | 'manual')     ║
+// ║  - Support complet metadata V2 (page_start, page_end, etc.)                  ║
+// ║  - Nettoyage logs DEBUG                                                      ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
 // ║  Destinations supportées:                                                    ║
 // ║  - 'rag.documents' (défaut) : chunks texte avec embedding                    ║
@@ -29,8 +26,20 @@ const corsHeaders = {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
+// TYPES
+// ════════════════════════════════════════════════════════════════════════════════
+
+interface ConceptEntry {
+  slug?: string
+  concept_id?: string
+  source: 'category' | 'llm' | 'manual'
+  relevance_score: number
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
 // HELPER: Parse metadata (peut être string ou object)
 // ════════════════════════════════════════════════════════════════════════════════
+
 function parseMetadata(metadata: any): Record<string, any> {
   if (!metadata) return {}
   if (typeof metadata === 'object') return metadata
@@ -38,7 +47,6 @@ function parseMetadata(metadata: any): Record<string, any> {
     try {
       return JSON.parse(metadata)
     } catch (e) {
-      console.log('[DEBUG] metadata parse error:', e.message)
       return {}
     }
   }
@@ -66,6 +74,36 @@ serve(async (req) => {
     console.log(`[ingest-documents] Reçu ${documents.length} document(s)`)
     
     // ════════════════════════════════════════════════════════════════════════════
+    // V6.0.0 : Charger le mapping category_slug → concept_id
+    // ════════════════════════════════════════════════════════════════════════════
+    
+    const categorySlugs = new Set<string>()
+    for (const doc of documents) {
+      const metadata = parseMetadata(doc.metadata)
+      const categorySlug = doc.category_slug || metadata.category_slug
+      if (categorySlug) categorySlugs.add(categorySlug)
+    }
+    
+    const categoryToConceptId = new Map<string, string>()
+    
+    if (categorySlugs.size > 0) {
+      const { data: categoriesData, error: categoriesError } = await supabase
+        .schema('config')
+        .from('document_categories')
+        .select('slug, linked_concept_id')
+        .in('slug', Array.from(categorySlugs))
+      
+      if (!categoriesError && categoriesData) {
+        categoriesData.forEach((cat: any) => {
+          if (cat.linked_concept_id) {
+            categoryToConceptId.set(cat.slug, cat.linked_concept_id)
+          }
+        })
+        console.log(`[ingest-documents] Categories mappées: ${categoryToConceptId.size}`)
+      }
+    }
+    
+    // ════════════════════════════════════════════════════════════════════════════
     // SÉPARATION PAR DESTINATION
     // ════════════════════════════════════════════════════════════════════════════
     
@@ -73,21 +111,15 @@ serve(async (req) => {
     const docsForRagTables: any[] = []
     const errors: any[] = []
     
-    // v5.0.0 : Stocker les concepts par index pour insertion ultérieure
-    const conceptsByDocIndex: Map<number, string[]> = new Map()
+    // v6.0.0 : Stocker les concepts avec leur source
+    const conceptsByDocIndex: Map<number, ConceptEntry[]> = new Map()
 
     for (const doc of documents) {
-      // DEBUG v5.0.2
-      console.log(`[DEBUG] doc keys: ${Object.keys(doc).join(', ')}`)
-      console.log(`[DEBUG] doc.metadata type: ${typeof doc.metadata}`)
-      console.log(`[DEBUG] doc.source_file_id: ${doc.source_file_id}`)
-      
       const destination = doc._DESTINATION || 'rag.documents'
-      
-      // v5.0.2: Parser metadata si c'est une string
       const metadata = parseMetadata(doc.metadata)
-      console.log(`[DEBUG] parsed metadata keys: ${Object.keys(metadata).join(', ')}`)
-      console.log(`[DEBUG] metadata.concepts: ${JSON.stringify(metadata.concepts)}`)
+      
+      // v6.0.0 : Extraire category_slug
+      const categorySlug = doc.category_slug || metadata.category_slug || null
       
       // ════════════════════════════════════════════════════════════════════════
       // CAS 1: table_chunk → Double insertion
@@ -131,13 +163,31 @@ serve(async (req) => {
         
         const targetProjects = normalizeUUIDArray(doc.target_projects)
         
-        // v5.0.2 : Extraire les concepts depuis metadata parsé
-        const concepts = normalizeArray(metadata.concepts || [])
-        console.log(`[DEBUG] table_chunk concepts: ${JSON.stringify(concepts)}`)
+        // v6.0.0 : Concepts avec source
+        const conceptEntries: ConceptEntry[] = []
+        
+        // Concept primaire depuis catégorie (ajouté EN PREMIER = prioritaire)
+        if (categorySlug && categoryToConceptId.has(categorySlug)) {
+          conceptEntries.push({
+            concept_id: categoryToConceptId.get(categorySlug)!,
+            source: 'category',
+            relevance_score: 1.0
+          })
+        }
+        
+        // Concepts secondaires depuis LLM
+        const llmConcepts = normalizeArray(metadata.concepts || [])
+        llmConcepts.forEach(slug => {
+          conceptEntries.push({
+            slug: slug,
+            source: 'llm',
+            relevance_score: 0.85
+          })
+        })
         
         const docIndex = docsForRagDocuments.length
-        if (concepts.length > 0) {
-          conceptsByDocIndex.set(docIndex, concepts)
+        if (conceptEntries.length > 0) {
+          conceptsByDocIndex.set(docIndex, conceptEntries)
         }
         
         docsForRagDocuments.push({
@@ -154,11 +204,11 @@ serve(async (req) => {
             source_file_id: sourceFileId,
             content_type: 'table_chunk',
             document_title: doc.document_title || null,
+            category_slug: categorySlug,
             section_title: doc.section_title || null,
             table_index: doc.table_index ?? 0,
             row_count: doc.row_count || 0,
             column_count: doc.column_count || 0,
-            concepts: concepts,
           },
         })
         
@@ -225,8 +275,6 @@ serve(async (req) => {
       const userId = parseUUID(doc.created_by) || parseUUID(metadata.user_id)
       const sourceFileId = parseUUID(doc.source_file_id) || parseUUID(metadata.source_file_id)
       
-      console.log(`[DEBUG] sourceFileId resolved: ${sourceFileId}`)
-      
       if (userId && (!orgId || targetApps.length === 0)) {
         const { data: profile, error: profileError } = await supabase
           .schema('core')
@@ -258,14 +306,31 @@ serve(async (req) => {
 
       const targetProjects = normalizeUUIDArray(doc.target_projects || metadata.target_projects)
 
-      // v5.0.2 : Extraire les concepts depuis metadata parsé
-      const concepts = normalizeArray(metadata.concepts || [])
-      console.log(`[DEBUG] rag.documents concepts: ${JSON.stringify(concepts)}`)
+      // v6.0.0 : Concepts avec source
+      const conceptEntries: ConceptEntry[] = []
+      
+      // Concept primaire depuis catégorie (ajouté EN PREMIER = prioritaire)
+      if (categorySlug && categoryToConceptId.has(categorySlug)) {
+        conceptEntries.push({
+          concept_id: categoryToConceptId.get(categorySlug)!,
+          source: 'category',
+          relevance_score: 1.0
+        })
+      }
+      
+      // Concepts secondaires depuis LLM
+      const llmConcepts = normalizeArray(metadata.concepts || [])
+      llmConcepts.forEach(slug => {
+        conceptEntries.push({
+          slug: slug,
+          source: 'llm',
+          relevance_score: 0.85
+        })
+      })
       
       const docIndex = docsForRagDocuments.length
-      if (concepts.length > 0) {
-        conceptsByDocIndex.set(docIndex, concepts)
-        console.log(`[DEBUG] Added concepts for docIndex ${docIndex}: ${JSON.stringify(concepts)}`)
+      if (conceptEntries.length > 0) {
+        conceptsByDocIndex.set(docIndex, conceptEntries)
       }
 
       docsForRagDocuments.push({
@@ -281,7 +346,7 @@ serve(async (req) => {
         metadata: {
           ...metadata,
           source_file_id: sourceFileId,
-          concepts: concepts,
+          category_slug: categorySlug,
         },
       })
     }
@@ -345,77 +410,85 @@ serve(async (req) => {
     }
 
     // ════════════════════════════════════════════════════════════════════════════
-    // INSERTION rag.document_concepts (GraphRAG v5.0.0)
+    // INSERTION rag.document_concepts (GraphRAG v6.0.1 - avec déduplication)
     // ════════════════════════════════════════════════════════════════════════════
     
     let insertedConcepts = 0
     
-    console.log(`[DEBUG] insertedDocs.length: ${insertedDocs.length}`)
-    console.log(`[DEBUG] conceptsByDocIndex.size: ${conceptsByDocIndex.size}`)
-    
     if (insertedDocs.length > 0 && conceptsByDocIndex.size > 0) {
-      const allSlugs = new Set<string>()
-      conceptsByDocIndex.forEach(slugs => slugs.forEach(s => allSlugs.add(s)))
+      // Collecter tous les slugs à résoudre
+      const slugsToResolve = new Set<string>()
+      conceptsByDocIndex.forEach(entries => {
+        entries.forEach(entry => {
+          if (entry.slug) slugsToResolve.add(entry.slug)
+        })
+      })
       
-      console.log(`[DEBUG] allSlugs: ${JSON.stringify(Array.from(allSlugs))}`)
+      // Résoudre slugs → concept_id
+      const slugToId = new Map<string, string>()
       
-      const { data: conceptsData, error: conceptsError } = await supabase
-        .schema('config')
-        .from('concepts')
-        .select('id, slug')
-        .in('slug', Array.from(allSlugs))
-      
-      console.log(`[DEBUG] conceptsData count: ${conceptsData?.length || 0}`)
-      console.log(`[DEBUG] conceptsError: ${conceptsError?.message || 'null'}`)
-      
-      if (conceptsError) {
-        console.error(`[ingest-documents] Erreur récupération concepts: ${conceptsError.message}`)
-      } else if (conceptsData && conceptsData.length > 0) {
-        const slugToId = new Map<string, string>()
-        conceptsData.forEach((c: any) => slugToId.set(c.slug, c.id))
+      if (slugsToResolve.size > 0) {
+        const { data: conceptsData, error: conceptsError } = await supabase
+          .schema('config')
+          .from('concepts')
+          .select('id, slug')
+          .in('slug', Array.from(slugsToResolve))
         
-        const conceptRows: any[] = []
+        if (!conceptsError && conceptsData) {
+          conceptsData.forEach((c: any) => slugToId.set(c.slug, c.id))
+        }
+      }
+      
+      // Construire les lignes à insérer (avec déduplication)
+      const conceptRows: any[] = []
+      
+      conceptsByDocIndex.forEach((entries, docIndex) => {
+        const documentId = insertedDocs[docIndex]?.id
+        if (!documentId) return
         
-        conceptsByDocIndex.forEach((slugs, docIndex) => {
-          const documentId = insertedDocs[docIndex]?.id
-          console.log(`[DEBUG] docIndex ${docIndex}, documentId: ${documentId}`)
+        // Déduplication : Map concept_id → entry (premier ajouté gagne)
+        const uniqueForDoc = new Map<string, ConceptEntry>()
+        
+        entries.forEach(entry => {
+          let conceptId = entry.concept_id
           
-          if (!documentId) return
+          // Résoudre le slug si pas de concept_id direct
+          if (!conceptId && entry.slug) {
+            conceptId = slugToId.get(entry.slug)
+          }
           
-          slugs.forEach(slug => {
-            const conceptId = slugToId.get(slug)
-            if (conceptId) {
-              conceptRows.push({
-                document_id: documentId,
-                concept_id: conceptId,
-                relevance_score: 1.0,
-                created_at: new Date().toISOString(),
-              })
-            }
-          })
+          // Ajouter seulement si concept_id valide et pas déjà présent
+          if (conceptId && !uniqueForDoc.has(conceptId)) {
+            uniqueForDoc.set(conceptId, { ...entry, concept_id: conceptId })
+          }
         })
         
-        console.log(`[DEBUG] conceptRows to insert: ${conceptRows.length}`)
+        // Convertir en lignes à insérer
+        uniqueForDoc.forEach((entry, conceptId) => {
+          conceptRows.push({
+            document_id: documentId,
+            concept_id: conceptId,
+            relevance_score: entry.relevance_score,
+            source: entry.source,
+            created_at: new Date().toISOString(),
+          })
+        })
+      })
+      
+      if (conceptRows.length > 0) {
+        const { error: insertConceptsError } = await supabase
+          .schema('rag')
+          .from('document_concepts')
+          .insert(conceptRows)
         
-        if (conceptRows.length > 0) {
-          const { error: insertConceptsError } = await supabase
-            .schema('rag')
-            .from('document_concepts')
-            .insert(conceptRows)
-          
-          if (insertConceptsError) {
-            console.error(`[ingest-documents] Erreur insertion document_concepts: ${insertConceptsError.message}`)
-            errors.push({ error: 'Insertion concepts échouée', details: insertConceptsError.message })
-          } else {
-            insertedConcepts = conceptRows.length
-            console.log(`[ingest-documents] rag.document_concepts: ${insertedConcepts} relations insérées`)
-          }
+        if (insertConceptsError) {
+          console.error(`[ingest-documents] Erreur insertion document_concepts: ${insertConceptsError.message}`)
+          errors.push({ error: 'Insertion concepts échouée', details: insertConceptsError.message })
+        } else {
+          insertedConcepts = conceptRows.length
+          console.log(`[ingest-documents] rag.document_concepts: ${insertedConcepts} relations insérées`)
         }
-      } else {
-        console.log(`[DEBUG] No conceptsData returned`)
       }
-    } else {
-      console.log(`[DEBUG] Skipping concept insertion`)
     }
 
     // ════════════════════════════════════════════════════════════════════════════

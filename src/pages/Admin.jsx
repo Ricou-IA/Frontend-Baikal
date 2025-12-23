@@ -8,6 +8,7 @@
  * - Organisation (paramètres) - tous les admins
  * - Connaissances → Route vers /admin/ingestion
  * - Prompts (config agents) - super_admin uniquement
+ * - Indexation (concepts & catégories) - super_admin uniquement
  * 
  * Note: L'onglet Utilisateurs a été supprimé car accessible via le Dashboard
  * 
@@ -26,6 +27,7 @@ import {
     AdminDashboard,
     OrganizationSettings,
     ProfileSwitcher,
+    IndexationSettings,
 } from '../components/admin';
 import Prompts from './Prompts';
 import IngestionContent from './IngestionContent';
@@ -34,6 +36,7 @@ import {
     Building2,
     BookOpen,
     MessageSquareCode,
+    Database,
     Shield,
     AlertCircle,
     Loader2,
@@ -73,13 +76,19 @@ const getTabs = (isSuperAdmin, pendingCount = 0) => {
         },
     ];
 
-    // Onglet Prompts uniquement pour super_admin
+    // Onglets super_admin uniquement
     if (isSuperAdmin) {
         tabs.push({
             id: 'prompts',
             label: 'Prompts',
             icon: MessageSquareCode,
             description: 'Configuration des prompts RAG'
+        });
+        tabs.push({
+            id: 'indexation',
+            label: 'Indexation',
+            icon: Database,
+            description: 'Concepts et catégories par application'
         });
     }
 
@@ -267,7 +276,7 @@ export default function Admin() {
                 )}
 
                 {/* Loader */}
-                {loading && !['dashboard', 'prompts'].includes(activeTab) && (
+                {loading && !['dashboard', 'prompts', 'indexation'].includes(activeTab) && (
                     <div className="flex items-center justify-center py-12">
                         <Loader2 className="w-8 h-8 text-baikal-cyan animate-spin" />
                     </div>
@@ -304,6 +313,11 @@ export default function Admin() {
                 {/* Onglet Prompts (super_admin uniquement) */}
                 {activeTab === 'prompts' && isSuperAdmin && (
                     <Prompts embedded={true} />
+                )}
+
+                {/* Onglet Indexation (super_admin uniquement) */}
+                {activeTab === 'indexation' && isSuperAdmin && (
+                    <IndexationSettings />
                 )}
             </main>
         </div>

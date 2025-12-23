@@ -13,6 +13,11 @@
  * - org_admin : Layer "Verticale Métier" masqué
  * - Ajout ProjectSelector (multi-select) - UNIQUEMENT si layer = project
  * - Layer "project" : au moins 1 projet obligatoire
+ * 
+ * MODIFICATIONS V2 (Phase 1.1):
+ * - Catégories filtrées par target_apps (app sélectionnée)
+ * - category stocke le SLUG au lieu de l'ID
+ * - Dropdown affiche label + description
  * ============================================================================
  */
 
@@ -132,50 +137,33 @@ function SourceCard({ source, isActive, onClick, disabled }) {
 }
 
 // ============================================================================
-// COMPOSANT SÉLECTEUR DE VERTICALES (Multi-select) - SUPER_ADMIN UNIQUEMENT
+// COMPOSANT SÉLECTEUR D'APPLICATION (Dropdown) - SUPER_ADMIN UNIQUEMENT
+// V2: Dropdown style Indexation au lieu de boutons
 // ============================================================================
 
-function VerticalSelector({ verticals, selectedVerticals, onToggle, loading }) {
+function AppSelector({ apps, selectedApp, onSelect, loading }) {
     if (loading) {
         return (
-            <div className="space-y-3">
-                <label className="block text-xs font-mono text-baikal-text uppercase">
-                    Applications cibles *
-                </label>
-                <div className="flex items-center gap-2 text-baikal-text">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span className="text-sm font-sans">Chargement...</span>
-                </div>
+            <div className="flex items-center gap-2 text-baikal-text">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="text-sm font-sans">Chargement...</span>
             </div>
         );
     }
 
     return (
-        <div className="space-y-3">
-            <label className="block text-xs font-mono text-baikal-text uppercase">
-                Applications cibles *
-            </label>
-            <div className="flex flex-wrap gap-2">
-                {verticals.map((v) => {
-                    const isSelected = selectedVerticals.includes(v.id);
-                    return (
-                        <button
-                            key={v.id}
-                            onClick={() => onToggle(v.id)}
-                            className={`
-                                px-3 py-1.5 rounded-md text-sm transition-all font-sans
-                                ${isSelected 
-                                    ? 'bg-baikal-cyan text-black' 
-                                    : 'bg-baikal-surface border border-baikal-border text-baikal-text hover:border-baikal-cyan/50'
-                                }
-                            `}
-                        >
-                            {v.name}
-                        </button>
-                    );
-                })}
-            </div>
-        </div>
+        <select
+            value={selectedApp || ''}
+            onChange={(e) => onSelect(e.target.value || null)}
+            className="px-4 py-2 bg-baikal-surface border border-baikal-border rounded-md text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-baikal-cyan focus:border-transparent cursor-pointer hover:border-baikal-cyan/50 transition-colors"
+        >
+            <option value="" disabled>Sélectionner une app</option>
+            {apps.map((app) => (
+                <option key={app.id} value={app.id}>
+                    {app.name}
+                </option>
+            ))}
+        </select>
     );
 }
 
@@ -405,12 +393,30 @@ function UploadZone({
 
 // ============================================================================
 // COMPOSANT FORMULAIRE METADATA
+// V2: Catégories filtrées par app, slug stocké, label + description affichés
 // ============================================================================
 
-function MetadataForm({ metadata, onChange, errors, categories, loadingCategories }) {
+function MetadataForm({ metadata, onChange, errors, categories, loadingCategories, selectedAppId, selectedLayer }) {
     const handleChange = (field, value) => {
         onChange({ ...metadata, [field]: value });
     };
+
+    // ⭐ V2: Filtrer les catégories par target_apps ET target_layers
+    const filteredCategories = useMemo(() => {
+        if (!selectedAppId || !selectedLayer || !categories) return [];
+        
+        return categories.filter(cat => {
+            // Vérifier target_apps
+            const matchesApp = cat.target_apps && cat.target_apps.length > 0 &&
+                (cat.target_apps.includes('all') || cat.target_apps.includes(selectedAppId));
+            
+            // Vérifier target_layers
+            const matchesLayer = cat.target_layers && cat.target_layers.length > 0 &&
+                (cat.target_layers.includes('all') || cat.target_layers.includes(selectedLayer));
+            
+            return matchesApp && matchesLayer;
+        });
+    }, [categories, selectedAppId, selectedLayer]);
 
     return (
         <div className="space-y-4">
@@ -431,7 +437,7 @@ function MetadataForm({ metadata, onChange, errors, categories, loadingCategorie
                 {errors?.title && <p className="text-sm text-red-400 mt-1 font-mono">{errors.title}</p>}
             </div>
 
-            {/* Catégorie */}
+            {/* Catégorie - V2: slug stocké, filtré par app */}
             <div>
                 <label className="block text-xs font-mono text-baikal-text mb-1.5 uppercase">
                     Catégorie
@@ -443,54 +449,17 @@ function MetadataForm({ metadata, onChange, errors, categories, loadingCategorie
                     className="w-full px-4 py-2.5 bg-baikal-surface border border-baikal-border rounded-md focus:outline-none focus:ring-2 focus:ring-baikal-cyan focus:border-transparent text-white font-sans"
                 >
                     <option value="">Sélectionner une catégorie</option>
-                    {categories.map((cat) => (
-                        <option key={cat.id} value={cat.id}>
-                            {cat.name}
+                    {filteredCategories.map((cat) => (
+                        <option key={cat.id} value={cat.slug}>
+                            {cat.label}
                         </option>
                     ))}
                 </select>
-            </div>
-
-            {/* Description */}
-            <div>
-                <label className="block text-xs font-mono text-baikal-text mb-1.5 uppercase">
-                    Description
-                </label>
-                <textarea
-                    value={metadata.description}
-                    onChange={(e) => handleChange('description', e.target.value)}
-                    placeholder="Description optionnelle du document"
-                    rows={3}
-                    className="w-full px-4 py-2.5 bg-baikal-surface border border-baikal-border rounded-md focus:outline-none focus:ring-2 focus:ring-baikal-cyan focus:border-transparent resize-none text-white font-sans"
-                />
-            </div>
-
-            {/* Version */}
-            <div>
-                <label className="block text-xs font-mono text-baikal-text mb-1.5 uppercase">
-                    Version
-                </label>
-                <input
-                    type="text"
-                    value={metadata.version}
-                    onChange={(e) => handleChange('version', e.target.value)}
-                    placeholder="ex: 1.0.0"
-                    className="w-full px-4 py-2.5 bg-baikal-surface border border-baikal-border rounded-md focus:outline-none focus:ring-2 focus:ring-baikal-cyan focus:border-transparent text-white font-mono"
-                />
-            </div>
-
-            {/* Options avancées */}
-            <div className="flex items-center gap-3 pt-2">
-                <input
-                    type="checkbox"
-                    id="extractToc"
-                    checked={metadata.extractToc}
-                    onChange={(e) => handleChange('extractToc', e.target.checked)}
-                    className="w-4 h-4 text-baikal-cyan border-baikal-border rounded focus:ring-baikal-cyan bg-black"
-                />
-                <label htmlFor="extractToc" className="text-sm text-baikal-text font-sans">
-                    Extraire automatiquement la table des matières
-                </label>
+                {filteredCategories.length === 0 && !loadingCategories && (
+                    <p className="text-xs text-baikal-text mt-1 font-sans">
+                        Aucune catégorie disponible pour cette application et ce layer
+                    </p>
+                )}
             </div>
         </div>
     );
@@ -743,7 +712,7 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
 
     // États - Formulaire commun
     const [activeSource, setActiveSource] = useState('file-upload');
-    const [selectedVerticals, setSelectedVerticals] = useState([]);
+    const [selectedApp, setSelectedApp] = useState(null);  // ⭐ V2: Single-select au lieu de multi-select
     const [selectedLayer, setSelectedLayer] = useState('org');
     const [selectedProjects, setSelectedProjects] = useState([]);
 
@@ -754,10 +723,7 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
     const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
     const [metadata, setMetadata] = useState({
         title: '',
-        category: '',
-        description: '',
-        version: '',
-        extractToc: false,
+        category: '',  // ⭐ V2: Stocke maintenant le SLUG
     });
     const [errors, setErrors] = useState({});
     const [isUploading, setIsUploading] = useState(false);
@@ -775,11 +741,11 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
     // App ID : auto pour org_admin, sélection pour super_admin
     const effectiveAppId = useMemo(() => {
         if (isSuperAdmin) {
-            return selectedVerticals[0] || null;
+            return selectedApp || null;  // ⭐ V2: Directement selectedApp
         }
         // org_admin : utiliser l'app_id du profil
         return profile?.app_id || null;
-    }, [isSuperAdmin, selectedVerticals, profile?.app_id]);
+    }, [isSuperAdmin, selectedApp, profile?.app_id]);
 
     // Filtrer les sources disponibles
     const availableSources = useMemo(() => {
@@ -801,9 +767,9 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
                 setVerticals(verticalsRes.data || []);
                 setCategories(categoriesRes.data || []);
                 
-                // Super admin : sélectionner la première verticale par défaut
-                if (isSuperAdmin && verticalsRes.data?.length > 0 && selectedVerticals.length === 0) {
-                    setSelectedVerticals([verticalsRes.data[0].id]);
+                // Super admin : sélectionner la première app par défaut
+                if (isSuperAdmin && verticalsRes.data?.length > 0 && !selectedApp) {
+                    setSelectedApp(verticalsRes.data[0].id);
                 }
             } catch (err) {
                 console.error('Erreur chargement référentiels:', err);
@@ -852,14 +818,10 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
         setSelectedProjects([]);
     }, [selectedLayer]);
 
-    // Toggle verticale
-    const toggleVertical = (verticalId) => {
-        setSelectedVerticals(prev => 
-            prev.includes(verticalId)
-                ? prev.filter(id => id !== verticalId)
-                : [...prev, verticalId]
-        );
-    };
+    // ⭐ V2: Reset catégorie quand on change d'app OU de layer
+    useEffect(() => {
+        setMetadata(prev => ({ ...prev, category: '' }));
+    }, [effectiveAppId, selectedLayer]);
 
     // Toggle projet
     const toggleProject = (projectId) => {
@@ -923,8 +885,8 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
         const newErrors = {};
         
         // Validation
-        if (isSuperAdmin && selectedVerticals.length === 0) {
-            newErrors.vertical = 'Veuillez sélectionner au moins une application';
+        if (isSuperAdmin && !selectedApp) {
+            newErrors.app = 'Veuillez sélectionner une application';
         }
         if (!file) {
             newErrors.file = 'Veuillez sélectionner un fichier';
@@ -946,46 +908,41 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
         setUploadResult(null);
 
         try {
-            // Déterminer les apps à cibler
-            const targetApps = isSuperAdmin ? selectedVerticals : [effectiveAppId];
+            // ⭐ V2: Une seule app cible
+            const targetAppId = isSuperAdmin ? selectedApp : effectiveAppId;
 
-            const uploadPromises = targetApps.map(appId =>
-                documentsService.uploadDocument({
-                    file,
-                    layer: selectedLayer,
-                    appId: appId,
-                    orgId: orgId,
-                    userId: profile?.id,
-                    // Passer les projets sélectionnés uniquement si layer = project
-                    projectIds: selectedLayer === 'project' ? selectedProjects : null,
-                    metadata: {
-                        title: metadata.title,
-                        category: metadata.category,
-                        description: metadata.description,
-                        version: metadata.version,
-                        extractToc: metadata.extractToc,
-                    },
-                    qualityLevel: 'premium',
-                    status: 'approved',
-                })
-            );
+            const result = await documentsService.uploadDocument({
+                file,
+                layer: selectedLayer,
+                appId: targetAppId,
+                orgId: orgId,
+                userId: profile?.id,
+                // Passer les projets sélectionnés uniquement si layer = project
+                projectIds: selectedLayer === 'project' ? selectedProjects : null,
+                metadata: {
+                    title: metadata.title,
+                    category: metadata.category,  // ⭐ V2: C'est maintenant le SLUG
+                    description: metadata.description,
+                    version: metadata.version,
+                    extractToc: metadata.extractToc,
+                },
+                qualityLevel: 'premium',
+                status: 'approved',
+            });
 
-            const results = await Promise.all(uploadPromises);
-            const uploadErrors = results.filter(r => r.error);
-            
-            if (uploadErrors.length > 0) {
-                throw new Error(`Erreur lors de l'upload pour ${uploadErrors.length} application(s)`);
+            if (result.error) {
+                throw new Error(result.error.message || 'Erreur lors de l\'upload');
             }
 
             setUploadResult({
                 success: true,
-                message: `Document uploadé avec succès${targetApps.length > 1 ? ` pour ${targetApps.length} application(s)` : ''} !`,
-                path: results[0]?.path
+                message: 'Document uploadé avec succès !',
+                path: result.path
             });
 
             // Reset formulaire
             setFile(null);
-            setMetadata({ title: '', category: '', description: '', version: '', extractToc: false });
+            setMetadata({ title: '', category: '' });
             setDuplicateInfo(null);
             setSelectedProjects([]);
         } catch (err) {
@@ -998,7 +955,7 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
         }
     };
 
-    const isSelectionValid = (isSuperAdmin ? selectedVerticals.length > 0 : effectiveAppId) && selectedLayer;
+    const isSelectionValid = (isSuperAdmin ? selectedApp : effectiveAppId) && selectedLayer;
 
     return (
         <div className="space-y-6">
@@ -1037,19 +994,20 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
 
                     {/* Sélection commune */}
                     <div className="space-y-6 pb-6 border-b border-baikal-border">
-                        {/* Sélecteur de verticales - SUPER_ADMIN uniquement */}
+                        {/* Sélecteur d'app - SUPER_ADMIN uniquement - Style Indexation (en haut) */}
                         {isSuperAdmin && (
-                            <>
-                                <VerticalSelector
-                                    verticals={verticals}
-                                    selectedVerticals={selectedVerticals}
-                                    onToggle={toggleVertical}
+                            <div className="flex items-center justify-between mb-4">
+                                <span className="text-xs font-mono text-baikal-text uppercase">Application cible</span>
+                                <AppSelector
+                                    apps={verticals}
+                                    selectedApp={selectedApp}
+                                    onSelect={setSelectedApp}
                                     loading={loadingReferentiels}
                                 />
-                                {errors?.vertical && (
-                                    <p className="text-sm text-red-400 -mt-3 font-mono">{errors.vertical}</p>
-                                )}
-                            </>
+                            </div>
+                        )}
+                        {errors?.app && (
+                            <p className="text-sm text-red-400 mb-4 font-mono">{errors.app}</p>
                         )}
 
                         {/* Affichage de l'app pour org_admin (lecture seule) */}
@@ -1117,6 +1075,8 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
                                     errors={errors}
                                     categories={categories}
                                     loadingCategories={loadingReferentiels}
+                                    selectedAppId={effectiveAppId}
+                                    selectedLayer={selectedLayer}
                                 />
                             )}
 
@@ -1152,7 +1112,7 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
 
                     {activeSource === 'legifrance' && isSelectionValid && (
                         <LegifranceInterface
-                            selectedVertical={isSuperAdmin ? selectedVerticals[0] : effectiveAppId}
+                            selectedVertical={isSuperAdmin ? selectedApp : effectiveAppId}
                             selectedLayer={selectedLayer}
                             verticals={verticals}
                         />
