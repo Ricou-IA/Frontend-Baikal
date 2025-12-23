@@ -18,6 +18,11 @@
  * - Catégories filtrées par target_apps (app sélectionnée)
  * - category stocke le SLUG au lieu de l'ID
  * - Dropdown affiche label + description
+ * 
+ * MODIFICATIONS 23/12/2025:
+ * - Ajout OrgSelector pour super_admin (layers org et project)
+ * - Rechargement des projets selon l'org sélectionnée
+ * - org_admin : org fixe (lecture seule)
  * ============================================================================
  */
 
@@ -26,6 +31,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { documentsService } from '../services/documents.service';
 import { referentielsService } from '../services/referentiels.service';
 import { projectsService } from '../services/projects.service';
+import { organizationService } from '../services/organization.service';
 import {
     ACCEPTED_MIME_TYPES,
     ACCEPTED_EXTENSIONS,
@@ -161,6 +167,36 @@ function AppSelector({ apps, selectedApp, onSelect, loading }) {
             {apps.map((app) => (
                 <option key={app.id} value={app.id}>
                     {app.name}
+                </option>
+            ))}
+        </select>
+    );
+}
+
+// ============================================================================
+// COMPOSANT SÉLECTEUR D'ORGANISATION (Dropdown) - SUPER_ADMIN UNIQUEMENT
+// ============================================================================
+
+function OrgSelector({ organizations, selectedOrg, onSelect, loading }) {
+    if (loading) {
+        return (
+            <div className="flex items-center gap-2 text-baikal-text">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="text-sm font-sans">Chargement des organisations...</span>
+            </div>
+        );
+    }
+
+    return (
+        <select
+            value={selectedOrg || ''}
+            onChange={(e) => onSelect(e.target.value || null)}
+            className="w-full px-4 py-2.5 bg-baikal-surface border border-baikal-border rounded-md text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-baikal-cyan focus:border-transparent cursor-pointer hover:border-baikal-cyan/50 transition-colors"
+        >
+            <option value="" disabled>Sélectionner une organisation</option>
+            {organizations.map((org) => (
+                <option key={org.id} value={org.id}>
+                    {org.name}
                 </option>
             ))}
         </select>
@@ -707,13 +743,16 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
     const [verticals, setVerticals] = useState([]);
     const [categories, setCategories] = useState([]);
     const [projects, setProjects] = useState([]);
+    const [organizations, setOrganizations] = useState([]);
     const [loadingReferentiels, setLoadingReferentiels] = useState(true);
-    const [loadingProjects, setLoadingProjects] = useState(true);
+    const [loadingProjects, setLoadingProjects] = useState(false);
+    const [loadingOrganizations, setLoadingOrganizations] = useState(false);
 
     // États - Formulaire commun
     const [activeSource, setActiveSource] = useState('file-upload');
-    const [selectedApp, setSelectedApp] = useState(null);  // ⭐ V2: Single-select au lieu de multi-select
+    const [selectedApp, setSelectedApp] = useState(null);
     const [selectedLayer, setSelectedLayer] = useState('org');
+    const [selectedOrg, setSelectedOrg] = useState(null);  // ⭐ NOUVEAU
     const [selectedProjects, setSelectedProjects] = useState([]);
 
     // États - Upload fichier
@@ -723,7 +762,7 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
     const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
     const [metadata, setMetadata] = useState({
         title: '',
-        category: '',  // ⭐ V2: Stocke maintenant le SLUG
+        category: '',
     });
     const [errors, setErrors] = useState({});
     const [isUploading, setIsUploading] = useState(false);
@@ -734,18 +773,30 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
         if (isSuperAdmin) {
             return ['app', 'org', 'project'];
         }
-        // org_admin : pas de layer "app"
         return ['org', 'project'];
     }, [isSuperAdmin]);
 
     // App ID : auto pour org_admin, sélection pour super_admin
     const effectiveAppId = useMemo(() => {
         if (isSuperAdmin) {
-            return selectedApp || null;  // ⭐ V2: Directement selectedApp
+            return selectedApp || null;
         }
-        // org_admin : utiliser l'app_id du profil
         return profile?.app_id || null;
     }, [isSuperAdmin, selectedApp, profile?.app_id]);
+
+    // ⭐ NOUVEAU: Org ID effectif selon le rôle et le layer
+    const effectiveOrgId = useMemo(() => {
+        // Layer "app" = pas d'org (cross-org)
+        if (selectedLayer === 'app') {
+            return null;
+        }
+        // super_admin : utiliser l'org sélectionnée
+        if (isSuperAdmin) {
+            return selectedOrg || null;
+        }
+        // org_admin : utiliser son org
+        return orgId || null;
+    }, [isSuperAdmin, selectedLayer, selectedOrg, orgId]);
 
     // Filtrer les sources disponibles
     const availableSources = useMemo(() => {
@@ -767,7 +818,6 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
                 setVerticals(verticalsRes.data || []);
                 setCategories(categoriesRes.data || []);
                 
-                // Super admin : sélectionner la première app par défaut
                 if (isSuperAdmin && verticalsRes.data?.length > 0 && !selectedApp) {
                     setSelectedApp(verticalsRes.data[0].id);
                 }
@@ -780,10 +830,43 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
         loadReferentiels();
     }, [isSuperAdmin]);
 
-    // Charger les projets de l'organisation
+    // ⭐ NOUVEAU: Charger les organisations (super_admin uniquement)
+    useEffect(() => {
+        async function loadOrganizations() {
+            if (!isSuperAdmin) {
+                setOrganizations([]);
+                return;
+            }
+
+            setLoadingOrganizations(true);
+            try {
+                const result = await organizationService.getOrganizations({
+                    includeInactive: false,
+                    limit: 100,
+                });
+                setOrganizations(result.data || []);
+            } catch (err) {
+                console.error('Erreur chargement organisations:', err);
+                setOrganizations([]);
+            } finally {
+                setLoadingOrganizations(false);
+            }
+        }
+        loadOrganizations();
+    }, [isSuperAdmin]);
+
+    // ⭐ MODIFIÉ: Charger les projets selon l'org effective
     useEffect(() => {
         async function loadProjects() {
-            if (!orgId) {
+            // Pas de chargement si layer != project
+            if (selectedLayer !== 'project') {
+                setProjects([]);
+                setLoadingProjects(false);
+                return;
+            }
+
+            // Pas de chargement si pas d'org sélectionnée
+            if (!effectiveOrgId) {
                 setProjects([]);
                 setLoadingProjects(false);
                 return;
@@ -792,7 +875,7 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
             setLoadingProjects(true);
             try {
                 const result = await projectsService.getProjects({
-                    orgId: orgId,
+                    orgId: effectiveOrgId,
                     includeArchived: false,
                 });
                 setProjects(result.data || []);
@@ -804,7 +887,7 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
             }
         }
         loadProjects();
-    }, [orgId]);
+    }, [effectiveOrgId, selectedLayer]);
 
     // Mettre à jour le layer par défaut
     useEffect(() => {
@@ -813,15 +896,22 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
         }
     }, [availableLayers, selectedLayer]);
 
-    // Reset projets sélectionnés quand on change de layer
+    // Reset projets sélectionnés quand on change de layer ou d'org
     useEffect(() => {
         setSelectedProjects([]);
-    }, [selectedLayer]);
+    }, [selectedLayer, effectiveOrgId]);
 
-    // ⭐ V2: Reset catégorie quand on change d'app OU de layer
+    // Reset catégorie quand on change d'app OU de layer
     useEffect(() => {
         setMetadata(prev => ({ ...prev, category: '' }));
     }, [effectiveAppId, selectedLayer]);
+
+    // ⭐ NOUVEAU: Reset org sélectionnée quand on change de layer vers "app"
+    useEffect(() => {
+        if (selectedLayer === 'app') {
+            setSelectedOrg(null);
+        }
+    }, [selectedLayer]);
 
     // Toggle projet
     const toggleProject = (projectId) => {
@@ -862,10 +952,11 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
             setMetadata(prev => ({ ...prev, title: nameWithoutExt }));
         }
 
-        if (orgId) {
+        // ⭐ MODIFIÉ: Utiliser effectiveOrgId pour la vérification de doublon
+        if (effectiveOrgId) {
             setIsCheckingDuplicate(true);
             try {
-                const result = await documentsService.checkFileBeforeUpload(selectedFile, orgId);
+                const result = await documentsService.checkFileBeforeUpload(selectedFile, effectiveOrgId);
                 setDuplicateInfo(result);
             } catch (err) {
                 console.error('Erreur vérification doublon:', err);
@@ -888,13 +979,16 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
         if (isSuperAdmin && !selectedApp) {
             newErrors.app = 'Veuillez sélectionner une application';
         }
+        // ⭐ NOUVEAU: Validation org pour layers org et project (super_admin)
+        if (isSuperAdmin && (selectedLayer === 'org' || selectedLayer === 'project') && !selectedOrg) {
+            newErrors.org = 'Veuillez sélectionner une organisation';
+        }
         if (!file) {
             newErrors.file = 'Veuillez sélectionner un fichier';
         }
         if (!metadata.title) {
             newErrors.title = 'Le titre est obligatoire';
         }
-        // Layer project : au moins 1 projet obligatoire
         if (selectedLayer === 'project' && selectedProjects.length === 0) {
             newErrors.projects = 'Veuillez sélectionner au moins un projet';
         }
@@ -908,20 +1002,18 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
         setUploadResult(null);
 
         try {
-            // ⭐ V2: Une seule app cible
             const targetAppId = isSuperAdmin ? selectedApp : effectiveAppId;
 
             const result = await documentsService.uploadDocument({
                 file,
                 layer: selectedLayer,
                 appId: targetAppId,
-                orgId: orgId,
+                orgId: effectiveOrgId,  // ⭐ MODIFIÉ: Utiliser effectiveOrgId
                 userId: profile?.id,
-                // Passer les projets sélectionnés uniquement si layer = project
                 projectIds: selectedLayer === 'project' ? selectedProjects : null,
                 metadata: {
                     title: metadata.title,
-                    category: metadata.category,  // ⭐ V2: C'est maintenant le SLUG
+                    category: metadata.category,
                     description: metadata.description,
                     version: metadata.version,
                     extractToc: metadata.extractToc,
@@ -956,6 +1048,17 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
     };
 
     const isSelectionValid = (isSuperAdmin ? selectedApp : effectiveAppId) && selectedLayer;
+
+    // ⭐ NOUVEAU: Déterminer si on doit afficher le sélecteur d'org
+    const showOrgSelector = isSuperAdmin && (selectedLayer === 'org' || selectedLayer === 'project');
+
+    // ⭐ NOUVEAU: Trouver le nom de l'org pour affichage (org_admin)
+    const currentOrgName = useMemo(() => {
+        if (isSuperAdmin) return null;
+        // Pour org_admin, on pourrait récupérer le nom depuis le profil ou les orgs
+        // Pour l'instant on affiche juste l'ID
+        return orgId;
+    }, [isSuperAdmin, orgId]);
 
     return (
         <div className="space-y-6">
@@ -994,7 +1097,7 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
 
                     {/* Sélection commune */}
                     <div className="space-y-6 pb-6 border-b border-baikal-border">
-                        {/* Sélecteur d'app - SUPER_ADMIN uniquement - Style Indexation (en haut) */}
+                        {/* Sélecteur d'app - SUPER_ADMIN uniquement */}
                         {isSuperAdmin && (
                             <div className="flex items-center justify-between mb-4">
                                 <span className="text-xs font-mono text-baikal-text uppercase">Application cible</span>
@@ -1029,8 +1132,41 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
                             availableLayers={availableLayers}
                         />
 
-                        {/* Sélecteur de projets - UNIQUEMENT si layer = project */}
-                        {selectedLayer === 'project' && (
+                        {/* ⭐ NOUVEAU: Sélecteur d'organisation (super_admin + layers org/project) */}
+                        {showOrgSelector && (
+                            <div className="space-y-3">
+                                <label className="block text-xs font-mono text-baikal-text uppercase">
+                                    Organisation cible <span className="text-red-400">*</span>
+                                </label>
+                                <OrgSelector
+                                    organizations={organizations}
+                                    selectedOrg={selectedOrg}
+                                    onSelect={setSelectedOrg}
+                                    loading={loadingOrganizations}
+                                />
+                                {errors?.org && (
+                                    <p className="text-sm text-red-400 font-mono">{errors.org}</p>
+                                )}
+                            </div>
+                        )}
+
+                        {/* ⭐ NOUVEAU: Affichage de l'org pour org_admin (lecture seule) - layers org/project */}
+                        {!isSuperAdmin && (selectedLayer === 'org' || selectedLayer === 'project') && (
+                            <div className="space-y-3">
+                                <label className="block text-xs font-mono text-baikal-text uppercase">
+                                    Organisation
+                                </label>
+                                <div className="px-4 py-2.5 bg-baikal-surface border border-baikal-border rounded-md">
+                                    <div className="flex items-center gap-2">
+                                        <Building2 className="w-4 h-4 text-baikal-cyan" />
+                                        <span className="text-white font-sans">Votre organisation</span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Sélecteur de projets - UNIQUEMENT si layer = project ET org sélectionnée */}
+                        {selectedLayer === 'project' && effectiveOrgId && (
                             <>
                                 <ProjectSelector
                                     projects={projects}
@@ -1042,6 +1178,16 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
                                     <p className="text-sm text-red-400 -mt-3 font-mono">{errors.projects}</p>
                                 )}
                             </>
+                        )}
+
+                        {/* ⭐ NOUVEAU: Message si layer project mais pas d'org */}
+                        {selectedLayer === 'project' && !effectiveOrgId && isSuperAdmin && (
+                            <div className="p-4 bg-baikal-surface border border-baikal-border rounded-md text-center">
+                                <Building2 className="w-8 h-8 text-baikal-text mx-auto mb-2" />
+                                <p className="text-sm text-baikal-text font-sans">
+                                    Sélectionnez d'abord une organisation pour voir ses projets
+                                </p>
+                            </div>
                         )}
                     </div>
 
