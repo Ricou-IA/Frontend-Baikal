@@ -1,6 +1,9 @@
 // ╔══════════════════════════════════════════════════════════════════════════════╗
 // ║  INGEST-DOCUMENTS - Edge Function Supabase                                   ║
-// ║  Version: 6.0.1 - Support V2 complet + déduplication concepts                ║
+// ║  Version: 6.0.2 - UPSERT document_concepts (fix duplicate key)               ║
+// ╠══════════════════════════════════════════════════════════════════════════════╣
+// ║  Changements v6.0.2:                                                         ║
+// ║  - UPSERT au lieu de INSERT sur document_concepts (évite duplicate key)      ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
 // ║  Changements v6.0.1:                                                         ║
 // ║  - Déduplication concepts (category prioritaire sur llm)                     ║
@@ -410,7 +413,7 @@ serve(async (req) => {
     }
 
     // ════════════════════════════════════════════════════════════════════════════
-    // INSERTION rag.document_concepts (GraphRAG v6.0.1 - avec déduplication)
+    // INSERTION rag.document_concepts (GraphRAG v6.0.2 - UPSERT avec déduplication)
     // ════════════════════════════════════════════════════════════════════════════
     
     let insertedConcepts = 0
@@ -475,11 +478,15 @@ serve(async (req) => {
         })
       })
       
+      // v6.0.2 : UPSERT au lieu de INSERT (évite duplicate key error)
       if (conceptRows.length > 0) {
         const { error: insertConceptsError } = await supabase
           .schema('rag')
           .from('document_concepts')
-          .insert(conceptRows)
+          .upsert(conceptRows, { 
+            onConflict: 'document_id,concept_id',
+            ignoreDuplicates: true 
+          })
         
         if (insertConceptsError) {
           console.error(`[ingest-documents] Erreur insertion document_concepts: ${insertConceptsError.message}`)
