@@ -1,8 +1,10 @@
 // ╔══════════════════════════════════════════════════════════════════════════════╗
-// ║  BAIKAL-LIBRARIAN v8.12.1 - Agent RAG Optimisé                              ║
+// ║  BAIKAL-LIBRARIAN v8.12.2 - Agent RAG Optimisé                              ║
 // ║  Edge Function Supabase                                                      ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
-// ║  Nouveautés v8.12.1:                                                         ║
+// ║  Nouveautés v8.12.2:                                                         ║
+// ║  - SOURCE NAMING: Utilise document_title en priorité (pas filename)          ║
+// ║  Hérite de v8.12.1:                                                          ║
 // ║  - DOCUMENTS_CLES_SLUG: Constante système (plus configurable via DB)         ║
 // ║  Hérite de v8.12.0:                                                          ║
 // ║  - PROJECT CONTEXT: Récupération directe depuis DB (plus via body)           ║
@@ -192,7 +194,6 @@ interface AgentConfig {
   boost_factor: number
   suggestion_threshold: number
   max_alternatives: number
-  // NOTE: documents_cles_slug retiré - utilise DOCUMENTS_CLES_SLUG constante
 }
 
 interface DocumentResult {
@@ -215,6 +216,7 @@ interface FileResult {
   storage_path: string
   storage_bucket: string
   original_filename: string
+  document_title?: string  // v8.12.2: Ajout pour mode Gemini (future)
   mime_type: string
   file_size: number
   total_pages: number
@@ -278,6 +280,32 @@ function successResponse(data: unknown) {
     JSON.stringify(data),
     { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
   )
+}
+
+// ============================================================================
+// v8.12.2: HELPER POUR EXTRAIRE LE NOM DU DOCUMENT
+// Priorité: document_title > filename > 'Document'
+// ============================================================================
+
+function getDocumentDisplayName(metadata: Record<string, unknown> | undefined): string {
+  if (!metadata) return 'Document'
+  
+  // Priorité 1: document_title (titre saisi par l'utilisateur)
+  if (metadata.document_title && typeof metadata.document_title === 'string') {
+    return metadata.document_title
+  }
+  
+  // Priorité 2: filename (nom de fichier stocké)
+  if (metadata.filename && typeof metadata.filename === 'string') {
+    return metadata.filename
+  }
+  
+  // Priorité 3: source (ancien champ)
+  if (metadata.source && typeof metadata.source === 'string') {
+    return metadata.source
+  }
+  
+  return 'Document'
 }
 
 // ============================================================================
@@ -350,7 +378,6 @@ async function getProjectIdentity(
 
 // ============================================================================
 // v8.12.1: DÉTECTION DOCUMENTS MENTIONNÉS (via GraphRAG concepts)
-// Utilise DOCUMENTS_CLES_SLUG constante système
 // ============================================================================
 
 async function detectMentionedDocuments(
@@ -360,12 +387,11 @@ async function detectMentionedDocuments(
   appId: string
 ): Promise<string[]> {
   try {
-    // 1. Récupérer le concept parent "documents_cles" (constante système)
     const { data: parentConcept } = await supabase
       .schema('config')
       .from('concepts')
       .select('id')
-      .eq('slug', DOCUMENTS_CLES_SLUG)  // ← Utilise la constante système
+      .eq('slug', DOCUMENTS_CLES_SLUG)
       .eq('status', 'active')
       .contains('target_apps', [appId])
       .single()
@@ -375,7 +401,6 @@ async function detectMentionedDocuments(
       return []
     }
     
-    // 2. Récupérer les documents clés (enfants)
     const { data: docConcepts } = await supabase
       .schema('config')
       .from('concepts')
@@ -390,7 +415,6 @@ async function detectMentionedDocuments(
     
     console.log(`[baikal-librarian] ${docConcepts.length} documents clés disponibles: [${docConcepts.map(d => d.slug).join(', ')}]`)
     
-    // 3. Match textuel dans query + historique (case-insensitive)
     const textToSearch = `${query} ${conversationHistory}`.toLowerCase()
     
     const detected = docConcepts
@@ -426,7 +450,8 @@ function calculateDocumentStats(documents: DocumentResult[]): DocumentStats {
     
     if (!uniqueDocs.has(fileId)) {
       uniqueDocs.set(fileId, {
-        filename: (doc.metadata?.filename || doc.metadata?.document_title || 'Document') as string,
+        // v8.12.2: Utilise le helper pour le nom
+        filename: getDocumentDisplayName(doc.metadata),
         pages: (doc.metadata?.total_pages || 1) as number
       })
     }
@@ -466,7 +491,6 @@ async function getAgentConfig(
   
   let promptData = null
   
-  // Priorité 1: Organisation
   if (org_id) {
     const { data } = await supabase
       .schema('config')
@@ -483,7 +507,6 @@ async function getAgentConfig(
     }
   }
   
-  // Priorité 2: Verticale (app_id)
   if (!promptData) {
     const { data } = await supabase
       .schema('config')
@@ -501,7 +524,6 @@ async function getAgentConfig(
     }
   }
   
-  // Priorité 3: Global
   if (!promptData) {
     const { data } = await supabase
       .schema('config')
@@ -539,16 +561,14 @@ async function getAgentConfig(
     gemini_max_pages: params.gemini_max_pages || DEFAULT_CONFIG.gemini_max_pages,
     cache_ttl_minutes: params.cache_ttl_minutes || DEFAULT_CONFIG.cache_ttl_minutes,
     max_context_length: DEFAULT_CONFIG.max_context_length,
-    // v8.12.0
     boost_factor: params.boost_factor ?? DEFAULT_CONFIG.boost_factor,
     suggestion_threshold: params.suggestion_threshold ?? DEFAULT_CONFIG.suggestion_threshold,
     max_alternatives: params.max_alternatives ?? DEFAULT_CONFIG.max_alternatives,
-    // NOTE: documents_cles_slug retiré - utilise DOCUMENTS_CLES_SLUG constante
   }
   
   console.log(`[baikal-librarian] Config: match_count=${config.match_count}, threshold=${config.match_threshold}`)
   console.log(`[baikal-librarian] Gemini: model=${config.gemini_model}, max_pages=${config.gemini_max_pages}`)
-  console.log(`[baikal-librarian] v8.12.1: boost_factor=${config.boost_factor}, documents_cles_slug=${DOCUMENTS_CLES_SLUG} (constante)`)
+  console.log(`[baikal-librarian] v8.12.2: boost_factor=${config.boost_factor}, documents_cles_slug=${DOCUMENTS_CLES_SLUG} (constante)`)
   
   return {
     config,
@@ -689,14 +709,13 @@ function detectAlternativeSuggestion(
   }
   
   const topDoc = documents[0]
-  const topDocName = (topDoc.metadata?.document_title || topDoc.metadata?.filename || '') as string
+  // v8.12.2: Utilise le helper
+  const topDocName = getDocumentDisplayName(topDoc.metadata)
   
-  // Vérifier si le top document est différent des documents mentionnés
   const isMentionedDoc = detectedDocuments.some(mentioned => 
     topDocName.toLowerCase().includes(mentioned.toLowerCase())
   )
   
-  // Si le top document n'est pas celui mentionné ET a un bon score
   if (!isMentionedDoc && topDoc.similarity >= suggestionThreshold) {
     console.log(`[baikal-librarian] Alternative: "${topDocName}" (${topDoc.similarity.toFixed(2)}) vs mentionné [${detectedDocuments.join(', ')}]`)
     
@@ -982,7 +1001,8 @@ function formatContext(documents: DocumentResult[], maxLength: number): string {
     currentLength += layerHeader.length
     
     for (const doc of docs) {
-      const source = doc.metadata?.filename || doc.metadata?.source || 'Document'
+      // v8.12.2: Utilise le helper pour le nom
+      const source = getDocumentDisplayName(doc.metadata)
       const boostIndicator = doc.boost_applied ? ' ⭐' : ''
       const docText = `\n[${docIndex}] ${source}${boostIndicator}:\n${doc.content}\n`
       
@@ -1021,7 +1041,6 @@ async function generateWithOpenAI(
   
   finalPrompt = finalPrompt + '\n\n' + context
   
-  // v8.12.0: Ajouter instruction pour suggestion alternative
   if (alternativeSuggestion) {
     finalPrompt += `\n\n---\nNOTE: L'utilisateur mentionne "${alternativeSuggestion.mentioned_doc}", mais "${alternativeSuggestion.suggested_doc}" semble également pertinent. Tu peux mentionner cette alternative si approprié.\n---`
   }
@@ -1093,12 +1112,14 @@ async function executeGeminiMode(
   const cacheStatus = cacheHits > 0 && cacheMisses === 0 ? 'hit' 
     : cacheHits === 0 && cacheMisses > 0 ? 'miss' : 'partial'
   
+  // v8.12.2: Pour le mode Gemini, on utilise original_filename pour l'instant
+  // TODO: Modifier match_files_v2 pour retourner document_title
   const sources = files.map(f => ({
     id: f.file_id,
     type: 'document',
     source_file_id: f.file_id,
-    document_name: f.original_filename,
-    name: f.original_filename,
+    document_name: f.document_title || f.original_filename,
+    name: f.document_title || f.original_filename,
     score: f.max_similarity,
     layer: f.layers?.[0] || 'app',
     content_preview: f.sample_content?.substring(0, 200) || null,
@@ -1152,7 +1173,6 @@ async function executeChunksMode(
   console.log(`[baikal-librarian] Mode CHUNKS avec RRF + boost`)
   console.log(`[baikal-librarian] boost_documents: [${detectedDocuments.join(', ')}]`)
 
-  // Appel à match_documents_v11 avec RRF + boost
   const { data: documents, error: searchError } = await supabase
     .schema('rag')
     .rpc("match_documents_v11", {
@@ -1198,7 +1218,6 @@ async function executeChunksMode(
   const boostedChunks = matchedDocs.filter(d => d.boost_applied).length
   console.log(`[baikal-librarian] ${boostedChunks} chunks boostés`)
 
-  // Détection suggestion alternative
   const alternativeSuggestion = detectAlternativeSuggestion(
     matchedDocs,
     detectedDocuments,
@@ -1213,18 +1232,22 @@ async function executeChunksMode(
     alternativeSuggestion
   )
 
-  const sources = matchedDocs.slice(0, 5).map(d => ({
-    id: d.id,
-    type: 'document',
-    source_file_id: d.source_file_id || null,
-    chunk_id: d.id,
-    document_name: d.metadata?.filename || d.metadata?.source || 'Document',
-    name: d.metadata?.filename || d.metadata?.source || 'Document',
-    score: d.similarity,
-    layer: d.layer,
-    content_preview: d.content?.substring(0, 200) || null,
-    boost_applied: d.boost_applied,
-  }))
+  // v8.12.2: Utilise le helper getDocumentDisplayName pour les sources
+  const sources = matchedDocs.slice(0, 5).map(d => {
+    const displayName = getDocumentDisplayName(d.metadata)
+    return {
+      id: d.id,
+      type: 'document',
+      source_file_id: d.source_file_id || null,
+      chunk_id: d.id,
+      document_name: displayName,
+      name: displayName,
+      score: d.similarity,
+      layer: d.layer,
+      content_preview: d.content?.substring(0, 200) || null,
+      boost_applied: d.boost_applied,
+    }
+  })
 
   return {
     response,
@@ -1268,7 +1291,7 @@ serve(async (req) => {
     if (!query?.trim()) return errorResponse("Query is required")
     if (!user_id) return errorResponse("user_id is required")
 
-    console.log(`[baikal-librarian] v8.12.1 - Constante DOCUMENTS_CLES_SLUG`)
+    console.log(`[baikal-librarian] v8.12.2 - Source naming avec document_title`)
     console.log(`[baikal-librarian] Query: "${query.substring(0, 50)}..."`)
     console.log(`[baikal-librarian] Intent: ${intent || 'non spécifié'}, Mode suggéré: ${generation_mode}`)
 
@@ -1324,14 +1347,12 @@ serve(async (req) => {
 
     // ========================================
     // 5. DÉTECTION DOCUMENTS MENTIONNÉS (via GraphRAG)
-    // v8.12.1: Utilise DOCUMENTS_CLES_SLUG constante
     // ========================================
     const detectedDocuments = await detectMentionedDocuments(
       supabase, 
       query, 
       conversationHistory,
       effectiveAppId
-      // NOTE: Plus de paramètre documentsClésSlug - utilise la constante
     )
 
     const queryAnalysis: QueryAnalysis = {
@@ -1360,7 +1381,6 @@ serve(async (req) => {
     let overrideReason: string | null = null
     let stats: DocumentStats = { chunks_found: 0, unique_docs: 0, total_pages: 0, doc_details: [] }
 
-    // 7.1 Récupérer les fichiers candidats (rapide)
     const { data: filesData } = await supabase
       .schema('rag')
       .rpc('match_files_v2', {
@@ -1379,9 +1399,10 @@ serve(async (req) => {
       storage_path: f.out_storage_path,
       storage_bucket: f.out_storage_bucket,
       original_filename: f.out_original_filename,
+      document_title: f.out_document_title || null,  // v8.12.2: Si disponible
       mime_type: f.out_mime_type,
       file_size: f.out_file_size,
-      total_pages: f.out_total_pages || 1,  // v2: maintenant retourné par la fonction
+      total_pages: f.out_total_pages || 1,
       max_similarity: f.out_max_similarity,
       avg_similarity: f.out_avg_similarity,
       chunk_count: f.out_chunk_count,
@@ -1393,7 +1414,6 @@ serve(async (req) => {
     console.log(`[baikal-librarian] ${files.length} fichier(s), ${filesStats.totalPages} pages total`)
 
     // 7.2 Décision du mode
-    // Mode 'auto' : le librarian décide selon le nombre de pages
     if (generation_mode === 'auto') {
       if (files.length === 0) {
         effectiveMode = 'chunks'
@@ -1424,14 +1444,12 @@ serve(async (req) => {
         console.log(`[baikal-librarian] Override: ${overrideReason} → CHUNKS`)
       }
     }
-    // Si generation_mode === 'chunks', on garde 'chunks' (pas de changement)
 
     // ========================================
     // 8. EXÉCUTION SELON LE MODE
     // ========================================
     
     if (effectiveMode === 'gemini' && files.length > 0) {
-      // MODE GEMINI - Pas de RRF nécessaire
       try {
         const result = await executeGeminiMode(
           supabase, query, files, agentConfig, geminiSystemPrompt, conversationHistory
@@ -1445,7 +1463,11 @@ serve(async (req) => {
           chunks_found: 0, 
           unique_docs: files.length, 
           total_pages: filesStats.totalPages,
-          doc_details: files.map(f => ({ source_file_id: f.file_id, filename: f.original_filename, pages: f.total_pages }))
+          doc_details: files.map(f => ({ 
+            source_file_id: f.file_id, 
+            filename: f.document_title || f.original_filename, 
+            pages: f.total_pages 
+          }))
         }
       } catch (geminiError) {
         console.error('[baikal-librarian] Erreur Gemini, fallback chunks:', geminiError)
@@ -1455,7 +1477,6 @@ serve(async (req) => {
     }
     
     if (effectiveMode === 'chunks') {
-      // MODE CHUNKS - RRF + boost nécessaires
       const result = await executeChunksMode(
         supabase, query, queryEmbedding, detectedDocuments,
         user_id, effectiveOrgId, project_id, effectiveAppId,
@@ -1499,7 +1520,6 @@ serve(async (req) => {
       chunks_found: stats.chunks_found,
       total_pages: stats.total_pages,
       processing_time_ms: processingTime,
-      // v8.12.0
       query_analysis: queryAnalysis,
       boost_applied: boostApplied,
       alternative_suggestion: alternativeSuggestion,
