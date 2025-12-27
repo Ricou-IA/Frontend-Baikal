@@ -2,9 +2,22 @@
  * Configuration Prompts - Core RAG Engine
  * ============================================================================
  * Constantes et configuration pour la gestion des prompts d'agents RAG.
- * VERSION: 3.0.0 - Ajout paramètres Boost v8.12.0
+ * VERSION: 3.1.0 - documents_cles_slug figé comme constante système
  * ============================================================================
  */
+
+// ============================================
+// CONSTANTES SYSTÈME (non configurables)
+// ============================================
+
+/**
+ * Slug du concept parent pour la détection automatique des documents clés.
+ * Ce concept est créé automatiquement lors de la création d'une nouvelle app.
+ * Les documents enfants sont filtrés par target_apps.
+ * 
+ * @constant {string}
+ */
+export const DOCUMENTS_CLES_SLUG = 'documents_cles';
 
 // ============================================
 // ACCÈS ET PERMISSIONS
@@ -143,7 +156,7 @@ export const DEFAULT_PARAMETERS = Object.freeze({
   // v8.12.0: Boost & Suggestions
   boost_factor: 1.5,
   suggestion_threshold: 0.7,
-  documents_cles_slug: 'documents_cles',
+  // NOTE: documents_cles_slug est une CONSTANTE SYSTÈME (DOCUMENTS_CLES_SLUG), pas un paramètre configurable
 });
 
 // ============================================

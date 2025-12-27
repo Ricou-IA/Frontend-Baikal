@@ -1,8 +1,10 @@
 // ╔══════════════════════════════════════════════════════════════════════════════╗
-// ║  BAIKAL-LIBRARIAN v8.12.0 - Agent RAG Optimisé                              ║
+// ║  BAIKAL-LIBRARIAN v8.12.1 - Agent RAG Optimisé                              ║
 // ║  Edge Function Supabase                                                      ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
-// ║  Nouveautés v8.12.0:                                                         ║
+// ║  Nouveautés v8.12.1:                                                         ║
+// ║  - DOCUMENTS_CLES_SLUG: Constante système (plus configurable via DB)         ║
+// ║  Hérite de v8.12.0:                                                          ║
 // ║  - PROJECT CONTEXT: Récupération directe depuis DB (plus via body)           ║
 // ║  - DOCUMENT DETECTION: Via GraphRAG concepts "documents_cles" (agnostique)   ║
 // ║  - BOOST DOCUMENTS: Appel match_documents_v11 avec boost sur docs mentionnés ║
@@ -35,7 +37,23 @@ const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY")!
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 
+// ============================================================================
+// CONSTANTE SYSTÈME - NON CONFIGURABLE
+// ============================================================================
+
+/**
+ * Slug du concept parent pour la détection automatique des documents clés.
+ * Ce concept est créé automatiquement lors de la création d'une nouvelle app.
+ * Les documents enfants sont filtrés par target_apps.
+ * 
+ * @constant {string}
+ */
+const DOCUMENTS_CLES_SLUG = 'documents_cles'
+
+// ============================================================================
 // Configuration par défaut (fallback)
+// ============================================================================
+
 const DEFAULT_CONFIG = {
   // LLM
   match_threshold: 0.3,
@@ -69,8 +87,6 @@ const DEFAULT_CONFIG = {
   boost_factor: 1.5,
   suggestion_threshold: 0.7,
   max_alternatives: 2,
-  // v8.12.0: Slug du concept parent pour documents clés
-  documents_cles_slug: 'documents_cles',
 }
 
 // ============================================================================
@@ -176,7 +192,7 @@ interface AgentConfig {
   boost_factor: number
   suggestion_threshold: number
   max_alternatives: number
-  documents_cles_slug: string
+  // NOTE: documents_cles_slug retiré - utilise DOCUMENTS_CLES_SLUG constante
 }
 
 interface DocumentResult {
@@ -333,29 +349,29 @@ async function getProjectIdentity(
 }
 
 // ============================================================================
-// v8.12.0: DÉTECTION DOCUMENTS MENTIONNÉS (via GraphRAG concepts)
+// v8.12.1: DÉTECTION DOCUMENTS MENTIONNÉS (via GraphRAG concepts)
+// Utilise DOCUMENTS_CLES_SLUG constante système
 // ============================================================================
 
 async function detectMentionedDocuments(
   supabase: ReturnType<typeof createClient>,
   query: string,
   conversationHistory: string,
-  appId: string,
-  documentsClésSlug: string
+  appId: string
 ): Promise<string[]> {
   try {
-    // 1. Récupérer le concept parent "documents_cles"
+    // 1. Récupérer le concept parent "documents_cles" (constante système)
     const { data: parentConcept } = await supabase
       .schema('config')
       .from('concepts')
       .select('id')
-      .eq('slug', documentsClésSlug)
+      .eq('slug', DOCUMENTS_CLES_SLUG)  // ← Utilise la constante système
       .eq('status', 'active')
       .contains('target_apps', [appId])
       .single()
     
     if (!parentConcept) {
-      console.log(`[baikal-librarian] Concept parent "${documentsClésSlug}" non trouvé pour app=${appId}`)
+      console.log(`[baikal-librarian] Concept parent "${DOCUMENTS_CLES_SLUG}" non trouvé pour app=${appId}`)
       return []
     }
     
@@ -368,7 +384,7 @@ async function detectMentionedDocuments(
       .eq('status', 'active')
     
     if (!docConcepts || docConcepts.length === 0) {
-      console.log(`[baikal-librarian] Aucun document clé trouvé sous "${documentsClésSlug}"`)
+      console.log(`[baikal-librarian] Aucun document clé trouvé sous "${DOCUMENTS_CLES_SLUG}"`)
       return []
     }
     
@@ -527,12 +543,12 @@ async function getAgentConfig(
     boost_factor: params.boost_factor ?? DEFAULT_CONFIG.boost_factor,
     suggestion_threshold: params.suggestion_threshold ?? DEFAULT_CONFIG.suggestion_threshold,
     max_alternatives: params.max_alternatives ?? DEFAULT_CONFIG.max_alternatives,
-    documents_cles_slug: params.documents_cles_slug || DEFAULT_CONFIG.documents_cles_slug,
+    // NOTE: documents_cles_slug retiré - utilise DOCUMENTS_CLES_SLUG constante
   }
   
   console.log(`[baikal-librarian] Config: match_count=${config.match_count}, threshold=${config.match_threshold}`)
   console.log(`[baikal-librarian] Gemini: model=${config.gemini_model}, max_pages=${config.gemini_max_pages}`)
-  console.log(`[baikal-librarian] v8.12.0: boost_factor=${config.boost_factor}, suggestion_threshold=${config.suggestion_threshold}`)
+  console.log(`[baikal-librarian] v8.12.1: boost_factor=${config.boost_factor}, documents_cles_slug=${DOCUMENTS_CLES_SLUG} (constante)`)
   
   return {
     config,
@@ -1252,7 +1268,7 @@ serve(async (req) => {
     if (!query?.trim()) return errorResponse("Query is required")
     if (!user_id) return errorResponse("user_id is required")
 
-    console.log(`[baikal-librarian] v8.12.0 FINAL - Flux optimisé`)
+    console.log(`[baikal-librarian] v8.12.1 - Constante DOCUMENTS_CLES_SLUG`)
     console.log(`[baikal-librarian] Query: "${query.substring(0, 50)}..."`)
     console.log(`[baikal-librarian] Intent: ${intent || 'non spécifié'}, Mode suggéré: ${generation_mode}`)
 
@@ -1308,13 +1324,14 @@ serve(async (req) => {
 
     // ========================================
     // 5. DÉTECTION DOCUMENTS MENTIONNÉS (via GraphRAG)
+    // v8.12.1: Utilise DOCUMENTS_CLES_SLUG constante
     // ========================================
     const detectedDocuments = await detectMentionedDocuments(
       supabase, 
       query, 
       conversationHistory,
-      effectiveAppId,
-      agentConfig.documents_cles_slug
+      effectiveAppId
+      // NOTE: Plus de paramètre documentsClésSlug - utilise la constante
     )
 
     const queryAnalysis: QueryAnalysis = {

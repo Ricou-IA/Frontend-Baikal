@@ -2,7 +2,7 @@
  * PromptForm.jsx - Baikal Console
  * ============================================================================
  * Formulaire de création et édition de prompts système.
- * VERSION: 4.0.0 - Ajout paramètres Boost v8.12.0
+ * VERSION: 4.1.0 - Retrait documents_cles_slug (constante système)
  * ============================================================================
  */
 
@@ -28,6 +28,7 @@ import {
   PROMPT_MESSAGES,
   validatePrompt,
   getPromptLengthStatus,
+  DOCUMENTS_CLES_SLUG,
 } from '../config/prompts';
 
 // ============================================================================
@@ -585,6 +586,22 @@ function PromptForm() {
                   Ces paramètres contrôlent le boost des documents mentionnés explicitement et la suggestion d'alternatives pertinentes.
                 </p>
 
+                {/* Info sur documents_cles */}
+                <div className="bg-baikal-bg border border-baikal-border rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 bg-baikal-cyan/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <span className="text-lg">📚</span>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-medium text-white font-mono">Concept "Documents Métier Clés"</h4>
+                      <p className="text-xs text-baikal-text mt-1">
+                        Le concept <code className="bg-black/50 px-1 rounded">{DOCUMENTS_CLES_SLUG}</code> est automatiquement créé pour chaque application. 
+                        Ajoutez vos documents clés comme enfants de ce concept dans l'onglet Indexation.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Facteur de boost */}
                 <Slider
                   label={PARAMETER_LIMITS.boost_factor.label}
@@ -605,17 +622,6 @@ function PromptForm() {
                   max={PARAMETER_LIMITS.suggestion_threshold.max}
                   step={PARAMETER_LIMITS.suggestion_threshold.step}
                   helperText={PARAMETER_LIMITS.suggestion_threshold.description}
-                />
-
-                <hr className="border-baikal-border" />
-
-                {/* Slug du concept documents clés */}
-                <Input
-                  label="Slug concept documents clés"
-                  value={formData.parameters.documents_cles_slug ?? DEFAULT_PARAMETERS.documents_cles_slug}
-                  onChange={(e) => handleParameterChange('documents_cles_slug', e.target.value)}
-                  placeholder="documents_cles"
-                  helperText="Slug du concept parent dans config.concepts pour la détection automatique (ex: CCAG, NFP, DTU)"
                 />
               </div>
             </CollapsibleSection>
