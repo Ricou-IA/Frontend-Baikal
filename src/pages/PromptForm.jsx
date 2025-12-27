@@ -2,13 +2,13 @@
  * PromptForm.jsx - Baikal Console
  * ============================================================================
  * Formulaire de création et édition de prompts système.
- * VERSION: 3.1.0 - Migration vertical_id → app_id (Phase 3)
+ * VERSION: 4.0.0 - Ajout paramètres Boost v8.12.0
  * ============================================================================
  */
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Save, AlertCircle, ChevronDown, ChevronUp, Sparkles, Loader2, Cpu, Search } from 'lucide-react';
+import { ArrowLeft, Save, AlertCircle, ChevronDown, ChevronUp, Sparkles, Loader2, Cpu, Search, Zap } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../hooks/useToast';
 import { Button } from '../components/ui/Button';
@@ -146,7 +146,7 @@ function PromptForm() {
     name: '',
     description: '',
     agent_type: '',
-    app_id: '',  // ← CHANGÉ: vertical_id → app_id
+    app_id: '',
     org_id: '',
     system_prompt: '',
     gemini_system_prompt: '',
@@ -157,7 +157,7 @@ function PromptForm() {
   const [loading, setLoading] = useState(isEditing);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState({});
-  const [apps, setApps] = useState([]);  // ← CHANGÉ: verticals → apps
+  const [apps, setApps] = useState([]);
   const [organizations, setOrganizations] = useState([]);
 
   const hasAccess = canAccessPrompts(profile);
@@ -172,19 +172,19 @@ function PromptForm() {
   }, [hasAccess, id]);
 
   useEffect(() => {
-    if (formData.app_id) {  // ← CHANGÉ: vertical_id → app_id
+    if (formData.app_id) {
       loadOrganizations(formData.app_id);
     } else {
       setOrganizations([]);
       setFormData((prev) => ({ ...prev, org_id: '' }));
     }
-  }, [formData.app_id]);  // ← CHANGÉ: vertical_id → app_id
+  }, [formData.app_id]);
 
   const loadInitialData = async () => {
     setLoading(true);
     try {
-      const { data: appsData } = await promptsService.getApps();  // ← CHANGÉ: getVerticals → getApps
-      setApps(appsData || []);  // ← CHANGÉ: setVerticals → setApps
+      const { data: appsData } = await promptsService.getApps();
+      setApps(appsData || []);
 
       if (isEditing) {
         const { data: promptData, error: promptError } = await promptsService.getPromptById(id);
@@ -195,7 +195,7 @@ function PromptForm() {
             name: promptData.name || '',
             description: promptData.description || '',
             agent_type: promptData.agent_type || '',
-            app_id: promptData.app_id || '',  // ← CHANGÉ: vertical_id → app_id
+            app_id: promptData.app_id || '',
             org_id: promptData.org_id || '',
             system_prompt: promptData.system_prompt || '',
             gemini_system_prompt: promptData.gemini_system_prompt || '',
@@ -203,7 +203,7 @@ function PromptForm() {
             parameters: { ...DEFAULT_PARAMETERS, ...promptData.parameters },
           });
 
-          if (promptData.app_id) {  // ← CHANGÉ: vertical_id → app_id
+          if (promptData.app_id) {
             await loadOrganizations(promptData.app_id);
           }
         }
@@ -216,7 +216,7 @@ function PromptForm() {
     }
   };
 
-  const loadOrganizations = async (appId) => {  // ← CHANGÉ: verticalId → appId
+  const loadOrganizations = async (appId) => {
     const { data } = await promptsService.getOrganizations(appId);
     setOrganizations(data || []);
   };
@@ -257,7 +257,7 @@ function PromptForm() {
 
     const { exists } = await promptsService.checkPromptExists(
       formData.agent_type,
-      formData.app_id || null,  // ← CHANGÉ: vertical_id → app_id
+      formData.app_id || null,
       formData.org_id || null,
       isEditing ? id : null
     );
@@ -273,7 +273,7 @@ function PromptForm() {
         name: formData.name.trim(),
         description: formData.description.trim() || null,
         agent_type: formData.agent_type,
-        app_id: formData.app_id || null,  // ← CHANGÉ: vertical_id → app_id
+        app_id: formData.app_id || null,
         org_id: formData.org_id || null,
         system_prompt: formData.system_prompt,
         gemini_system_prompt: formData.gemini_system_prompt || null,
@@ -324,13 +324,13 @@ function PromptForm() {
     );
   }
 
-  const appOptions = [  // ← CHANGÉ: verticalOptions → appOptions
+  const appOptions = [
     { value: '', label: 'Aucune (défaut global)' },
-    ...apps.map((v) => ({ value: v.id, label: v.name })),  // ← CHANGÉ: verticals → apps
+    ...apps.map((v) => ({ value: v.id, label: v.name })),
   ];
 
   const organizationOptions = [
-    { value: '', label: 'Aucune (défaut application)' },  // ← CHANGÉ: "défaut verticale" → "défaut application"
+    { value: '', label: 'Aucune (défaut application)' },
     ...organizations.map((o) => ({ value: o.id, label: o.name })),
   ];
 
@@ -383,10 +383,10 @@ function PromptForm() {
                   required
                 />
                 <Select
-                  label="Application"  // ← CHANGÉ: "Verticale" → "Application"
-                  value={formData.app_id}  // ← CHANGÉ: vertical_id → app_id
-                  onChange={(e) => handleChange('app_id', e.target.value)}  // ← CHANGÉ
-                  options={appOptions}  // ← CHANGÉ: verticalOptions → appOptions
+                  label="Application"
+                  value={formData.app_id}
+                  onChange={(e) => handleChange('app_id', e.target.value)}
+                  options={appOptions}
                   helperText="Laissez vide pour un prompt global"
                 />
                 <Select
@@ -394,8 +394,8 @@ function PromptForm() {
                   value={formData.org_id}
                   onChange={(e) => handleChange('org_id', e.target.value)}
                   options={organizationOptions}
-                  disabled={!formData.app_id}  // ← CHANGÉ: vertical_id → app_id
-                  helperText={!formData.app_id ? 'Sélectionnez d\'abord une application' : ''}  // ← CHANGÉ
+                  disabled={!formData.app_id}
+                  helperText={!formData.app_id ? 'Sélectionnez d\'abord une application' : ''}
                 />
                 <div className="md:col-span-2">
                   <Textarea
@@ -572,6 +572,55 @@ function PromptForm() {
             </CollapsibleSection>
           )}
 
+          {/* Paramètres Boost & Suggestions v8.12.0 - Uniquement pour Bibliothécaire */}
+          {isLibrarian && (
+            <CollapsibleSection 
+              title="Paramètres Boost & Suggestions" 
+              icon={Zap} 
+              defaultOpen={false}
+              badge="v8.12.0"
+            >
+              <div className="space-y-6">
+                <p className="text-sm text-baikal-text">
+                  Ces paramètres contrôlent le boost des documents mentionnés explicitement et la suggestion d'alternatives pertinentes.
+                </p>
+
+                {/* Facteur de boost */}
+                <Slider
+                  label={PARAMETER_LIMITS.boost_factor.label}
+                  value={formData.parameters.boost_factor ?? DEFAULT_PARAMETERS.boost_factor}
+                  onChange={(value) => handleParameterChange('boost_factor', value)}
+                  min={PARAMETER_LIMITS.boost_factor.min}
+                  max={PARAMETER_LIMITS.boost_factor.max}
+                  step={PARAMETER_LIMITS.boost_factor.step}
+                  helperText={PARAMETER_LIMITS.boost_factor.description}
+                />
+
+                {/* Seuil de suggestion */}
+                <Slider
+                  label={PARAMETER_LIMITS.suggestion_threshold.label}
+                  value={formData.parameters.suggestion_threshold ?? DEFAULT_PARAMETERS.suggestion_threshold}
+                  onChange={(value) => handleParameterChange('suggestion_threshold', value)}
+                  min={PARAMETER_LIMITS.suggestion_threshold.min}
+                  max={PARAMETER_LIMITS.suggestion_threshold.max}
+                  step={PARAMETER_LIMITS.suggestion_threshold.step}
+                  helperText={PARAMETER_LIMITS.suggestion_threshold.description}
+                />
+
+                <hr className="border-baikal-border" />
+
+                {/* Slug du concept documents clés */}
+                <Input
+                  label="Slug concept documents clés"
+                  value={formData.parameters.documents_cles_slug ?? DEFAULT_PARAMETERS.documents_cles_slug}
+                  onChange={(e) => handleParameterChange('documents_cles_slug', e.target.value)}
+                  placeholder="documents_cles"
+                  helperText="Slug du concept parent dans config.concepts pour la détection automatique (ex: CCAG, NFP, DTU)"
+                />
+              </div>
+            </CollapsibleSection>
+          )}
+
           {/* Paramètres Gemini - Uniquement pour Bibliothécaire */}
           {isLibrarian && (
             <CollapsibleSection 
@@ -598,6 +647,17 @@ function PromptForm() {
                   max={PARAMETER_LIMITS.gemini_max_files.max}
                   step={PARAMETER_LIMITS.gemini_max_files.step}
                   helperText={PARAMETER_LIMITS.gemini_max_files.description}
+                />
+
+                {/* Pages max (mode auto) */}
+                <SliderWithInput
+                  label={PARAMETER_LIMITS.gemini_max_pages.label}
+                  value={formData.parameters.gemini_max_pages ?? DEFAULT_PARAMETERS.gemini_max_pages}
+                  onChange={(value) => handleParameterChange('gemini_max_pages', value)}
+                  min={PARAMETER_LIMITS.gemini_max_pages.min}
+                  max={PARAMETER_LIMITS.gemini_max_pages.max}
+                  step={PARAMETER_LIMITS.gemini_max_pages.step}
+                  helperText={PARAMETER_LIMITS.gemini_max_pages.description}
                 />
 
                 {/* Durée du cache */}

@@ -2,7 +2,7 @@
  * Configuration Prompts - Core RAG Engine
  * ============================================================================
  * Constantes et configuration pour la gestion des prompts d'agents RAG.
- * VERSION: 2.0.0 - Ajout paramètres Retrieval + Gemini
+ * VERSION: 3.0.0 - Ajout paramètres Boost v8.12.0
  * ============================================================================
  */
 
@@ -137,7 +137,13 @@ export const DEFAULT_PARAMETERS = Object.freeze({
   // Gemini
   gemini_model: 'gemini-2.0-flash',
   gemini_max_files: 5,
+  gemini_max_pages: 500,
   cache_ttl_minutes: 60,
+  
+  // v8.12.0: Boost & Suggestions
+  boost_factor: 1.5,
+  suggestion_threshold: 0.7,
+  documents_cles_slug: 'documents_cles',
 });
 
 // ============================================
@@ -198,6 +204,14 @@ export const PARAMETER_LIMITS = Object.freeze({
     label: 'Fichiers max', 
     description: 'Nombre maximum de PDF à analyser simultanément' 
   },
+  gemini_max_pages: { 
+    min: 100, 
+    max: 1000, 
+    step: 50, 
+    default: 500, 
+    label: 'Pages max (mode auto)', 
+    description: 'Au-delà de cette limite, bascule automatiquement en mode chunks' 
+  },
   cache_ttl_minutes: { 
     min: 15, 
     max: 120, 
@@ -205,6 +219,24 @@ export const PARAMETER_LIMITS = Object.freeze({
     default: 60, 
     label: 'Durée du cache (min)', 
     description: 'Durée de conservation en cache (coût vs fraîcheur)' 
+  },
+  
+  // v8.12.0: Boost & Suggestions
+  boost_factor: { 
+    min: 1.0, 
+    max: 3.0, 
+    step: 0.1, 
+    default: 1.5, 
+    label: 'Facteur de boost', 
+    description: 'Multiplicateur de score pour les documents mentionnés explicitement (1 = pas de boost)' 
+  },
+  suggestion_threshold: { 
+    min: 0.5, 
+    max: 0.95, 
+    step: 0.05, 
+    default: 0.7, 
+    label: 'Seuil de suggestion', 
+    description: 'Score minimum pour suggérer un document alternatif plus pertinent' 
   },
 });
 

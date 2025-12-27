@@ -143,7 +143,7 @@ interface RequestBody {
   include_user_layer?: boolean
   filter_source_types?: string[]
   filter_concepts?: string[]
-  generation_mode?: 'chunks' | 'gemini'
+  generation_mode?: 'chunks' | 'gemini' | 'auto'
 }
 
 interface ConversationContext {
@@ -1241,7 +1241,7 @@ serve(async (req) => {
       query, user_id, org_id, project_id, app_id,
       conversation_id: inputConversationId,
       intent,
-      generation_mode = 'chunks',
+      generation_mode = 'auto',
       include_app_layer = DEFAULT_CONFIG.include_app_layer,
       include_org_layer = DEFAULT_CONFIG.include_org_layer,
       include_project_layer = DEFAULT_CONFIG.include_project_layer,
@@ -1376,7 +1376,22 @@ serve(async (req) => {
     console.log(`[baikal-librarian] ${files.length} fichier(s), ${filesStats.totalPages} pages total`)
 
     // 7.2 Décision du mode
-    if (generation_mode === 'gemini') {
+    // Mode 'auto' : le librarian décide selon le nombre de pages
+    if (generation_mode === 'auto') {
+      if (files.length === 0) {
+        effectiveMode = 'chunks'
+        overrideReason = 'Mode auto: aucun fichier source trouvé'
+      } else if (!GEMINI_API_KEY) {
+        effectiveMode = 'chunks'
+        overrideReason = 'Mode auto: GEMINI_API_KEY non configurée'
+      } else if (filesStats.totalPages <= agentConfig.gemini_max_pages) {
+        effectiveMode = 'gemini'
+        console.log(`[baikal-librarian] Mode auto → GEMINI (${filesStats.totalPages} pages ≤ ${agentConfig.gemini_max_pages})`)
+      } else {
+        effectiveMode = 'chunks'
+        overrideReason = `Mode auto: ${filesStats.totalPages} pages > limite ${agentConfig.gemini_max_pages}`
+      }
+    } else if (generation_mode === 'gemini') {
       if (files.length === 0) {
         effectiveMode = 'chunks'
         overrideReason = 'Aucun fichier source trouvé'
@@ -1392,6 +1407,7 @@ serve(async (req) => {
         console.log(`[baikal-librarian] Override: ${overrideReason} → CHUNKS`)
       }
     }
+    // Si generation_mode === 'chunks', on garde 'chunks' (pas de changement)
 
     // ========================================
     // 8. EXÉCUTION SELON LE MODE
