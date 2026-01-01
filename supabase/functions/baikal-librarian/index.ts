@@ -1,28 +1,16 @@
 // ╔══════════════════════════════════════════════════════════════════════════════╗
-// ║  BAIKAL-LIBRARIAN v8.12.2 - Agent RAG Optimisé                              ║
+// ║  BAIKAL-LIBRARIAN v9.3.0 - Sans Cache Gemini                                 ║
 // ║  Edge Function Supabase                                                      ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
-// ║  Nouveautés v8.12.2:                                                         ║
-// ║  - SOURCE NAMING: Utilise document_title en priorité (pas filename)          ║
-// ║  Hérite de v8.12.1:                                                          ║
-// ║  - DOCUMENTS_CLES_SLUG: Constante système (plus configurable via DB)         ║
-// ║  Hérite de v8.12.0:                                                          ║
-// ║  - PROJECT CONTEXT: Récupération directe depuis DB (plus via body)           ║
-// ║  - DOCUMENT DETECTION: Via GraphRAG concepts "documents_cles" (agnostique)   ║
-// ║  - BOOST DOCUMENTS: Appel match_documents_v11 avec boost sur docs mentionnés ║
-// ║  - SUGGESTION ALTERNATIVE: Détection post-retrieval de docs plus pertinents  ║
-// ║  - FLUX OPTIMISÉ: match_files d'abord, RRF seulement si mode chunks          ║
-// ║  - CODE AGNOSTIQUE: Zéro référence métier, tout en DB                        ║
-// ║  Hérite de v8.11.0:                                                          ║
-// ║  - Comptage documents uniques (via source_file_id)                           ║
-// ║  - Override intelligent: gemini → chunks si pages > GEMINI_MAX_PAGES         ║
-// ║  - Support intent transmis par router                                        ║
+// ║  v9.3.0:                                                                     ║
+// ║  - Suppression du Context Caching Gemini                                     ║
+// ║  - Envoi direct du fichier à chaque requête                                  ║
+// ║  - Diagnostic : éliminer le cache comme source de blocage                    ║
 // ╚══════════════════════════════════════════════════════════════════════════════╝
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { GoogleGenerativeAI } from "npm:@google/generative-ai@0.21.0"
-import { GoogleAICacheManager } from "npm:@google/generative-ai@0.21.0/server"
 
 // ============================================================================
 // CONFIGURATION
@@ -34,113 +22,192 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 }
 
+const sseHeaders = {
+  ...corsHeaders,
+  "Content-Type": "text/event-stream",
+  "Cache-Control": "no-cache",
+  "Connection": "keep-alive",
+}
+
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY")!
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY")!
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 
 // ============================================================================
-// CONSTANTE SYSTÈME - NON CONFIGURABLE
-// ============================================================================
-
-/**
- * Slug du concept parent pour la détection automatique des documents clés.
- * Ce concept est créé automatiquement lors de la création d'une nouvelle app.
- * Les documents enfants sont filtrés par target_apps.
- * 
- * @constant {string}
- */
-const DOCUMENTS_CLES_SLUG = 'documents_cles'
-
-// ============================================================================
-// Configuration par défaut (fallback)
+// CONSTANTES SYSTÈME
 // ============================================================================
 
 const DEFAULT_CONFIG = {
-  // LLM
-  match_threshold: 0.3,
-  match_count: 15,
+  similarity_threshold: 0.3,
+  match_count: 30,
   max_context_length: 12000,
   embedding_model: "text-embedding-3-small",
   llm_model: "gpt-4o-mini",
   temperature: 0.3,
   max_tokens: 2048,
-  // Poids recherche
-  vector_weight: 0.7,
-  fulltext_weight: 0.3,
-  // Layers par défaut
   include_app_layer: true,
   include_org_layer: true,
   include_project_layer: true,
   include_user_layer: false,
-  // GraphRAG
-  concept_match_count: 5,
-  concept_similarity_threshold: 0.5,
   enable_concept_expansion: true,
-  // Gemini Config
-  gemini_model: "gemini-2.0-flash",
-  gemini_max_files: 10,
-  cache_ttl_minutes: 60,
+  gemini_model: "gemini-2.0-flash-001",
   gemini_max_pages: 500,
-  // Conversation Config
   conversation_timeout_minutes: 30,
   conversation_context_messages: 4,
-  // v8.12.0: Paramètres boost et suggestion
-  boost_factor: 1.5,
-  suggestion_threshold: 0.7,
-  max_alternatives: 2,
+  qa_memory_similarity_threshold: 0.85,
+  qa_memory_max_results: 3,
+}
+
+const MODE_LABELS = {
+  gemini: { internal: 'gemini', ui: 'Full Document', icon: '📄' },
+  chunks: { internal: 'chunks', ui: 'RAG Chunks', icon: '🧩' },
+  memory: { internal: 'memory', ui: 'Mémoire Collective', icon: '🧠' },
 }
 
 // ============================================================================
-// PROMPTS GÉNÉRIQUES (Fallback - spécialisation métier via DB)
+// PROMPTS FALLBACK AGNOSTIQUES
 // ============================================================================
 
-const FALLBACK_SYSTEM_PROMPT = `Tu es un assistant documentaire expert, chaleureux et professionnel.
+const FALLBACK_SYSTEM_PROMPT = `Tu es un assistant IA spécialisé dans l'analyse de documents.
 
-{{project_context}}
+## TON RÔLE
+Tu réponds aux questions en te basant UNIQUEMENT sur les documents fournis dans le contexte.
 
-RÈGLE ABSOLUE - UTILISATION DES DOCUMENTS:
-Des documents apparaissent dans le CONTEXTE DOCUMENTAIRE ci-dessous ?
-→ OUI = Ces documents SONT pertinents. Utilise-les pour répondre. Ne dis JAMAIS "je n'ai pas trouvé" si des documents sont présents.
-→ NON (section vide ou "Aucun document pertinent trouvé") = Dis-le clairement.
+## RÈGLES FONDAMENTALES
+1. **Documents présents** → Utilise-les pour répondre, cite le nom du document
+2. **Documents absents** → Indique clairement qu'aucun document n'a été trouvé
+3. **Information non trouvée** → Dis-le honnêtement, ne fabrique jamais
 
-Tu ne juges PAS si un document est pertinent. Si le système te fournit des documents, c'est qu'ils correspondent à la question.
+## COMPORTEMENT
+- Réponds de manière claire et structurée
+- Cite tes sources par leur nom (document, article, section, page)
+- Sois précis et factuel
+- Pas de formule de politesse à la fin`
 
-RÈGLES:
-- Réponds de manière naturelle et cordiale aux salutations et échanges informels
-- Si l'utilisateur fait référence à un échange précédent, utilise l'historique de conversation
-- Pour les questions techniques, base tes réponses sur le contexte documentaire fourni
-- Cite tes sources avec les numéros [1], [2], etc. quand tu utilises des documents
-- Dis que tu n'as pas trouvé UNIQUEMENT si le contexte documentaire est vide
-- Réponds de manière professionnelle mais chaleureuse`
+const FALLBACK_GEMINI_PROMPT = `Tu es un assistant IA spécialisé dans l'analyse approfondie de documents.
 
-const GEMINI_SYSTEM_PROMPT = `Tu es un assistant documentaire expert.
+## TON RÔLE
+Tu as accès aux documents COMPLETS. Analyse-les en profondeur pour répondre aux questions.
 
-{{project_context}}
+## RÈGLES FONDAMENTALES
+1. **Lis attentivement** → Parcours l'ensemble des documents fournis
+2. **Croise les informations** → Compare les données entre documents si plusieurs
+3. **Cite précisément** → Mentionne le nom du document, la section, la page
 
-CONTEXTE:
-Tu as accès aux documents complets fournis en contexte. Ces documents contiennent des informations détaillées que tu dois utiliser pour répondre.
+## COMPORTEMENT
+- Structure ta réponse de façon claire
+- Base-toi uniquement sur les documents fournis
+- Si l'information n'est pas trouvée, indique-le clairement
+- Pas de formule de politesse à la fin`
 
-RÈGLE ABSOLUE:
-Les documents fournis SONT pertinents pour la question. Utilise-les.
-Ne dis JAMAIS "je n'ai pas trouvé" si des documents sont présents.
+// ============================================================================
+// CONTEXTE PROJET - Template d'injection automatique
+// ============================================================================
 
-RÈGLES:
-1. Réponds de manière naturelle et cordiale aux salutations et échanges informels
-2. Si l'utilisateur fait référence à un échange précédent, utilise l'historique de conversation
-3. Pour les questions techniques, base tes réponses sur les documents fournis en contexte
-4. Cite précisément tes sources (nom du document, section si pertinent)
-5. Dis que tu n'as pas trouvé UNIQUEMENT si aucun document n'est fourni
-6. Réponds de manière professionnelle et structurée
+const PROJECT_CONTEXT_TEMPLATE = `
+═══════════════════════════════════════════════════════════════
+CONTEXTE PROJET ACTIF
+═══════════════════════════════════════════════════════════════
+{{project_details}}
 
-FORMAT DE RÉPONSE:
-- Réponds de manière claire et concise
-- Utilise des listes à puces si nécessaire
-- Cite les sources entre [crochets]`
+INSTRUCTION IMPORTANTE:
+- Contextualise TOUJOURS ta réponse en fonction de ce projet
+- Si un document ne s'applique PAS à ce contexte, signale-le clairement
+- Suggère les documents appropriés si nécessaire
+═══════════════════════════════════════════════════════════════`
+
+// ============================================================================
+// FORMAT_RULES (toujours injectées)
+// ============================================================================
+
+const FORMAT_RULES = `
+═══════════════════════════════════════════════════════════════
+RÈGLES DE FORMAT (OBLIGATOIRES)
+═══════════════════════════════════════════════════════════════
+
+### Comment citer tes sources
+- Cite TOUJOURS par le NOM DU DOCUMENT (ex: "Selon le CCAG, article 20.1...")
+- Mentionne l'article, la section ou la page si disponible
+
+### CE QUE TU NE DOIS PAS FAIRE
+- N'utilise PAS de numéros abstraits comme [1], [2], [3]
+- NE GÉNÈRE PAS de section "Sources" ou "Références" à la fin
+- NE CITE PAS de longs extraits verbatim
+- NE TERMINE PAS par une formule de politesse (Cordialement, etc.)
+
+### Format attendu
+Ta réponse doit être fluide et naturelle, avec les noms de documents intégrés dans le texte.`
+
+// ============================================================================
+// INSTRUCTIONS PAR INTENT
+// ============================================================================
+
+const INTENT_INSTRUCTIONS: Record<string, string> = {
+  synthesis: `
+═══════════════════════════════════════════════════════════════
+INSTRUCTION SPÉCIFIQUE: SYNTHÈSE
+═══════════════════════════════════════════════════════════════
+L'utilisateur demande une VUE D'ENSEMBLE ou une SYNTHÈSE.
+- Identifie les points clés de chaque document
+- Croise les informations entre documents
+- Structure ta réponse avec des sections claires`,
+
+  factual: `
+═══════════════════════════════════════════════════════════════
+INSTRUCTION SPÉCIFIQUE: INFORMATION PRÉCISE
+═══════════════════════════════════════════════════════════════
+L'utilisateur cherche une INFORMATION PRÉCISE.
+- Va droit au but : donne la réponse d'abord
+- Cite le document et l'article/clause exacte
+- Pas de développement inutile`,
+
+  comparison: `
+═══════════════════════════════════════════════════════════════
+INSTRUCTION SPÉCIFIQUE: COMPARAISON
+═══════════════════════════════════════════════════════════════
+L'utilisateur veut COMPARER des éléments.
+- Présente les éléments côte à côte
+- Mets en évidence DIFFÉRENCES et POINTS COMMUNS
+- Utilise un tableau si pertinent`,
+
+  citation: `
+═══════════════════════════════════════════════════════════════
+INSTRUCTION SPÉCIFIQUE: EXTRAIT EXACT
+═══════════════════════════════════════════════════════════════
+L'utilisateur veut un EXTRAIT EXACT.
+- Reproduis le texte exact entre guillemets
+- Indique la source précise (document, article, page)`,
+
+  conversational: `
+═══════════════════════════════════════════════════════════════
+INSTRUCTION SPÉCIFIQUE: CONVERSATION
+═══════════════════════════════════════════════════════════════
+L'utilisateur fait une remarque conversationnelle.
+- Réponds de manière naturelle et cordiale
+- Propose ton aide pour des questions documentaires`,
+}
 
 // ============================================================================
 // TYPES
 // ============================================================================
+
+interface PreloadedContext {
+  effective_org_id: string | null
+  effective_app_id: string
+  system_prompt: string | null
+  gemini_system_prompt: string | null
+  parameters: Record<string, unknown>
+  config_source: string
+  project_identity: Record<string, unknown> | null
+  conversation_id: string
+  conversation_summary: string | null
+  conversation_first_message: string | null
+  recent_messages: Array<{ role: string; content: string; created_at: string; sources?: unknown[] }>
+  message_count: number
+  previous_source_file_ids: string[]
+  documents_cles: Array<{ slug: string; label: string }>
+}
 
 interface RequestBody {
   query: string
@@ -148,32 +215,34 @@ interface RequestBody {
   org_id?: string
   project_id?: string
   app_id?: string
-  agent_id?: string
-  conversation_id?: string
+  rewritten_query?: string
   intent?: 'synthesis' | 'factual' | 'comparison' | 'citation' | 'conversational'
-  match_threshold?: number
-  match_count?: number
-  temperature?: number
-  max_tokens?: number
+  detected_documents?: string[]
+  preloaded_context?: PreloadedContext
+  generation_mode?: 'chunks' | 'gemini' | 'auto'
+  stream?: boolean
   include_app_layer?: boolean
   include_org_layer?: boolean
   include_project_layer?: boolean
   include_user_layer?: boolean
   filter_source_types?: string[]
-  filter_concepts?: string[]
-  generation_mode?: 'chunks' | 'gemini' | 'auto'
 }
 
-interface ConversationContext {
-  conversation_id: string
-  first_message: string | null
-  summary: string | null
-  recent_messages: Array<{
-    role: string
-    content: string
-    created_at: string
-  }>
-  message_count: number
+interface LibrarianContext {
+  effectiveOrgId: string | null
+  effectiveAppId: string
+  systemPrompt: string | null
+  geminiSystemPrompt: string | null
+  parameters: Record<string, unknown>
+  configSource: string
+  projectIdentity: Record<string, unknown> | null
+  conversationId: string
+  conversationSummary: string | null
+  conversationFirstMessage: string | null
+  recentMessages: Array<{ role: string; content: string; created_at: string; sources?: unknown[] }>
+  messageCount: number
+  previousSourceFileIds: string[]
+  documentsCles: Array<{ slug: string; label: string }>
 }
 
 interface AgentConfig {
@@ -181,87 +250,77 @@ interface AgentConfig {
   temperature: number
   max_tokens: number
   match_count: number
-  match_threshold: number
+  similarity_threshold: number
   enable_concept_expansion: boolean
-  vector_weight: number
-  fulltext_weight: number
   gemini_model: string
-  gemini_max_files: number
   gemini_max_pages: number
-  cache_ttl_minutes: number
   max_context_length: number
-  // v8.12.0
-  boost_factor: number
-  suggestion_threshold: number
-  max_alternatives: number
+  qa_memory_similarity_threshold: number
+  qa_memory_max_results: number
 }
 
-interface DocumentResult {
-  id: number
+interface ChunkResult {
+  chunk_id: number
   content: string
   similarity: number
   metadata: Record<string, unknown>
   layer: string
-  source_type?: string
-  matched_concepts?: string[]
-  rank_score?: number
-  match_source?: string
-  source_file_id?: string
-  boost_applied?: boolean
-  boost_matched?: string
+  source_file_id: string | null
+  matched_concepts: string[]
+  rank_score: number
+  match_source: string
+  filter_applied: boolean
+  file_storage_path: string | null
+  file_storage_bucket: string | null
+  file_original_filename: string | null
+  file_mime_type: string | null
+  file_total_pages: number
+  file_max_similarity: number | null
+  file_chunk_count: number | null
 }
 
-interface FileResult {
+interface FileInfo {
   file_id: string
   storage_path: string
   storage_bucket: string
   original_filename: string
-  document_title?: string  // v8.12.2: Ajout pour mode Gemini (future)
   mime_type: string
-  file_size: number
   total_pages: number
   max_similarity: number
-  avg_similarity: number
   chunk_count: number
-  layers: string[]
-  sample_content: string
+  layer?: string
 }
 
-interface GeminiCacheInfo {
-  file_path: string
-  cache_name: string | null
-  is_new: boolean
-  google_file_uri?: string
+interface SearchResult {
+  chunks: ChunkResult[]
+  files: FileInfo[]
+  totalPages: number
+  filterApplied: boolean
+  fallbackUsed: boolean
 }
 
-interface DocumentStats {
-  chunks_found: number
-  unique_docs: number
-  total_pages: number
-  doc_details: Array<{
-    source_file_id: string
-    filename: string
-    pages: number
-  }>
+interface SourceItem {
+  id?: string | number
+  type: string
+  source_file_id: string | null
+  document_name: string
+  score: number
+  layer: string
+  content_preview: string | null
 }
 
-interface QueryAnalysis {
-  original_query: string
-  detected_documents: string[]
-  has_conversation_context: boolean
-}
-
-interface AlternativeSuggestion {
-  mentioned_doc: string
-  suggested_doc: string
-  suggested_score: number
-  reason: string
-}
-
-interface ProjectIdentity {
-  market_type?: string
-  project_type?: string
-  description?: string
+interface QAMemoryResult {
+  id: string
+  question_text: string
+  answer_text: string
+  similarity: number
+  is_expert_faq: boolean
+  expert_source: string | null
+  trust_score: number
+  usage_count: number
+  source_file_ids: string[] | null
+  created_by: string | null
+  created_at: string
 }
 
 // ============================================================================
@@ -275,463 +334,389 @@ function errorResponse(message: string, status: number = 400) {
   )
 }
 
-function successResponse(data: unknown) {
-  return new Response(
-    JSON.stringify(data),
-    { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-  )
+// ============================================================================
+// SSE HELPERS
+// ============================================================================
+
+function formatSSE(event: string, data: unknown): string {
+  return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
+}
+
+function formatSSEStep(step: string, message: string, details?: Record<string, unknown>): string {
+  return formatSSE('step', { step, message, details: details || {} })
+}
+
+function formatSSEToken(content: string): string {
+  return formatSSE('token', { content })
+}
+
+function formatSSESources(payload: Record<string, unknown>): string {
+  return formatSSE('sources', payload)
+}
+
+function formatSSEDone(): string {
+  return formatSSE('done', {})
+}
+
+function formatSSEError(error: string): string {
+  return formatSSE('error', { error })
 }
 
 // ============================================================================
-// v8.12.2: HELPER POUR EXTRAIRE LE NOM DU DOCUMENT
-// Priorité: document_title > filename > 'Document'
+// FILTRAGE SOURCES PAR CITATION
 // ============================================================================
 
-function getDocumentDisplayName(metadata: Record<string, unknown> | undefined): string {
-  if (!metadata) return 'Document'
+function extractSearchTerms(filename: string): string[] {
+  return filename
+    .toLowerCase()
+    .replace(/\.[^.]+$/, '')
+    .replace(/[._-]/g, ' ')
+    .split(/\s+/)
+    .filter(term => term.length >= 2)
+}
+
+function isDocumentCitedInResponse(filename: string, response: string): boolean {
+  const responseLower = response.toLowerCase()
+  const terms = extractSearchTerms(filename)
   
-  // Priorité 1: document_title (titre saisi par l'utilisateur)
-  if (metadata.document_title && typeof metadata.document_title === 'string') {
-    return metadata.document_title
+  const baseFilename = filename.replace(/\.[^.]+$/, '').toLowerCase()
+  if (responseLower.includes(baseFilename)) return true
+  
+  const acronyms = ['ccag', 'ccap', 'cctp', 'doe', 'pv', 'nf', 'dtu', 'rc', 'ae']
+  for (const term of terms) {
+    if (acronyms.includes(term) && responseLower.includes(term)) {
+      return true
+    }
   }
   
-  // Priorité 2: filename (nom de fichier stocké)
-  if (metadata.filename && typeof metadata.filename === 'string') {
-    return metadata.filename
+  const normMatch = filename.match(/NF\s*P?\s*[\d-]+/i)
+  if (normMatch) {
+    const normCode = normMatch[0].replace(/\s+/g, '').toLowerCase()
+    if (responseLower.includes(normCode)) return true
   }
   
-  // Priorité 3: source (ancien champ)
-  if (metadata.source && typeof metadata.source === 'string') {
-    return metadata.source
+  if (responseLower.includes('nf p03-001') || responseLower.includes('nf p03 001') || responseLower.includes('nfp03001')) {
+    if (filename.toLowerCase().includes('nf') && filename.toLowerCase().includes('p03')) {
+      return true
+    }
   }
   
-  return 'Document'
+  const genericTerms = ['document', 'fichier', 'page', 'article', 'section', 'annexe', 'travaux', 'projet']
+  const significantTerms = terms.filter(t => t.length >= 5 && !genericTerms.includes(t))
+  
+  if (significantTerms.length >= 2) {
+    const matched = significantTerms.filter(term => responseLower.includes(term))
+    if (matched.length >= 2) return true
+  }
+  
+  for (const term of significantTerms) {
+    if (term.length >= 6 && responseLower.includes(term)) return true
+  }
+  
+  return false
+}
+
+function filterSourcesByCitation(sources: SourceItem[], response: string): SourceItem[] {
+  if (!sources.length || !response.trim()) return sources
+  
+  const cited = sources.filter(s => isDocumentCitedInResponse(s.document_name, response))
+  
+  const unique = new Map<string, SourceItem>()
+  for (const source of cited) {
+    const key = source.source_file_id || source.document_name
+    if (!unique.has(key)) unique.set(key, source)
+  }
+  
+  const result = Array.from(unique.values())
+  
+  console.log(`[librarian] Sources filtrées: ${sources.length} → ${result.length}`)
+  
+  if (result.length === 0 && sources.length > 0) {
+    console.log(`[librarian] Aucune citation détectée, conservation source principale`)
+    return [sources[0]]
+  }
+  
+  return result
 }
 
 // ============================================================================
-// v8.12.0: RÉCUPÉRATION IDENTITÉ PROJET (direct depuis DB)
+// MÉMOIRE COLLECTIVE - RECHERCHE
 // ============================================================================
 
-function formatProjectIdentity(identity: ProjectIdentity | null): string {
-  if (!identity || Object.keys(identity).length === 0) {
-    return ''
-  }
-
-  const marketTypeLabels: Record<string, string> = {
-    public: 'Marché Public',
-    prive: 'Marché Privé',
-  }
-
-  const projectTypeLabels: Record<string, string> = {
-    entreprise_generale: 'Entreprise Générale',
-    macro_lot: 'Macro-Lot',
-    gros_oeuvre: 'Gros-Œuvre',
-    lots_techniques: 'Lots Techniques',
-    lots_architecturaux: 'Lots Architecturaux',
-  }
-
-  const parts: string[] = []
-
-  if (identity.market_type) {
-    const label = marketTypeLabels[identity.market_type] || identity.market_type
-    parts.push(`**Type de marché**: ${label}`)
-  }
-
-  if (identity.project_type) {
-    const label = projectTypeLabels[identity.project_type] || identity.project_type
-    parts.push(`**Type de projet**: ${label}`)
-  }
-
-  if (identity.description) {
-    parts.push(`**Description**: ${identity.description}`)
-  }
-
-  return parts.join('\n')
-}
-
-async function getProjectIdentity(
+async function searchQAMemory(
   supabase: ReturnType<typeof createClient>,
-  project_id: string | undefined
-): Promise<string> {
-  if (!project_id) {
-    return ''
-  }
-
+  queryEmbedding: number[],
+  orgId: string,
+  projectId: string | undefined,
+  config: AgentConfig
+): Promise<QAMemoryResult | null> {
   try {
-    const { data: project, error } = await supabase
-      .schema('core')
-      .from('projects')
-      .select('identity')
-      .eq('id', project_id)
-      .single()
+    const { data, error } = await supabase.schema('rag').rpc('search_qa_memory', {
+      p_query_embedding: queryEmbedding,
+      p_org_id: orgId,
+      p_project_id: projectId || null,
+      p_similarity_threshold: config.qa_memory_similarity_threshold,
+      p_limit: config.qa_memory_max_results,
+    })
 
-    if (error || !project || !project.identity) {
-      return ''
+    if (error) {
+      console.warn('[librarian] Erreur recherche qa_memory:', error.message)
+      return null
     }
 
-    return formatProjectIdentity(project.identity as ProjectIdentity)
-  } catch (error) {
-    console.warn(`[baikal-librarian] Erreur récupération identité projet: ${error}`)
-    return ''
+    if (!data || data.length === 0) {
+      console.log('[librarian] Aucun match qa_memory')
+      return null
+    }
+
+    const best = data[0]
+    console.log(`[librarian] Match qa_memory trouvé: similarity=${best.similarity.toFixed(3)}, is_expert=${best.is_expert_faq}, trust_score=${best.trust_score}`)
+    
+    return {
+      id: best.id,
+      question_text: best.question_text,
+      answer_text: best.answer_text,
+      similarity: best.similarity,
+      is_expert_faq: best.is_expert_faq,
+      expert_source: best.expert_source,
+      trust_score: best.trust_score,
+      usage_count: best.usage_count,
+      source_file_ids: best.source_file_ids,
+      created_by: best.created_by,
+      created_at: best.created_at,
+    }
+  } catch (err) {
+    console.error('[librarian] Exception recherche qa_memory:', err)
+    return null
   }
 }
 
 // ============================================================================
-// v8.12.1: DÉTECTION DOCUMENTS MENTIONNÉS (via GraphRAG concepts)
+// MÉMOIRE COLLECTIVE - INCRÉMENTER USAGE
 // ============================================================================
 
-async function detectMentionedDocuments(
+async function incrementQAUsage(
   supabase: ReturnType<typeof createClient>,
-  query: string,
-  conversationHistory: string,
-  appId: string
-): Promise<string[]> {
+  qaId: string
+): Promise<void> {
   try {
-    const { data: parentConcept } = await supabase
-      .schema('config')
-      .from('concepts')
-      .select('id')
-      .eq('slug', DOCUMENTS_CLES_SLUG)
-      .eq('status', 'active')
-      .contains('target_apps', [appId])
-      .single()
-    
-    if (!parentConcept) {
-      console.log(`[baikal-librarian] Concept parent "${DOCUMENTS_CLES_SLUG}" non trouvé pour app=${appId}`)
-      return []
-    }
-    
-    const { data: docConcepts } = await supabase
-      .schema('config')
-      .from('concepts')
-      .select('slug, label')
-      .eq('parent_id', parentConcept.id)
-      .eq('status', 'active')
-    
-    if (!docConcepts || docConcepts.length === 0) {
-      console.log(`[baikal-librarian] Aucun document clé trouvé sous "${DOCUMENTS_CLES_SLUG}"`)
-      return []
-    }
-    
-    console.log(`[baikal-librarian] ${docConcepts.length} documents clés disponibles: [${docConcepts.map(d => d.slug).join(', ')}]`)
-    
-    const textToSearch = `${query} ${conversationHistory}`.toLowerCase()
-    
-    const detected = docConcepts
-      .filter(doc => {
-        const slugMatch = textToSearch.includes(doc.slug.toLowerCase())
-        const labelMatch = textToSearch.includes(doc.label.toLowerCase())
-        return slugMatch || labelMatch
-      })
-      .map(doc => doc.label)
-    
-    if (detected.length > 0) {
-      console.log(`[baikal-librarian] Documents détectés: [${detected.join(', ')}]`)
-    }
-    
-    return detected
-    
-  } catch (error) {
-    console.warn(`[baikal-librarian] Erreur détection documents:`, error)
-    return []
-  }
-}
-
-// ============================================================================
-// CALCUL STATS DOCUMENTS
-// ============================================================================
-
-function calculateDocumentStats(documents: DocumentResult[]): DocumentStats {
-  const uniqueDocs = new Map<string, { filename: string; pages: number }>()
-  
-  for (const doc of documents) {
-    const fileId = doc.source_file_id
-    if (!fileId) continue
-    
-    if (!uniqueDocs.has(fileId)) {
-      uniqueDocs.set(fileId, {
-        // v8.12.2: Utilise le helper pour le nom
-        filename: getDocumentDisplayName(doc.metadata),
-        pages: (doc.metadata?.total_pages || 1) as number
-      })
-    }
-  }
-  
-  const docDetails = Array.from(uniqueDocs.entries()).map(([id, info]) => ({
-    source_file_id: id,
-    filename: info.filename,
-    pages: info.pages
-  }))
-  
-  const totalPages = docDetails.reduce((sum, doc) => sum + doc.pages, 0)
-  
-  return {
-    chunks_found: documents.length,
-    unique_docs: uniqueDocs.size,
-    total_pages: totalPages,
-    doc_details: docDetails
-  }
-}
-
-function calculateFilesStats(files: FileResult[]): { totalPages: number; fileCount: number } {
-  const totalPages = files.reduce((sum, f) => sum + (f.total_pages || 1), 0)
-  return { totalPages, fileCount: files.length }
-}
-
-// ============================================================================
-// RÉCUPÉRATION CONFIG AGENT DEPUIS DB
-// ============================================================================
-
-async function getAgentConfig(
-  supabase: ReturnType<typeof createClient>,
-  app_id: string,
-  org_id?: string
-): Promise<{ config: AgentConfig; systemPrompt: string; geminiSystemPrompt: string }> {
-  console.log(`[baikal-librarian] Recherche prompt librarian pour app=${app_id}, org=${org_id || 'null'}`)
-  
-  let promptData = null
-  
-  if (org_id) {
-    const { data } = await supabase
-      .schema('config')
-      .from('agent_prompts')
-      .select('system_prompt, gemini_system_prompt, parameters')
-      .eq('agent_type', 'librarian')
-      .eq('is_active', true)
-      .eq('org_id', org_id)
-      .single()
-    
-    if (data) {
-      console.log('[baikal-librarian] Prompt trouvé: niveau organisation')
-      promptData = data
-    }
-  }
-  
-  if (!promptData) {
-    const { data } = await supabase
-      .schema('config')
-      .from('agent_prompts')
-      .select('system_prompt, gemini_system_prompt, parameters')
-      .eq('agent_type', 'librarian')
-      .eq('is_active', true)
-      .eq('app_id', app_id)
-      .is('org_id', null)
-      .single()
-    
-    if (data) {
-      console.log('[baikal-librarian] Prompt trouvé: niveau verticale')
-      promptData = data
-    }
-  }
-  
-  if (!promptData) {
-    const { data } = await supabase
-      .schema('config')
-      .from('agent_prompts')
-      .select('system_prompt, gemini_system_prompt, parameters')
-      .eq('agent_type', 'librarian')
-      .eq('is_active', true)
-      .is('app_id', null)
-      .is('org_id', null)
-      .single()
-    
-    if (data) {
-      console.log('[baikal-librarian] Prompt trouvé: niveau global')
-      promptData = data
-    }
-  }
-  
-  if (!promptData) {
-    console.log('[baikal-librarian] Aucun prompt en DB, utilisation du fallback générique')
-  }
-  
-  const params = promptData?.parameters || {}
-  
-  const config: AgentConfig = {
-    llm_model: params.model || DEFAULT_CONFIG.llm_model,
-    temperature: params.temperature ?? DEFAULT_CONFIG.temperature,
-    max_tokens: params.max_tokens || DEFAULT_CONFIG.max_tokens,
-    match_count: params.match_count || DEFAULT_CONFIG.match_count,
-    match_threshold: params.match_threshold ?? DEFAULT_CONFIG.match_threshold,
-    enable_concept_expansion: params.enable_concept_expansion ?? DEFAULT_CONFIG.enable_concept_expansion,
-    vector_weight: params.vector_weight ?? DEFAULT_CONFIG.vector_weight,
-    fulltext_weight: params.fulltext_weight ?? DEFAULT_CONFIG.fulltext_weight,
-    gemini_model: params.gemini_model || DEFAULT_CONFIG.gemini_model,
-    gemini_max_files: params.gemini_max_files || DEFAULT_CONFIG.gemini_max_files,
-    gemini_max_pages: params.gemini_max_pages || DEFAULT_CONFIG.gemini_max_pages,
-    cache_ttl_minutes: params.cache_ttl_minutes || DEFAULT_CONFIG.cache_ttl_minutes,
-    max_context_length: DEFAULT_CONFIG.max_context_length,
-    boost_factor: params.boost_factor ?? DEFAULT_CONFIG.boost_factor,
-    suggestion_threshold: params.suggestion_threshold ?? DEFAULT_CONFIG.suggestion_threshold,
-    max_alternatives: params.max_alternatives ?? DEFAULT_CONFIG.max_alternatives,
-  }
-  
-  console.log(`[baikal-librarian] Config: match_count=${config.match_count}, threshold=${config.match_threshold}`)
-  console.log(`[baikal-librarian] Gemini: model=${config.gemini_model}, max_pages=${config.gemini_max_pages}`)
-  console.log(`[baikal-librarian] v8.12.2: boost_factor=${config.boost_factor}, documents_cles_slug=${DOCUMENTS_CLES_SLUG} (constante)`)
-  
-  return {
-    config,
-    systemPrompt: promptData?.system_prompt || FALLBACK_SYSTEM_PROMPT,
-    geminiSystemPrompt: promptData?.gemini_system_prompt || GEMINI_SYSTEM_PROMPT,
-  }
-}
-
-// ============================================================================
-// INJECTION CONTEXTE PROJET DANS PROMPTS
-// ============================================================================
-
-function injectProjectContext(prompt: string, projectContext: string): string {
-  if (!projectContext) {
-    return prompt.replace('{{project_context}}', '').replace(/\n\n+/g, '\n\n').trim()
-  }
-  
-  if (prompt.includes('{{project_context}}')) {
-    return prompt.replace('{{project_context}}', `CONTEXTE PROJET:\n${projectContext}\n`)
-  }
-  
-  return `CONTEXTE PROJET:\n${projectContext}\n\n---\n\n${prompt}`
-}
-
-// ============================================================================
-// CONVERSATION MEMORY FUNCTIONS
-// ============================================================================
-
-async function findOrCreateConversation(
-  supabase: ReturnType<typeof createClient>,
-  user_id: string,
-  org_id: string | null,
-  project_id: string | null,
-  app_id: string
-): Promise<string> {
-  const { data, error } = await supabase
-    .schema('rag')
-    .rpc('find_or_create_conversation', {
-      p_user_id: user_id,
-      p_org_id: org_id,
-      p_project_id: project_id,
-      p_app_id: app_id,
-      p_timeout_minutes: DEFAULT_CONFIG.conversation_timeout_minutes,
+    await supabase.schema('rag').rpc('increment_qa_usage', {
+      p_qa_id: qaId,
     })
-  
-  if (error) throw new Error(`Conversation error: ${error.message}`)
-  return data
+    console.log(`[librarian] Usage incrémenté pour qa_memory: ${qaId}`)
+  } catch (err) {
+    console.warn('[librarian] Erreur incrément usage qa_memory:', err)
+  }
 }
 
-async function getConversationContext(
+// ============================================================================
+// CONTEXT
+// ============================================================================
+
+async function getAgentContext(
   supabase: ReturnType<typeof createClient>,
-  conversation_id: string
-): Promise<ConversationContext | null> {
-  const { data, error } = await supabase
-    .schema('rag')
-    .rpc('get_conversation_context', {
-      p_conversation_id: conversation_id,
-      p_last_n_messages: DEFAULT_CONFIG.conversation_context_messages,
-    })
+  userId: string,
+  orgId: string | undefined,
+  projectId: string | undefined,
+  appId: string | undefined,
+  preloadedContext?: PreloadedContext
+): Promise<LibrarianContext> {
   
-  if (error || !data || data.length === 0) return null
+  if (preloadedContext) {
+    console.log(`[librarian] Contexte pré-chargé par Brain`)
+    
+    return {
+      effectiveOrgId: preloadedContext.effective_org_id,
+      effectiveAppId: preloadedContext.effective_app_id || 'arpet',
+      systemPrompt: preloadedContext.system_prompt,
+      geminiSystemPrompt: preloadedContext.gemini_system_prompt,
+      parameters: preloadedContext.parameters || {},
+      configSource: preloadedContext.config_source || 'preloaded',
+      projectIdentity: preloadedContext.project_identity,
+      conversationId: preloadedContext.conversation_id,
+      conversationSummary: preloadedContext.conversation_summary,
+      conversationFirstMessage: preloadedContext.conversation_first_message,
+      recentMessages: preloadedContext.recent_messages || [],
+      messageCount: preloadedContext.message_count || 0,
+      previousSourceFileIds: preloadedContext.previous_source_file_ids || [],
+      documentsCles: preloadedContext.documents_cles || [],
+    }
+  }
   
-  const ctx = data[0]
-  let recentMessages = ctx.recent_messages || []
+  const { data, error } = await supabase.schema('rag').rpc('get_agent_context', {
+    p_user_id: userId,
+    p_org_id: orgId || null,
+    p_project_id: projectId || null,
+    p_app_id: appId || null,
+    p_agent_type: 'librarian',
+    p_conversation_timeout_minutes: DEFAULT_CONFIG.conversation_timeout_minutes,
+    p_context_messages_count: DEFAULT_CONFIG.conversation_context_messages,
+  })
+
+  if (error) throw new Error(`Context error: ${error.message}`)
+
+  const ctx = data?.[0] || data
+  let recentMessages = ctx.out_recent_messages || []
   if (typeof recentMessages === 'string') {
     try { recentMessages = JSON.parse(recentMessages) } catch { recentMessages = [] }
   }
-  
+
+  let documentsCles = ctx.out_documents_cles || []
+  if (typeof documentsCles === 'string') {
+    try { documentsCles = JSON.parse(documentsCles) } catch { documentsCles = [] }
+  }
+
   return {
-    conversation_id: ctx.conversation_id,
-    first_message: ctx.first_message,
-    summary: ctx.summary,
-    recent_messages: recentMessages,
-    message_count: ctx.message_count,
+    effectiveOrgId: ctx.out_effective_org_id || null,
+    effectiveAppId: ctx.out_effective_app_id || 'arpet',
+    systemPrompt: ctx.out_system_prompt,
+    geminiSystemPrompt: ctx.out_gemini_system_prompt,
+    parameters: ctx.out_parameters || {},
+    configSource: ctx.out_config_source || 'fallback',
+    projectIdentity: ctx.out_project_identity || null,
+    conversationId: ctx.out_conversation_id,
+    conversationSummary: ctx.out_conversation_summary || null,
+    conversationFirstMessage: ctx.out_conversation_first_message || null,
+    recentMessages,
+    messageCount: ctx.out_message_count || 0,
+    previousSourceFileIds: ctx.out_previous_source_file_ids || [],
+    documentsCles,
   }
 }
+
+// ============================================================================
+// BUILD AGENT CONFIG
+// ============================================================================
+
+function buildAgentConfig(parameters: Record<string, unknown>): AgentConfig {
+  return {
+    llm_model: (parameters.model as string) || DEFAULT_CONFIG.llm_model,
+    temperature: (parameters.temperature as number) ?? DEFAULT_CONFIG.temperature,
+    max_tokens: (parameters.max_tokens as number) || DEFAULT_CONFIG.max_tokens,
+    match_count: (parameters.match_count as number) || DEFAULT_CONFIG.match_count,
+    similarity_threshold: (parameters.similarity_threshold as number) ?? DEFAULT_CONFIG.similarity_threshold,
+    enable_concept_expansion: (parameters.enable_concept_expansion as boolean) ?? DEFAULT_CONFIG.enable_concept_expansion,
+    gemini_model: (parameters.gemini_model as string) || DEFAULT_CONFIG.gemini_model,
+    gemini_max_pages: (parameters.gemini_max_pages as number) || DEFAULT_CONFIG.gemini_max_pages,
+    max_context_length: DEFAULT_CONFIG.max_context_length,
+    qa_memory_similarity_threshold: (parameters.qa_memory_similarity_threshold as number) ?? DEFAULT_CONFIG.qa_memory_similarity_threshold,
+    qa_memory_max_results: (parameters.qa_memory_max_results as number) || DEFAULT_CONFIG.qa_memory_max_results,
+  }
+}
+
+// ============================================================================
+// PROMPT BUILDING
+// ============================================================================
+
+function formatProjectContext(identity: Record<string, unknown> | null): string {
+  if (!identity || Object.keys(identity).length === 0) return ''
+
+  const details: string[] = []
+  if (identity.market_type) details.push(`• Type de marché: ${identity.market_type}`)
+  if (identity.project_type) details.push(`• Type de projet: ${identity.project_type}`)
+  if (identity.description) details.push(`• Description: ${identity.description}`)
+  if (identity.name) details.push(`• Nom du projet: ${identity.name}`)
+  
+  if (details.length === 0) return ''
+  
+  return PROJECT_CONTEXT_TEMPLATE.replace('{{project_details}}', details.join('\n'))
+}
+
+function buildFinalPrompt(
+  customPrompt: string | null,
+  fallbackPrompt: string,
+  projectIdentity: Record<string, unknown> | null,
+  intent?: string
+): string {
+  const parts: string[] = []
+  
+  const basePrompt = customPrompt?.trim() || fallbackPrompt
+  const cleanedPrompt = basePrompt.replace(/\{\{project_context\}\}/g, '').replace(/\n{3,}/g, '\n\n').trim()
+  parts.push(cleanedPrompt)
+  
+  const projectContext = formatProjectContext(projectIdentity)
+  if (projectContext) {
+    parts.push(projectContext)
+  }
+  
+  parts.push(FORMAT_RULES)
+  
+  if (intent && INTENT_INSTRUCTIONS[intent]) {
+    parts.push(INTENT_INSTRUCTIONS[intent])
+  }
+  
+  return parts.join('\n\n')
+}
+
+function formatConversationHistory(context: LibrarianContext): string {
+  const parts: string[] = []
+
+  if (context.conversationSummary) {
+    parts.push(`RÉSUMÉ DES ÉCHANGES:\n${context.conversationSummary}`)
+  }
+
+  if (context.conversationFirstMessage && !context.conversationSummary) {
+    parts.push(`QUESTION INITIALE:\n${context.conversationFirstMessage}`)
+  }
+
+  if (context.recentMessages?.length > 0) {
+    const formatted = context.recentMessages
+      .slice().reverse()
+      .map(m => `${m.role === 'user' ? 'USER' : 'ASSISTANT'}: ${m.content}`)
+      .join('\n\n')
+    parts.push(`HISTORIQUE:\n${formatted}`)
+  }
+
+  return parts.length ? `CONTEXTE CONVERSATION:\n${parts.join('\n\n---\n\n')}\n\n---\n\n` : ''
+}
+
+// ============================================================================
+// DOCUMENT DETECTION
+// ============================================================================
+
+function detectMentionedDocuments(
+  query: string,
+  conversationHistory: string,
+  documentsCles: Array<{ slug: string; label: string }>
+): string[] {
+  if (!documentsCles?.length) return []
+
+  const text = `${query} ${conversationHistory}`.toLowerCase()
+
+  return documentsCles
+    .filter(doc => text.includes(doc.slug.toLowerCase()) || text.includes(doc.label.toLowerCase()))
+    .map(doc => doc.label)
+}
+
+// ============================================================================
+// ADD MESSAGE
+// ============================================================================
 
 async function addMessage(
   supabase: ReturnType<typeof createClient>,
-  conversation_id: string,
+  conversationId: string,
   role: 'user' | 'assistant',
   content: string,
   sources?: unknown[],
-  generation_mode?: string,
-  processing_time_ms?: number
-): Promise<string | null> {
-  const { data, error } = await supabase
-    .schema('rag')
-    .rpc('add_message', {
-      p_conversation_id: conversation_id,
+  generationMode?: string,
+  processingTimeMs?: number
+): Promise<void> {
+  try {
+    await supabase.schema('rag').rpc('add_message', {
+      p_conversation_id: conversationId,
       p_role: role,
       p_content: content,
       p_sources: sources ? JSON.stringify(sources) : null,
-      p_generation_mode: generation_mode || null,
-      p_processing_time_ms: processing_time_ms || null,
+      p_generation_mode: generationMode || null,
+      p_processing_time_ms: processingTimeMs || null,
     })
-  
-  if (error) return null
-  return data
-}
-
-function formatConversationHistory(context: ConversationContext | null): string {
-  if (!context) return ''
-  
-  const parts: string[] = []
-  
-  if (context.summary) {
-    parts.push(`RÉSUMÉ DES ÉCHANGES PRÉCÉDENTS:\n${context.summary}`)
+  } catch (error) {
+    console.warn('[librarian] Erreur add_message:', error)
   }
-  
-  if (context.first_message && !context.summary) {
-    parts.push(`QUESTION INITIALE DE L'UTILISATEUR:\n${context.first_message}`)
-  }
-  
-  if (context.recent_messages && context.recent_messages.length > 0) {
-    const messagesFormatted = context.recent_messages
-      .slice().reverse()
-      .map(m => `${m.role === 'user' ? 'UTILISATEUR' : 'ASSISTANT'}: ${m.content}`)
-      .join('\n\n')
-    parts.push(`HISTORIQUE RÉCENT:\n${messagesFormatted}`)
-  }
-  
-  if (parts.length === 0) return ''
-  return `CONTEXTE DE CONVERSATION:\n${parts.join('\n\n---\n\n')}\n\n---\n\n`
 }
 
 // ============================================================================
-// v8.12.0: SUGGESTION ALTERNATIVE (Post-retrieval)
-// ============================================================================
-
-function detectAlternativeSuggestion(
-  documents: DocumentResult[],
-  detectedDocuments: string[],
-  suggestionThreshold: number
-): AlternativeSuggestion | null {
-  if (documents.length === 0 || detectedDocuments.length === 0) {
-    return null
-  }
-  
-  const topDoc = documents[0]
-  // v8.12.2: Utilise le helper
-  const topDocName = getDocumentDisplayName(topDoc.metadata)
-  
-  const isMentionedDoc = detectedDocuments.some(mentioned => 
-    topDocName.toLowerCase().includes(mentioned.toLowerCase())
-  )
-  
-  if (!isMentionedDoc && topDoc.similarity >= suggestionThreshold) {
-    console.log(`[baikal-librarian] Alternative: "${topDocName}" (${topDoc.similarity.toFixed(2)}) vs mentionné [${detectedDocuments.join(', ')}]`)
-    
-    return {
-      mentioned_doc: detectedDocuments[0],
-      suggested_doc: topDocName,
-      suggested_score: topDoc.similarity,
-      reason: `Ce document contient des informations très pertinentes pour votre question (score: ${(topDoc.similarity * 100).toFixed(0)}%)`
-    }
-  }
-  
-  return null
-}
-
-// ============================================================================
-// OPENAI EMBEDDING
+// EMBEDDING
 // ============================================================================
 
 async function generateEmbedding(text: string): Promise<number[]> {
@@ -749,7 +734,7 @@ async function generateEmbedding(text: string): Promise<number[]> {
 
   if (!response.ok) {
     const error = await response.json()
-    throw new Error(`OpenAI Embedding error: ${JSON.stringify(error)}`)
+    throw new Error(`Embedding error: ${JSON.stringify(error)}`)
   }
 
   const data = await response.json()
@@ -757,25 +742,288 @@ async function generateEmbedding(text: string): Promise<number[]> {
 }
 
 // ============================================================================
-// GOOGLE AI SDK
+// SEARCH (UNIFIED - match_documents_v12)
 // ============================================================================
 
-let cacheManager: GoogleAICacheManager | null = null
+async function executeSearch(
+  supabase: ReturnType<typeof createClient>,
+  queryEmbedding: number[],
+  queryText: string,
+  userId: string,
+  effectiveOrgId: string | null,
+  projectId: string | undefined,
+  effectiveAppId: string,
+  config: AgentConfig,
+  layerFlags: { app: boolean; org: boolean; project: boolean; user: boolean },
+  filterSourceTypes: string[] | undefined,
+  filterFileIds: string[] | null,
+  filterFilenames: string[] | null
+): Promise<SearchResult> {
+  
+  const { data, error } = await supabase.schema('rag').rpc('match_documents_v12', {
+    query_embedding: queryEmbedding,
+    query_text: queryText,
+    p_user_id: userId,
+    p_org_id: effectiveOrgId,
+    p_project_id: projectId || null,
+    p_app_id: effectiveAppId,
+    match_count: config.match_count,
+    similarity_threshold: config.similarity_threshold,
+    include_app_layer: layerFlags.app,
+    include_org_layer: layerFlags.org,
+    include_project_layer: layerFlags.project,
+    include_user_layer: layerFlags.user,
+    filter_source_types: filterSourceTypes || null,
+    filter_file_ids: filterFileIds,
+    filter_filenames: filterFilenames,
+    enable_concept_expansion: config.enable_concept_expansion,
+  })
+
+  if (error) throw new Error(`Search error: ${error.message}`)
+
+  let chunks: ChunkResult[] = (data || []).map((d: Record<string, unknown>) => ({
+    chunk_id: d.out_chunk_id as number,
+    content: d.out_content as string,
+    similarity: d.out_similarity as number,
+    metadata: d.out_metadata as Record<string, unknown>,
+    layer: d.out_layer as string,
+    source_file_id: d.out_source_file_id as string | null,
+    matched_concepts: d.out_matched_concepts as string[] || [],
+    rank_score: d.out_rank_score as number,
+    match_source: d.out_match_source as string,
+    filter_applied: d.out_filter_applied as boolean,
+    file_storage_path: d.out_file_storage_path as string | null,
+    file_storage_bucket: d.out_file_storage_bucket as string | null,
+    file_original_filename: d.out_file_original_filename as string | null,
+    file_mime_type: d.out_file_mime_type as string | null,
+    file_total_pages: (d.out_file_total_pages as number) || 1,
+    file_max_similarity: d.out_file_max_similarity as number | null,
+    file_chunk_count: d.out_file_chunk_count as number | null,
+  }))
+
+  let fallbackUsed = false
+  const hasFilters = (filterFileIds && filterFileIds.length > 0) || (filterFilenames && filterFilenames.length > 0)
+
+  if (chunks.length === 0 && hasFilters) {
+    console.log(`[librarian] Filtres sans résultat, fallback sans filtres`)
+    
+    const { data: fallbackData, error: fallbackError } = await supabase.schema('rag').rpc('match_documents_v12', {
+      query_embedding: queryEmbedding,
+      query_text: queryText,
+      p_user_id: userId,
+      p_org_id: effectiveOrgId,
+      p_project_id: projectId || null,
+      p_app_id: effectiveAppId,
+      match_count: config.match_count,
+      similarity_threshold: config.similarity_threshold,
+      include_app_layer: layerFlags.app,
+      include_org_layer: layerFlags.org,
+      include_project_layer: layerFlags.project,
+      include_user_layer: layerFlags.user,
+      filter_source_types: filterSourceTypes || null,
+      filter_file_ids: null,
+      filter_filenames: null,
+      enable_concept_expansion: config.enable_concept_expansion,
+    })
+
+    if (!fallbackError && fallbackData) {
+      chunks = (fallbackData || []).map((d: Record<string, unknown>) => ({
+        chunk_id: d.out_chunk_id as number,
+        content: d.out_content as string,
+        similarity: d.out_similarity as number,
+        metadata: d.out_metadata as Record<string, unknown>,
+        layer: d.out_layer as string,
+        source_file_id: d.out_source_file_id as string | null,
+        matched_concepts: d.out_matched_concepts as string[] || [],
+        rank_score: d.out_rank_score as number,
+        match_source: d.out_match_source as string,
+        filter_applied: false,
+        file_storage_path: d.out_file_storage_path as string | null,
+        file_storage_bucket: d.out_file_storage_bucket as string | null,
+        file_original_filename: d.out_file_original_filename as string | null,
+        file_mime_type: d.out_file_mime_type as string | null,
+        file_total_pages: (d.out_file_total_pages as number) || 1,
+        file_max_similarity: d.out_file_max_similarity as number | null,
+        file_chunk_count: d.out_file_chunk_count as number | null,
+      }))
+      fallbackUsed = true
+    }
+  }
+
+  const filesMap = new Map<string, FileInfo>()
+  for (const chunk of chunks) {
+    if (!chunk.source_file_id || !chunk.file_storage_path) continue
+    
+    if (!filesMap.has(chunk.source_file_id)) {
+      filesMap.set(chunk.source_file_id, {
+        file_id: chunk.source_file_id,
+        storage_path: chunk.file_storage_path,
+        storage_bucket: chunk.file_storage_bucket || 'documents',
+        original_filename: chunk.file_original_filename || 'Document',
+        mime_type: chunk.file_mime_type || 'application/pdf',
+        total_pages: chunk.file_total_pages,
+        max_similarity: chunk.file_max_similarity || chunk.similarity,
+        chunk_count: chunk.file_chunk_count || 1,
+        layer: chunk.layer,
+      })
+    }
+  }
+
+  const files = Array.from(filesMap.values())
+  const totalPages = files.reduce((sum, f) => sum + f.total_pages, 0)
+
+  console.log(`[librarian] Recherche: ${chunks.length} chunks, ${files.length} fichiers, ${totalPages} pages`)
+
+  return {
+    chunks,
+    files,
+    totalPages,
+    filterApplied: hasFilters && !fallbackUsed,
+    fallbackUsed,
+  }
+}
+
+// ============================================================================
+// CONTEXT FORMATTER (mode chunks)
+// ============================================================================
+
+function formatContext(chunks: ChunkResult[], maxLength: number): string {
+  if (chunks.length === 0) {
+    return "CONTEXTE DOCUMENTAIRE:\nAucun document pertinent trouvé.\n"
+  }
+
+  const sections: Record<string, ChunkResult[]> = {}
+  for (const chunk of chunks) {
+    const layer = chunk.layer || 'unknown'
+    if (!sections[layer]) sections[layer] = []
+    sections[layer].push(chunk)
+  }
+
+  let context = "CONTEXTE DOCUMENTAIRE:\n\n"
+  let currentLength = context.length
+
+  const layerOrder = ['app', 'org', 'project', 'user']
+  const layerLabels: Record<string, string> = {
+    app: '📚 Base de connaissances',
+    org: '🏢 Documents organisation',
+    project: '📁 Documents projet',
+    user: '👤 Documents personnels'
+  }
+
+  for (const layer of layerOrder) {
+    const layerChunks = sections[layer]
+    if (!layerChunks?.length) continue
+
+    const header = `\n${layerLabels[layer] || layer}:\n`
+    if (currentLength + header.length > maxLength) break
+
+    context += header
+    currentLength += header.length
+
+    for (const chunk of layerChunks) {
+      const docName = chunk.file_original_filename || 'Document'
+      const text = `\n--- ${docName} ---\n${chunk.content}\n`
+
+      if (currentLength + text.length > maxLength) break
+
+      context += text
+      currentLength += text.length
+    }
+  }
+
+  return context
+}
+
+// ============================================================================
+// OPENAI STREAMING
+// ============================================================================
+
+async function* generateWithOpenAIStream(
+  query: string,
+  context: string,
+  conversationHistory: string,
+  systemPrompt: string,
+  config: AgentConfig
+): AsyncGenerator<string, string, undefined> {
+  const finalPrompt = conversationHistory
+    ? conversationHistory + systemPrompt
+    : systemPrompt
+  
+  const fullPrompt = finalPrompt + '\n\n' + context
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${OPENAI_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: config.llm_model,
+      messages: [
+        { role: "system", content: fullPrompt },
+        { role: "user", content: query }
+      ],
+      temperature: config.temperature,
+      max_tokens: config.max_tokens,
+      stream: true,
+    }),
+  })
+
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(`OpenAI error: ${JSON.stringify(error)}`)
+  }
+
+  const reader = response.body?.getReader()
+  if (!reader) throw new Error("No response body reader")
+
+  const decoder = new TextDecoder()
+  let fullContent = ''
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() || ''
+
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed === 'data: [DONE]' || !trimmed.startsWith('data: ')) continue
+
+      try {
+        const json = JSON.parse(trimmed.slice(6))
+        const content = json.choices?.[0]?.delta?.content
+        if (content) {
+          fullContent += content
+          yield content
+        }
+      } catch { /* ignore */ }
+    }
+  }
+
+  return fullContent
+}
+
+// ============================================================================
+// GEMINI STREAMING - v9.3.0 SANS CACHE
+// ============================================================================
+
 let genAI: GoogleGenerativeAI | null = null
 
 function initGoogleAI() {
   if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not configured")
-  if (!cacheManager) cacheManager = new GoogleAICacheManager(GEMINI_API_KEY)
   if (!genAI) genAI = new GoogleGenerativeAI(GEMINI_API_KEY)
-  return { cacheManager, genAI }
+  return genAI
 }
 
-async function uploadToGoogleFiles(
-  fileBuffer: ArrayBuffer, 
-  filename: string, 
-  mimeType: string
-): Promise<string> {
-  console.log(`[Gemini] Upload fichier: ${filename} (${mimeType})`)
+/**
+ * v9.3.0: Upload fichier vers Google Files API (sans cache)
+ */
+async function uploadToGoogleFiles(fileBuffer: ArrayBuffer, filename: string, mimeType: string): Promise<string> {
+  console.log(`[librarian] Upload vers Google Files: ${filename}`)
   
   const initResponse = await fetch(
     `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${GEMINI_API_KEY}`,
@@ -795,7 +1043,7 @@ async function uploadToGoogleFiles(
   if (!initResponse.ok) throw new Error(`Google Files init error: ${await initResponse.text()}`)
 
   const uploadUrl = initResponse.headers.get("X-Goog-Upload-URL")
-  if (!uploadUrl) throw new Error("Missing upload URL from Google")
+  if (!uploadUrl) throw new Error("Missing upload URL")
 
   const uploadResponse = await fetch(uploadUrl, {
     method: "PUT",
@@ -810,457 +1058,128 @@ async function uploadToGoogleFiles(
   if (!uploadResponse.ok) throw new Error(`Google Files upload error: ${await uploadResponse.text()}`)
 
   const fileInfo = await uploadResponse.json()
-  console.log(`[Gemini] Fichier uploadé: ${fileInfo.file?.uri || fileInfo.uri}`)
-  return fileInfo.file?.uri || fileInfo.uri
+  const fileUri = fileInfo.file?.uri || fileInfo.uri
+  console.log(`[librarian] Upload terminé: ${fileUri}`)
+  return fileUri
 }
 
-async function createGoogleCache(
-  fileUri: string, 
-  filename: string,
-  systemPrompt: string,
-  geminiModel: string,
-  ttlSeconds: number
-): Promise<string> {
-  console.log(`[Gemini] Création cache pour: ${filename} (model=${geminiModel}, ttl=${ttlSeconds}s)`)
-  
-  const { cacheManager } = initGoogleAI()
-  
-  const cache = await cacheManager!.create({
-    model: geminiModel,
-    displayName: filename,
-    systemInstruction: systemPrompt,
-    contents: [{
-      role: "user",
-      parts: [{ fileData: { fileUri: fileUri, mimeType: "application/pdf" } }]
-    }],
-    ttlSeconds: ttlSeconds
-  })
-  
-  console.log(`[Gemini] Cache créé: ${cache.name}`)
-  return cache.name!
-}
-
-async function updateCacheTTL(cacheName: string): Promise<boolean> {
-  try {
-    const { cacheManager } = initGoogleAI()
-    const cache = await cacheManager!.get(cacheName)
-    return cache && cache.name ? true : false
-  } catch {
-    return false
-  }
-}
-
-async function generateWithGemini(
-  query: string,
-  cacheNames: string[],
-  conversationHistory: string,
-  temperature: number,
-  maxTokens: number
-): Promise<string> {
-  console.log(`[Gemini] Génération avec ${cacheNames.length} cache(s)`)
-  
-  const { cacheManager, genAI } = initGoogleAI()
-  
-  const cacheName = cacheNames[0]
-  const cache = await cacheManager!.get(cacheName)
-  
-  const model = genAI!.getGenerativeModelFromCachedContent(cache, {
-    generationConfig: { temperature, maxOutputTokens: maxTokens }
-  })
-  
-  const fullQuery = conversationHistory 
-    ? `${conversationHistory}\nQUESTION ACTUELLE:\n${query}`
-    : query
-  
-  const result = await model.generateContent({
-    contents: [{ role: "user", parts: [{ text: fullQuery }] }]
-  })
-  
-  const text = result.response.text()
-  if (!text) throw new Error("Gemini returned empty response")
-  return text
-}
-
-// ============================================================================
-// CACHE STRATEGY
-// ============================================================================
-
-async function processCacheStrategy(
+/**
+ * v9.3.0: Génération Gemini SANS cache
+ * Upload direct du fichier à chaque requête
+ */
+async function* generateWithGeminiStream(
   supabase: ReturnType<typeof createClient>,
-  files: FileResult[],
+  query: string,
+  files: FileInfo[],
+  conversationHistory: string,
   systemPrompt: string,
-  geminiModel: string,
-  cacheTtlMinutes: number
-): Promise<GeminiCacheInfo[]> {
-  const results: GeminiCacheInfo[] = []
-  const cacheTtlSeconds = cacheTtlMinutes * 60
+  config: AgentConfig
+): AsyncGenerator<string, string, undefined> {
+  const genAI = initGoogleAI()
   
+  console.log(`[librarian] Gemini sans cache - ${files.length} fichier(s)`)
+
+  // Préparer les parties du contenu
+  const parts: Array<{ text: string } | { fileData: { fileUri: string; mimeType: string } }> = []
+
+  // Upload chaque fichier
   for (const file of files) {
-    const filePath = file.storage_path
-    console.log(`[Cache] Traitement: ${file.original_filename}`)
+    console.log(`[librarian] Téléchargement depuis Supabase: ${file.original_filename}`)
+    const { data: fileData, error } = await supabase.storage
+      .from(file.storage_bucket)
+      .download(file.storage_path)
     
-    const { data: existingCache, error: cacheError } = await supabase
-      .schema('rag')
-      .from('active_caches')
-      .select('google_cache_name, expires_at')
-      .eq('file_path', filePath)
-      .gt('expires_at', new Date().toISOString())
-      .single()
+    if (error || !fileData) {
+      console.error(`[librarian] Erreur téléchargement ${file.original_filename}:`, error)
+      continue
+    }
+
+    const fileBuffer = await fileData.arrayBuffer()
+    const googleFileUri = await uploadToGoogleFiles(fileBuffer, file.original_filename, file.mime_type)
     
-    if (existingCache && !cacheError) {
-      console.log(`[Cache] HIT pour ${file.original_filename}`)
-      const ttlUpdated = await updateCacheTTL(existingCache.google_cache_name)
-      
-      if (ttlUpdated) {
-        const newExpiry = new Date(Date.now() + cacheTtlSeconds * 1000)
-        await supabase.schema('rag').from('active_caches')
-          .update({ expires_at: newExpiry.toISOString() })
-          .eq('file_path', filePath)
-        
-        results.push({ file_path: filePath, cache_name: existingCache.google_cache_name, is_new: false })
-        continue
+    parts.push({
+      fileData: {
+        fileUri: googleFileUri,
+        mimeType: file.mime_type
       }
-      
-      console.log(`[Cache] Cache expiré côté Google, recréation nécessaire`)
-      await supabase.schema('rag').from('active_caches').delete().eq('file_path', filePath)
-    }
-    
-    console.log(`[Cache] MISS pour ${file.original_filename}`)
-    
-    try {
-      const { data: fileData, error: downloadError } = await supabase.storage
-        .from(file.storage_bucket).download(filePath)
-      
-      if (downloadError || !fileData) {
-        console.error(`[Cache] Erreur téléchargement ${filePath}:`, downloadError)
-        continue
-      }
-      
-      const fileBuffer = await fileData.arrayBuffer()
-      const googleFileUri = await uploadToGoogleFiles(fileBuffer, file.original_filename, file.mime_type || 'application/pdf')
-      const cacheName = await createGoogleCache(googleFileUri, file.original_filename, systemPrompt, geminiModel, cacheTtlSeconds)
-      
-      const expiresAt = new Date(Date.now() + cacheTtlSeconds * 1000)
-      
-      await supabase.schema('rag').from('active_caches').upsert({
-        file_path: filePath,
-        google_cache_name: cacheName,
-        expires_at: expiresAt.toISOString(),
-        storage_bucket: file.storage_bucket,
-        original_filename: file.original_filename,
-        mime_type: file.mime_type,
-        file_size_bytes: file.file_size,
-      })
-      
-      results.push({ file_path: filePath, cache_name: cacheName, is_new: true, google_file_uri: googleFileUri })
-    } catch (error) {
-      console.error(`[Cache] Erreur création cache pour ${file.original_filename}:`, error)
-    }
-  }
-  
-  return results
-}
-
-// ============================================================================
-// CONTEXT FORMATTER (mode chunks)
-// ============================================================================
-
-function formatContext(documents: DocumentResult[], maxLength: number): string {
-  if (documents.length === 0) {
-    return "CONTEXTE DOCUMENTAIRE:\nAucun document pertinent trouvé dans la base documentaire.\n"
-  }
-  
-  const sections: Record<string, DocumentResult[]> = {}
-  
-  for (const doc of documents) {
-    const layer = doc.layer || 'unknown'
-    if (!sections[layer]) sections[layer] = []
-    sections[layer].push(doc)
-  }
-  
-  let context = "CONTEXTE DOCUMENTAIRE:\n\n"
-  let currentLength = context.length
-  let docIndex = 1
-  
-  const layerOrder = ['app', 'org', 'project', 'user']
-  const layerLabels: Record<string, string> = {
-    app: '📚 Base de connaissances',
-    org: '🏢 Documents organisation',
-    project: '📁 Documents projet',
-    user: '👤 Documents personnels'
-  }
-  
-  for (const layer of layerOrder) {
-    const docs = sections[layer]
-    if (!docs || docs.length === 0) continue
-    
-    const layerHeader = `\n${layerLabels[layer] || layer}:\n`
-    if (currentLength + layerHeader.length > maxLength) break
-    
-    context += layerHeader
-    currentLength += layerHeader.length
-    
-    for (const doc of docs) {
-      // v8.12.2: Utilise le helper pour le nom
-      const source = getDocumentDisplayName(doc.metadata)
-      const boostIndicator = doc.boost_applied ? ' ⭐' : ''
-      const docText = `\n[${docIndex}] ${source}${boostIndicator}:\n${doc.content}\n`
-      
-      if (currentLength + docText.length > maxLength) break
-      
-      context += docText
-      currentLength += docText.length
-      docIndex++
-    }
-  }
-  
-  return context
-}
-
-// ============================================================================
-// OPENAI CHAT (mode chunks)
-// ============================================================================
-
-async function generateWithOpenAI(
-  query: string,
-  context: string,
-  conversationHistory: string,
-  systemPrompt: string,
-  temperature: number,
-  maxTokens: number,
-  model: string,
-  alternativeSuggestion: AlternativeSuggestion | null
-): Promise<string> {
-  console.log(`[OpenAI] Génération avec model=${model}`)
-  
-  let finalPrompt = systemPrompt
-  
-  if (conversationHistory) {
-    finalPrompt = conversationHistory + finalPrompt
-  }
-  
-  finalPrompt = finalPrompt + '\n\n' + context
-  
-  if (alternativeSuggestion) {
-    finalPrompt += `\n\n---\nNOTE: L'utilisateur mentionne "${alternativeSuggestion.mentioned_doc}", mais "${alternativeSuggestion.suggested_doc}" semble également pertinent. Tu peux mentionner cette alternative si approprié.\n---`
-  }
-  
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: model,
-      messages: [
-        { role: "system", content: finalPrompt },
-        { role: "user", content: query }
-      ],
-      temperature: temperature,
-      max_tokens: maxTokens,
-    }),
-  })
-
-  if (!response.ok) {
-    const error = await response.json()
-    throw new Error(`OpenAI Chat error: ${JSON.stringify(error)}`)
-  }
-
-  const data = await response.json()
-  return data.choices[0]?.message?.content || ""
-}
-
-// ============================================================================
-// EXECUTE GEMINI MODE (pas de RRF, fichiers complets)
-// ============================================================================
-
-async function executeGeminiMode(
-  supabase: ReturnType<typeof createClient>,
-  query: string,
-  files: FileResult[],
-  agentConfig: AgentConfig,
-  geminiSystemPrompt: string,
-  conversationHistory: string
-): Promise<{
-  response: string
-  sources: unknown[]
-  documentsFound: number
-  cacheStatus: 'hit' | 'miss' | 'partial'
-  metrics: Record<string, unknown>
-}> {
-  console.log(`[baikal-librarian] Mode GEMINI avec ${files.length} fichier(s)`)
-  
-  const cacheInfos = await processCacheStrategy(
-    supabase, files, geminiSystemPrompt, agentConfig.gemini_model, agentConfig.cache_ttl_minutes
-  )
-  const validCaches = cacheInfos.filter(c => c.cache_name)
-  
-  if (validCaches.length === 0) {
-    throw new Error("Aucun cache Gemini valide créé")
-  }
-  
-  console.log(`[baikal-librarian] ${validCaches.length} cache(s) prêt(s)`)
-  
-  const response = await generateWithGemini(
-    query, validCaches.map(c => c.cache_name!), conversationHistory,
-    agentConfig.temperature, agentConfig.max_tokens
-  )
-  
-  const cacheHits = validCaches.filter(c => !c.is_new).length
-  const cacheMisses = validCaches.filter(c => c.is_new).length
-  const cacheStatus = cacheHits > 0 && cacheMisses === 0 ? 'hit' 
-    : cacheHits === 0 && cacheMisses > 0 ? 'miss' : 'partial'
-  
-  // v8.12.2: Pour le mode Gemini, on utilise original_filename pour l'instant
-  // TODO: Modifier match_files_v2 pour retourner document_title
-  const sources = files.map(f => ({
-    id: f.file_id,
-    type: 'document',
-    source_file_id: f.file_id,
-    document_name: f.document_title || f.original_filename,
-    name: f.document_title || f.original_filename,
-    score: f.max_similarity,
-    layer: f.layers?.[0] || 'app',
-    content_preview: f.sample_content?.substring(0, 200) || null,
-  }))
-  
-  return {
-    response,
-    sources,
-    documentsFound: files.length,
-    cacheStatus,
-    metrics: {
-      mode: 'gemini',
-      cache_hits: cacheHits,
-      cache_misses: cacheMisses,
-      files_found: files.length,
-      gemini_model: agentConfig.gemini_model,
-    }
-  }
-}
-
-// ============================================================================
-// EXECUTE CHUNKS MODE (avec RRF + boost)
-// ============================================================================
-
-async function executeChunksMode(
-  supabase: ReturnType<typeof createClient>,
-  query: string,
-  queryEmbedding: number[],
-  detectedDocuments: string[],
-  user_id: string,
-  effectiveOrgId: string | null,
-  project_id: string | undefined,
-  effectiveAppId: string,
-  agentConfig: AgentConfig,
-  systemPrompt: string,
-  conversationHistory: string,
-  include_app_layer: boolean,
-  include_org_layer: boolean,
-  include_project_layer: boolean,
-  include_user_layer: boolean,
-  filter_source_types: string[] | undefined,
-  filter_concepts: string[] | undefined
-): Promise<{
-  response: string
-  sources: unknown[]
-  stats: DocumentStats
-  alternativeSuggestion: AlternativeSuggestion | null
-  boostApplied: boolean
-  metrics: Record<string, unknown>
-}> {
-  console.log(`[baikal-librarian] Mode CHUNKS avec RRF + boost`)
-  console.log(`[baikal-librarian] boost_documents: [${detectedDocuments.join(', ')}]`)
-
-  const { data: documents, error: searchError } = await supabase
-    .schema('rag')
-    .rpc("match_documents_v11", {
-      query_embedding: queryEmbedding,
-      query_text: query.trim(),
-      p_user_id: user_id,
-      p_org_id: effectiveOrgId || null,
-      p_project_id: project_id || null,
-      p_app_id: effectiveAppId,
-      match_count: agentConfig.match_count,
-      similarity_threshold: agentConfig.match_threshold,
-      include_app_layer,
-      include_org_layer,
-      include_project_layer,
-      include_user_layer,
-      filter_source_types: filter_source_types || null,
-      filter_concepts: filter_concepts || null,
-      enable_concept_expansion: agentConfig.enable_concept_expansion,
-      boost_documents: detectedDocuments.length > 0 ? detectedDocuments : null,
-      boost_factor: agentConfig.boost_factor,
     })
+  }
 
-  if (searchError) throw new Error(`Search error: ${searchError.message}`)
+  if (parts.length === 0) {
+    throw new Error("Aucun fichier n'a pu être uploadé")
+  }
 
-  const matchedDocs: DocumentResult[] = (documents || []).map((d: any) => ({
-    id: d.out_id,
-    content: d.out_content,
-    similarity: d.out_similarity,
-    metadata: d.out_metadata,
-    layer: d.out_layer,
-    source_type: d.out_source_type,
-    matched_concepts: d.out_matched_concepts || [],
-    rank_score: d.out_rank_score,
-    match_source: d.out_match_source,
-    source_file_id: d.out_source_file_id,
-    boost_applied: d.out_boost_applied || false,
-    boost_matched: d.out_boost_matched || null,
-  }))
+  // Ajouter le prompt
+  const fullQuery = conversationHistory
+    ? `${systemPrompt}\n\n${conversationHistory}\nQUESTION ACTUELLE:\n${query}`
+    : `${systemPrompt}\n\nQUESTION:\n${query}`
 
-  const stats = calculateDocumentStats(matchedDocs)
-  console.log(`[baikal-librarian] ${stats.chunks_found} chunks, ${stats.unique_docs} docs, ${stats.total_pages} pages`)
-  
-  const boostedChunks = matchedDocs.filter(d => d.boost_applied).length
-  console.log(`[baikal-librarian] ${boostedChunks} chunks boostés`)
+  parts.push({ text: fullQuery })
 
-  const alternativeSuggestion = detectAlternativeSuggestion(
-    matchedDocs,
-    detectedDocuments,
-    agentConfig.suggestion_threshold
-  )
+  console.log(`[librarian] Gemini generateContentStream avec ${parts.length} parties`)
 
-  const context = formatContext(matchedDocs, agentConfig.max_context_length)
-
-  const response = await generateWithOpenAI(
-    query, context, conversationHistory, systemPrompt,
-    agentConfig.temperature, agentConfig.max_tokens, agentConfig.llm_model,
-    alternativeSuggestion
-  )
-
-  // v8.12.2: Utilise le helper getDocumentDisplayName pour les sources
-  const sources = matchedDocs.slice(0, 5).map(d => {
-    const displayName = getDocumentDisplayName(d.metadata)
-    return {
-      id: d.id,
-      type: 'document',
-      source_file_id: d.source_file_id || null,
-      chunk_id: d.id,
-      document_name: displayName,
-      name: displayName,
-      score: d.similarity,
-      layer: d.layer,
-      content_preview: d.content?.substring(0, 200) || null,
-      boost_applied: d.boost_applied,
+  // Créer le modèle et générer
+  const model = genAI.getGenerativeModel({ 
+    model: config.gemini_model,
+    generationConfig: {
+      temperature: config.temperature,
+      maxOutputTokens: config.max_tokens,
     }
   })
 
-  return {
-    response,
-    sources,
-    stats,
-    alternativeSuggestion,
-    boostApplied: boostedChunks > 0,
-    metrics: {
-      mode: 'chunks',
-      ...stats,
-      boosted_chunks: boostedChunks,
+  const result = await model.generateContentStream({
+    contents: [{ role: "user", parts }]
+  })
+
+  let fullContent = ''
+
+  for await (const chunk of result.stream) {
+    const text = chunk.text()
+    if (text) {
+      fullContent += text
+      yield text
     }
   }
+
+  console.log(`[librarian] Gemini terminé: ${fullContent.length} chars`)
+  return fullContent
+}
+
+// ============================================================================
+// BUILD SOURCES
+// ============================================================================
+
+function buildSourcesFromFiles(files: FileInfo[]): SourceItem[] {
+  return files.map(file => ({
+    id: file.file_id,
+    type: 'document',
+    source_file_id: file.file_id,
+    document_name: file.original_filename,
+    score: file.max_similarity,
+    layer: file.layer || 'app',
+    content_preview: null,
+  }))
+}
+
+function buildSourcesFromChunks(chunks: ChunkResult[]): SourceItem[] {
+  const sourcesMap = new Map<string, SourceItem>()
+
+  for (const chunk of chunks) {
+    const key = chunk.source_file_id || chunk.chunk_id.toString()
+    if (sourcesMap.has(key)) continue
+
+    sourcesMap.set(key, {
+      id: chunk.chunk_id,
+      type: 'document',
+      source_file_id: chunk.source_file_id,
+      document_name: chunk.file_original_filename || 'Document',
+      score: chunk.similarity,
+      layer: chunk.layer,
+      content_preview: chunk.content?.substring(0, 200) || null,
+    })
+  }
+
+  return Array.from(sourcesMap.values())
 }
 
 // ============================================================================
@@ -1269,7 +1188,7 @@ async function executeChunksMode(
 
 serve(async (req) => {
   const startTime = Date.now()
-  
+
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders })
   }
@@ -1277,258 +1196,319 @@ serve(async (req) => {
   try {
     const body: RequestBody = await req.json()
     const {
-      query, user_id, org_id, project_id, app_id,
-      conversation_id: inputConversationId,
+      query,
+      user_id,
+      org_id,
+      project_id,
+      app_id,
+      rewritten_query,
       intent,
+      detected_documents: brainDetectedDocuments,
+      preloaded_context,
       generation_mode = 'auto',
+      stream = true,
       include_app_layer = DEFAULT_CONFIG.include_app_layer,
       include_org_layer = DEFAULT_CONFIG.include_org_layer,
       include_project_layer = DEFAULT_CONFIG.include_project_layer,
       include_user_layer = DEFAULT_CONFIG.include_user_layer,
-      filter_source_types, filter_concepts,
+      filter_source_types,
     } = body
 
     if (!query?.trim()) return errorResponse("Query is required")
     if (!user_id) return errorResponse("user_id is required")
 
-    console.log(`[baikal-librarian] v8.12.2 - Source naming avec document_title`)
-    console.log(`[baikal-librarian] Query: "${query.substring(0, 50)}..."`)
-    console.log(`[baikal-librarian] Intent: ${intent || 'non spécifié'}, Mode suggéré: ${generation_mode}`)
+    console.log(`[librarian] v9.3.0 (sans cache) - Query: "${query.substring(0, 50)}..."`)
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-    // ========================================
-    // 1. PROFIL UTILISATEUR
-    // ========================================
-    const { data: profile } = await supabase
-      .schema('core')
-      .from('profiles')
-      .select('org_id, app_id, app_role')
-      .eq('id', user_id)
-      .single()
-
-    const effectiveOrgId = org_id || profile?.org_id
-    const effectiveAppId = app_id || profile?.app_id || 'arpet'
-
-    // ========================================
-    // 2. CONFIG AGENT
-    // ========================================
-    const { config: agentConfig, systemPrompt: rawSystemPrompt, geminiSystemPrompt: rawGeminiSystemPrompt } = 
-      await getAgentConfig(supabase, effectiveAppId, effectiveOrgId)
-
-    // ========================================
-    // 3. PROJECT CONTEXT (direct depuis DB)
-    // ========================================
-    const projectContext = await getProjectIdentity(supabase, project_id)
-    const systemPrompt = injectProjectContext(rawSystemPrompt, projectContext)
-    const geminiSystemPrompt = injectProjectContext(rawGeminiSystemPrompt, projectContext)
+    const encoder = new TextEncoder()
     
-    if (projectContext) {
-      console.log(`[baikal-librarian] Project context: ${projectContext.substring(0, 50)}...`)
-    }
+    const sseStream = new ReadableStream({
+      async start(controller) {
+        try {
+          controller.enqueue(encoder.encode(formatSSEStep('analyzing', '🧠 Analyse de la question...')))
 
-    // ========================================
-    // 4. CONVERSATION
-    // ========================================
-    let conversationId = inputConversationId
-    let conversationContext: ConversationContext | null = null
-    let conversationHistory = ''
-    
-    try {
-      if (!conversationId) {
-        conversationId = await findOrCreateConversation(supabase, user_id, effectiveOrgId || null, project_id || null, effectiveAppId)
-      }
-      conversationContext = await getConversationContext(supabase, conversationId)
-      conversationHistory = formatConversationHistory(conversationContext)
-      await addMessage(supabase, conversationId, 'user', query)
-    } catch (convError) {
-      console.error('[baikal-librarian] Erreur conversation:', convError)
-    }
+          const libContext = await getAgentContext(supabase, user_id, org_id, project_id, app_id, preloaded_context)
+          const config = buildAgentConfig(libContext.parameters)
 
-    // ========================================
-    // 5. DÉTECTION DOCUMENTS MENTIONNÉS (via GraphRAG)
-    // ========================================
-    const detectedDocuments = await detectMentionedDocuments(
-      supabase, 
-      query, 
-      conversationHistory,
-      effectiveAppId
-    )
+          const systemPrompt = buildFinalPrompt(
+            libContext.systemPrompt,
+            FALLBACK_SYSTEM_PROMPT,
+            libContext.projectIdentity,
+            intent
+          )
+          
+          const geminiSystemPrompt = buildFinalPrompt(
+            libContext.geminiSystemPrompt,
+            FALLBACK_GEMINI_PROMPT,
+            libContext.projectIdentity,
+            intent
+          )
 
-    const queryAnalysis: QueryAnalysis = {
-      original_query: query,
-      detected_documents: detectedDocuments,
-      has_conversation_context: conversationHistory.length > 0,
-    }
+          const conversationHistory = formatConversationHistory(libContext)
 
-    // ========================================
-    // 6. EMBEDDING
-    // ========================================
-    console.log("[baikal-librarian] Génération embedding...")
-    const queryEmbedding = await generateEmbedding(query)
+          console.log(`[librarian] Prompt custom: ${libContext.systemPrompt ? 'OUI' : 'FALLBACK'}`)
+          console.log(`[librarian] Contexte projet: ${libContext.projectIdentity ? 'OUI' : 'NON'}`)
+          
+          if (libContext.projectIdentity) {
+            console.log(`[librarian] projectIdentity:`, JSON.stringify(libContext.projectIdentity))
+          }
 
-    // ========================================
-    // 7. FLUX OPTIMISÉ: match_files D'ABORD
-    // ========================================
-    let finalResponse = ''
-    let sources: unknown[] = []
-    let documentsFound = 0
-    let cacheStatus: 'hit' | 'miss' | 'partial' | null = null
-    let metrics: Record<string, unknown> = {}
-    let alternativeSuggestion: AlternativeSuggestion | null = null
-    let boostApplied = false
-    let effectiveMode = generation_mode
-    let overrideReason: string | null = null
-    let stats: DocumentStats = { chunks_found: 0, unique_docs: 0, total_pages: 0, doc_details: [] }
+          await addMessage(supabase, libContext.conversationId, 'user', query)
 
-    const { data: filesData } = await supabase
-      .schema('rag')
-      .rpc('match_files_v2', {
-        query_embedding: queryEmbedding,
-        match_threshold: agentConfig.match_threshold,
-        match_count: agentConfig.gemini_max_files,
-        p_app_id: effectiveAppId,
-        p_org_id: effectiveOrgId || null,
-        p_project_id: project_id || null,
-        p_user_id: user_id,
-        include_app_layer, include_org_layer, include_project_layer, include_user_layer,
-      })
+          let detectedDocuments: string[] = brainDetectedDocuments || []
+          if (detectedDocuments.length === 0) {
+            detectedDocuments = detectMentionedDocuments(query, conversationHistory, libContext.documentsCles)
+          }
 
-    const files: FileResult[] = (filesData || []).map((f: any) => ({
-      file_id: f.out_file_id,
-      storage_path: f.out_storage_path,
-      storage_bucket: f.out_storage_bucket,
-      original_filename: f.out_original_filename,
-      document_title: f.out_document_title || null,  // v8.12.2: Si disponible
-      mime_type: f.out_mime_type,
-      file_size: f.out_file_size,
-      total_pages: f.out_total_pages || 1,
-      max_similarity: f.out_max_similarity,
-      avg_similarity: f.out_avg_similarity,
-      chunk_count: f.out_chunk_count,
-      layers: f.out_layers,
-      sample_content: f.out_sample_content,
-    }))
+          const isFollowUp = libContext.previousSourceFileIds.length > 0 && detectedDocuments.length === 0
+          let filterFileIds: string[] | null = null
+          let filterFilenames: string[] | null = null
 
-    const filesStats = calculateFilesStats(files)
-    console.log(`[baikal-librarian] ${files.length} fichier(s), ${filesStats.totalPages} pages total`)
+          if (isFollowUp) {
+            filterFileIds = libContext.previousSourceFileIds
+            console.log(`[librarian] Question de suivi, filtre sur ${filterFileIds.length} fichiers`)
+          } else if (detectedDocuments.length > 0) {
+            filterFilenames = detectedDocuments
+            console.log(`[librarian] Documents détectés: [${detectedDocuments.join(', ')}]`)
+          }
 
-    // 7.2 Décision du mode
-    if (generation_mode === 'auto') {
-      if (files.length === 0) {
-        effectiveMode = 'chunks'
-        overrideReason = 'Mode auto: aucun fichier source trouvé'
-      } else if (!GEMINI_API_KEY) {
-        effectiveMode = 'chunks'
-        overrideReason = 'Mode auto: GEMINI_API_KEY non configurée'
-      } else if (filesStats.totalPages <= agentConfig.gemini_max_pages) {
-        effectiveMode = 'gemini'
-        console.log(`[baikal-librarian] Mode auto → GEMINI (${filesStats.totalPages} pages ≤ ${agentConfig.gemini_max_pages})`)
-      } else {
-        effectiveMode = 'chunks'
-        overrideReason = `Mode auto: ${filesStats.totalPages} pages > limite ${agentConfig.gemini_max_pages}`
-      }
-    } else if (generation_mode === 'gemini') {
-      if (files.length === 0) {
-        effectiveMode = 'chunks'
-        overrideReason = 'Aucun fichier source trouvé'
-      } else if (filesStats.totalPages > agentConfig.gemini_max_pages) {
-        effectiveMode = 'chunks'
-        overrideReason = `Total pages (${filesStats.totalPages}) > limite Gemini (${agentConfig.gemini_max_pages})`
-      } else if (!GEMINI_API_KEY) {
-        effectiveMode = 'chunks'
-        overrideReason = 'GEMINI_API_KEY non configurée'
-      }
-      
-      if (overrideReason) {
-        console.log(`[baikal-librarian] Override: ${overrideReason} → CHUNKS`)
-      }
-    }
+          controller.enqueue(encoder.encode(formatSSEStep('embedding', '🔢 Vectorisation de la requête...')))
 
-    // ========================================
-    // 8. EXÉCUTION SELON LE MODE
-    // ========================================
-    
-    if (effectiveMode === 'gemini' && files.length > 0) {
-      try {
-        const result = await executeGeminiMode(
-          supabase, query, files, agentConfig, geminiSystemPrompt, conversationHistory
-        )
-        finalResponse = result.response
-        sources = result.sources
-        documentsFound = result.documentsFound
-        cacheStatus = result.cacheStatus
-        metrics = result.metrics
-        stats = { 
-          chunks_found: 0, 
-          unique_docs: files.length, 
-          total_pages: filesStats.totalPages,
-          doc_details: files.map(f => ({ 
-            source_file_id: f.file_id, 
-            filename: f.document_title || f.original_filename, 
-            pages: f.total_pages 
-          }))
+          const queryForEmbedding = rewritten_query || query
+          const queryEmbedding = await generateEmbedding(queryForEmbedding)
+
+          // ================================================================
+          // RECHERCHE MÉMOIRE COLLECTIVE AVANT RAG
+          // ================================================================
+          
+          if (libContext.effectiveOrgId) {
+            controller.enqueue(encoder.encode(formatSSEStep('memory_search', '🧠 Recherche dans la mémoire collective...')))
+            
+            const memoryResult = await searchQAMemory(
+              supabase,
+              queryEmbedding,
+              libContext.effectiveOrgId,
+              project_id,
+              config
+            )
+
+            if (memoryResult) {
+              console.log(`[librarian] 🎯 MEMORY HIT: similarity=${memoryResult.similarity.toFixed(3)}`)
+              
+              const memoryLabel = memoryResult.is_expert_faq 
+                ? `💡 Réponse FAQ Expert (${memoryResult.expert_source || 'Expert'})` 
+                : `💡 Réponse validée par l'équipe (${memoryResult.trust_score} validations)`
+              
+              controller.enqueue(encoder.encode(formatSSEStep('memory_hit', memoryLabel, {
+                similarity: memoryResult.similarity,
+                is_expert_faq: memoryResult.is_expert_faq,
+                expert_source: memoryResult.expert_source,
+                trust_score: memoryResult.trust_score,
+                usage_count: memoryResult.usage_count,
+              })))
+
+              const memoryAnswer = memoryResult.answer_text
+              for (const char of memoryAnswer) {
+                controller.enqueue(encoder.encode(formatSSEToken(char)))
+              }
+
+              await incrementQAUsage(supabase, memoryResult.id)
+
+              const processingTime = Date.now() - startTime
+              await addMessage(supabase, libContext.conversationId, 'assistant', memoryAnswer, [], 'memory', processingTime)
+
+              const memorySources: SourceItem[] = memoryResult.is_expert_faq 
+                ? [{
+                    id: memoryResult.id,
+                    type: 'qa_memory',
+                    source_file_id: null,
+                    document_name: `FAQ Expert: ${memoryResult.expert_source || 'Expert'}`,
+                    score: memoryResult.similarity,
+                    layer: 'memory',
+                    content_preview: memoryResult.question_text.substring(0, 100),
+                  }]
+                : [{
+                    id: memoryResult.id,
+                    type: 'qa_memory',
+                    source_file_id: null,
+                    document_name: `Réponse validée (${memoryResult.trust_score} 👍)`,
+                    score: memoryResult.similarity,
+                    layer: 'memory',
+                    content_preview: memoryResult.question_text.substring(0, 100),
+                  }]
+
+              controller.enqueue(encoder.encode(formatSSESources({
+                sources: memorySources,
+                conversation_id: libContext.conversationId,
+                generation_mode: 'memory',
+                generation_mode_ui: MODE_LABELS.memory.ui,
+                processing_time_ms: processingTime,
+                files_count: 0,
+                chunks_count: 0,
+                total_pages: 0,
+                filter_applied: false,
+                fallback_used: false,
+                is_follow_up: isFollowUp,
+                cache_hits: 0,
+                cache_misses: 0,
+                intent: intent || null,
+                query_rewritten: !!rewritten_query,
+                from_memory: true,
+                qa_memory_id: memoryResult.id,
+                qa_memory_similarity: memoryResult.similarity,
+                qa_memory_is_expert: memoryResult.is_expert_faq,
+                qa_memory_trust_score: memoryResult.trust_score,
+              })))
+
+              controller.enqueue(encoder.encode(formatSSEDone()))
+              controller.close()
+              return
+            }
+          }
+
+          // ================================================================
+          // PAS DE MATCH MÉMOIRE → CONTINUER RAG CLASSIQUE
+          // ================================================================
+
+          if (filterFilenames?.length) {
+            controller.enqueue(encoder.encode(formatSSEStep('filter_applied', `🎯 Recherche dans [${filterFilenames.join(', ')}]...`)))
+          } else {
+            controller.enqueue(encoder.encode(formatSSEStep('search', '🔍 Recherche dans les documents...')))
+          }
+
+          const layerFlags = { app: include_app_layer, org: include_org_layer, project: include_project_layer, user: include_user_layer }
+          
+          const searchResult = await executeSearch(
+            supabase, queryEmbedding, query, user_id, libContext.effectiveOrgId,
+            project_id, libContext.effectiveAppId, config, layerFlags,
+            filter_source_types, filterFileIds, filterFilenames
+          )
+
+          if (searchResult.fallbackUsed) {
+            controller.enqueue(encoder.encode(formatSSEStep('filter_fallback', '⚠️ Document non trouvé, recherche élargie...')))
+          }
+          
+          controller.enqueue(encoder.encode(formatSSEStep('files_found', 
+            `📚 ${searchResult.files.length} document${searchResult.files.length > 1 ? 's' : ''} trouvé${searchResult.files.length > 1 ? 's' : ''} (${searchResult.totalPages} pages)`,
+            { files_count: searchResult.files.length, total_pages: searchResult.totalPages }
+          )))
+
+          let effectiveMode = generation_mode
+          
+          if (generation_mode === 'auto') {
+            if (searchResult.files.length === 0 || !GEMINI_API_KEY) {
+              effectiveMode = 'chunks'
+            } else if (searchResult.totalPages <= config.gemini_max_pages) {
+              effectiveMode = 'gemini'
+            } else {
+              effectiveMode = 'chunks'
+            }
+          }
+
+          const modeInfo = MODE_LABELS[effectiveMode as keyof typeof MODE_LABELS] || MODE_LABELS.chunks
+          controller.enqueue(encoder.encode(formatSSEStep('mode_decision', 
+            `${modeInfo.icon} Mode ${modeInfo.ui} sélectionné`,
+            { mode: modeInfo.ui, internal_mode: effectiveMode }
+          )))
+
+          controller.enqueue(encoder.encode(formatSSEStep('generating', '✨ Génération de la réponse...')))
+
+          let fullResponse = ''
+          let geminiFilesUsed: FileInfo[] = []
+
+          if (effectiveMode === 'gemini' && searchResult.files.length > 0) {
+            geminiFilesUsed = searchResult.files
+            
+            try {
+              controller.enqueue(encoder.encode(formatSSEStep('uploading', '📤 Chargement du document vers Gemini...')))
+              
+              const generator = generateWithGeminiStream(
+                supabase, query, searchResult.files, conversationHistory,
+                geminiSystemPrompt, config
+              )
+
+              for await (const token of generator) {
+                fullResponse += token
+                controller.enqueue(encoder.encode(formatSSEToken(token)))
+              }
+            } catch (geminiError) {
+              console.error('[librarian] Gemini error, fallback chunks:', geminiError)
+              
+              effectiveMode = 'chunks'
+              geminiFilesUsed = []
+              
+              controller.enqueue(encoder.encode(formatSSEStep('gemini_fallback', '⚠️ Basculement vers RAG Chunks...')))
+              
+              const context = formatContext(searchResult.chunks, config.max_context_length)
+              const generator = generateWithOpenAIStream(query, context, conversationHistory, systemPrompt, config)
+              
+              for await (const token of generator) {
+                fullResponse += token
+                controller.enqueue(encoder.encode(formatSSEToken(token)))
+              }
+            }
+          } else {
+            const context = formatContext(searchResult.chunks, config.max_context_length)
+            const generator = generateWithOpenAIStream(query, context, conversationHistory, systemPrompt, config)
+            
+            for await (const token of generator) {
+              fullResponse += token
+              controller.enqueue(encoder.encode(formatSSEToken(token)))
+            }
+          }
+
+          // BUILD SOURCES SELON LE MODE
+          let allSources: SourceItem[]
+          
+          if (effectiveMode === 'gemini' && geminiFilesUsed.length > 0) {
+            allSources = buildSourcesFromFiles(geminiFilesUsed)
+            console.log(`[librarian] Sources Gemini: ${allSources.map(s => s.document_name).join(', ')}`)
+          } else {
+            allSources = buildSourcesFromChunks(searchResult.chunks)
+            console.log(`[librarian] Sources Chunks: ${allSources.map(s => s.document_name).join(', ')}`)
+          }
+          
+          const filteredSources = filterSourcesByCitation(allSources, fullResponse)
+
+          const processingTime = Date.now() - startTime
+          await addMessage(supabase, libContext.conversationId, 'assistant', fullResponse, filteredSources, effectiveMode, processingTime)
+
+          controller.enqueue(encoder.encode(formatSSESources({
+            sources: filteredSources,
+            conversation_id: libContext.conversationId,
+            generation_mode: effectiveMode,
+            generation_mode_ui: MODE_LABELS[effectiveMode as keyof typeof MODE_LABELS]?.ui || effectiveMode,
+            processing_time_ms: processingTime,
+            files_count: searchResult.files.length,
+            chunks_count: searchResult.chunks.length,
+            total_pages: searchResult.totalPages,
+            filter_applied: searchResult.filterApplied,
+            fallback_used: searchResult.fallbackUsed,
+            is_follow_up: isFollowUp,
+            cache_hits: 0,
+            cache_misses: 0,
+            intent: intent || null,
+            query_rewritten: !!rewritten_query,
+            from_memory: false,
+            qa_memory_id: null,
+          })))
+
+          controller.enqueue(encoder.encode(formatSSEDone()))
+          controller.close()
+
+        } catch (error) {
+          console.error('[librarian] Error:', error)
+          controller.enqueue(encoder.encode(formatSSEError(error instanceof Error ? error.message : 'Internal error')))
+          controller.close()
         }
-      } catch (geminiError) {
-        console.error('[baikal-librarian] Erreur Gemini, fallback chunks:', geminiError)
-        effectiveMode = 'chunks'
-        overrideReason = 'Erreur Gemini: ' + (geminiError instanceof Error ? geminiError.message : 'Erreur inconnue')
       }
-    }
-    
-    if (effectiveMode === 'chunks') {
-      const result = await executeChunksMode(
-        supabase, query, queryEmbedding, detectedDocuments,
-        user_id, effectiveOrgId, project_id, effectiveAppId,
-        agentConfig, systemPrompt, conversationHistory,
-        include_app_layer, include_org_layer, include_project_layer, include_user_layer,
-        filter_source_types, filter_concepts
-      )
-      finalResponse = result.response
-      sources = result.sources
-      stats = result.stats
-      alternativeSuggestion = result.alternativeSuggestion
-      boostApplied = result.boostApplied
-      documentsFound = result.stats.unique_docs
-      metrics = result.metrics
-    }
-
-    // ========================================
-    // 9. SAUVEGARDE RÉPONSE
-    // ========================================
-    const processingTime = Date.now() - startTime
-    
-    if (conversationId) {
-      try {
-        await addMessage(supabase, conversationId, 'assistant', finalResponse, sources, effectiveMode, processingTime)
-      } catch {}
-    }
-
-    // ========================================
-    // 10. RÉPONSE
-    // ========================================
-    return successResponse({
-      response: finalResponse,
-      conversation_id: conversationId,
-      generation_mode: effectiveMode,
-      suggested_mode: generation_mode,
-      intent: intent || null,
-      override_applied: overrideReason !== null,
-      override_reason: overrideReason,
-      cache_status: cacheStatus,
-      documents_found: documentsFound,
-      chunks_found: stats.chunks_found,
-      total_pages: stats.total_pages,
-      processing_time_ms: processingTime,
-      query_analysis: queryAnalysis,
-      boost_applied: boostApplied,
-      alternative_suggestion: alternativeSuggestion,
-      metrics,
-      sources,
     })
 
+    return new Response(sseStream, { headers: sseHeaders })
+
   } catch (error) {
-    console.error("[baikal-librarian] Erreur:", error)
+    console.error("[librarian] Fatal error:", error)
     return errorResponse(error instanceof Error ? error.message : "Internal server error", 500)
   }
 })

@@ -6,7 +6,8 @@
  * Onglets :
  * - Dashboard (stats, vue d'ensemble) - tous les admins
  * - Organisation (paramètres) - tous les admins
- * - Connaissances → Route vers /admin/ingestion
+ * - Projets → Route vers /admin/projects - tous les admins
+ * - Connaissances → Contenu inline
  * - Prompts (config agents) - super_admin uniquement
  * - Indexation (concepts & catégories) - super_admin uniquement
  * 
@@ -42,6 +43,7 @@ import {
     Loader2,
     LogOut,
     Settings,
+    FolderOpen,
 } from 'lucide-react';
 
 // ============================================================================
@@ -66,6 +68,13 @@ const getTabs = (isSuperAdmin, pendingCount = 0) => {
             label: 'Organisation',
             icon: Building2,
             description: 'Paramètres organisation'
+        },
+        {
+            id: 'projects',
+            label: 'Projets',
+            icon: FolderOpen,
+            description: 'Gestion des projets',
+            route: '/admin/projects',
         },
         {
             id: 'knowledge',
@@ -146,9 +155,15 @@ export default function Admin() {
 
     /**
      * Handler pour les clics sur les onglets
+     * Si l'onglet a une route, naviguer vers cette route
+     * Sinon, changer l'onglet actif
      */
     const handleTabClick = (tab) => {
-        setActiveTab(tab.id);
+        if (tab.route) {
+            navigate(tab.route);
+        } else {
+            setActiveTab(tab.id);
+        }
     };
 
     /**
