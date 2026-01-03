@@ -28,6 +28,7 @@ import IngestionPremium from './pages/IngestionPremium';
 import Prompts from './pages/Prompts';
 import PromptForm from './pages/PromptForm';
 import Baikal from './pages/marketing/Baikal';
+import Confer from './pages/marketing/Confer';
 
 // Pages Admin - Gestion Users/Orgs/Projets
 import Organizations from './pages/admin/Organizations';
@@ -48,6 +49,12 @@ function App() {
           {/* ============================================ */}
           {/* ROUTES MARKETING */}
           {/* ============================================ */}
+          
+          {/* Confer Landing Page */}
+          <Route
+            path="/confer"
+            element={<Confer />}
+          />
           
           {/* Baïkal Landing Page */}
           <Route
