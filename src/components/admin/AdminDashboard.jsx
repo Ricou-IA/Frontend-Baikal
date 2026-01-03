@@ -4,7 +4,7 @@
  * Dashboard d'administration avec statistiques et actions rapides.
  * 
  * Affiche :
- * - Cards cliquables : Users en attente, Total users, Orgs, Projets
+ * - Cards cliquables : Invitations, Users en attente, Total users, Orgs, Projets
  * - Répartition des utilisateurs par rôle (graphique)
  * - Actions rapides selon le contexte
  * 
@@ -12,6 +12,11 @@
  * - Stats filtrées par org pour org_admin
  * - Cards "En attente" et "Organisations" masquées pour org_admin
  * - Répartition des rôles filtrée (sans super_admin pour org_admin)
+ * 
+ * CORRECTION 03/01/2026:
+ * - Renommage TABLEAU_DE_BORD → DASHBOARD
+ * - Ajout carte Invitations avec icône Mail
+ * - Layout cards : icône et chiffre alignés, descriptions supprimées
  * 
  * @example
  * <AdminDashboard 
@@ -49,6 +54,7 @@ import {
  * Mapping des icônes par ID de card
  */
 const ICON_MAP = {
+  invitations: Mail,
   pending: UserPlus,
   total_users: Users,
   organizations: Building2,
@@ -100,23 +106,20 @@ function StatCard({ card, onClick }) {
       )}
 
       <div className="flex items-start justify-between">
-        <div className="flex items-center gap-3">
-          <div className={`p-2.5 rounded-lg ${card.bgColor}`}>
-            <Icon className={`w-5 h-5 ${card.textColor}`} />
-          </div>
-          <div>
+        <div>
+          {/* Icône + Chiffre alignés */}
+          <div className="flex items-center gap-3 mb-2">
+            <div className={`p-2.5 rounded-lg ${card.bgColor}`}>
+              <Icon className={`w-5 h-5 ${card.textColor}`} />
+            </div>
             <p className="text-2xl font-bold font-mono text-white">
               {adminService.formatNumber(card.value)}
             </p>
-            <p className="text-sm text-baikal-text font-mono uppercase">
-              {card.label}
-            </p>
-            {card.description && (
-              <p className="text-xs text-baikal-text/70 font-sans mt-0.5">
-                {card.description}
-              </p>
-            )}
           </div>
+          {/* Label seul */}
+          <p className="text-sm text-baikal-text font-mono uppercase">
+            {card.label}
+          </p>
         </div>
         
         <ChevronRight className="w-5 h-5 text-baikal-text opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -356,7 +359,7 @@ export default function AdminDashboard({
         <div>
           <h2 className="text-xl font-mono font-semibold text-white flex items-center gap-2">
             <LayoutDashboard className="w-5 h-5 text-baikal-cyan" />
-            TABLEAU_DE_BORD
+            DASHBOARD
           </h2>
           <p className="text-baikal-text text-sm mt-1 font-sans">
             Vue d'ensemble de l'administration
@@ -400,7 +403,7 @@ export default function AdminDashboard({
       )}
 
       {/* Cards statistiques */}
-      <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 ${isSuperAdmin ? 'lg:grid-cols-4' : 'lg:grid-cols-2'}`}>
+      <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 ${isSuperAdmin ? 'lg:grid-cols-5' : 'lg:grid-cols-3'}`}>
         {cards.map((card) => (
           <StatCard 
             key={card.id} 
@@ -482,7 +485,7 @@ export default function AdminDashboard({
               icon={Users}
               label="Gérer les utilisateurs"
               description="Voir tous les membres"
-              onClick={() => handleNavigate('/admin/users')}
+              onClick={() => handleNavigate('/admin/users?tab=all')}
             />
           </div>
         </Section>

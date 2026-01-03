@@ -7,6 +7,7 @@
  */
 
 import { Link } from 'react-router-dom';
+import { ConferWordmark } from '../../components/brand';
 
 export default function Confer() {
   return (
@@ -17,8 +18,8 @@ export default function Confer() {
       <nav className="bg-white border-b border-[#E5E7EB]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            <Link to="/" className="text-2xl font-serif font-bold text-[#0B0F17]">
-              Confer
+            <Link to="/" className="flex items-center">
+              <ConferWordmark />
             </Link>
             <div className="flex items-center gap-6">
               <Link

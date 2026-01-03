@@ -18,6 +18,10 @@
  * - super_admin peut inviter: org_admin, team_leader, user
  * - org_admin peut inviter: team_leader, user
  * - Correction affichage org_name
+ * 
+ * CORRECTIONS 03/01/2026:
+ * - État vide : titre dynamique selon le filtre actif
+ * - État vide : suppression description et bouton (redondant avec header)
  * ============================================================================
  */
 
@@ -72,6 +76,17 @@ const STATUS_FILTERS = [
     { value: 'exhausted', label: 'Épuisées' },
     { value: 'revoked', label: 'Révoquées' },
 ];
+
+/**
+ * Titres pour l'état vide selon le filtre actif
+ */
+const EMPTY_STATE_TITLES = {
+    all: 'AUCUNE_INVITATION',
+    active: 'AUCUNE_INVITATION_ACTIVE',
+    expired: 'AUCUNE_INVITATION_EXPIRÉE',
+    exhausted: 'AUCUNE_INVITATION_ÉPUISÉE',
+    revoked: 'AUCUNE_INVITATION_RÉVOQUÉE',
+};
 
 // ============================================================================
 // UTILITAIRES
@@ -877,14 +892,9 @@ export default function Invitations() {
                                 <div className="p-2 bg-baikal-cyan/20 rounded-md">
                                     <Mail className="w-5 h-5 text-baikal-cyan" />
                                 </div>
-                                <div>
-                                    <h1 className="text-lg font-mono font-bold text-white">
-                                        INVITATIONS
-                                    </h1>
-                                    <p className="text-xs text-baikal-text font-mono">
-                                        Codes d'invitation
-                                    </p>
-                                </div>
+                                <h1 className="text-lg font-mono font-bold text-white">
+                                    INVITATIONS
+                                </h1>
                             </div>
                         </div>
 
@@ -965,22 +975,9 @@ export default function Invitations() {
                 {!loading && invitations.length === 0 && (
                     <div className="bg-baikal-surface border border-baikal-border rounded-md p-12 text-center">
                         <Mail className="w-12 h-12 text-baikal-text mx-auto mb-4" />
-                        <h3 className="text-lg font-mono font-medium text-white mb-2">
-                            AUCUNE_INVITATION
+                        <h3 className="text-lg font-mono font-medium text-white">
+                            {EMPTY_STATE_TITLES[statusFilter] || 'AUCUNE_INVITATION'}
                         </h3>
-                        <p className="text-baikal-text mb-6">
-                            {statusFilter !== 'all'
-                                ? `Aucune invitation ${STATUS_FILTERS.find(f => f.value === statusFilter)?.label.toLowerCase()}.`
-                                : 'Créez votre première invitation pour commencer.'
-                            }
-                        </p>
-                        <button
-                            onClick={() => setShowCreateModal(true)}
-                            className="inline-flex items-center gap-2 px-4 py-2 bg-baikal-cyan text-black font-medium rounded-md hover:bg-baikal-cyan/90 transition-colors font-mono"
-                        >
-                            <Plus className="w-4 h-4" />
-                            CRÉER_INVITATION
-                        </button>
                     </div>
                 )}
 

@@ -5,13 +5,9 @@
  * 
  * Onglets :
  * - Dashboard (stats, vue d'ensemble) - tous les admins
- * - Organisation (paramètres) - tous les admins
- * - Projets → Route vers /admin/projects - tous les admins
  * - Connaissances → Contenu inline
  * - Prompts (config agents) - super_admin uniquement
  * - Indexation (concepts & catégories) - super_admin uniquement
- * 
- * Note: L'onglet Utilisateurs a été supprimé car accessible via le Dashboard
  * 
  * Accès :
  * - super_admin : tout voir, toutes les orgs, toutes les couches
@@ -34,7 +30,6 @@ import Prompts from './Prompts';
 import IngestionContent from './IngestionContent';
 import {
     LayoutDashboard,
-    Building2,
     BookOpen,
     MessageSquareCode,
     Database,
@@ -43,7 +38,6 @@ import {
     Loader2,
     LogOut,
     Settings,
-    FolderOpen,
 } from 'lucide-react';
 
 // ============================================================================
@@ -62,19 +56,6 @@ const getTabs = (isSuperAdmin, pendingCount = 0) => {
             label: 'Dashboard',
             icon: LayoutDashboard,
             description: 'Vue d\'ensemble'
-        },
-        {
-            id: 'organization',
-            label: 'Organisation',
-            icon: Building2,
-            description: 'Paramètres organisation'
-        },
-        {
-            id: 'projects',
-            label: 'Projets',
-            icon: FolderOpen,
-            description: 'Gestion des projets',
-            route: '/admin/projects',
         },
         {
             id: 'knowledge',
@@ -190,14 +171,9 @@ export default function Admin() {
                             <div className="w-9 h-9 bg-baikal-cyan rounded-md flex items-center justify-center">
                                 <Shield className="w-5 h-5 text-black" />
                             </div>
-                            <div>
-                                <h1 className="text-lg font-mono font-bold text-white">
-                                    ADMINISTRATION
-                                </h1>
-                                <p className="text-xs text-baikal-text font-mono">
-                                    {organization?.name || 'CHARGEMENT...'}
-                                </p>
-                            </div>
+                            <h1 className="text-lg font-mono font-bold text-white">
+                                BAIKAL_CONSOLE
+                            </h1>
                         </div>
 
                         {/* Actions */}
@@ -304,16 +280,6 @@ export default function Admin() {
                         isOrgAdmin={isOrgAdmin}
                         orgId={effectiveOrgId}
                         onNavigate={handleDashboardNavigate}
-                    />
-                )}
-
-                {/* Onglet Organisation */}
-                {activeTab === 'organization' && !loading && (
-                    <OrganizationSettings
-                        organization={organization}
-                        loading={loading}
-                        currentUserRole={currentUserRole}
-                        onUpdateName={updateOrganizationName}
                     />
                 )}
 

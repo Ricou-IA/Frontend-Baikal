@@ -4,6 +4,7 @@
  * Service pour les statistiques et fonctions d'administration globale.
  * 
  * Ce service récupère les données agrégées pour le dashboard admin :
+ * - Statistiques invitations actives
  * - Statistiques utilisateurs (en attente, assignés, par rôle)
  * - Statistiques organisations
  * - Statistiques projets
@@ -14,6 +15,10 @@
  * CORRECTION 17/12/2025:
  * - Utilisation de la RPC get_admin_stats au lieu de la vue
  * - Filtrage des cards selon le rôle (org_admin vs super_admin)
+ * 
+ * CORRECTION 03/01/2026:
+ * - Lien "UTILISATEURS" pointe vers ?tab=all pour éviter confusion avec "EN ATTENTE"
+ * - Ajout carte "INVITATIONS" en première position
  * 
  * @example
  * import { adminService } from '@/services';
@@ -40,6 +45,7 @@ export const adminService = {
    * Récupère les statistiques pour le dashboard admin
    * 
    * La RPC `get_admin_stats(p_org_id)` retourne :
+   * - active_invitations : Invitations actives (non expirées, non épuisées)
    * - pending_users : Utilisateurs sans organisation (0 si filtré par org)
    * - assigned_users : Utilisateurs avec organisation
    * - super_admins : Nombre de super admins (0 si filtré par org)
@@ -98,6 +104,20 @@ export const adminService = {
       // Toutes les cards possibles
       const allCards = [
         {
+          id: 'invitations',
+          label: 'Invitations',
+          value: stats.active_invitations || 0,
+          description: 'Invitations actives',
+          icon: 'Mail',
+          color: 'cyan',
+          bgColor: 'bg-cyan-400/10',
+          textColor: 'text-cyan-400',
+          borderColor: 'border-cyan-400/30',
+          link: '/admin/invitations',
+          priority: 'normal',
+          superAdminOnly: false, // Visible par tous les admins
+        },
+        {
           id: 'pending',
           label: 'En attente',
           value: stats.pending_users || 0,
@@ -123,7 +143,7 @@ export const adminService = {
           bgColor: 'bg-blue-400/10',
           textColor: 'text-blue-400',
           borderColor: 'border-blue-400/30',
-          link: '/admin/users',
+          link: '/admin/users?tab=all',
           priority: 'normal',
           superAdminOnly: false,
         },
@@ -247,6 +267,7 @@ export const adminService = {
 
       return {
         data: {
+          activeInvitations: stats.active_invitations || 0,
           pendingUsers: stats.pending_users || 0,
           totalUsers: stats.total_users || 0,
           totalOrgs: stats.total_organizations || 0,
