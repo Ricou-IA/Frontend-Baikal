@@ -555,7 +555,10 @@ async function* generateWithGeminiStream(
           fullContent += text
           yield text
         }
-      } catch { /* ignore parsing errors */ }
+      } catch (parseError) {
+        // Log parsing errors instead of silently ignoring
+        console.warn(`[librarian] Gemini SSE parsing error: ${parseError instanceof Error ? parseError.message : 'Unknown'}`)
+      }
     }
   }
 
@@ -1119,7 +1122,10 @@ async function* generateWithOpenAIStream(
           fullContent += content
           yield content
         }
-      } catch { /* ignore */ }
+      } catch (parseError) {
+        // Log parsing errors instead of silently ignoring
+        console.warn(`[librarian] OpenAI SSE parsing error: ${parseError instanceof Error ? parseError.message : 'Unknown'}`)
+      }
     }
   }
 

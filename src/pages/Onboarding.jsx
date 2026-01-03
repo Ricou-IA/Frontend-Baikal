@@ -182,8 +182,8 @@ export default function Onboarding() {
 
                     {/* Features */}
                     <ul className="space-y-2">
-                      {role.features.map((feature, index) => (
-                        <li key={index} className="flex items-center gap-2 text-sm text-slate-600">
+                      {role.features.map((feature) => (
+                        <li key={`${role.id}-${feature}`} className="flex items-center gap-2 text-sm text-slate-600">
                           <div className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-indigo-500' : 'bg-slate-400'}`} />
                           {feature}
                         </li>

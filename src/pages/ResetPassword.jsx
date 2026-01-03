@@ -34,28 +34,42 @@ export default function ResetPassword() {
   const { updatePassword, loading, error, clearError } = useAuth()
 
   useEffect(() => {
+    let isMounted = true
+    let timeoutId = null
+
     const checkToken = async () => {
       setIsCheckingToken(true)
-      
+
       try {
         const hash = window.location.hash
         const hashParams = new URLSearchParams(hash.substring(1))
         const type = hashParams.get('type')
         const accessToken = hashParams.get('access_token')
-        
+
         if (type === 'recovery' && accessToken) {
-          setTimeout(async () => {
-            const { data: { session: currentSession } } = await supabase.auth.getSession()
-            if (currentSession) {
-              setIsValidToken(true)
-              window.history.replaceState(null, '', window.location.pathname)
-            } else {
-              setFormError('Lien de réinitialisation invalide ou expiré.')
-            }
-            setIsCheckingToken(false)
-          }, 500)
+          // Utiliser une promesse avec timeout au lieu de setTimeout avec async
+          await new Promise((resolve) => {
+            timeoutId = setTimeout(resolve, 500)
+          })
+
+          if (!isMounted) return
+
+          const { data: { session: currentSession } } = await supabase.auth.getSession()
+
+          if (!isMounted) return
+
+          if (currentSession) {
+            setIsValidToken(true)
+            window.history.replaceState(null, '', window.location.pathname)
+          } else {
+            setFormError('Lien de réinitialisation invalide ou expiré.')
+          }
+          setIsCheckingToken(false)
         } else {
           const { data: { session: currentSession } } = await supabase.auth.getSession()
+
+          if (!isMounted) return
+
           if (currentSession) {
             setIsValidToken(true)
           } else {
@@ -64,12 +78,19 @@ export default function ResetPassword() {
           setIsCheckingToken(false)
         }
       } catch (err) {
-        setFormError('Lien de réinitialisation invalide ou expiré.')
-        setIsCheckingToken(false)
+        if (isMounted) {
+          setFormError('Lien de réinitialisation invalide ou expiré.')
+          setIsCheckingToken(false)
+        }
       }
     }
 
     checkToken()
+
+    return () => {
+      isMounted = false
+      if (timeoutId) clearTimeout(timeoutId)
+    }
   }, [])
 
   const handleSubmit = async (e) => {

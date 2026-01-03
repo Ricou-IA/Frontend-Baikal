@@ -23,27 +23,7 @@ import {
     LockOpen,
 } from 'lucide-react';
 import { indexationService } from '../../services/indexation.service';
-
-// ============================================================================
-// COMPOSANT INPUT
-// ============================================================================
-
-function FormInput({ label, required, error, hint, children }) {
-    return (
-        <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-white font-mono">
-                {label} {required && <span className="text-red-400">*</span>}
-            </label>
-            {children}
-            {hint && !error && (
-                <p className="text-xs text-baikal-text">{hint}</p>
-            )}
-            {error && (
-                <p className="text-xs text-red-400 font-mono">{error}</p>
-            )}
-        </div>
-    );
-}
+import { FormInput } from '../ui/FormInput';
 
 // ============================================================================
 // COMPOSANT PRINCIPAL
