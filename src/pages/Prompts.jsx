@@ -3,12 +3,15 @@
  * ============================================================================
  * Page de gestion des prompts système.
  * Affichage par sections (type d'agent) avec lignes full width.
+ * 
+ * MODIFICATIONS 04/01/2026:
+ * - Titre uniforme style Dashboard (icône + PROMPTS + sous-titre)
  * ============================================================================
  */
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Info, AlertCircle, Edit, Copy, Trash2, Lock, ArrowLeft } from 'lucide-react';
+import { Plus, Info, AlertCircle, Edit, Copy, Trash2, Lock, ArrowLeft, MessageSquareCode } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../hooks/useToast';
 import { Button } from '../components/ui/Button';
@@ -319,11 +322,14 @@ function Prompts({ embedded = false }) {
   if (embedded) {
     return (
       <div className="space-y-6">
-        {/* Header */}
+        {/* ⭐ Header uniforme style Dashboard */}
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-mono font-semibold text-white">GESTION_DES_PROMPTS</h2>
-            <p className="text-sm text-baikal-text mt-1 font-sans">
+            <h2 className="text-xl font-mono font-semibold text-white flex items-center gap-2">
+              <MessageSquareCode className="w-5 h-5 text-baikal-cyan" />
+              PROMPTS
+            </h2>
+            <p className="text-baikal-text text-sm mt-1 font-sans">
               Configurez les prompts système pour chaque type d'agent
             </p>
           </div>
@@ -408,7 +414,10 @@ function Prompts({ embedded = false }) {
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <div>
-                <h1 className="text-lg font-mono font-semibold text-white">GESTION_DES_PROMPTS</h1>
+                <h1 className="text-lg font-mono font-semibold text-white flex items-center gap-2">
+                  <MessageSquareCode className="w-5 h-5 text-baikal-cyan" />
+                  PROMPTS
+                </h1>
                 <p className="text-sm text-baikal-text font-sans">Configuration des prompts système</p>
               </div>
             </div>

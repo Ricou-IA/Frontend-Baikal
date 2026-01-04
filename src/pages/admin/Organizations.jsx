@@ -11,10 +11,15 @@
  * 
  * Route : /admin/organizations
  * Accès : super_admin uniquement
+ * 
+ * CORRECTIONS 04/01/2026:
+ * - Remplacement menu dropdown par boutons directs (style Users)
+ * - Plus de problème de z-index ou débordement
  * ============================================================================
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { organizationService, getApps } from '../../services';
@@ -31,7 +36,6 @@ import {
     X,
     Check,
     ChevronLeft,
-    MoreVertical,
     Power,
     PowerOff,
     Layers,
@@ -90,13 +94,12 @@ function StatusBadge({ isActive }) {
 }
 
 /**
- * Ligne du tableau
+ * Ligne du tableau avec boutons directs (style Users)
  */
 function OrganizationRow({ org, apps, onEdit, onToggleStatus, onDelete }) {
-    const [showMenu, setShowMenu] = useState(false);
-    
     // Trouver le nom de l'app
-    const appName = apps.find(a => a.id === org.app_id)?.name || '-';
+    const app = apps.find(a => a.id === org.app_id);
+    const appName = app?.name || null;
 
     return (
         <tr className="border-b border-baikal-border hover:bg-baikal-surface/50 transition-colors">
@@ -112,7 +115,11 @@ function OrganizationRow({ org, apps, onEdit, onToggleStatus, onDelete }) {
             <td className="px-4 py-4">
                 <div className="flex items-center gap-2 text-baikal-text">
                     <Layers className="w-4 h-4" />
-                    <span className="text-sm">{appName}</span>
+                    {appName ? (
+                        <span className="text-sm text-white">{appName}</span>
+                    ) : (
+                        <span className="text-sm text-baikal-text italic">Non assignée</span>
+                    )}
                 </div>
             </td>
 
@@ -142,58 +149,43 @@ function OrganizationRow({ org, apps, onEdit, onToggleStatus, onDelete }) {
                 <StatusBadge isActive={org.is_active} />
             </td>
 
-            {/* Actions */}
+            {/* Actions - Boutons directs */}
             <td className="px-4 py-4">
-                <div className="relative">
+                <div className="flex items-center justify-end gap-2">
+                    {/* Bouton Modifier */}
                     <button
-                        onClick={() => setShowMenu(!showMenu)}
-                        className="p-2 text-baikal-text hover:text-white hover:bg-baikal-bg rounded-md transition-colors"
+                        onClick={() => onEdit(org)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-baikal-text hover:text-white border border-baikal-border hover:border-baikal-cyan rounded-md transition-colors"
                     >
-                        <MoreVertical className="w-4 h-4" />
+                        <Edit2 className="w-3.5 h-3.5" />
+                        Modifier
                     </button>
 
-                    {showMenu && (
-                        <>
-                            <div 
-                                className="fixed inset-0 z-10" 
-                                onClick={() => setShowMenu(false)}
-                            />
-                            
-                            <div className="absolute right-0 top-full mt-1 w-48 bg-baikal-surface border border-baikal-border rounded-md shadow-lg z-20">
-                                <button
-                                    onClick={() => { onEdit(org); setShowMenu(false); }}
-                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-left text-baikal-text hover:text-white hover:bg-baikal-bg transition-colors"
-                                >
-                                    <Edit2 className="w-4 h-4" />
-                                    Modifier
-                                </button>
-                                <button
-                                    onClick={() => { onToggleStatus(org); setShowMenu(false); }}
-                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-left text-baikal-text hover:text-white hover:bg-baikal-bg transition-colors"
-                                >
-                                    {org.is_active ? (
-                                        <>
-                                            <PowerOff className="w-4 h-4" />
-                                            Désactiver
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Power className="w-4 h-4" />
-                                            Activer
-                                        </>
-                                    )}
-                                </button>
-                                <hr className="border-baikal-border" />
-                                <button
-                                    onClick={() => { onDelete(org); setShowMenu(false); }}
-                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-left text-red-400 hover:bg-red-900/20 transition-colors"
-                                >
-                                    <Trash2 className="w-4 h-4" />
-                                    Supprimer
-                                </button>
-                            </div>
-                        </>
-                    )}
+                    {/* Bouton Toggle Status */}
+                    <button
+                        onClick={() => onToggleStatus(org)}
+                        className={`p-1.5 rounded-md border transition-colors ${
+                            org.is_active
+                                ? 'text-amber-400 border-amber-500/30 hover:bg-amber-500/20'
+                                : 'text-green-400 border-green-500/30 hover:bg-green-500/20'
+                        }`}
+                        title={org.is_active ? 'Désactiver' : 'Activer'}
+                    >
+                        {org.is_active ? (
+                            <PowerOff className="w-4 h-4" />
+                        ) : (
+                            <Power className="w-4 h-4" />
+                        )}
+                    </button>
+
+                    {/* Bouton Supprimer */}
+                    <button
+                        onClick={() => onDelete(org)}
+                        className="p-1.5 text-red-400 border border-red-500/30 hover:bg-red-500/20 rounded-md transition-colors"
+                        title="Supprimer"
+                    >
+                        <Trash2 className="w-4 h-4" />
+                    </button>
                 </div>
             </td>
         </tr>
@@ -243,14 +235,12 @@ function OrganizationModal({ isOpen, onClose, organization, apps, onSave }) {
             let result;
 
             if (isEdit) {
-                // updateOrganization(orgId, { name, plan, appId, ... })
                 result = await organizationService.updateOrganization(organization.id, {
                     name: formData.name.trim(),
                     plan: formData.plan,
                     appId: formData.app_id || null,
                 });
             } else {
-                // createOrganization({ name, plan, appId, ... })
                 result = await organizationService.createOrganization({
                     name: formData.name.trim(),
                     plan: formData.plan,
@@ -262,7 +252,6 @@ function OrganizationModal({ isOpen, onClose, organization, apps, onSave }) {
                 throw new Error(result.error.message || result.error);
             }
 
-            // Vérifier le retour JSONB
             if (result.data?.success === false) {
                 throw new Error(result.data.error || 'Erreur inconnue');
             }
@@ -279,8 +268,8 @@ function OrganizationModal({ isOpen, onClose, organization, apps, onSave }) {
 
     if (!isOpen) return null;
 
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+    return createPortal(
+        <div className="fixed inset-0 flex items-center justify-center" style={{ zIndex: 9999 }}>
             {/* Backdrop */}
             <div 
                 className="absolute inset-0 bg-black/70 backdrop-blur-sm"
@@ -330,21 +319,23 @@ function OrganizationModal({ isOpen, onClose, organization, apps, onSave }) {
                     {/* App */}
                     <div>
                         <label className="block text-sm font-mono text-baikal-text mb-2">
-                            Application *
+                            Application
                         </label>
                         <select
                             value={formData.app_id}
                             onChange={(e) => setFormData({ ...formData, app_id: e.target.value })}
-                            required
                             className="w-full px-4 py-2.5 bg-baikal-bg border border-baikal-border rounded-md text-white focus:outline-none focus:border-baikal-cyan transition-colors"
                         >
-                            <option value="">-- Sélectionner une app --</option>
+                            <option value="">-- Aucune app --</option>
                             {apps.map((app) => (
                                 <option key={app.id} value={app.id}>
                                     {app.name}
                                 </option>
                             ))}
                         </select>
+                        <p className="text-xs text-baikal-text mt-1">
+                            L'application détermine la verticale métier de l'organisation
+                        </p>
                     </div>
 
                     {/* Plan */}
@@ -377,7 +368,7 @@ function OrganizationModal({ isOpen, onClose, organization, apps, onSave }) {
                         </button>
                         <button
                             type="submit"
-                            disabled={loading || !formData.name.trim() || !formData.app_id}
+                            disabled={loading || !formData.name.trim()}
                             className="flex items-center gap-2 px-4 py-2 bg-baikal-cyan text-black font-medium rounded-md hover:bg-baikal-cyan/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-mono"
                         >
                             {loading ? (
@@ -390,7 +381,8 @@ function OrganizationModal({ isOpen, onClose, organization, apps, onSave }) {
                     </div>
                 </form>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }
 
@@ -414,7 +406,6 @@ function DeleteConfirmModal({ isOpen, onClose, organization, onConfirm }) {
         setError(null);
 
         try {
-            // deleteOrganization(orgId, confirm)
             const result = await organizationService.deleteOrganization(organization.id, true);
 
             if (result.error) {
@@ -439,8 +430,8 @@ function DeleteConfirmModal({ isOpen, onClose, organization, onConfirm }) {
 
     const canDelete = confirmSlug.toLowerCase() === organization.slug.toLowerCase();
 
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+    return createPortal(
+        <div className="fixed inset-0 flex items-center justify-center" style={{ zIndex: 9999 }}>
             <div 
                 className="absolute inset-0 bg-black/70 backdrop-blur-sm"
                 onClick={onClose}
@@ -517,7 +508,8 @@ function DeleteConfirmModal({ isOpen, onClose, organization, onConfirm }) {
                     </div>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }
 
@@ -566,6 +558,7 @@ export default function Organizations() {
             try {
                 const { data, error } = await getApps();
                 if (error) throw error;
+                console.log('[Organizations] Apps loaded:', data);
                 setApps(data || []);
             } catch (err) {
                 console.error('[Organizations] Error loading apps:', err);
@@ -580,7 +573,6 @@ export default function Organizations() {
         setError(null);
 
         try {
-            // Utiliser les noms de paramètres camelCase du service
             const result = await organizationService.getOrganizations({
                 includeInactive: includeInactive,
                 search: search.trim() || null,
@@ -590,8 +582,8 @@ export default function Organizations() {
                 throw new Error(result.error.message || result.error);
             }
 
-            // Le service retourne { data: [...], error: null }
             const data = result.data || [];
+            console.log('[Organizations] Orgs loaded:', data);
             setOrganizations(Array.isArray(data) ? data : []);
         } catch (err) {
             console.error('[Organizations] Error loading:', err);
@@ -607,12 +599,12 @@ export default function Organizations() {
 
     // Handlers
     const handleEdit = (org) => {
+        console.log('[Organizations] Editing org:', org);
         setEditingOrg(org);
     };
 
     const handleToggleStatus = async (org) => {
         try {
-            // updateOrganization(orgId, { isActive })
             const result = await organizationService.updateOrganization(org.id, {
                 isActive: !org.is_active,
             });
@@ -640,7 +632,7 @@ export default function Organizations() {
         loadOrganizations();
     };
 
-    // Filtrer localement par recherche (en plus du filtre serveur)
+    // Filtrer localement par recherche
     const filteredOrgs = organizations.filter(org => {
         if (!search) return true;
         const s = search.toLowerCase();

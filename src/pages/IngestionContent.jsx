@@ -23,6 +23,9 @@
  * - Ajout OrgSelector pour super_admin (layers org et project)
  * - Rechargement des projets selon l'org sélectionnée
  * - org_admin : org fixe (lecture seule)
+ * 
+ * MODIFICATIONS 04/01/2026:
+ * - Ajout header uniforme style Dashboard (icône + titre + sous-titre)
  * ============================================================================
  */
 
@@ -540,11 +543,12 @@ function LegifranceInterface({ selectedVertical, selectedLayer, verticals }) {
     const filteredCodes = codes.filter(code => {
         const matchSearch = !searchTerm || 
             code.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            code.code_id?.toLowerCase().includes(searchTerm.toLowerCase());
+            code.id?.toLowerCase().includes(searchTerm.toLowerCase());
         const matchDomain = selectedDomain === 'all' || code.domain_id === selectedDomain;
         return matchSearch && matchDomain;
     });
 
+    // ⭐ FIX: Utiliser code.id au lieu de code.code_id
     const toggleCode = (codeId) => {
         setSelectedCodes(prev => 
             prev.includes(codeId) 
@@ -557,7 +561,7 @@ function LegifranceInterface({ selectedVertical, selectedLayer, verticals }) {
         if (selectedCodes.length === filteredCodes.length) {
             setSelectedCodes([]);
         } else {
-            setSelectedCodes(filteredCodes.map(c => c.code_id));
+            setSelectedCodes(filteredCodes.map(c => c.id));  // ⭐ FIX: c.id au lieu de c.code_id
         }
     };
 
@@ -684,18 +688,18 @@ function LegifranceInterface({ selectedVertical, selectedLayer, verticals }) {
                     ) : (
                         filteredCodes.map(code => (
                             <label
-                                key={code.code_id}
+                                key={code.id}
                                 className="flex items-center gap-3 px-4 py-3 hover:bg-baikal-surface cursor-pointer border-b border-baikal-border last:border-0"
                             >
                                 <input
                                     type="checkbox"
-                                    checked={selectedCodes.includes(code.code_id)}
-                                    onChange={() => toggleCode(code.code_id)}
+                                    checked={selectedCodes.includes(code.id)}
+                                    onChange={() => toggleCode(code.id)}
                                     className="w-4 h-4 text-baikal-cyan border-baikal-border rounded focus:ring-baikal-cyan bg-black"
                                 />
                                 <div className="flex-1 min-w-0">
                                     <p className="font-medium text-white truncate font-sans">{code.name}</p>
-                                    <p className="text-xs text-baikal-text font-mono">{code.code_id}</p>
+                                    <p className="text-xs text-baikal-text font-mono">{code.id}</p>
                                 </div>
                                 {code.article_count > 0 && (
                                     <span className="text-xs px-2 py-1 bg-baikal-surface text-baikal-text rounded-full font-mono">
@@ -1062,6 +1066,19 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
 
     return (
         <div className="space-y-6">
+            {/* ⭐ NOUVEAU: Header uniforme style Dashboard */}
+            <div className="flex items-center justify-between">
+                <div>
+                    <h2 className="text-xl font-mono font-semibold text-white flex items-center gap-2">
+                        <BookOpen className="w-5 h-5 text-baikal-cyan" />
+                        CONNAISSANCES
+                    </h2>
+                    <p className="text-baikal-text text-sm mt-1 font-sans">
+                        Base documentaire RAG
+                    </p>
+                </div>
+            </div>
+
             {/* Sélection de source */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {availableSources.map(source => (

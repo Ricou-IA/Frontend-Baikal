@@ -10,6 +10,9 @@
  * - Bloc Concepts (tree view)
  * 
  * @version 2.1.0 - Support drag & drop pour réordonnancement des catégories
+ * 
+ * MODIFICATIONS 04/01/2026:
+ * - Titre uniforme style Dashboard (text-xl au lieu de text-2xl)
  * ============================================================================
  */
 
@@ -291,14 +294,14 @@ export default function IndexationSettings() {
 
     return (
         <div className="space-y-6">
-            {/* Header */}
+            {/* ⭐ Header uniforme style Dashboard (text-xl au lieu de text-2xl) */}
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-white font-mono flex items-center gap-2">
-                        <Database className="w-6 h-6 text-baikal-cyan" />
+                    <h2 className="text-xl font-mono font-semibold text-white flex items-center gap-2">
+                        <Database className="w-5 h-5 text-baikal-cyan" />
                         INDEXATION
-                    </h1>
-                    <p className="text-sm text-baikal-text mt-1">
+                    </h2>
+                    <p className="text-baikal-text text-sm mt-1 font-sans">
                         Configuration des concepts et catégories documentaires par application
                     </p>
                 </div>

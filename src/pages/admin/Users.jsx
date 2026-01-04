@@ -8,14 +8,23 @@
  * - org_admin : Liste des membres de son organisation
  * 
  * Fonctionnalités :
+ * - Créer un utilisateur (super_admin)
  * - Assigner un utilisateur à une organisation (super_admin)
  * - Modifier le rôle d'un utilisateur
+ * - Renvoyer un email de réinitialisation de mot de passe
  * - Retirer un utilisateur de son organisation
  * - Recherche et filtres
  * 
  * MODIFICATIONS 17/12/2025:
  * - Suppression colonne "Rôle Business" (inutile)
  * - Boutons d'actions directs (Modifier, Supprimer) au lieu du menu
+ * 
+ * MODIFICATIONS 03/01/2026:
+ * - Correction colonne Organisation (org_name au lieu de organization.name)
+ * - Badge PROTÉGÉ pour les super_admin (au lieu de "-")
+ * - Correction des appels aux services (signature des fonctions)
+ * - Ajout bouton "+ NOUVEL_USER" et modal de création (super_admin)
+ * - Ajout bouton "Reset password" sur chaque ligne
  * 
  * Route : /admin/users
  * Accès : super_admin / org_admin
@@ -26,6 +35,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { usersService, organizationService } from '../../services';
+import { supabase } from '../../lib/supabaseClient';
 import {
     Users,
     UserPlus,
@@ -44,6 +54,10 @@ import {
     AlertTriangle,
     Pencil,
     Trash2,
+    KeyRound,
+    Eye,
+    EyeOff,
+    Plus,
 } from 'lucide-react';
 
 // ============================================================================
@@ -173,7 +187,15 @@ function PendingUserRow({ user, onAssign }) {
 /**
  * Ligne utilisateur standard
  */
-function UserRow({ user, onEditRole, onRemove, showOrg = true, canEdit = true }) {
+function UserRow({ user, onEditRole, onResetPassword, onRemove, showOrg = true, canEdit = true }) {
+    const [resetting, setResetting] = useState(false);
+
+    const handleResetPassword = async () => {
+        setResetting(true);
+        await onResetPassword(user);
+        setResetting(false);
+    };
+
     return (
         <tr className="border-b border-baikal-border hover:bg-baikal-surface/50 transition-colors">
             {/* User */}
@@ -194,7 +216,7 @@ function UserRow({ user, onEditRole, onRemove, showOrg = true, canEdit = true })
                 <td className="px-4 py-4">
                     <div className="flex items-center gap-2 text-baikal-text">
                         <Building2 className="w-4 h-4" />
-                        <span className="text-sm">{user.organization?.name || '-'}</span>
+                        <span className="text-sm">{user.org_name || '-'}</span>
                     </div>
                 </td>
             )}
@@ -224,19 +246,288 @@ function UserRow({ user, onEditRole, onRemove, showOrg = true, canEdit = true })
                             Modifier
                         </button>
                         <button
+                            onClick={handleResetPassword}
+                            disabled={resetting}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-mono text-blue-400 hover:text-white hover:bg-blue-900/30 border border-blue-500/30 rounded transition-colors disabled:opacity-50"
+                            title="Renvoyer email de mot de passe"
+                        >
+                            {resetting ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                                <KeyRound className="w-3.5 h-3.5" />
+                            )}
+                        </button>
+                        <button
                             onClick={() => onRemove(user)}
                             className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-mono text-red-400 hover:text-white hover:bg-red-900/30 border border-red-500/30 rounded transition-colors"
                             title="Retirer de l'organisation"
                         >
                             <Trash2 className="w-3.5 h-3.5" />
-                            Supprimer
                         </button>
                     </div>
                 ) : (
-                    <span className="text-xs text-baikal-text/50 font-mono">-</span>
+                    <div className="flex items-center justify-end">
+                        <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-mono bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                            <Shield className="w-3 h-3" />
+                            PROTÉGÉ
+                        </span>
+                    </div>
                 )}
             </td>
         </tr>
+    );
+}
+
+/**
+ * Modal de création d'utilisateur
+ */
+function CreateUserModal({ isOpen, onClose, organizations, onCreate }) {
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [fullName, setFullName] = useState('');
+    const [selectedOrg, setSelectedOrg] = useState('');
+    const [appRole, setAppRole] = useState('user');
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
+
+    useEffect(() => {
+        if (isOpen) {
+            setEmail('');
+            setPassword('');
+            setShowPassword(false);
+            setFullName('');
+            setSelectedOrg('');
+            setAppRole('user');
+            setError(null);
+        }
+    }, [isOpen]);
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!email || !password) return;
+
+        setLoading(true);
+        setError(null);
+
+        try {
+            // 1. Créer l'utilisateur dans auth.users via admin API
+            const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+                email: email.trim(),
+                password: password,
+                email_confirm: true, // Bypass email confirmation
+                user_metadata: {
+                    full_name: fullName.trim() || null,
+                },
+            });
+
+            if (authError) {
+                throw new Error(authError.message);
+            }
+
+            const userId = authData.user.id;
+
+            // 2. Mettre à jour le profil avec le rôle et l'organisation
+            const { error: profileError } = await supabase
+                .from('profiles')
+                .update({
+                    full_name: fullName.trim() || null,
+                    app_role: appRole,
+                    org_id: selectedOrg || null,
+                })
+                .eq('id', userId);
+
+            if (profileError) {
+                console.error('[CreateUserModal] Profile update error:', profileError);
+                // On continue quand même, l'utilisateur est créé
+            }
+
+            // 3. Si une organisation est sélectionnée, ajouter comme membre
+            if (selectedOrg) {
+                const { error: memberError } = await supabase
+                    .from('organization_members')
+                    .insert({
+                        org_id: selectedOrg,
+                        user_id: userId,
+                        role: 'member',
+                        status: 'active',
+                    });
+
+                if (memberError) {
+                    console.error('[CreateUserModal] Member insert error:', memberError);
+                    // On continue quand même
+                }
+            }
+
+            onCreate();
+            onClose();
+        } catch (err) {
+            console.error('[CreateUserModal] Error:', err);
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <div 
+                className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+                onClick={onClose}
+            />
+
+            <div className="relative w-full max-w-md mx-4 bg-baikal-surface border border-baikal-border rounded-lg shadow-xl">
+                {/* Header */}
+                <div className="flex items-center justify-between px-6 py-4 border-b border-baikal-border">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-baikal-cyan/20 rounded-md">
+                            <UserPlus className="w-5 h-5 text-baikal-cyan" />
+                        </div>
+                        <h2 className="text-lg font-mono font-semibold text-white">
+                            NOUVEL_UTILISATEUR
+                        </h2>
+                    </div>
+                    <button
+                        onClick={onClose}
+                        className="p-2 text-baikal-text hover:text-white hover:bg-baikal-bg rounded-md transition-colors"
+                    >
+                        <X className="w-5 h-5" />
+                    </button>
+                </div>
+
+                {/* Form */}
+                <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                    {/* Erreur */}
+                    {error && (
+                        <div className="p-3 bg-red-900/20 border border-red-500/50 rounded-md flex items-center gap-2 text-red-300 text-sm">
+                            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                            {error}
+                        </div>
+                    )}
+
+                    {/* Email */}
+                    <div>
+                        <label className="block text-sm font-mono text-baikal-text mb-2">
+                            Email *
+                        </label>
+                        <input
+                            type="email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            required
+                            placeholder="utilisateur@example.com"
+                            className="w-full px-4 py-2.5 bg-baikal-bg border border-baikal-border rounded-md text-white placeholder-baikal-text/50 focus:outline-none focus:border-baikal-cyan transition-colors"
+                        />
+                    </div>
+
+                    {/* Mot de passe */}
+                    <div>
+                        <label className="block text-sm font-mono text-baikal-text mb-2">
+                            Mot de passe *
+                        </label>
+                        <div className="relative">
+                            <input
+                                type={showPassword ? 'text' : 'password'}
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                required
+                                minLength={6}
+                                placeholder="Min. 6 caractères"
+                                className="w-full px-4 py-2.5 pr-12 bg-baikal-bg border border-baikal-border rounded-md text-white placeholder-baikal-text/50 focus:outline-none focus:border-baikal-cyan transition-colors"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowPassword(!showPassword)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-baikal-text hover:text-white transition-colors"
+                            >
+                                {showPassword ? (
+                                    <EyeOff className="w-5 h-5" />
+                                ) : (
+                                    <Eye className="w-5 h-5" />
+                                )}
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Nom complet */}
+                    <div>
+                        <label className="block text-sm font-mono text-baikal-text mb-2">
+                            Nom complet
+                        </label>
+                        <input
+                            type="text"
+                            value={fullName}
+                            onChange={(e) => setFullName(e.target.value)}
+                            placeholder="Jean Dupont"
+                            className="w-full px-4 py-2.5 bg-baikal-bg border border-baikal-border rounded-md text-white placeholder-baikal-text/50 focus:outline-none focus:border-baikal-cyan transition-colors"
+                        />
+                    </div>
+
+                    {/* Organisation */}
+                    <div>
+                        <label className="block text-sm font-mono text-baikal-text mb-2">
+                            Organisation
+                        </label>
+                        <select
+                            value={selectedOrg}
+                            onChange={(e) => setSelectedOrg(e.target.value)}
+                            className="w-full px-4 py-2.5 bg-baikal-bg border border-baikal-border rounded-md text-white focus:outline-none focus:border-baikal-cyan transition-colors"
+                        >
+                            <option value="">-- Aucune --</option>
+                            {organizations.map((org) => (
+                                <option key={org.id} value={org.id}>
+                                    {org.name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {/* Rôle App */}
+                    <div>
+                        <label className="block text-sm font-mono text-baikal-text mb-2">
+                            Rôle application
+                        </label>
+                        <select
+                            value={appRole}
+                            onChange={(e) => setAppRole(e.target.value)}
+                            className="w-full px-4 py-2.5 bg-baikal-bg border border-baikal-border rounded-md text-white focus:outline-none focus:border-baikal-cyan transition-colors"
+                        >
+                            {APP_ROLES.map((role) => (
+                                <option key={role.value} value={role.value}>
+                                    {role.label}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center justify-end gap-3 pt-4">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            disabled={loading}
+                            className="px-4 py-2 text-baikal-text hover:text-white transition-colors font-mono"
+                        >
+                            ANNULER
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={loading || !email || !password}
+                            className="flex items-center gap-2 px-4 py-2 bg-baikal-cyan text-black font-medium rounded-md hover:bg-baikal-cyan/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-mono"
+                        >
+                            {loading ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                                <UserPlus className="w-4 h-4" />
+                            )}
+                            CRÉER
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
     );
 }
 
@@ -265,11 +556,12 @@ function AssignOrgModal({ isOpen, onClose, user, organizations, onAssign }) {
         setError(null);
 
         try {
-            const result = await usersService.assignUserToOrg({
-                p_target_user_id: user.id,
-                p_org_id: selectedOrg,
-                p_reason: reason.trim() || null,
-            });
+            // Appel corrigé : assignUserToOrg(userId, orgId, reason)
+            const result = await usersService.assignUserToOrg(
+                user.id,
+                selectedOrg,
+                reason.trim() || null
+            );
 
             if (result.error) {
                 throw new Error(result.error.message || result.error);
@@ -417,11 +709,11 @@ function EditRoleModal({ isOpen, onClose, user, onSave, allowedRoles }) {
         setError(null);
 
         try {
-            const result = await usersService.updateUserRole({
-                p_target_user_id: user.id,
-                p_new_app_role: appRole,
-                p_new_business_role: null,
-                p_reason: reason.trim() || null,
+            // Appel corrigé : updateUserRole(userId, { appRole, businessRole, reason })
+            const result = await usersService.updateUserRole(user.id, {
+                appRole: appRole,
+                businessRole: null,
+                reason: reason.trim() || null,
             });
 
             if (result.error) {
@@ -568,10 +860,11 @@ function RemoveUserModal({ isOpen, onClose, user, onConfirm }) {
         setError(null);
 
         try {
-            const result = await usersService.removeUserFromOrg({
-                p_target_user_id: user.id,
-                p_reason: reason.trim() || null,
-            });
+            // Appel corrigé : removeUserFromOrg(userId, reason)
+            const result = await usersService.removeUserFromOrg(
+                user.id,
+                reason.trim() || null
+            );
 
             if (result.error) {
                 throw new Error(result.error.message || result.error);
@@ -711,7 +1004,11 @@ export default function UsersPage() {
     // Erreurs
     const [error, setError] = useState(null);
 
+    // Feedback
+    const [feedback, setFeedback] = useState(null);
+
     // Modals
+    const [creatingUser, setCreatingUser] = useState(false);
     const [assigningUser, setAssigningUser] = useState(null);
     const [editingUser, setEditingUser] = useState(null);
     const [removingUser, setRemovingUser] = useState(null);
@@ -761,8 +1058,8 @@ export default function UsersPage() {
         setLoadingUsers(true);
         try {
             const params = {
-                p_org_id: isSuperAdmin ? (orgFilter || null) : profile?.org_id,
-                p_search: search.trim() || null,
+                orgId: isSuperAdmin ? (orgFilter || null) : profile?.org_id,
+                search: search.trim() || null,
             };
 
             const result = await usersService.getUsersForAdmin(params);
@@ -788,6 +1085,14 @@ export default function UsersPage() {
         loadUsers();
     }, [isSuperAdmin, loadPendingUsers, loadUsers]);
 
+    // Auto-hide feedback
+    useEffect(() => {
+        if (feedback) {
+            const timer = setTimeout(() => setFeedback(null), 4000);
+            return () => clearTimeout(timer);
+        }
+    }, [feedback]);
+
     // Handlers
     const handleAssign = (user) => {
         setAssigningUser(user);
@@ -799,6 +1104,38 @@ export default function UsersPage() {
 
     const handleRemove = (user) => {
         setRemovingUser(user);
+    };
+
+    const handleResetPassword = async (user) => {
+        try {
+            const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
+                redirectTo: `${window.location.origin}/reset-password`,
+            });
+
+            if (error) {
+                throw new Error(error.message);
+            }
+
+            setFeedback({
+                type: 'success',
+                message: `Email de réinitialisation envoyé à ${user.email}`,
+            });
+        } catch (err) {
+            console.error('[handleResetPassword] Error:', err);
+            setFeedback({
+                type: 'error',
+                message: err.message || 'Erreur lors de l\'envoi de l\'email',
+            });
+        }
+    };
+
+    const handleUserCreated = () => {
+        loadUsers();
+        loadPendingUsers();
+        setFeedback({
+            type: 'success',
+            message: 'Utilisateur créé avec succès',
+        });
     };
 
     const handleAssigned = () => {
@@ -861,6 +1198,22 @@ export default function UsersPage() {
 
                 {/* Contenu */}
                 <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                    {/* Feedback */}
+                    {feedback && (
+                        <div className={`mb-6 p-4 rounded-md flex items-center gap-3 ${
+                            feedback.type === 'success' 
+                                ? 'bg-green-900/20 border border-green-500/50 text-green-300'
+                                : 'bg-red-900/20 border border-red-500/50 text-red-300'
+                        }`}>
+                            {feedback.type === 'success' ? (
+                                <Check className="w-5 h-5 flex-shrink-0" />
+                            ) : (
+                                <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                            )}
+                            <p className="font-mono">{feedback.message}</p>
+                        </div>
+                    )}
+
                     {/* Recherche */}
                     <div className="mb-6">
                         <div className="relative max-w-md">
@@ -910,6 +1263,7 @@ export default function UsersPage() {
                                                 user={user}
                                                 showOrg={false}
                                                 onEditRole={handleEditRole}
+                                                onResetPassword={handleResetPassword}
                                                 onRemove={handleRemove}
                                                 canEdit={user.app_role !== 'org_admin' && user.app_role !== 'super_admin'}
                                             />
@@ -987,6 +1341,15 @@ export default function UsersPage() {
                                 </div>
                             </div>
                         </div>
+
+                        {/* Bouton Créer */}
+                        <button
+                            onClick={() => setCreatingUser(true)}
+                            className="flex items-center gap-2 px-4 py-2 bg-baikal-cyan text-black font-medium rounded-md hover:bg-baikal-cyan/90 transition-colors font-mono"
+                        >
+                            <Plus className="w-4 h-4" />
+                            NOUVEL_USER
+                        </button>
                     </div>
                 </div>
             </header>
@@ -1032,6 +1395,22 @@ export default function UsersPage() {
 
             {/* Contenu */}
             <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                {/* Feedback */}
+                {feedback && (
+                    <div className={`mb-6 p-4 rounded-md flex items-center gap-3 ${
+                        feedback.type === 'success' 
+                            ? 'bg-green-900/20 border border-green-500/50 text-green-300'
+                            : 'bg-red-900/20 border border-red-500/50 text-red-300'
+                    }`}>
+                        {feedback.type === 'success' ? (
+                            <Check className="w-5 h-5 flex-shrink-0" />
+                        ) : (
+                            <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                        )}
+                        <p className="font-mono">{feedback.message}</p>
+                    </div>
+                )}
+
                 {/* Erreur */}
                 {error && (
                     <div className="mb-6 p-4 bg-red-900/20 border border-red-500/50 rounded-md flex items-center gap-3 text-red-300">
@@ -1162,6 +1541,7 @@ export default function UsersPage() {
                                                     user={user}
                                                     showOrg={true}
                                                     onEditRole={handleEditRole}
+                                                    onResetPassword={handleResetPassword}
                                                     onRemove={handleRemove}
                                                     canEdit={user.app_role !== 'super_admin'}
                                                 />
@@ -1179,6 +1559,13 @@ export default function UsersPage() {
             </main>
 
             {/* Modals */}
+            <CreateUserModal
+                isOpen={creatingUser}
+                onClose={() => setCreatingUser(false)}
+                organizations={organizations}
+                onCreate={handleUserCreated}
+            />
+
             <AssignOrgModal
                 isOpen={!!assigningUser}
                 onClose={() => setAssigningUser(null)}
