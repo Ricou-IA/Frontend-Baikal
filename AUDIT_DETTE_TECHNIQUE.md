@@ -3,20 +3,80 @@
 **Date de l'audit**: 04/01/2026
 **Version analysée**: Commit `0dea45e`
 **Total lignes de code**: ~32,000 lignes (src/)
+**Dernière mise à jour**: 04/01/2026
+
+---
+
+## Actions Réalisées (Quick Wins)
+
+### ✅ Structure préparée pour Option B (architecture par feature)
+
+```
+src/
+├── features/                    # NOUVEAU
+│   └── users/
+│       ├── config.js            # APP_ROLES, getAppRoleConfig
+│       ├── index.js             # Export centralisé
+│       └── components/
+│           ├── index.js
+│           ├── UserAvatar.jsx
+│           ├── AppRoleBadge.jsx
+│           ├── UserRow.jsx
+│           ├── PendingUserRow.jsx
+│           ├── CreateUserModal.jsx
+│           ├── AssignOrgModal.jsx
+│           ├── EditRoleModal.jsx
+│           └── RemoveUserModal.jsx
+│
+├── shared/                      # NOUVEAU
+│   └── utils/
+│       ├── index.js             # Export centralisé
+│       └── dateFormatter.js     # formatDate centralisé
+```
+
+### ✅ Alias Vite ajoutés
+
+```javascript
+// vite.config.js
+'@features': path.resolve(__dirname, './src/features'),
+'@shared': path.resolve(__dirname, './src/shared'),
+```
+
+### ✅ Code mort supprimé (5 fichiers)
+
+| Fichier supprimé | Raison |
+|------------------|--------|
+| `src/components/ErrorBoundary.jsx` | Import cassé (`../utils/errors` inexistant) + jamais utilisé |
+| `src/components/UserMenu.jsx` | Jamais importé nulle part |
+| `src/components/admin/InviteMemberModal.jsx` | Marqué deprecated, jamais utilisé |
+| `src/components/admin/MembersList.jsx` | Jamais importé nulle part |
+| `src/components/admin/UsersList.jsx` | Jamais importé nulle part |
+
+### ✅ Utilitaire dateFormatter créé
+
+```javascript
+// Utilisation
+import { formatDate, formatDateTime, formatRelative } from '@shared/utils';
+
+formatDate('2024-01-15');           // "15/01/2024"
+formatDateTime('2024-01-15T14:30'); // "15/01/2024 à 14:30"
+formatRelative(new Date());         // "il y a 2 heures"
+```
 
 ---
 
 ## Résumé Exécutif
 
-| Catégorie | Sévérité | Impact |
-|-----------|----------|--------|
-| Fichiers monolithiques | CRITIQUE | Maintenabilité nulle |
-| Duplication de code | CRITIQUE | Maintenance x10 |
-| Absence de tests | CRITIQUE | Qualité non garantie |
-| Console.log en production | HAUTE | Sécurité/Performance |
-| Absence de TypeScript | HAUTE | Bugs runtime |
-| Styles inline Tailwind | MOYENNE | Réutilisabilité faible |
-| Incohérences de patterns | MOYENNE | Confusion développeurs |
+| Catégorie | Sévérité | Impact | Statut |
+|-----------|----------|--------|--------|
+| Fichiers monolithiques | CRITIQUE | Maintenabilité nulle | 🟡 Users.jsx partiellement migré |
+| Duplication de code | CRITIQUE | Maintenance x10 | 🟡 dateFormatter créé |
+| Absence de tests | CRITIQUE | Qualité non garantie | 🔴 Non résolu |
+| Code mort | HAUTE | Confusion, imports cassés | ✅ **RÉSOLU** |
+| Console.log en production | HAUTE | Sécurité/Performance | 🔴 Non résolu |
+| Absence de TypeScript | HAUTE | Bugs runtime | 🔴 Non résolu |
+| Styles inline Tailwind | MOYENNE | Réutilisabilité faible | 🔴 Non résolu |
+| Incohérences de patterns | MOYENNE | Confusion développeurs | 🔴 Non résolu |
 
 ---
 
@@ -24,31 +84,26 @@
 
 ### Fichiers dépassant 1000 lignes
 
-| Fichier | Lignes | Problème |
-|---------|--------|----------|
-| `src/pages/admin/Users.jsx` | 1593 | 8+ sous-composants internes |
-| `src/pages/admin/Projects.jsx` | 1326 | 6+ sous-composants internes |
-| `src/pages/IngestionContent.jsx` | 1292 | Logique non décomposée |
-| `src/pages/admin/Invitations.jsx` | 1056 | Trop de responsabilités |
+| Fichier | Lignes | Problème | Statut |
+|---------|--------|----------|--------|
+| `src/pages/admin/Users.jsx` | 1593 | 8+ sous-composants internes | 🟡 Composants extraits dans `@features/users` |
+| `src/pages/admin/Projects.jsx` | 1326 | 6+ sous-composants internes | 🔴 À faire |
+| `src/pages/IngestionContent.jsx` | 1292 | Logique non décomposée | 🔴 À faire |
+| `src/pages/admin/Invitations.jsx` | 1056 | Trop de responsabilités | 🔴 À faire |
 
-### Exemple: Users.jsx contient
+### Users.jsx - Composants extraits
 
-```
-- APP_ROLES (config)
-- formatDate() (utilitaire)
-- getAppRoleConfig() (utilitaire)
-- AppRoleBadge (composant)
-- UserAvatar (composant)
-- PendingUserRow (composant)
-- UserRow (composant)
-- CreateUserModal (composant)
-- AssignOrgModal (composant)
-- EditRoleModal (composant)
-- RemoveUserModal (composant)
-- Users (composant principal)
-```
+Les composants suivants ont été extraits vers `src/features/users/components/` :
+- ✅ `UserAvatar`
+- ✅ `AppRoleBadge`
+- ✅ `UserRow`
+- ✅ `PendingUserRow`
+- ✅ `CreateUserModal`
+- ✅ `AssignOrgModal`
+- ✅ `EditRoleModal`
+- ✅ `RemoveUserModal`
 
-**Recommandation**: Extraire chaque sous-composant dans son propre fichier.
+**Prochaine étape** : Modifier `Users.jsx` pour importer depuis `@features/users/components`.
 
 ---
 
@@ -56,17 +111,18 @@
 
 ### 2.1 Fonction `formatDate` - 10+ duplications
 
-Fichiers affectés:
+**Statut** : 🟡 Utilitaire créé, migration en cours
+
+Fichier centralisé : `src/shared/utils/dateFormatter.js`
+
+Fichiers à migrer :
 - `src/pages/admin/Users.jsx:81-88`
 - `src/pages/admin/Projects.jsx:83-88`
 - `src/pages/admin/Invitations.jsx:464`
 - `src/components/admin/LegifranceAdmin.jsx:29`
-- `src/components/admin/UsersList.jsx:163`
 - `src/components/admin/PromptsTable.jsx:192`
 - `src/config/rag-layers.config.js:387`
 - Et 3+ autres fichiers
-
-**Recommandation**: Créer `src/utils/dateFormatter.js`
 
 ### 2.2 Composant ConfirmModal - 2 implémentations
 
@@ -79,12 +135,10 @@ Fichiers affectés:
 
 ### 2.3 Badges définis localement
 
-- `AppRoleBadge()` dans `src/pages/admin/Users.jsx:104`
-- `StatusBadge()` dans `src/pages/admin/Projects.jsx:105`
-- `ProjectRoleBadge()` dans `src/pages/admin/Projects.jsx:120`
-- `LayerBadge()` dans `src/pages/Validation.jsx:58`
-
-**Recommandation**: Créer `src/components/ui/Badge.jsx` générique.
+- `AppRoleBadge()` - ✅ Extrait vers `@features/users/components/AppRoleBadge.jsx`
+- `StatusBadge()` dans `src/pages/admin/Projects.jsx:105` - 🔴 À extraire
+- `ProjectRoleBadge()` dans `src/pages/admin/Projects.jsx:120` - 🔴 À extraire
+- `LayerBadge()` dans `src/pages/Validation.jsx:58` - 🔴 À extraire
 
 ---
 
@@ -197,9 +251,6 @@ import { usersService } from '../../services/users.service';
 ```javascript
 // src/hooks/useOrganization.js:205
 // TODO: Implémenter la logique de renvoi d'invitation
-
-// src/components/admin/index.js:32
-// TODO: Remplacer par le nouveau système d'invitations par code
 ```
 
 ---
@@ -233,30 +284,25 @@ Ces dépendances TypeScript sont inutiles sans TypeScript configuré.
 
 ---
 
-## Plan de Remédiation Recommandé
+## Plan de Remédiation - Mise à Jour
 
-### Phase 1 - Quick Wins (1-2 sprints)
+### Phase 1 - Quick Wins ✅ PARTIELLEMENT FAIT
 
-1. **Centraliser formatDate()**
-   - Créer `src/utils/dateFormatter.js`
-   - Impact: 10+ fichiers
-
-2. **Fusionner ConfirmModal**
-   - Garder `src/components/ui/ConfirmModal.jsx`
-   - Supprimer lignes 204-245 de Modal.jsx
-
-3. **Supprimer console.log**
-   - Créer `src/utils/logger.js`
-   - Remplacer 206 occurrences
-
-4. **Standardiser loading state**
-   - Renommer en `isLoading` partout
+| Action | Statut |
+|--------|--------|
+| Créer structure `features/` et `shared/` | ✅ Fait |
+| Ajouter alias Vite | ✅ Fait |
+| Créer `dateFormatter.js` centralisé | ✅ Fait |
+| Extraire composants Users.jsx | ✅ Fait (8 composants) |
+| Supprimer code mort | ✅ Fait (5 fichiers) |
+| Migrer imports formatDate | 🔴 À faire (10+ fichiers) |
+| Fusionner ConfirmModal | 🔴 À faire |
 
 ### Phase 2 - Refactoring (3-4 sprints)
 
 5. **Extraire sous-composants**
-   - Users.jsx → 8 fichiers
-   - Projects.jsx → 6 fichiers
+   - Users.jsx → ✅ Fait
+   - Projects.jsx → 6 fichiers (à faire)
 
 6. **Créer composants UI génériques**
    - Badge.jsx
@@ -282,13 +328,15 @@ Ces dépendances TypeScript sont inutiles sans TypeScript configuré.
 
 ## Métriques à Suivre
 
-| Métrique | Actuel | Cible |
-|----------|--------|-------|
-| Fichiers > 500 lignes | 12 | 0 |
-| Couverture de tests | 0% | 70% |
-| Console.log en prod | 206 | 0 |
-| Duplications formatDate | 10+ | 1 |
-| Composants avec TypeScript | 0% | 100% |
+| Métrique | Avant | Après Quick Wins | Cible |
+|----------|-------|------------------|-------|
+| Fichiers > 500 lignes | 12 | 12 | 0 |
+| Couverture de tests | 0% | 0% | 70% |
+| Console.log en prod | 206 | 206 | 0 |
+| Duplications formatDate | 10+ | 10+ (utilitaire créé) | 1 |
+| Composants avec TypeScript | 0% | 0% | 100% |
+| Code mort | 5 fichiers | 0 fichiers | 0 |
+| Composants Users extraits | 0 | 8 | 8 |
 
 ---
 
@@ -296,15 +344,27 @@ Ces dépendances TypeScript sont inutiles sans TypeScript configuré.
 
 ### Bons patterns à suivre
 - `src/hooks/useAsync.js` - Hook async bien structuré
+- `src/shared/utils/dateFormatter.js` - **NOUVEAU** Utilitaire date centralisé
+- `src/features/users/components/` - **NOUVEAU** Structure par feature
 - `src/utils/cn.js` - Utilitaire Tailwind
 - `src/utils/apiHandler.js` - Wrapper API uniforme
 - `src/contexts/AuthContext.jsx` - Context bien documenté
 
 ### Fichiers prioritaires à refactorer
-- `src/pages/admin/Users.jsx` (1593 lignes)
+- `src/pages/admin/Users.jsx` (1593 lignes) - Importer depuis `@features/users`
 - `src/pages/admin/Projects.jsx` (1326 lignes)
 - `src/services/documents.service.js` (759 lignes)
 
 ---
 
+## Prochaines Étapes Recommandées
+
+1. **Modifier `Users.jsx`** pour importer les composants depuis `@features/users/components`
+2. **Migrer les imports `formatDate`** vers `@shared/utils/dateFormatter`
+3. **Créer `features/projects/`** sur le même modèle que `features/users/`
+4. **Ajouter les premiers tests** sur les hooks et utilitaires
+
+---
+
 *Rapport généré automatiquement lors de l'audit technique*
+*Dernière mise à jour : 04/01/2026 - Quick Wins appliqués*

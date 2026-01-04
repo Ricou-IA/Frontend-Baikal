@@ -16,6 +16,9 @@ export default defineConfig({
       '@config': path.resolve(__dirname, './src/config'),
       '@utils': path.resolve(__dirname, './src/utils'),
       '@lib': path.resolve(__dirname, './src/lib'),
+      // Option B - Structure par feature (préparation)
+      '@features': path.resolve(__dirname, './src/features'),
+      '@shared': path.resolve(__dirname, './src/shared'),
     },
   },
   server: {
