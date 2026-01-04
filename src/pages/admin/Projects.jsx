@@ -53,6 +53,9 @@ import {
     RotateCcw,
 } from 'lucide-react';
 
+// Import centralisé depuis @shared/utils (architecture Option B)
+import { formatDate } from '@shared/utils';
+
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
@@ -77,15 +80,6 @@ const STATUS_FILTERS = [
 // ============================================================================
 // UTILITAIRES
 // ============================================================================
-
-function formatDate(dateStr) {
-    if (!dateStr) return '-';
-    return new Date(dateStr).toLocaleDateString('fr-FR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-    });
-}
 
 function getStatusConfig(status) {
     return PROJECT_STATUSES.find(s => s.value === status) || PROJECT_STATUSES[0];

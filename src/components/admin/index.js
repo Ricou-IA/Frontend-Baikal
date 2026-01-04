@@ -2,12 +2,16 @@
  * Composants Admin - Baikal Console
  * ============================================================================
  * Export centralisé des composants d'administration.
- * 
+ *
+ * NOTE: Les composants utilisateurs ont été migrés vers @features/users/
+ * - MembersList → @features/users (supprimé - code mort)
+ * - UsersList → @features/users (supprimé - code mort)
+ * - InviteMemberModal → @features/users (supprimé - deprecated)
+ *
  * @example
- * import { 
+ * import {
  *   AdminDashboard,
- *   MembersList, 
- *   OrganizationSettings, 
+ *   OrganizationSettings,
  *   LegifranceAdmin,
  *   IndexationSettings,
  * } from '@/components/admin';
@@ -22,17 +26,6 @@
 export { default as AdminDashboard } from './AdminDashboard';
 
 // ============================================================================
-// GESTION DES MEMBRES
-// ============================================================================
-
-// Liste des membres de l'organisation
-export { default as MembersList } from './MembersList';
-
-// Modal d'invitation de membre (ancien système - deprecated)
-// TODO: Remplacer par le nouveau système d'invitations par code
-export { default as InviteMemberModal } from './InviteMemberModal';
-
-// ============================================================================
 // GESTION DE L'ORGANISATION
 // ============================================================================
 
@@ -45,9 +38,6 @@ export { default as OrganizationSettings } from './OrganizationSettings';
 
 // Switcher de profil (impersonation)
 export { default as ProfileSwitcher } from './ProfileSwitcher';
-
-// Liste de tous les utilisateurs (super_admin)
-export { default as UsersList } from './UsersList';
 
 // Administration Légifrance (super_admin)
 export { default as LegifranceAdmin } from './LegifranceAdmin';
@@ -64,8 +54,8 @@ export { default as IndexationSettings } from './IndexationSettings';
 // ============================================================================
 
 // Re-export des composants Légifrance
-export { 
-  LegifranceCodesList, 
-  SyncModal, 
-  SyncHistoryModal 
+export {
+  LegifranceCodesList,
+  SyncModal,
+  SyncHistoryModal
 } from './legifrance';
