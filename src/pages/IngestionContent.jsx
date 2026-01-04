@@ -16,7 +16,6 @@
  * 
  * MODIFICATIONS V2 (Phase 1.1):
  * - Catégories filtrées par target_apps (app sélectionnée)
- * - category stocke le SLUG au lieu de l'ID
  * - Dropdown affiche label + description
  * 
  * MODIFICATIONS 23/12/2025:
@@ -26,6 +25,7 @@
  * 
  * MODIFICATIONS 04/01/2026:
  * - Ajout header uniforme style Dashboard (icône + titre + sous-titre)
+ * - FIX: category stocke l'UUID (cat.id) au lieu du slug pour cohérence avec ARPET
  * ============================================================================
  */
 
@@ -432,7 +432,7 @@ function UploadZone({
 
 // ============================================================================
 // COMPOSANT FORMULAIRE METADATA
-// V2: Catégories filtrées par app, slug stocké, label + description affichés
+// FIX 04/01/2026: category stocke l'UUID (cat.id) au lieu du slug
 // ============================================================================
 
 function MetadataForm({ metadata, onChange, errors, categories, loadingCategories, selectedAppId, selectedLayer }) {
@@ -440,7 +440,7 @@ function MetadataForm({ metadata, onChange, errors, categories, loadingCategorie
         onChange({ ...metadata, [field]: value });
     };
 
-    // ⭐ V2: Filtrer les catégories par target_apps ET target_layers
+    // Filtrer les catégories par target_apps ET target_layers
     const filteredCategories = useMemo(() => {
         if (!selectedAppId || !selectedLayer || !categories) return [];
         
@@ -476,7 +476,7 @@ function MetadataForm({ metadata, onChange, errors, categories, loadingCategorie
                 {errors?.title && <p className="text-sm text-red-400 mt-1 font-mono">{errors.title}</p>}
             </div>
 
-            {/* Catégorie - V2: slug stocké, filtré par app */}
+            {/* Catégorie - FIX: UUID (cat.id) au lieu du slug */}
             <div>
                 <label className="block text-xs font-mono text-baikal-text mb-1.5 uppercase">
                     Catégorie
@@ -489,7 +489,7 @@ function MetadataForm({ metadata, onChange, errors, categories, loadingCategorie
                 >
                     <option value="">Sélectionner une catégorie</option>
                     {filteredCategories.map((cat) => (
-                        <option key={cat.id} value={cat.slug}>
+                        <option key={cat.id} value={cat.id}>
                             {cat.label}
                         </option>
                     ))}
@@ -548,7 +548,6 @@ function LegifranceInterface({ selectedVertical, selectedLayer, verticals }) {
         return matchSearch && matchDomain;
     });
 
-    // ⭐ FIX: Utiliser code.id au lieu de code.code_id
     const toggleCode = (codeId) => {
         setSelectedCodes(prev => 
             prev.includes(codeId) 
@@ -561,7 +560,7 @@ function LegifranceInterface({ selectedVertical, selectedLayer, verticals }) {
         if (selectedCodes.length === filteredCodes.length) {
             setSelectedCodes([]);
         } else {
-            setSelectedCodes(filteredCodes.map(c => c.id));  // ⭐ FIX: c.id au lieu de c.code_id
+            setSelectedCodes(filteredCodes.map(c => c.id));
         }
     };
 
@@ -756,7 +755,7 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
     const [activeSource, setActiveSource] = useState('file-upload');
     const [selectedApp, setSelectedApp] = useState(null);
     const [selectedLayer, setSelectedLayer] = useState('org');
-    const [selectedOrg, setSelectedOrg] = useState(null);  // ⭐ NOUVEAU
+    const [selectedOrg, setSelectedOrg] = useState(null);
     const [selectedProjects, setSelectedProjects] = useState([]);
 
     // États - Upload fichier
@@ -788,7 +787,7 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
         return profile?.app_id || null;
     }, [isSuperAdmin, selectedApp, profile?.app_id]);
 
-    // ⭐ NOUVEAU: Org ID effectif selon le rôle et le layer
+    // Org ID effectif selon le rôle et le layer
     const effectiveOrgId = useMemo(() => {
         // Layer "app" = pas d'org (cross-org)
         if (selectedLayer === 'app') {
@@ -834,7 +833,7 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
         loadReferentiels();
     }, [isSuperAdmin]);
 
-    // ⭐ NOUVEAU: Charger les organisations (super_admin uniquement)
+    // Charger les organisations (super_admin uniquement)
     useEffect(() => {
         async function loadOrganizations() {
             if (!isSuperAdmin) {
@@ -859,7 +858,7 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
         loadOrganizations();
     }, [isSuperAdmin]);
 
-    // ⭐ MODIFIÉ: Charger les projets selon l'org effective
+    // Charger les projets selon l'org effective
     useEffect(() => {
         async function loadProjects() {
             // Pas de chargement si layer != project
@@ -910,7 +909,7 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
         setMetadata(prev => ({ ...prev, category: '' }));
     }, [effectiveAppId, selectedLayer]);
 
-    // ⭐ NOUVEAU: Reset org sélectionnée quand on change de layer vers "app"
+    // Reset org sélectionnée quand on change de layer vers "app"
     useEffect(() => {
         if (selectedLayer === 'app') {
             setSelectedOrg(null);
@@ -956,7 +955,7 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
             setMetadata(prev => ({ ...prev, title: nameWithoutExt }));
         }
 
-        // ⭐ MODIFIÉ: Utiliser effectiveOrgId pour la vérification de doublon
+        // Vérification doublon avec effectiveOrgId
         if (effectiveOrgId) {
             setIsCheckingDuplicate(true);
             try {
@@ -983,7 +982,7 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
         if (isSuperAdmin && !selectedApp) {
             newErrors.app = 'Veuillez sélectionner une application';
         }
-        // ⭐ NOUVEAU: Validation org pour layers org et project (super_admin)
+        // Validation org pour layers org et project (super_admin)
         if (isSuperAdmin && (selectedLayer === 'org' || selectedLayer === 'project') && !selectedOrg) {
             newErrors.org = 'Veuillez sélectionner une organisation';
         }
@@ -1012,7 +1011,7 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
                 file,
                 layer: selectedLayer,
                 appId: targetAppId,
-                orgId: effectiveOrgId,  // ⭐ MODIFIÉ: Utiliser effectiveOrgId
+                orgId: effectiveOrgId,
                 userId: profile?.id,
                 projectIds: selectedLayer === 'project' ? selectedProjects : null,
                 metadata: {
@@ -1053,20 +1052,18 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
 
     const isSelectionValid = (isSuperAdmin ? selectedApp : effectiveAppId) && selectedLayer;
 
-    // ⭐ NOUVEAU: Déterminer si on doit afficher le sélecteur d'org
+    // Déterminer si on doit afficher le sélecteur d'org
     const showOrgSelector = isSuperAdmin && (selectedLayer === 'org' || selectedLayer === 'project');
 
-    // ⭐ NOUVEAU: Trouver le nom de l'org pour affichage (org_admin)
+    // Trouver le nom de l'org pour affichage (org_admin)
     const currentOrgName = useMemo(() => {
         if (isSuperAdmin) return null;
-        // Pour org_admin, on pourrait récupérer le nom depuis le profil ou les orgs
-        // Pour l'instant on affiche juste l'ID
         return orgId;
     }, [isSuperAdmin, orgId]);
 
     return (
         <div className="space-y-6">
-            {/* ⭐ NOUVEAU: Header uniforme style Dashboard */}
+            {/* Header uniforme style Dashboard */}
             <div className="flex items-center justify-between">
                 <div>
                     <h2 className="text-xl font-mono font-semibold text-white flex items-center gap-2">
@@ -1149,7 +1146,7 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
                             availableLayers={availableLayers}
                         />
 
-                        {/* ⭐ NOUVEAU: Sélecteur d'organisation (super_admin + layers org/project) */}
+                        {/* Sélecteur d'organisation (super_admin + layers org/project) */}
                         {showOrgSelector && (
                             <div className="space-y-3">
                                 <label className="block text-xs font-mono text-baikal-text uppercase">
@@ -1167,7 +1164,7 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
                             </div>
                         )}
 
-                        {/* ⭐ NOUVEAU: Affichage de l'org pour org_admin (lecture seule) - layers org/project */}
+                        {/* Affichage de l'org pour org_admin (lecture seule) - layers org/project */}
                         {!isSuperAdmin && (selectedLayer === 'org' || selectedLayer === 'project') && (
                             <div className="space-y-3">
                                 <label className="block text-xs font-mono text-baikal-text uppercase">
@@ -1197,7 +1194,7 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
                             </>
                         )}
 
-                        {/* ⭐ NOUVEAU: Message si layer project mais pas d'org */}
+                        {/* Message si layer project mais pas d'org */}
                         {selectedLayer === 'project' && !effectiveOrgId && isSuperAdmin && (
                             <div className="p-4 bg-baikal-surface border border-baikal-border rounded-md text-center">
                                 <Building2 className="w-8 h-8 text-baikal-text mx-auto mb-2" />

@@ -3,6 +3,11 @@
  * ============================================================================
  * Point d'entrée de l'application React.
  * Configure le Router et les Guards de protection des routes.
+ * 
+ * MODIFICATIONS 04/01/2026:
+ * - Suppression route /admin/documents (dette technique)
+ * - Suppression route /admin/ingestion (dette technique)
+ * - L'ingestion se fait désormais via /admin → onglet "Connaissances"
  * ============================================================================
  */
 
@@ -22,9 +27,7 @@ import Onboarding from './pages/Onboarding';
 import Dashboard from './pages/Dashboard';
 import Settings from './pages/Settings';
 import Admin from './pages/Admin';
-import Documents from './pages/Documents';
 import Validation from './pages/Validation';
-import IngestionPremium from './pages/IngestionPremium';
 import Prompts from './pages/Prompts';
 import PromptForm from './pages/PromptForm';
 import Baikal from './pages/marketing/Baikal';
@@ -124,22 +127,12 @@ function App() {
           {/* ROUTES ADMIN (auth + onboarding + rôle admin) */}
           {/* ============================================ */}
           
-          {/* Admin - Page principale */}
+          {/* Admin - Page principale (inclut onglet Connaissances pour l'ingestion) */}
           <Route
             path="/admin"
             element={
               <AdminRoute>
                 <Admin />
-              </AdminRoute>
-            }
-          />
-
-          {/* Admin - Documents */}
-          <Route
-            path="/admin/documents"
-            element={
-              <AdminRoute>
-                <Documents />
               </AdminRoute>
             }
           />
@@ -150,16 +143,6 @@ function App() {
             element={
               <AdminRoute>
                 <Validation />
-              </AdminRoute>
-            }
-          />
-
-          {/* Admin - Ingestion Premium */}
-          <Route
-            path="/admin/ingestion"
-            element={
-              <AdminRoute>
-                <IngestionPremium />
               </AdminRoute>
             }
           />
