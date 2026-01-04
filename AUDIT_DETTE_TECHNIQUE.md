@@ -69,10 +69,10 @@ formatRelative(new Date());         // "il y a 2 heures"
 
 | Catégorie | Sévérité | Impact | Statut |
 |-----------|----------|--------|--------|
-| Fichiers monolithiques | CRITIQUE | Maintenabilité nulle | 🟡 Users.jsx partiellement migré |
-| Duplication de code | CRITIQUE | Maintenance x10 | 🟡 dateFormatter créé |
+| Fichiers monolithiques | CRITIQUE | Maintenabilité nulle | ✅ Users.jsx migré (1593→675 lignes) |
+| Duplication de code | CRITIQUE | Maintenance x10 | ✅ formatDate + ConfirmModal résolus |
 | Absence de tests | CRITIQUE | Qualité non garantie | 🔴 Non résolu |
-| Code mort | HAUTE | Confusion, imports cassés | ✅ **RÉSOLU** |
+| Code mort | HAUTE | Confusion, imports cassés | ✅ **RÉSOLU** (5 fichiers supprimés) |
 | Console.log en production | HAUTE | Sécurité/Performance | 🔴 Non résolu |
 | Absence de TypeScript | HAUTE | Bugs runtime | 🔴 Non résolu |
 | Styles inline Tailwind | MOYENNE | Réutilisabilité faible | 🔴 Non résolu |
@@ -111,27 +111,29 @@ Les composants suivants ont été extraits vers `src/features/users/components/`
 
 ### 2.1 Fonction `formatDate` - 10+ duplications
 
-**Statut** : 🟡 Utilitaire créé, migration en cours
+**Statut** : ✅ Utilitaire créé, migrations principales terminées
 
 Fichier centralisé : `src/shared/utils/dateFormatter.js`
 
-Fichiers à migrer :
-- `src/pages/admin/Users.jsx:81-88`
-- `src/pages/admin/Projects.jsx:83-88`
-- `src/pages/admin/Invitations.jsx:464`
-- `src/components/admin/LegifranceAdmin.jsx:29`
-- `src/components/admin/PromptsTable.jsx:192`
-- `src/config/rag-layers.config.js:387`
-- Et 3+ autres fichiers
+Fichiers migrés :
+- ✅ `src/pages/admin/Users.jsx` → Composants extraits vers @features/users
+- ✅ `src/pages/admin/Projects.jsx` → `import { formatDate } from '@shared/utils'`
+- ✅ `src/pages/admin/Invitations.jsx` → `import { formatDate } from '@shared/utils'`
+- ✅ `src/components/admin/PromptsTable.jsx` → `import { formatDate } from '@shared/utils'`
+- ✅ `src/components/admin/OrganizationSettings.jsx` → `import { formatDateLong } from '@shared/utils'`
+
+Fichiers conservés (formats spécifiques) :
+- `src/components/admin/LegifranceAdmin.jsx` - Format 'short' dans StatCard
+- `src/config/rag-layers.config.js` - formatRelativeDate personnalisé
+- `src/components/admin/legifrance/` - Formats courts spécifiques UI
 
 ### 2.2 Composant ConfirmModal - 2 implémentations
 
-| Fichier | Lignes | Features |
-|---------|--------|----------|
-| `src/components/ui/Modal.jsx:204-245` | 42 | Basique (variant, loading) |
-| `src/components/ui/ConfirmModal.jsx` | 201 | Complet (itemPreview, showReasonField, icon, variants) |
+**Statut** : ✅ RÉSOLU
 
-**Recommandation**: Supprimer ConfirmModal de Modal.jsx, garder le fichier séparé.
+- ✅ Supprimé de `Modal.jsx` (42 lignes retirées)
+- ✅ Conservé uniquement dans `ConfirmModal.jsx` (version complète)
+- ✅ Import mis à jour dans `Prompts.jsx`
 
 ### 2.3 Badges définis localement
 
@@ -286,7 +288,7 @@ Ces dépendances TypeScript sont inutiles sans TypeScript configuré.
 
 ## Plan de Remédiation - Mise à Jour
 
-### Phase 1 - Quick Wins ✅ PARTIELLEMENT FAIT
+### Phase 1 - Quick Wins ✅ TERMINÉ
 
 | Action | Statut |
 |--------|--------|
@@ -295,8 +297,9 @@ Ces dépendances TypeScript sont inutiles sans TypeScript configuré.
 | Créer `dateFormatter.js` centralisé | ✅ Fait |
 | Extraire composants Users.jsx | ✅ Fait (8 composants) |
 | Supprimer code mort | ✅ Fait (5 fichiers) |
-| Migrer imports formatDate | 🔴 À faire (10+ fichiers) |
-| Fusionner ConfirmModal | 🔴 À faire |
+| Migrer imports formatDate | ✅ Fait (5 fichiers migrés) |
+| Fusionner ConfirmModal | ✅ Fait (supprimé de Modal.jsx) |
+| Connecter Users.jsx à @features/users | ✅ Fait (1593→675 lignes) |
 
 ### Phase 2 - Refactoring (3-4 sprints)
 
@@ -330,10 +333,11 @@ Ces dépendances TypeScript sont inutiles sans TypeScript configuré.
 
 | Métrique | Avant | Après Quick Wins | Cible |
 |----------|-------|------------------|-------|
-| Fichiers > 500 lignes | 12 | 12 | 0 |
+| Fichiers > 500 lignes | 12 | 11 (-1: Users.jsx) | 0 |
 | Couverture de tests | 0% | 0% | 70% |
 | Console.log en prod | 206 | 206 | 0 |
-| Duplications formatDate | 10+ | 10+ (utilitaire créé) | 1 |
+| Duplications formatDate | 10+ | 5 (migrés vers @shared) | 1 |
+| ConfirmModal dupliqués | 2 | 1 | 1 |
 | Composants avec TypeScript | 0% | 0% | 100% |
 | Code mort | 5 fichiers | 0 fichiers | 0 |
 | Composants Users extraits | 0 | 8 | 8 |
@@ -351,7 +355,7 @@ Ces dépendances TypeScript sont inutiles sans TypeScript configuré.
 - `src/contexts/AuthContext.jsx` - Context bien documenté
 
 ### Fichiers prioritaires à refactorer
-- `src/pages/admin/Users.jsx` (1593 lignes) - Importer depuis `@features/users`
+- ✅ `src/pages/admin/Users.jsx` (1593→675 lignes) - Migrés vers `@features/users`
 - `src/pages/admin/Projects.jsx` (1326 lignes)
 - `src/services/documents.service.js` (759 lignes)
 
@@ -359,12 +363,14 @@ Ces dépendances TypeScript sont inutiles sans TypeScript configuré.
 
 ## Prochaines Étapes Recommandées
 
-1. **Modifier `Users.jsx`** pour importer les composants depuis `@features/users/components`
-2. **Migrer les imports `formatDate`** vers `@shared/utils/dateFormatter`
-3. **Créer `features/projects/`** sur le même modèle que `features/users/`
-4. **Ajouter les premiers tests** sur les hooks et utilitaires
+1. ✅ ~~**Modifier `Users.jsx`** pour importer les composants depuis `@features/users/components`~~
+2. ✅ ~~**Migrer les imports `formatDate`** vers `@shared/utils/dateFormatter`~~
+3. ✅ ~~**Fusionner ConfirmModal** - supprimé de Modal.jsx~~
+4. **Créer `features/projects/`** sur le même modèle que `features/users/`
+5. **Ajouter les premiers tests** sur les hooks et utilitaires
+6. **Nettoyer les console.log** avec un logger centralisé
 
 ---
 
 *Rapport généré automatiquement lors de l'audit technique*
-*Dernière mise à jour : 04/01/2026 - Quick Wins appliqués*
+*Dernière mise à jour : 04/01/2026 - Quick Wins Phase 2 terminée*

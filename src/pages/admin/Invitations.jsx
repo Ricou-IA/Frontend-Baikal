@@ -29,6 +29,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { invitationsService, organizationService } from '../../services';
+import { formatDate } from '@shared/utils';
 import {
     Mail,
     Plus,
@@ -460,8 +461,8 @@ function CreateInvitationModal({ isOpen, onClose, organizations, defaultOrgId, o
                                 </li>
                                 <li>
                                     Expiration : <span className="text-white">
-                                        {createdInvitation.expires_at 
-                                            ? new Date(createdInvitation.expires_at).toLocaleDateString('fr-FR')
+                                        {createdInvitation.expires_at
+                                            ? formatDate(createdInvitation.expires_at)
                                             : 'Sans expiration'
                                         }
                                     </span>
