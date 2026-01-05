@@ -1,7 +1,9 @@
 // ╔══════════════════════════════════════════════════════════════════════════════╗
-// ║  BAIKAL-LIBRARIAN v10.4.0 - Support Meeting Transcripts                      ║
+// ║  BAIKAL-LIBRARIAN v10.4.1 - INSTRUMENTED (Timing Logs)                       ║
 // ║  Edge Function Supabase                                                      ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
+// ║  v10.4.1:                                                                    ║
+// ║  - INSTRUMENTATION: Ajout logs de timing pour diagnostic performance         ║
 // ║  v10.4.0:                                                                    ║
 // ║  - NEW: Support chunks meeting_transcript (sans source_file_id)              ║
 // ║  - NEW: Injection contenu meetings dans prompt Gemini                        ║
@@ -1255,7 +1257,17 @@ function areFileIdsSame(ids1: string[], ids2: string[]): boolean {
 // ============================================================================
 
 serve(async (req) => {
+  // ════════════════════════════════════════════════════════════════════════════
+  // v10.4.1: INSTRUMENTATION TIMING
+  // ════════════════════════════════════════════════════════════════════════════
   const startTime = Date.now()
+  const timings: Record<string, number> = {}
+  
+  const mark = (label: string) => {
+    timings[label] = Date.now() - startTime
+    console.log(`[librarian] ⏱️ ${label}: ${timings[label]}ms`)
+  }
+  // ════════════════════════════════════════════════════════════════════════════
 
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders })
@@ -1283,7 +1295,7 @@ serve(async (req) => {
     if (!query?.trim()) return errorResponse("Query is required")
     if (!user_id) return errorResponse("user_id is required")
 
-    console.log(`[librarian] v10.4.0 - Query: "${query.substring(0, 50)}..."`)
+    console.log(`[librarian] v10.4.1 INSTRUMENTED - Query: "${query.substring(0, 50)}..."`)
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
@@ -1299,6 +1311,8 @@ serve(async (req) => {
           const config = buildAgentConfig(libContext.parameters)
           const conversationHistory = formatConversationHistory(libContext)
 
+          mark('1_context')  // ⏱️ TIMING
+
           console.log(`[librarian] Contexte projet: ${libContext.projectIdentity ? 'OUI' : 'NON'}`)
           console.log(`[librarian] Config source: ${libContext.configSource}`)
 
@@ -1310,6 +1324,8 @@ serve(async (req) => {
           sendSSE(controller, 'step', { step: 'embedding', message: '🔢 Vectorisation...' })
           const queryForEmbedding = rewritten_query || query
           const queryEmbedding = await generateEmbedding(queryForEmbedding)
+
+          mark('2_embedding')  // ⏱️ TIMING
 
           // ================================================================
           // 3. RECHERCHE MÉMOIRE COLLECTIVE
@@ -1328,6 +1344,8 @@ serve(async (req) => {
               project_id,
               config
             )
+
+            mark('3_memory_search')  // ⏱️ TIMING
 
             if (memoryResult) {
               console.log(`[librarian] 🎯 MEMORY HIT`)
@@ -1348,6 +1366,9 @@ serve(async (req) => {
               const processingTime = Date.now() - startTime
               await addMessage(supabase, libContext.conversationId, 'assistant', memoryResult.answer_text, [], 'memory', processingTime)
 
+              // ⏱️ TIMING FINAL (memory path)
+              console.log(`[librarian] ⏱️ TOTAL (memory): ${JSON.stringify(timings)}`)
+
               sendSSE(controller, 'sources', {
                 sources: [{
                   id: memoryResult.id,
@@ -1367,6 +1388,7 @@ serve(async (req) => {
                 qa_memory_similarity: memoryResult.similarity,
                 qa_memory_is_expert: memoryResult.is_expert_faq,
                 qa_memory_trust_score: memoryResult.trust_score,
+                timings,  // ⏱️ Inclure les timings dans la réponse
               })
 
               sendSSE(controller, 'done', {})
@@ -1375,6 +1397,7 @@ serve(async (req) => {
             }
           } else {
             console.log(`[librarian] Recherche mémoire SKIPPED: pas d'org_id disponible`)
+            mark('3_memory_search_skipped')  // ⏱️ TIMING
           }
 
           // ================================================================
@@ -1389,6 +1412,8 @@ serve(async (req) => {
             project_id, libContext.effectiveAppId, config, layerFlags,
             filter_source_types, null
           )
+
+          mark('4_sql_search')  // ⏱️ TIMING - LE SUSPECT PRINCIPAL
 
           // v10.4.0: Message avec info meetings
           const meetingInfo = searchResult.meetingChunks.length > 0 
@@ -1432,6 +1457,7 @@ serve(async (req) => {
           // ================================================================
           let fullResponse = ''
           let cacheWasReused = false
+          let firstTokenMarked = false  // ⏱️ Flag pour premier token
           
           // v10.4.0: Construire le contexte meetings
           const meetingContext = buildMeetingContext(searchResult.meetingChunks);
@@ -1483,6 +1509,8 @@ serve(async (req) => {
                 cacheName = conv.gemini_cache_name
                 cacheWasReused = true
                 console.log(`[librarian] ✅ Cache réutilisé: ${cacheName}`)
+                mark('5_google_upload_skipped')  // ⏱️ TIMING
+                mark('6_gemini_cache_reused')  // ⏱️ TIMING
               } else {
                 // Pas de cache valide OU fichiers différents → Créer nouveau
                 if (cacheNotExpired && !sameFiles) {
@@ -1497,6 +1525,8 @@ serve(async (req) => {
                   searchResult.files.map(f => getOrUploadGoogleFile(supabase, f, config.google_file_ttl_hours))
                 )
 
+                mark('5_google_upload')  // ⏱️ TIMING
+
                 // Créer le cache avec le prompt déjà construit
                 cacheName = await createGeminiCache(
                   searchResult.files,
@@ -1505,6 +1535,8 @@ serve(async (req) => {
                   config.gemini_model,
                   config.gemini_cache_ttl_seconds
                 )
+
+                mark('6_gemini_cache')  // ⏱️ TIMING
 
                 // Sauvegarder en DB avec les file_ids
                 const cacheExpiresAt = new Date(Date.now() + config.gemini_cache_ttl_seconds * 1000).toISOString()
@@ -1535,6 +1567,11 @@ serve(async (req) => {
               )
 
               for await (const token of generator) {
+                // ⏱️ TIMING: Premier token
+                if (!firstTokenMarked) {
+                  mark('7_first_token')
+                  firstTokenMarked = true
+                }
                 fullResponse += token
                 sendSSE(controller, 'token', { content: token })
               }
@@ -1559,12 +1596,20 @@ serve(async (req) => {
               const generator = generateWithOpenAIStream(query, context, conversationHistory, systemPrompt, config)
 
               for await (const token of generator) {
+                // ⏱️ TIMING: Premier token
+                if (!firstTokenMarked) {
+                  mark('7_first_token')
+                  firstTokenMarked = true
+                }
                 fullResponse += token
                 sendSSE(controller, 'token', { content: token })
               }
             }
           } else {
             // Mode chunks
+            mark('5_google_upload_na')  // ⏱️ TIMING (N/A pour chunks)
+            mark('6_gemini_cache_na')  // ⏱️ TIMING (N/A pour chunks)
+
             const systemPrompt = buildFinalPrompt(
               libContext.systemPrompt,
               FALLBACK_SYSTEM_PROMPT,
@@ -1577,6 +1622,11 @@ serve(async (req) => {
             const generator = generateWithOpenAIStream(query, context, conversationHistory, systemPrompt, config)
 
             for await (const token of generator) {
+              // ⏱️ TIMING: Premier token
+              if (!firstTokenMarked) {
+                mark('7_first_token')
+                firstTokenMarked = true
+              }
               fullResponse += token
               sendSSE(controller, 'token', { content: token })
             }
@@ -1609,6 +1659,10 @@ serve(async (req) => {
           const processingTime = Date.now() - startTime
           await addMessage(supabase, libContext.conversationId, 'assistant', fullResponse, finalSources, effectiveMode, processingTime)
 
+          // ⏱️ TIMING FINAL
+          mark('8_total')
+          console.log(`[librarian] ⏱️ TOTAL: ${JSON.stringify(timings)}`)
+
           sendSSE(controller, 'sources', {
             sources: finalSources,
             conversation_id: libContext.conversationId,
@@ -1621,6 +1675,7 @@ serve(async (req) => {
             total_pages: searchResult.totalPages,
             cache_reused: cacheWasReused,
             intent: intent || null,
+            timings,  // ⏱️ Inclure les timings dans la réponse SSE
           })
 
           sendSSE(controller, 'done', {})
@@ -1628,6 +1683,8 @@ serve(async (req) => {
 
         } catch (error) {
           console.error('[librarian] Error:', error)
+          // ⏱️ TIMING sur erreur
+          console.log(`[librarian] ⏱️ ERROR at ${Date.now() - startTime}ms: ${JSON.stringify(timings)}`)
           sendSSE(controller, 'error', { error: error instanceof Error ? error.message : 'Internal error' })
           controller.close()
         }

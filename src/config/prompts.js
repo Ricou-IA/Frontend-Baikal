@@ -2,7 +2,7 @@
  * Configuration Prompts - Core RAG Engine
  * ============================================================================
  * Constantes et configuration pour la gestion des prompts d'agents RAG.
- * VERSION: 3.1.0 - documents_cles_slug figé comme constante système
+ * VERSION: 3.2.0 - Ajout Gemini 2.5 Flash-Lite
  * ============================================================================
  */
 
@@ -115,11 +115,25 @@ export const GEMINI_MODELS = Object.freeze({
     id: 'gemini-2.0-flash',
     label: 'Gemini 2.0 Flash',
     contextWindow: 1000000,
+    outputTokens: 8192,
+  },
+  'gemini-2.0-flash-lite': {
+    id: 'gemini-2.0-flash-lite',
+    label: 'Gemini 2.0 Flash-Lite (économique)',
+    contextWindow: 1000000,
+    outputTokens: 8192,
   },
   'gemini-2.5-flash': {
     id: 'gemini-2.5-flash',
     label: 'Gemini 2.5 Flash (recommandé)',
     contextWindow: 1000000,
+    outputTokens: 65536,
+  },
+  'gemini-2.5-flash-lite': {
+    id: 'gemini-2.5-flash-lite',
+    label: 'Gemini 2.5 Flash-Lite (ultra rapide)',
+    contextWindow: 1000000,
+    outputTokens: 65536,
   },
 });
 
@@ -148,7 +162,7 @@ export const DEFAULT_PARAMETERS = Object.freeze({
   enable_concept_expansion: true,
   
   // Gemini
-  gemini_model: 'gemini-2.0-flash',
+  gemini_model: 'gemini-2.5-flash',  // v3.2.0: Mis à jour vers 2.5 Flash
   gemini_max_files: 5,
   gemini_max_pages: 500,
   cache_ttl_minutes: 60,
