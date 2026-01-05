@@ -8,6 +8,7 @@
  * - Suppression route /admin/documents (dette technique)
  * - Suppression route /admin/ingestion (dette technique)
  * - L'ingestion se fait désormais via /admin → onglet "Connaissances"
+ * - Ajout route /admin/indexation pour monitoring queue ingestion
  * ============================================================================
  */
 
@@ -38,6 +39,7 @@ import Organizations from './pages/admin/Organizations';
 import Invitations from './pages/admin/Invitations';
 import UsersPage from './pages/admin/Users';
 import Projects from './pages/admin/Projects';
+import Ingestion from './pages/admin/Ingestion';
 
 function App() {
   return (
@@ -217,6 +219,16 @@ function App() {
             element={
               <AdminRoute>
                 <Projects />
+              </AdminRoute>
+            }
+          />
+
+          {/* Admin - Ingestion Queue (super_admin) */}
+          <Route
+            path="/admin/ingestion"
+            element={
+              <AdminRoute>
+                <Ingestion />
               </AdminRoute>
             }
           />

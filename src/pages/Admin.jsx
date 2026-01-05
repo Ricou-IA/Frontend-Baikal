@@ -12,6 +12,9 @@
  * Accès :
  * - super_admin : tout voir, toutes les orgs, toutes les couches
  * - org_admin : sa propre org, couche org uniquement
+ * 
+ * MODIFICATION 04/01/2026:
+ * - Ajout route /admin/ingestion pour monitoring queue
  * ============================================================================
  */
 

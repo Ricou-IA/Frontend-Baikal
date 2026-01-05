@@ -20,6 +20,11 @@
  * MODIFICATIONS V2 (Phase 1.1):
  * - Ajout document_title à la RACINE du payload webhook
  * - Ajout category_slug à la RACINE du payload webhook
+ * 
+ * MODIFICATIONS 04/01/2026 - Intégration Edge Function:
+ * - Suppression appel webhook N8N direct
+ * - Ajout création job dans sources.ingestion_queue
+ * - Appel Edge Function trigger-ingestion (flux unifié ARPET/Baikal)
  * ============================================================================
  */
 
@@ -30,9 +35,6 @@ import { supabase } from '../lib/supabaseClient';
 // ============================================================================
 
 const DEFAULT_PAGE_SIZE = 20;
-
-// URL du webhook N8N (configurable via variables d'environnement)
-const N8N_WEBHOOK_URL = import.meta.env.VITE_N8N_INGEST_WEBHOOK_URL || 'https://n8n.srv1102213.hstgr.cloud/webhook/ingest-documents-console';
 
 // ============================================================================
 // UTILITAIRES
@@ -82,6 +84,35 @@ function generateFilenameClean(title, originalFilename) {
     .substring(0, 100);               // Limiter la longueur
   
   return ext ? `${slug}.${ext}` : slug;
+}
+
+/**
+ * Crée un job dans la queue d'ingestion
+ * @param {string} fileId - ID du fichier source
+ * @returns {Promise<{data: Object, error: Error|null}>}
+ */
+async function createIngestionJob(fileId) {
+  try {
+    const { data, error } = await supabase
+      .schema('sources')
+      .from('ingestion_queue')
+      .insert({
+        file_id: fileId,
+        status: 'queued',
+        attempts: 0,
+        max_attempts: 3,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    console.log('[documentsService] Ingestion job created:', data.id);
+    return { data, error: null };
+  } catch (error) {
+    console.error('[documentsService] createIngestionJob error:', error);
+    return { data: null, error };
+  }
 }
 
 // ============================================================================
@@ -407,20 +438,17 @@ export const documentsService = {
   },
 
   /**
-   * Upload complet d'un document (storage + metadata + webhook n8n)
+   * Upload complet d'un document (storage + metadata + Edge Function ingestion)
    * ============================================================================
-   * IMPORTANT: Le payload webhook inclut 'layer' à la RACINE
-   * pour être lu correctement par le nœud 0.2 de N8N
+   * FLUX UNIFIÉ ARPET / BAIKAL CONSOLE (04/01/2026)
    * 
-   * MODIFICATION 17/12/2025:
-   * - projectId → projectIds (tableau) pour support multi-projets
-   * - target_projects reçoit le tableau complet
-   * - project_id dans sources.files = premier projet du tableau (ou null)
+   * 1. Upload vers Storage (premium-sources)
+   * 2. Insert sources.files (processing_status: 'pending')
+   * 3. Insert sources.ingestion_queue (status: 'queued')
+   * 4. Appel Edge Function trigger-ingestion
    * 
-   * MODIFICATION V2 (Phase 1.1):
-   * - document_title ajouté à la RACINE du payload
-   * - category_slug ajouté à la RACINE du payload
-   * - filename_clean généré depuis le titre
+   * En cas d'erreur à l'étape 4, le fichier reste uploadé et le job
+   * peut être relancé via la page /admin/ingestion
    * ============================================================================
    * @param {Object} params - Paramètres d'upload
    * @param {File} params.file - Fichier à uploader
@@ -457,23 +485,30 @@ export const documentsService = {
       ? projectIds.filter(Boolean) 
       : (projectIds ? [projectIds] : []);
 
-    // ⭐ V2: Extraire document_title et category_slug depuis metadata
+    // V2: Extraire document_title et category_slug depuis metadata
     const documentTitle = metadata.title || null;
-    const categorySlug = metadata.category || null;  // metadata.category contient maintenant le SLUG
+    const categorySlug = metadata.category || null;
     
-    // ⭐ V2: Générer filename_clean depuis le titre
+    // V2: Générer filename_clean depuis le titre
     const filenameClean = generateFilenameClean(documentTitle, file.name);
 
     try {
-      // 1. Calculer le hash du fichier
+      // =========================================================================
+      // ÉTAPE 1: Calculer le hash du fichier
+      // =========================================================================
       const contentHash = await computeFileHash(file);
 
-      // 2. Upload vers Storage
+      // =========================================================================
+      // ÉTAPE 2: Upload vers Storage
+      // =========================================================================
       const { path, error: uploadError } = await this.uploadToStorage(file, userId, normalizedLayer, bucket);
       if (uploadError) throw uploadError;
 
-      // 3. Créer l'entrée source file
+      // =========================================================================
+      // ÉTAPE 3: Créer l'entrée source file (processing_status: 'pending')
+      // =========================================================================
       const { data: sourceFile, error: sourceError } = await supabase
+        .schema('sources')
         .from('files')
         .insert({
           original_filename: file.name,
@@ -491,7 +526,6 @@ export const documentsService = {
           metadata: {
             ...metadata,
             target_project_ids: normalizedProjectIds.length > 0 ? normalizedProjectIds : undefined,
-            // ⭐ V2: Stocker aussi dans les metadata de sources.files
             document_title: documentTitle,
             category_slug: categorySlug,
             filename_clean: filenameClean,
@@ -502,63 +536,65 @@ export const documentsService = {
 
       if (sourceError) throw sourceError;
 
-      // 4. Déclencher le traitement via webhook n8n
-      // =========================================================================
-      // ⭐ V2: document_title, category_slug, filename_clean à la RACINE
-      // =========================================================================
-      try {
-        const webhookResponse = await fetch(N8N_WEBHOOK_URL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            // Identifiants
-            user_id: userId,
-            org_id: orgId,
-            source_file_id: sourceFile.id,
+      console.log('[documentsService] Source file created:', sourceFile.id);
 
-            // Fichier
+      // =========================================================================
+      // ÉTAPE 4: Créer le job dans la queue d'ingestion
+      // =========================================================================
+      const { data: ingestionJob, error: jobError } = await createIngestionJob(sourceFile.id);
+      
+      if (jobError) {
+        console.error('[documentsService] Failed to create ingestion job:', jobError);
+        // On continue quand même - le fichier est uploadé, retry possible via admin
+      }
+
+      // =========================================================================
+      // ÉTAPE 5: Appeler l'Edge Function trigger-ingestion
+      // =========================================================================
+      if (ingestionJob) {
+        try {
+          const triggerPayload = {
+            // Champs directs attendus par Edge Function
+            queue_id: ingestionJob.id,
+            file_id: sourceFile.id,
             filename: file.name,
-            path: path,
             storage_bucket: bucket,
-
-            // LAYER À LA RACINE (pour nœud 0.2 N8N)
+            storage_path: path,
+            mime_type: file.type,
             layer: normalizedLayer,
-
-            // Ciblage RAG
-            target_apps: appId ? [appId] : null,
-            target_projects: normalizedProjectIds.length > 0 ? normalizedProjectIds : null,
-
-            // ⭐ V2: NOUVEAUX CHAMPS À LA RACINE
-            document_title: documentTitle,
-            category_slug: categorySlug,
-            filename_clean: filenameClean,
-
-            // Metadata enrichie (pour rétrocompatibilité)
+            org_id: orgId,
+            project_id: normalizedProjectIds[0] || null,
+            created_by: userId,
+            app_id: appId,
+            
+            // Metadata complète pour N8N
             metadata: {
               ...metadata,
-              source_file_id: sourceFile.id,
-              mime_type: file.type,
-              file_size: file.size,
-              layer: normalizedLayer,
-              quality_level: qualityLevel,
-              // ⭐ V2: Aussi dans metadata pour double sécurité
               document_title: documentTitle,
               category_slug: categorySlug,
               filename_clean: filenameClean,
+              quality_level: qualityLevel,
+              file_size: file.size,
+              target_project_ids: normalizedProjectIds.length > 0 ? normalizedProjectIds : undefined,
             },
-          }),
-        });
+          };
 
-        if (!webhookResponse.ok) {
-          const errorText = await webhookResponse.text().catch(() => 'No details');
-          console.warn('[documentsService] Webhook n8n failed:', webhookResponse.status, errorText);
-        } else {
-          console.log('[documentsService] Webhook n8n triggered successfully');
+          console.log('[documentsService] Calling trigger-ingestion with payload:', triggerPayload);
+
+          const { data: fnData, error: fnError } = await supabase.functions.invoke('trigger-ingestion', {
+            body: triggerPayload,
+          });
+
+          if (fnError) {
+            console.error('[documentsService] Edge Function error:', fnError);
+            // Non bloquant - le job reste en queue, retry possible via admin
+          } else {
+            console.log('[documentsService] Edge Function response:', fnData);
+          }
+        } catch (fnException) {
+          console.error('[documentsService] Edge Function exception:', fnException);
+          // Non bloquant - le job reste en queue, retry possible via admin
         }
-      } catch (webhookError) {
-        console.warn('[documentsService] Webhook n8n error:', webhookError);
       }
 
       return { data: sourceFile, path, error: null };
@@ -646,6 +682,7 @@ export const documentsService = {
       } = pagination;
 
       let query = supabase
+        .schema('sources')
         .from('files')
         .select(`
           id,
@@ -679,6 +716,7 @@ export const documentsService = {
 
       if (creatorIds.length > 0) {
         const { data: creatorsData } = await supabase
+          .schema('core')
           .from('profiles')
           .select('id, full_name')
           .in('id', creatorIds);
@@ -716,6 +754,7 @@ export const documentsService = {
   async checkDuplicate(contentHash, orgId) {
     try {
       const { data, error } = await supabase
+        .schema('sources')
         .from('files')
         .select('id, original_filename, created_at, created_by')
         .eq('content_hash', contentHash)

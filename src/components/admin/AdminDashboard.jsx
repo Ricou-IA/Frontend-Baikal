@@ -5,6 +5,7 @@
  * 
  * Affiche :
  * - Cards cliquables : Invitations, Users en attente, Total users, Orgs, Projets
+ * - Carte Ingestion Queue (super_admin) avec badge clignotant
  * - Répartition des utilisateurs par rôle (graphique)
  * - Actions rapides selon le contexte
  * 
@@ -18,6 +19,10 @@
  * - Ajout carte Invitations avec icône Mail
  * - Layout cards : icône et chiffre alignés, descriptions supprimées
  * 
+ * AJOUT 04/01/2026:
+ * - Carte Ingestion Queue avec badge orange clignotant (queued + failed)
+ * - Suppression QuickAction doublon (carte suffit)
+ * 
  * @example
  * <AdminDashboard 
  *   isSuperAdmin={true} 
@@ -28,6 +33,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { adminService } from '../../services';
+import { supabase } from '../../lib/supabaseClient';
 import {
   LayoutDashboard,
   Users,
@@ -44,6 +50,7 @@ import {
   Mail,
   ArrowRight,
   RefreshCw,
+  Database,
 } from 'lucide-react';
 
 // ============================================================================
@@ -119,6 +126,58 @@ function StatCard({ card, onClick }) {
           {/* Label seul */}
           <p className="text-sm text-baikal-text font-mono uppercase">
             {card.label}
+          </p>
+        </div>
+        
+        <ChevronRight className="w-5 h-5 text-baikal-text opacity-0 group-hover:opacity-100 transition-opacity" />
+      </div>
+    </button>
+  );
+}
+
+/**
+ * Carte Ingestion Queue (super_admin uniquement)
+ */
+function IngestionCard({ pendingCount, onClick }) {
+  const hasPending = pendingCount > 0;
+
+  return (
+    <button
+      onClick={onClick}
+      className={`
+        relative w-full text-left p-5 rounded-lg border transition-all duration-200
+        bg-baikal-surface hover:bg-baikal-surface/80
+        ${hasPending 
+          ? 'border-amber-500/50 ring-1 ring-amber-500/20' 
+          : 'border-baikal-border hover:border-baikal-border-light'
+        }
+        group
+      `}
+    >
+      {/* Badge clignotant si jobs en attente */}
+      {hasPending && (
+        <span className="absolute -top-2 -right-2 flex h-5 w-5">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-5 w-5 bg-amber-500 items-center justify-center">
+            <span className="text-[10px] font-bold text-black">!</span>
+          </span>
+        </span>
+      )}
+
+      <div className="flex items-start justify-between">
+        <div>
+          {/* Icône + Chiffre alignés */}
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-2.5 rounded-lg bg-baikal-cyan/20">
+              <Database className="w-5 h-5 text-baikal-cyan" />
+            </div>
+            <p className={`text-2xl font-bold font-mono ${hasPending ? 'text-amber-400' : 'text-white'}`}>
+              {pendingCount}
+            </p>
+          </div>
+          {/* Label */}
+          <p className="text-sm text-baikal-text font-mono uppercase">
+            INGESTION_QUEUE
           </p>
         </div>
         
@@ -247,6 +306,9 @@ export default function AdminDashboard({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  
+  // État pour le compteur d'ingestion (queued + sent + failed)
+  const [ingestionPendingCount, setIngestionPendingCount] = useState(0);
 
   // Charger les données
   useEffect(() => {
@@ -276,12 +338,40 @@ export default function AdminDashboard({
 
       setCards(cardsResult.data || []);
       setRoles(rolesResult.data || []);
+
+      // Charger le compteur d'ingestion (super_admin uniquement)
+      if (isSuperAdmin) {
+        await loadIngestionCount();
+      }
     } catch (err) {
       console.error('[AdminDashboard] Error loading data:', err);
       setError(err.message || 'Erreur lors du chargement des statistiques');
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+  };
+
+  /**
+   * Charge le compteur d'ingestion (queued + sent + failed)
+   */
+  const loadIngestionCount = async () => {
+    try {
+      const { data, error } = await supabase
+        .schema('sources')
+        .from('ingestion_queue')
+        .select('status');
+
+      if (error) throw error;
+
+      // Compter queued + sent + failed (tout sauf completed)
+      const pendingCount = (data || []).filter(
+        row => row.status === 'queued' || row.status === 'sent' || row.status === 'failed'
+      ).length;
+
+      setIngestionPendingCount(pendingCount);
+    } catch (err) {
+      console.error('[AdminDashboard] Error loading ingestion count:', err);
     }
   };
 
@@ -403,7 +493,7 @@ export default function AdminDashboard({
       )}
 
       {/* Cards statistiques */}
-      <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 ${isSuperAdmin ? 'lg:grid-cols-5' : 'lg:grid-cols-3'}`}>
+      <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 ${isSuperAdmin ? 'lg:grid-cols-6' : 'lg:grid-cols-3'}`}>
         {cards.map((card) => (
           <StatCard 
             key={card.id} 
@@ -411,6 +501,14 @@ export default function AdminDashboard({
             onClick={handleNavigate} 
           />
         ))}
+        
+        {/* Carte Ingestion Queue (super_admin uniquement) */}
+        {isSuperAdmin && (
+          <IngestionCard
+            pendingCount={ingestionPendingCount}
+            onClick={() => handleNavigate('/admin/ingestion')}
+          />
+        )}
       </div>
 
       {/* Sections secondaires */}
