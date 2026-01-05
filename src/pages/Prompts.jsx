@@ -17,7 +17,7 @@ import { useToast } from '../hooks/useToast';
 import { Button } from '../components/ui/Button';
 import { Card, CardContent } from '../components/ui/Card';
 import { Spinner } from '../components/ui/Spinner';
-import { ConfirmModal } from '../components/ui/Modal';
+import ConfirmModal from '../components/ui/ConfirmModal';
 import promptsService from '../services/prompts.service';
 import {
   canAccessPrompts,

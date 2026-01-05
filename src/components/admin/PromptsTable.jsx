@@ -16,8 +16,9 @@ import {
   Eye,
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
-import { 
-  AGENT_TYPES, 
+import { formatDate } from '@shared/utils';
+import {
+  AGENT_TYPES,
   getPromptScope,
 } from '../../config/prompts';
 
@@ -186,16 +187,6 @@ function ActionsMenu({ prompt, onEdit, onDuplicate, onDelete, onToggleStatus }) 
  * Ligne du tableau
  */
 function PromptRow({ prompt, onEdit, onDuplicate, onDelete, onToggleStatus }) {
-  // Formatage de la date
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('fr-FR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
-  };
-
   // Aperçu du prompt (50 premiers caractères)
   const promptPreview = prompt.system_prompt?.substring(0, 60) + 
     (prompt.system_prompt?.length > 60 ? '...' : '');

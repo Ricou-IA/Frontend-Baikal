@@ -15,6 +15,7 @@
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { formatDateLong } from '@shared/utils';
 import {
     Building2,
     Edit3,
@@ -293,11 +294,7 @@ export default function OrganizationSettings({
                     </label>
                     <p className="text-white flex items-center gap-2 font-sans">
                         <Calendar className="w-4 h-4 text-baikal-text" />
-                        {new Date(organization.created_at).toLocaleDateString('fr-FR', {
-                            day: 'numeric',
-                            month: 'long',
-                            year: 'numeric'
-                        })}
+                        {formatDateLong(organization.created_at)}
                     </p>
                 </div>
 

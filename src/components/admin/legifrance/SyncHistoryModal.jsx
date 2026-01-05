@@ -4,6 +4,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabaseClient';
+// Note: formatDate local conservé car format spécifique (month: 'short')
 import {
     X,
     History,

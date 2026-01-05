@@ -198,51 +198,8 @@ export function ModalFooter({
   );
 }
 
-/**
- * Modal de confirmation simple
- */
-export function ConfirmModal({
-  isOpen,
-  onClose,
-  onConfirm,
-  title = 'Confirmation',
-  message,
-  confirmText = 'Confirmer',
-  cancelText = 'Annuler',
-  variant = 'danger',
-  loading = false,
-}) {
-  const buttonVariants = {
-    danger: 'bg-red-600 hover:bg-red-700 text-white',
-    warning: 'bg-amber-500 hover:bg-amber-600 text-white',
-    primary: 'bg-indigo-600 hover:bg-indigo-700 text-white',
-  };
-
-  return (
-    <Modal isOpen={isOpen} onClose={onClose} title={title} size="sm">
-      <p className="text-baikal-text font-sans">{message}</p>
-      <ModalFooter>
-        <button
-          onClick={onClose}
-          disabled={loading}
-          className="px-4 py-2 text-sm font-medium text-baikal-text bg-baikal-surface border border-baikal-border hover:bg-baikal-bg rounded-md transition-colors disabled:opacity-50"
-        >
-          {cancelText}
-        </button>
-        <button
-          onClick={onConfirm}
-          disabled={loading}
-          className={cn(
-            'px-4 py-2 text-sm font-medium rounded-md transition-colors disabled:opacity-50',
-            buttonVariants[variant]
-          )}
-        >
-          {loading ? 'Chargement...' : confirmText}
-        </button>
-      </ModalFooter>
-    </Modal>
-  );
-}
+// Note: ConfirmModal a été déplacé vers ConfirmModal.jsx (fichier séparé)
+// Utiliser: import ConfirmModal from './ConfirmModal';
 
 export default Modal;
 
