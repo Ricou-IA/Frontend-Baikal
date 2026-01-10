@@ -1,5 +1,5 @@
 // ╔══════════════════════════════════════════════════════════════════════════════╗
-// ║  BAIKAL-BRAIN v2.0.0 - Query Analyzer avec Streaming Proxy                   ║
+// ║  BAIKAL-BRAIN v2.1.0 - Query Analyzer avec Streaming Proxy                   ║
 // ║  Edge Function Supabase                                                      ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
 // ║  Rôle:                                                                       ║
@@ -8,7 +8,11 @@
 // ║  - Appeler baikal-librarian avec le contexte complet                         ║
 // ║  - Proxy le stream SSE vers le frontend                                      ║
 // ║                                                                              ║
-// ║  Nouveautés v2.0.0:                                                          ║
+// ║  Nouveautés v2.1.0:                                                          ║
+// ║  - FIX: Passage de conversation_id à get_agent_context                       ║
+// ║  - FIX: Récupération correcte de l'historique pour query rewriting           ║
+// ║                                                                              ║
+// ║  v2.0.0:                                                                     ║
 // ║  - Refonte complète: Query Analyzer au lieu de simple routeur                ║
 // ║  - Intent detection (synthesis, factual, comparison, citation)               ║
 // ║  - Query rewriting avec contexte conversation                                ║
@@ -80,7 +84,7 @@ RÉPONDS UNIQUEMENT en JSON valide, sans markdown ni explication.
 ## INTENTIONS POSSIBLES
 
 "synthesis" - Vue d'ensemble, résumé, explication globale
-  → Mots-clés: résume, synthèse, explique, présente, décris, c'est quoi ce document, parle-moi de
+  → Mots-clés: résume, synthèse, synthétise, explique, présente, décris, c'est quoi ce document, parle-moi de
   → Exemples: "Résume ce document", "Explique-moi ce fichier", "C'est quoi ce rapport ?"
 
 "factual" - Question précise sur un fait, chiffre, délai, définition
@@ -105,13 +109,18 @@ RÉPONDS UNIQUEMENT en JSON valide, sans markdown ni explication.
    
 2. PRÉCISE les références implicites
    - "C'est quoi le délai ?" + doc mentionné avant → "Quel est le délai mentionné dans [document] ?"
+   - "De quel plan est-il question ?" + contexte électricien → "Quel plan est attendu pour le lot électricité ?"
 
 3. CONSERVE l'intention originale
    - Ne transforme pas une question factuelle en synthèse
 
 4. DÉTECTE les documents mentionnés
    - Explicites: "dans le CCAP", "selon le rapport"
-   - Implicites: déduits du contexte de conversation
+   - Implicites: déduits du contexte de conversation (réunions, lots, etc.)
+
+5. UTILISE L'HISTORIQUE pour comprendre les pronoms et références
+   - "il", "elle", "ce", "ça", "le plan", "le délai" → Réfère à quoi dans l'historique ?
+   - Questions courtes comme "Et pour X ?" → Enrichir avec le sujet de la conversation
 
 ## FALLBACK
 
@@ -129,7 +138,7 @@ interface RequestBody {
   org_id?: string
   project_id?: string
   app_id?: string
-  conversation_id?: string
+  conversation_id?: string  // v2.1.0: Peut être fourni par le frontend
   generation_mode?: 'chunks' | 'gemini' | 'auto'
   stream?: boolean
   include_app_layer?: boolean
@@ -177,6 +186,7 @@ function errorResponse(message: string, status: number = 400) {
 
 // ============================================================================
 // GET AGENT CONTEXT (1 seul appel DB)
+// v2.1.0: Ajout du paramètre conversationId pour récupérer l'historique correct
 // ============================================================================
 
 async function getAgentContext(
@@ -185,9 +195,10 @@ async function getAgentContext(
   orgId: string | undefined,
   projectId: string | undefined,
   appId: string | undefined,
+  conversationId: string | undefined,  // v2.1.0: NOUVEAU PARAMÈTRE
   agentType: string = 'router'
 ): Promise<AgentContext> {
-  console.log(`[baikal-brain] Appel get_agent_context (agent_type=${agentType})...`)
+  console.log(`[baikal-brain] Appel get_agent_context (agent_type=${agentType}, conversation_id=${conversationId || 'auto'})...`)
   
   const { data, error } = await supabase
     .schema('rag')
@@ -197,6 +208,7 @@ async function getAgentContext(
       p_project_id: projectId || null,
       p_app_id: appId || null,
       p_agent_type: agentType,
+      p_conversation_id: conversationId || null,  // v2.1.0: PASSAGE DU CONVERSATION_ID
       p_conversation_timeout_minutes: DEFAULT_CONFIG.conversation_timeout_minutes,
       p_context_messages_count: DEFAULT_CONFIG.conversation_context_messages,
     })
@@ -235,7 +247,16 @@ async function getAgentContext(
     documentsCles: documentsCles,
   }
 
+  // v2.1.0: Log détaillé pour debug
   console.log(`[baikal-brain] Context: config=${result.configSource}, conv=${result.conversationId}, msgs=${result.messageCount}`)
+  if (result.recentMessages.length > 0) {
+    console.log(`[baikal-brain] Historique récupéré: ${result.recentMessages.length} message(s)`)
+    // Log du dernier message pour vérification
+    const lastMsg = result.recentMessages[result.recentMessages.length - 1]
+    console.log(`[baikal-brain] Dernier message: [${lastMsg.role}] "${lastMsg.content.substring(0, 80)}..."`)
+  } else {
+    console.log(`[baikal-brain] Aucun historique de conversation`)
+  }
   
   return result
 }
@@ -260,13 +281,28 @@ function formatConversationForAnalysis(context: AgentContext): string {
     return ''
   }
 
+  // v2.1.0: Inclure aussi le résumé si disponible
+  let conversationContext = ''
+  
+  if (context.conversationSummary) {
+    conversationContext += `RÉSUMÉ DE LA CONVERSATION:\n${context.conversationSummary}\n\n`
+  }
+
+  // Messages récents (inversés pour ordre chronologique)
   const messages = context.recentMessages
     .slice()
     .reverse()
-    .map(m => `${m.role === 'user' ? 'USER' : 'ASSISTANT'}: ${m.content.substring(0, 500)}`)
-    .join('\n')
+    .map(m => {
+      const role = m.role === 'user' ? 'USER' : 'ASSISTANT'
+      // v2.1.0: Inclure plus de contenu pour mieux comprendre le contexte
+      const content = m.content.substring(0, 800)
+      return `${role}: ${content}`
+    })
+    .join('\n\n')
 
-  return messages
+  conversationContext += messages
+
+  return conversationContext
 }
 
 function formatDocumentsCles(docs: Array<{ slug: string; label: string }>): string {
@@ -298,13 +334,17 @@ async function analyzeQuery(
     userMessage = `CONTEXTE PROJET:\n${projectContext}\n\n${userMessage}`
   }
 
+  // v2.1.0: Mettre l'historique en évidence pour le query rewriting
   if (conversationHistory) {
-    userMessage = `HISTORIQUE CONVERSATION:\n${conversationHistory}\n\n${userMessage}`
+    userMessage = `HISTORIQUE CONVERSATION (IMPORTANT pour comprendre les références):\n${conversationHistory}\n\n${userMessage}`
   }
 
   if (documentsList) {
     userMessage = `DOCUMENTS CLÉS DISPONIBLES:\n${documentsList}\n\n${userMessage}`
   }
+
+  // v2.1.0: Log du contexte envoyé à l'analyse
+  console.log(`[baikal-brain] Contexte analyse: projet=${!!projectContext}, historique=${conversationHistory.length} chars, docs=${documentsList.length > 0}`)
 
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -349,7 +389,14 @@ async function analyzeQuery(
     if (!result.reasoning) result.reasoning = 'Analyse automatique'
 
     console.log(`[baikal-brain] Analyse: intent=${result.intent}, docs=[${result.detected_documents.join(', ')}]`)
-    console.log(`[baikal-brain] Rewritten: "${result.rewritten_query.substring(0, 80)}..."`)
+    console.log(`[baikal-brain] Rewritten: "${result.rewritten_query.substring(0, 100)}..."`)
+    
+    // v2.1.0: Log si la query a été enrichie
+    if (result.rewritten_query !== query) {
+      console.log(`[baikal-brain] ✅ Query enrichie avec contexte`)
+    } else {
+      console.log(`[baikal-brain] ⚠️ Query non modifiée`)
+    }
 
     return result
 
@@ -542,22 +589,31 @@ serve(async (req) => {
       org_id,
       project_id,
       app_id,
+      conversation_id,  // v2.1.0: Récupérer du body
     } = body
 
     // Validation
     if (!query?.trim()) return errorResponse("Query is required")
     if (!user_id) return errorResponse("user_id is required")
 
-    console.log(`[baikal-brain] v2.0.0 - Query Analyzer`)
+    console.log(`[baikal-brain] v2.1.0 - Query Analyzer`)
     console.log(`[baikal-brain] Query: "${query.substring(0, 50)}..."`)
+    console.log(`[baikal-brain] conversation_id from frontend: ${conversation_id || 'none'}`)
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
     // ========================================================================
     // 1. RÉCUPÉRER CONTEXTE (1 seul appel DB)
+    // v2.1.0: Passage du conversation_id pour récupérer le bon historique
     // ========================================================================
     const context = await getAgentContext(
-      supabase, user_id, org_id, project_id, app_id, 'router'
+      supabase, 
+      user_id, 
+      org_id, 
+      project_id, 
+      app_id, 
+      conversation_id,  // v2.1.0: NOUVEAU - Passer le conversation_id
+      'router'
     )
 
     // ========================================================================
