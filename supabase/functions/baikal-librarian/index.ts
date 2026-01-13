@@ -1,7 +1,9 @@
 // ╔══════════════════════════════════════════════════════════════════════════════╗
-// ║  BAIKAL-LIBRARIAN v10.4.1 - INSTRUMENTED (Timing Logs)                       ║
+// ║  BAIKAL-LIBRARIAN v10.4.2 - Filtrage Sources Gemini                          ║
 // ║  Edge Function Supabase                                                      ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
+// ║  v10.4.2:                                                                    ║
+// ║  - FIX: Sources Gemini filtrées par citation (comme mode chunks)             ║
 // ║  v10.4.1:                                                                    ║
 // ║  - INSTRUMENTATION: Ajout logs de timing pour diagnostic performance         ║
 // ║  v10.4.0:                                                                    ║
@@ -1231,7 +1233,7 @@ function filterSourcesByCitation(sources: SourceItem[], response: string): Sourc
   }
 
   const result = Array.from(unique.values())
-  console.log(`[librarian] Sources filtrées (chunks): ${sources.length} → ${result.length}`)
+  console.log(`[librarian] Sources filtrées: ${sources.length} → ${result.length}`)
 
   if (result.length === 0 && sources.length > 0) {
     console.log(`[librarian] Aucune citation détectée, conservation source principale`)
@@ -1295,7 +1297,7 @@ serve(async (req) => {
     if (!query?.trim()) return errorResponse("Query is required")
     if (!user_id) return errorResponse("user_id is required")
 
-    console.log(`[librarian] v10.4.1 INSTRUMENTED - Query: "${query.substring(0, 50)}..."`)
+    console.log(`[librarian] v10.4.2 - Query: "${query.substring(0, 50)}..."`)
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
@@ -1633,19 +1635,17 @@ serve(async (req) => {
           }
 
           // ================================================================
-          // 7. SOURCES (v10.4.0: Ajouter les meetings)
+          // 7. SOURCES (v10.4.2: Filtrage unifié Gemini + Chunks)
           // ================================================================
           let finalSources: SourceItem[]
 
           if (effectiveMode === 'gemini' && searchResult.files.length > 0) {
-            // Mode Gemini: Sources = fichiers + meetings
-            finalSources = buildSourcesFromFiles(searchResult.files)
-            
-            // v10.4.0: Ajouter les sources meetings
+            // v10.4.2: Mode Gemini - Filtrer par citation (comme chunks)
+            const allSources = buildSourcesFromFiles(searchResult.files)
             const meetingSources = buildSourcesFromMeetings(searchResult.meetingChunks)
-            finalSources = [...finalSources, ...meetingSources]
+            finalSources = filterSourcesByCitation([...allSources, ...meetingSources], fullResponse)
             
-            console.log(`[librarian] Sources Gemini: ${finalSources.map(s => s.document_name).join(', ')}`)
+            console.log(`[librarian] Sources Gemini (filtrées): ${finalSources.map(s => s.document_name).join(', ')}`)
           } else {
             // Mode chunks: filtrer par citation
             const allSources = buildSourcesFromChunks(searchResult.chunks)

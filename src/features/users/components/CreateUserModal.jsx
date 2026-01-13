@@ -1,7 +1,8 @@
 /**
  * CreateUserModal - Baikal Console
  * ============================================================================
- * Modal de création d'un nouvel utilisateur (super_admin).
+ * Modal de création d'un nouvel utilisateur (super_admin / org_admin).
+ * Utilise l'Edge Function create-user pour la création sécurisée.
  * ============================================================================
  */
 
@@ -55,50 +56,36 @@ export default function CreateUserModal({ isOpen, onClose, organizations, onCrea
         setError(null);
 
         try {
-            // 1. Créer l'utilisateur dans auth.users via admin API
-            const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-                email: email.trim(),
-                password: password,
-                email_confirm: true,
-                user_metadata: {
-                    full_name: fullName.trim() || null,
-                },
-            });
-
-            if (authError) {
-                throw new Error(authError.message);
+            // Récupérer le token de session pour l'authentification
+            const { data: { session } } = await supabase.auth.getSession();
+            
+            if (!session?.access_token) {
+                throw new Error('Session expirée. Veuillez vous reconnecter.');
             }
 
-            const userId = authData.user.id;
-
-            // 2. Mettre à jour le profil avec le rôle et l'organisation
-            const { error: profileError } = await supabase
-                .from('profiles')
-                .update({
-                    full_name: fullName.trim() || null,
-                    app_role: appRole,
-                    org_id: selectedOrg || null,
-                })
-                .eq('id', userId);
-
-            if (profileError) {
-                console.error('[CreateUserModal] Profile update error:', profileError);
-            }
-
-            // 3. Si une organisation est sélectionnée, ajouter comme membre
-            if (selectedOrg) {
-                const { error: memberError } = await supabase
-                    .from('organization_members')
-                    .insert({
-                        org_id: selectedOrg,
-                        user_id: userId,
-                        role: 'member',
-                        status: 'active',
-                    });
-
-                if (memberError) {
-                    console.error('[CreateUserModal] Member insert error:', memberError);
+            // Appeler l'Edge Function create-user
+            const response = await fetch(
+                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${session.access_token}`,
+                    },
+                    body: JSON.stringify({
+                        email: email.trim(),
+                        password: password,
+                        fullName: fullName.trim() || null,
+                        orgId: selectedOrg || null,
+                        appRole: appRole,
+                    }),
                 }
+            );
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || 'Erreur lors de la création');
             }
 
             onCreate();
