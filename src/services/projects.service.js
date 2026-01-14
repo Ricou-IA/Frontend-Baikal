@@ -16,6 +16,10 @@
  * - Support identité projet (market_type, project_type, description)
  * - Validation simplifiée (sans main_trades)
  * - CORRECTION SCHÉMA: Ajout .schema('core') sur tous les appels
+ * 
+ * CORRECTION 13/01/2026:
+ * - FK explicite pour jointures profiles (project_members_user_id_profiles_fkey)
+ * - Résout erreur PostgREST "more than one relationship found"
  * ============================================================================
  */
 
@@ -118,7 +122,7 @@ export async function getProject(projectId) {
                 members:project_members(
                     user_id,
                     role,
-                    user:profiles(id, email, full_name)
+                    user:profiles!project_members_user_id_profiles_fkey(id, email, full_name)
                 )
             `)
             .eq('id', projectId)
@@ -352,7 +356,7 @@ export async function getProjectMembers(projectId) {
                 user_id,
                 role,
                 created_at,
-                user:profiles(id, email, full_name, avatar_url)
+                user:profiles!project_members_user_id_profiles_fkey(id, email, full_name, avatar_url)
             `)
             .eq('project_id', projectId)
             .order('created_at', { ascending: true });
@@ -406,7 +410,8 @@ export async function assignUserToProject(projectId, userId, role = 'member') {
             .insert({
                 project_id: projectId,
                 user_id: userId,
-                role: role
+                role: role,
+                status: 'active'
             })
             .select()
             .single();

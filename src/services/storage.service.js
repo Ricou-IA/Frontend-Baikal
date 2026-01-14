@@ -10,6 +10,8 @@
  * - 'invoices' → conservé tel quel
  * - 'avatars' → conservé tel quel
  * 
+ * v2.1.0 - Ajout support customFileName pour filename_clean
+ * 
  * @example
  * import { storageService, STORAGE_BUCKETS } from '@/services';
  * 
@@ -92,19 +94,35 @@ export const storageService = {
 
   /**
    * Upload un fichier avec génération automatique du chemin
+   * 
    * @param {string} bucket - Nom du bucket
    * @param {File} file - Fichier à uploader
    * @param {string} userId - ID de l'utilisateur
+   * @param {Object} options - Options d'upload
+   * @param {string} [options.customFileName] - Nom personnalisé (filename_clean). Fallback sur file.name si non fourni.
    * @returns {Promise<{data: Object|null, path: string|null, error: Error|null}>}
+   * 
+   * @example
+   * // Avec filename_clean personnalisé
+   * const { path } = await storageService.uploadFileAuto(bucket, file, userId, { customFileName: 'CCAG-Travaux-2021.pdf' });
+   * 
+   * // Sans customFileName → utilise file.name
+   * const { path } = await storageService.uploadFileAuto(bucket, file, userId);
    */
-  async uploadFileAuto(bucket, file, userId) {
+  async uploadFileAuto(bucket, file, userId, options = {}) {
     const actualBucket = this._migrateBucketName(bucket);
+    const { customFileName } = options;
 
     try {
-      // Génère un chemin unique
+      // Génère un chemin unique avec timestamp
       const timestamp = Date.now();
-      const sanitizedFileName = this.sanitizeFileName(file.name);
-      const path = `${userId}/${timestamp}_${sanitizedFileName}`;
+      
+      // Utilise customFileName si fourni, sinon fallback sur le nom original
+      const fileName = customFileName 
+        ? this.sanitizeFileName(customFileName)
+        : this.sanitizeFileName(file.name);
+      
+      const path = `${userId}/${timestamp}_${fileName}`;
 
       const { data, error } = await this.uploadFile(actualBucket, path, file);
 
