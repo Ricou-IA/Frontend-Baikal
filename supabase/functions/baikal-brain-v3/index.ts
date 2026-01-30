@@ -1,8 +1,10 @@
 // ╔══════════════════════════════════════════════════════════════════════════════╗
-// ║  BAIKAL-BRAIN v3.0.1 - Orchestrateur Intelligent                             ║
+// ║  BAIKAL-BRAIN v3.1.0 - Orchestrateur Intelligent                             ║
 // ║  Edge Function Supabase                                                      ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
 // ║  v3.0.1: Fix endpoint librarian-v3                                           ║
+// ║  v3.0.2: Safe fallback - recherche par défaut sauf salutation évidente       ║
+// ║  v3.1.0: Migration vers baikal-librarian-v4 (hierarchy L0/L1)                ║
 // ╚══════════════════════════════════════════════════════════════════════════════╝
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
@@ -29,8 +31,10 @@ const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY")!
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 
-// v3.0.1: URL corrigée vers librarian-v3
-const LIBRARIAN_URL = `${SUPABASE_URL}/functions/v1/baikal-librarian-v3`
+// ═══════════════════════════════════════════════════════════════════════════════
+// v3.1.0: MIGRATION VERS LIBRARIAN V4 (hierarchy L0/L1, Zero Hallucination)
+// ═══════════════════════════════════════════════════════════════════════════════
+const LIBRARIAN_URL = `${SUPABASE_URL}/functions/v1/baikal-librarian-v4`
 
 // ============================================================================
 // CONSTANTES FALLBACK
@@ -94,11 +98,30 @@ Réponds UNIQUEMENT en JSON valide, sans texte avant ou après:
 
 | Intent | Quand | requires_search | scope | answer_format |
 |--------|-------|-----------------|-------|---------------|
-| factual | Fait précis, délai, montant, article | true | narrow | paragraph |
+| factual | Fait précis, délai, montant, article, équipe, personne | true | narrow | paragraph |
 | synthesis | Résumé, explication globale | true | broad | paragraph |
-| comparison | Comparer documents/articles | true | broad | table |
+| comparison | Comparer documents, incohérences, écarts, différences | true | broad | table |
 | citation | Extrait exact, verbatim | true | narrow | quote |
-| conversational | Salutation, merci, hors-sujet | false | - | paragraph |
+| conversational | UNIQUEMENT salutation simple (bonjour, merci, au revoir) SANS question | false | - | paragraph |
+
+## IMPORTANT - REQUIRES_SEARCH
+- requires_search = false UNIQUEMENT pour les salutations simples sans aucune question
+- "Bonjour" → false
+- "Bonjour, quelle est l'équipe ?" → TRUE (il y a une question)
+- "Quelle est l'équipe ?" → TRUE
+- "Merci pour l'info" → false
+- "Y a-t-il des incohérences ?" → TRUE (c'est une question)
+- En cas de doute → requires_search = true
+
+## RÈGLES COMPARISON (IMPORTANT)
+Les mots suivants indiquent une COMPARAISON (intent=comparison, answer_format=table):
+- "incohérence", "incohérences"
+- "différence", "différences" 
+- "écart", "écarts"
+- "conforme", "conformité"
+- "cohérent", "cohérence"
+- "comparer", "comparaison"
+- "entre X et Y"
 
 ## RÈGLES SEARCH_CONFIG
 
@@ -213,6 +236,68 @@ function errorResponse(message: string, status: number = 400) {
 
 function sseEvent(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
+}
+
+// ============================================================================
+// v3.0.2: SAFE SALUTATION DETECTION
+// Détecte si c'est une VRAIE salutation simple sans question
+// ============================================================================
+
+function isTrueSalutation(query: string): boolean {
+  const q = query.trim().toLowerCase()
+  
+  // Nettoyer la ponctuation finale pour la comparaison
+  const cleaned = q.replace(/[\s\?\!\.\,\;\:]+$/g, '').trim()
+  
+  // Liste des salutations simples acceptées
+  const salutations = [
+    'bonjour', 'bonsoir', 'salut', 'hello', 'hi', 'hey', 'coucou',
+    'merci', 'thanks', 'thank you', 'merci beaucoup', 'merci bien',
+    'au revoir', 'bye', 'goodbye', 'à bientôt', 'a bientot',
+    'ok', 'okay', 'd\'accord', 'daccord', 'compris', 'parfait', 'super',
+  ]
+  
+  // Vérifier si c'est EXACTEMENT une salutation simple
+  if (salutations.includes(cleaned)) {
+    return true
+  }
+  
+  // Vérifier les patterns de salutation avec ponctuation/emoji
+  // Ex: "Bonjour !", "Merci 👍", "Ok."
+  for (const salut of salutations) {
+    if (cleaned === salut || q.startsWith(salut) && q.length <= salut.length + 5) {
+      // Vérifier qu'il n'y a pas de question après
+      const afterSalut = q.slice(salut.length).trim()
+      if (!afterSalut || /^[\?\!\.\,\s]*$/.test(afterSalut)) {
+        return true
+      }
+    }
+  }
+  
+  return false
+}
+
+// ============================================================================
+// v3.0.2: SAFE REQUIRES_SEARCH OVERRIDE
+// Force la recherche sauf si c'est une vraie salutation
+// ============================================================================
+
+function safeRequiresSearch(query: string, llmResult: boolean): boolean {
+  // Si le LLM dit qu'il faut chercher, on fait confiance
+  if (llmResult === true) {
+    return true
+  }
+  
+  // Si le LLM dit qu'il ne faut PAS chercher, on vérifie
+  // C'est une vraie salutation simple ? On peut skipper
+  if (isTrueSalutation(query)) {
+    console.log(`[brain-v3] ✅ Salutation détectée: "${query.substring(0, 30)}" → skip RAG autorisé`)
+    return false
+  }
+  
+  // Sinon, on force la recherche par sécurité
+  console.log(`[brain-v3] ⚠️ LLM a dit requires_search=false mais ce n'est pas une salutation → FORCE recherche`)
+  return true
 }
 
 // ============================================================================
@@ -431,9 +516,13 @@ async function analyzeQuery(
 
     const parsed = JSON.parse(jsonMatch[0])
     
+    // v3.0.2: Appliquer la sécurité sur requires_search
+    const llmRequiresSearch = parsed.requires_search ?? true
+    const safeSearch = safeRequiresSearch(query, llmRequiresSearch)
+    
     const result: AnalysisResult = {
       intent: parsed.intent || 'factual',
-      requires_search: parsed.requires_search ?? true,
+      requires_search: safeSearch,  // v3.0.2: Utiliser la valeur sécurisée
       rewritten_query: parsed.rewritten_query || query,
       detected_documents: parsed.detected_documents || [],
       search_config: {
@@ -448,7 +537,8 @@ async function analyzeQuery(
       reasoning: parsed.reasoning || 'Analyse automatique',
     }
 
-    console.log(`[brain-v3] Analyse: intent=${result.intent}, requires_search=${result.requires_search}`)
+    // v3.0.2: Log plus détaillé
+    console.log(`[brain-v3] Analyse: intent=${result.intent}, llm_requires_search=${llmRequiresSearch}, safe_requires_search=${safeSearch}`)
     console.log(`[brain-v3] search_config: scope=${result.search_config.scope}, max_files=${result.search_config.max_files}`)
     console.log(`[brain-v3] answer_format=${result.answer_format}, key_concepts=[${result.key_concepts.join(', ')}]`)
     if (result.rewritten_query !== query) {
@@ -474,9 +564,13 @@ function buildFallbackAnalysis(
   documentsCles: Array<{ slug: string; label: string }>
 ): AnalysisResult {
   const intent = detectIntentByKeywords(query)
+  
+  // v3.0.2: Fallback TOUJOURS avec recherche sauf salutation
+  const requiresSearch = !isTrueSalutation(query)
+  
   return {
     intent,
-    requires_search: intent !== 'conversational',
+    requires_search: requiresSearch,
     rewritten_query: query,
     detected_documents: detectDocumentsByKeywords(query, documentsCles),
     search_config: getDefaultSearchConfig(intent),
@@ -488,10 +582,16 @@ function buildFallbackAnalysis(
 
 function detectIntentByKeywords(query: string): AnalysisResult['intent'] {
   const q = query.toLowerCase()
-  if (/^(bonjour|salut|hello|hi|merci|thanks|au revoir|bye|coucou|hey)/i.test(q)) return 'conversational'
+  
+  // v3.0.2: Vérifier d'abord si c'est une vraie salutation
+  if (isTrueSalutation(query)) return 'conversational'
+  
+  // v3.0.2: Améliorer détection comparison
+  if (/incohéren|écart|différen|compar|conforme|conformité|cohéren|entre .+ et|versus|vs\b|par rapport/i.test(q)) return 'comparison'
+  
   if (/résume|synthèse|synthétise|explique|présente|décris|parle-moi/i.test(q)) return 'synthesis'
-  if (/compare|différence|versus|vs\b|entre .+ et|par rapport/i.test(q)) return 'comparison'
   if (/cite|citation|extrait|texte exact|mot pour mot/i.test(q)) return 'citation'
+  
   return 'factual'
 }
 
@@ -505,7 +605,7 @@ function getDefaultSearchConfig(intent: AnalysisResult['intent']): AnalysisResul
   const configs: Record<string, AnalysisResult['search_config']> = {
     factual: { scope: 'narrow', max_files: 2, min_similarity: 0.5, boost_documents: [], file_filter: null },
     synthesis: { scope: 'broad', max_files: 5, min_similarity: 0.35, boost_documents: [], file_filter: null },
-    comparison: { scope: 'broad', max_files: 4, min_similarity: 0.4, boost_documents: [], file_filter: null },
+    comparison: { scope: 'broad', max_files: 5, min_similarity: 0.35, boost_documents: [], file_filter: null },  // v3.0.2: max_files 5 pour comparison
     citation: { scope: 'narrow', max_files: 1, min_similarity: 0.6, boost_documents: [], file_filter: null },
     conversational: { scope: 'narrow', max_files: 0, min_similarity: 0.5, boost_documents: [], file_filter: null },
   }
@@ -538,16 +638,19 @@ async function handleConversational(
 
   const responses: Record<string, string> = {
     bonjour: "Bonjour ! Comment puis-je vous aider avec vos documents ?",
+    bonsoir: "Bonsoir ! Comment puis-je vous aider avec vos documents ?",
     salut: "Salut ! Je suis prêt à répondre à vos questions sur les documents du projet.",
     hello: "Hello! How can I help you with your project documents?",
     merci: "Je vous en prie ! N'hésitez pas si vous avez d'autres questions.",
     thanks: "You're welcome! Feel free to ask if you have more questions.",
+    ok: "Parfait ! N'hésitez pas si vous avez d'autres questions.",
+    parfait: "Super ! Je reste disponible si besoin.",
   }
 
-  const q = query.toLowerCase().trim()
+  const q = query.toLowerCase().trim().replace(/[\?\!\.\,]+$/, '')
   let response = "Je suis là pour répondre à vos questions sur les documents du projet."
   for (const [key, value] of Object.entries(responses)) {
-    if (q.startsWith(key)) { response = value; break }
+    if (q === key || q.startsWith(key)) { response = value; break }
   }
 
   if (stream) {
@@ -569,7 +672,8 @@ async function handleConversational(
 }
 
 // ============================================================================
-// CALL LIBRARIAN V3
+// CALL LIBRARIAN V4
+// v3.1.0: Migration vers baikal-librarian-v4
 // ============================================================================
 
 async function callLibrarianWithProxy(
@@ -578,7 +682,7 @@ async function callLibrarianWithProxy(
   context: AgentContext,
   analysis: AnalysisResult
 ): Promise<Response> {
-  console.log(`[brain-v3] Appel Librarian v3 (stream=${body.stream !== false})...`)
+  console.log(`[brain-v3] Appel Librarian v4 (stream=${body.stream !== false})...`)
 
   const librarianPayload = {
     query: body.query,
@@ -631,7 +735,7 @@ async function callLibrarianWithProxy(
 
   if (!librarianResponse.ok) {
     const errorText = await librarianResponse.text()
-    console.error('[brain-v3] Erreur Librarian v3:', errorText)
+    console.error('[brain-v3] Erreur Librarian v4:', errorText)
     return errorResponse(`Librarian error: ${errorText}`, librarianResponse.status)
   }
 
@@ -720,7 +824,7 @@ serve(async (req) => {
     if (!user_id) return errorResponse("user_id is required")
 
     console.log(`[brain-v3] ═══════════════════════════════════════════════════`)
-    console.log(`[brain-v3] v3.0.1 - Query: "${query.substring(0, 60)}..."`)
+    console.log(`[brain-v3] v3.1.0 - Query: "${query.substring(0, 60)}..."`)
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
@@ -735,12 +839,13 @@ serve(async (req) => {
     console.log(`[brain-v3] Analyse terminée en ${Date.now() - startTime}ms`)
 
     // 4. ROUTING
+    // v3.0.2: requires_search est déjà sécurisé dans analyzeQuery
     if (!analysis.requires_search && brainConfig.routing.skip_search_for_conversational) {
-      console.log(`[brain-v3] ⏭️ Skip RAG (conversationnel)`)
+      console.log(`[brain-v3] ⏭️ Skip RAG (salutation confirmée)`)
       return await handleConversational(query, context, analysis, stream)
     }
 
-    // 5. LIBRARIAN
+    // 5. LIBRARIAN V4
     if (stream && (brainConfig.sse.send_immediate_ack || brainConfig.sse.send_analysis_step)) {
       return createImmediateAckStream(context, brainConfig, async () => {
         return await callLibrarianWithProxy(req, body, context, analysis)

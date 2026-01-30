@@ -13,23 +13,32 @@ import {
   Layers,
   Info
 } from 'lucide-react';
+import { storageService, STORAGE_BUCKETS } from '../services/storage.service';
 
 /**
  * SmartUploader - Composant d'upload intelligent avec tagging multi-verticales
+ * 
+ * v2.2.0 - MIGRATION: Utilisation de storageService avec paths structurés
+ *          Structure: {layer}/{org_id}/{project_id|user_id}/{timestamp}_{filename}
  * 
  * Permet de :
  * - Upload de documents par drag & drop ou sélection
  * - Tagging sur plusieurs verticales simultanément
  * - Validation des fichiers (type, taille)
  * - Feedback visuel du statut d'upload
+ * - Stockage structuré par layer/org/project
  * 
  * @param {Object} props
  * @param {function} props.onUpload - Callback appelé après upload réussi
- * @param {Object} props.supabaseClient - Instance Supabase
+ * @param {Object} props.supabaseClient - Instance Supabase (pour auth et webhook)
  * @param {Array} props.availableVerticals - Liste des verticales disponibles
  * @param {string} props.defaultVertical - Verticale pré-sélectionnée par défaut
  * @param {number} props.maxFileSize - Taille max en MB (défaut: 20)
  * @param {string[]} props.acceptedTypes - Types MIME acceptés
+ * @param {string} props.userId - ID de l'utilisateur (requis)
+ * @param {string} props.orgId - ID de l'organisation
+ * @param {string} props.projectId - ID du projet (requis si layer='project')
+ * @param {string} props.layer - Layer cible: 'app', 'org', 'project', 'user' (défaut: 'project')
  */
 
 // Configuration des verticales par défaut
@@ -60,6 +69,11 @@ const SmartUploader = ({
   maxFileSize = 20, // MB
   acceptedTypes = DEFAULT_ACCEPTED_TYPES,
   className = '',
+  // v2.2.0: Nouveaux props pour le contexte de stockage
+  userId,
+  orgId,
+  projectId,
+  layer = 'project',
 }) => {
   // States
   const [isDragging, setIsDragging] = useState(false);
@@ -115,16 +129,14 @@ const SmartUploader = ({
     setErrorMessage('');
     setUploadStatus('idle');
 
-    // Vérification du type
-    if (!acceptedTypes.includes(file.type)) {
-      setErrorMessage(`Type de fichier non supporté. Acceptés: PDF, Word, Excel, TXT, Markdown, CSV`);
-      return false;
-    }
+    // Utilise la validation du storageService
+    const validation = storageService.validateFile(file, {
+      maxSize: maxFileSize,
+      acceptedTypes: acceptedTypes,
+    });
 
-    // Vérification de la taille
-    const fileSizeMB = file.size / (1024 * 1024);
-    if (fileSizeMB > maxFileSize) {
-      setErrorMessage(`Fichier trop volumineux (${fileSizeMB.toFixed(1)} MB). Maximum: ${maxFileSize} MB`);
+    if (!validation.valid) {
+      setErrorMessage(validation.error);
       return false;
     }
 
@@ -157,75 +169,108 @@ const SmartUploader = ({
       return;
     }
 
+    // Validation du contexte
+    if (!userId) {
+      setErrorMessage('Erreur: userId manquant');
+      return;
+    }
+
     setUploadStatus('uploading');
     setUploadProgress(0);
 
     try {
-      // Upload vers Supabase Storage
+      // v2.2.0: Upload via storageService avec contexte structuré
       setUploadProgress(30);
-      let storageUrl = null;
       
-      if (supabaseClient) {
-        const fileName = `${Date.now()}-${selectedFile.name}`;
-        const { data: storageData, error: storageError } = await supabaseClient
-          .storage
-          .from('premium-sources')  // MIGRATION: documents → premium-sources
-          .upload(fileName, selectedFile, {
-            cacheControl: '3600',
-            upsert: false,
+      // Construire le contexte de stockage
+      const storageContext = {
+        userId,
+        orgId: orgId || null,
+        projectId: projectId || null,
+        layer: layer || 'project',
+      };
+
+      console.log('[SmartUploader] Upload avec contexte:', storageContext);
+
+      // Upload vers Supabase Storage via storageService
+      const { data: storageData, path: storagePath, error: storageError } = 
+        await storageService.uploadFileAuto(
+          STORAGE_BUCKETS.PREMIUM_SOURCES,
+          selectedFile,
+          storageContext,
+          { customFileName: selectedFile.name }
+        );
+
+      if (storageError) {
+        throw new Error(`Erreur lors de l'upload: ${storageError.message}`);
+      }
+
+      console.log('[SmartUploader] Upload réussi, path:', storagePath);
+
+      // Récupérer l'URL publique
+      const storageUrl = storageService.getPublicUrl(
+        STORAGE_BUCKETS.PREMIUM_SOURCES, 
+        storagePath
+      );
+
+      setUploadProgress(60);
+
+      // Appel au webhook N8N pour la vectorisation
+      const n8nIngestWebhookUrl = import.meta.env.VITE_N8N_INGEST_WEBHOOK_URL?.trim();
+      
+      if (n8nIngestWebhookUrl) {
+        setUploadProgress(80);
+        try {
+          const webhookPayload = {
+            // Identifiants
+            filename: selectedFile.name,
+            path: storagePath,
+            storage_bucket: STORAGE_BUCKETS.PREMIUM_SOURCES,
+            
+            // Contexte utilisateur/org
+            user_id: userId,
+            org_id: orgId || null,
+            
+            // Layer et projet
+            layer: layer,
+            project_id: projectId || null,
+            
+            // Verticales/Apps cibles
+            tag: selectedVerticals[0] || 'default',
+            target_apps: selectedVerticals || ['default'],
+            
+            // Métadonnées
+            file_size: selectedFile.size,
+            mime_type: selectedFile.type,
+          };
+
+          console.log('[SmartUploader] Appel webhook N8N:', webhookPayload);
+
+          await fetch(n8nIngestWebhookUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(webhookPayload)
           });
-
-        if (storageError) {
-          throw new Error(`Erreur lors de l'upload: ${storageError.message}`);
-        } else {
-          // Récupérer l'URL publique
-          const { data: { publicUrl } } = supabaseClient
-            .storage
-            .from('premium-sources')  // MIGRATION: documents → premium-sources
-            .getPublicUrl(fileName);
-          storageUrl = publicUrl;
-
-          // Récupérer l'utilisateur pour l'envoyer à N8N
-        const { data: { session } } = await supabaseClient.auth.getSession();
-          const userId = session?.user?.id;
-
-          // Appel au webhook N8N pour la vectorisation
-          const n8nIngestWebhookUrl = import.meta.env.VITE_N8N_INGEST_WEBHOOK_URL?.trim();
-          if (userId && n8nIngestWebhookUrl) {
-            setUploadProgress(80);
-            try {
-              await fetch(n8nIngestWebhookUrl, {
-        method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json'
-                },
-        body: JSON.stringify({
-                  filename: selectedFile.name,
-                  path: `documents/${fileName}`,  // Path dans Supabase Storage
-                  user_id: userId,
-                  tag: selectedVerticals[0] || 'default',
-                  target_apps: selectedVerticals || ['default']  // MIGRATION: target_verticals → target_apps
-                })
-              });
-              // Ne pas bloquer si l'appel N8N échoue (non bloquant)
-            } catch (n8nError) {
-              console.warn('Erreur lors de l\'appel N8N (non bloquant):', n8nError);
-            }
-          }
+        } catch (n8nError) {
+          // Ne pas bloquer si l'appel N8N échoue (non bloquant)
+          console.warn('[SmartUploader] Erreur webhook N8N (non bloquant):', n8nError);
         }
-      } else {
-        throw new Error('Client Supabase non configuré');
       }
 
       setUploadProgress(100);
       setUploadStatus('success');
 
-      // Callback parent
+      // Callback parent avec toutes les infos
       if (onUpload) {
         onUpload({
           file: selectedFile,
           verticals: selectedVerticals,
           storageUrl: storageUrl,
+          storagePath: storagePath,
+          storageBucket: STORAGE_BUCKETS.PREMIUM_SOURCES,
+          context: storageContext,
         });
       }
 
@@ -235,7 +280,7 @@ const SmartUploader = ({
       }, 3000);
 
     } catch (error) {
-      console.error('Erreur upload:', error);
+      console.error('[SmartUploader] Erreur upload:', error);
       setUploadStatus('error');
       setErrorMessage(error.message || 'Erreur lors de l\'upload');
     }

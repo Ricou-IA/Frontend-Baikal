@@ -2,7 +2,7 @@
  * Configuration Prompts - Core RAG Engine
  * ============================================================================
  * Constantes et configuration pour la gestion des prompts d'agents RAG.
- * VERSION: 3.2.0 - Ajout Gemini 2.5 Flash-Lite
+ * VERSION: 3.3.0 - Ajout Brain V3 et Librarian V3
  * ============================================================================
  */
 
@@ -41,25 +41,48 @@ export const canAccessPrompts = (profile) => {
 // ============================================
 
 export const AGENT_TYPES = Object.freeze({
-  router: {
-    id: 'router',
-    label: 'Routeur',
-    description: 'Agent de routage sémantique des requêtes',
-    icon: '🔀',
-    bgColor: 'bg-green-100',
-    textColor: 'text-green-700',
-    borderColor: 'border-green-300',
+  // ========== AGENTS V3 (PRODUCTION) ==========
+  brain_v3: {
+    id: 'brain_v3',
+    label: 'Brain V3',
+    description: 'Agent orchestrateur - analyse, reformulation et routing',
+    icon: '🧠',
+    bgColor: 'bg-violet-100',
+    textColor: 'text-violet-700',
+    borderColor: 'border-violet-300',
     order: 1,
   },
-  librarian: {
-    id: 'librarian',
-    label: 'Bibliothécaire',
-    description: 'Agent de recherche documentaire RAG',
+  librarian_v3: {
+    id: 'librarian_v3',
+    label: 'Librarian V3',
+    description: 'Agent de recherche documentaire et génération Gemini',
     icon: '📚',
     bgColor: 'bg-blue-100',
     textColor: 'text-blue-700',
     borderColor: 'border-blue-300',
     order: 2,
+  },
+  
+  // ========== AGENTS EXISTANTS ==========
+  router: {
+    id: 'router',
+    label: 'Routeur',
+    description: 'Agent de routage sémantique des requêtes (legacy)',
+    icon: '🔀',
+    bgColor: 'bg-green-100',
+    textColor: 'text-green-700',
+    borderColor: 'border-green-300',
+    order: 10,
+  },
+  librarian: {
+    id: 'librarian',
+    label: 'Bibliothécaire',
+    description: 'Agent de recherche documentaire RAG (legacy)',
+    icon: '📖',
+    bgColor: 'bg-slate-100',
+    textColor: 'text-slate-700',
+    borderColor: 'border-slate-300',
+    order: 11,
   },
   analyst: {
     id: 'analyst',

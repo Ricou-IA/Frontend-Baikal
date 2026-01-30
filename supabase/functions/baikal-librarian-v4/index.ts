@@ -1,10 +1,13 @@
 // ╔══════════════════════════════════════════════════════════════════════════════╗
-// ║  BAIKAL-LIBRARIAN v3.2.2 - Recherche & Génération Intelligente               ║
+// ║  BAIKAL-LIBRARIAN v4.0.0 - Zero Hallucination & Hierarchy L0/L1             ║
 // ║  Edge Function Supabase                                                      ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
-// ║  v3.2.0: Désactivation file_filter - Gemini fait le tri naturellement        ║
-// ║  v3.2.1: Support intent_overrides pour paramètres génération par intent      ║
-// ║  v3.2.2: Utiliser rewritten_query + retourner tous les fichiers sources      ║
+// ║  v4.0.0: Migration vers match_documents_v13                                  ║
+// ║        - Support hierarchy_levels (L0=résumés, L1=texte verbatim)           ║
+// ║        - Support include_children (récupérer L1 enfants des L0)             ║
+// ║        - Stratégie par intent (factual→L1, synthesis→L0+children)           ║
+// ║        - Mode chunks par défaut (Gemini désactivé pour factual/citation)    ║
+// ║        - Prompt système Zero Hallucination avec sourçage obligatoire        ║
 // ╚══════════════════════════════════════════════════════════════════════════════╝
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
@@ -34,6 +37,53 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 
 // ============================================================================
+// v4.0.0: STRATÉGIE PAR INTENT (HIERARCHY L0/L1)
+// ============================================================================
+
+interface IntentStrategy {
+  hierarchy_levels: number[]  // [0]=L0 résumés, [1]=L1 texte verbatim, [0,1]=les deux
+  include_children: boolean   // Récupérer les L1 enfants des L0 trouvés
+  mode: 'chunks' | 'gemini' | 'auto'
+  skip_search?: boolean
+}
+
+const INTENT_STRATEGY: Record<string, IntentStrategy> = {
+  factual: {
+    hierarchy_levels: [1],      // L1 uniquement (texte exact pour sourçage)
+    include_children: false,
+    mode: 'chunks'              // Jamais Gemini pour factual (risque hallucination)
+  },
+  citation: {
+    hierarchy_levels: [1],      // L1 uniquement (texte exact)
+    include_children: false,
+    mode: 'chunks'
+  },
+  synthesis: {
+    hierarchy_levels: [0],      // Chercher dans L0 (sections/résumés)
+    include_children: true,     // Puis récupérer L1 enfants pour le contenu détaillé
+    mode: 'chunks'
+  },
+  comparison: {
+    hierarchy_levels: [0],      // L0 pour identifier les sections
+    include_children: true,     // L1 enfants pour comparer le contenu exact
+    mode: 'chunks'
+  },
+  conversational: {
+    hierarchy_levels: [1],
+    include_children: false,
+    mode: 'chunks',
+    skip_search: true           // Pas de recherche pour les salutations
+  }
+}
+
+// Fallback si intent non reconnu
+const DEFAULT_STRATEGY: IntentStrategy = {
+  hierarchy_levels: [1],
+  include_children: false,
+  mode: 'chunks'
+}
+
+// ============================================================================
 // TYPES
 // ============================================================================
 
@@ -43,7 +93,6 @@ interface IntentParams {
   match_count: number
 }
 
-// v3.2.1: Nouveaux types pour intent_overrides
 interface GenerationOverride {
   gemini_model?: string
   temperature?: number
@@ -113,7 +162,7 @@ interface LibrarianConfig {
   temperature: number
   default_answer_format: string
   enable_format_detection: boolean
-  intent_overrides: Record<string, GenerationOverride>  // v3.2.1: NOUVEAU
+  intent_overrides: Record<string, GenerationOverride>
   system_prompt: string
   gemini_system_prompt: string
   identity: { name: string; role: string; personality: string }
@@ -148,6 +197,10 @@ interface LibrarianContext {
   documentsCles: Array<{ slug: string; label: string }>
 }
 
+// ============================================================================
+// v4.0.0: INTERFACE ChunkResult ENRICHIE (match_documents_v13)
+// ============================================================================
+
 interface ChunkResult {
   chunk_id: number
   content: string
@@ -166,6 +219,13 @@ interface ChunkResult {
   file_total_pages: number
   file_max_similarity: number | null
   file_chunk_count: number | null
+  // ═══════════════════════════════════════════════════════════════
+  // NOUVEAUX CHAMPS v13 (hierarchy L0/L1)
+  // ═══════════════════════════════════════════════════════════════
+  hierarchy_level: number           // 0 = résumé/section, 1 = texte verbatim
+  parent_chunk_id: number | null    // Lien vers le chunk parent (pour L1)
+  retrieval_role: 'primary' | 'child'  // Comment ce chunk a été trouvé
+  section_title: string | null      // Titre de section pour sourçage
 }
 
 interface FileInfo {
@@ -200,6 +260,10 @@ interface SourceItem {
   score: number
   layer: string
   content_preview: string | null
+  // v4: Ajout pour sourçage précis
+  section_title?: string | null
+  hierarchy_level?: number
+  page?: number
 }
 
 interface QAMemoryResult {
@@ -216,7 +280,6 @@ interface QAMemoryResult {
   created_at: string
 }
 
-// v3.2.1: Interface pour les paramètres effectifs de génération
 interface EffectiveGenerationParams {
   model: string
   temperature: number
@@ -267,6 +330,50 @@ const MODE_LABELS = {
 }
 
 // ============================================================================
+// v4.0.0: PROMPT SYSTÈME ZERO HALLUCINATION
+// ============================================================================
+
+const ZERO_HALLUCINATION_PROMPT = `
+═══════════════════════════════════════════════════════════════════════════════
+RÈGLES ABSOLUES - ZERO HALLUCINATION (NON NÉGOCIABLES)
+═══════════════════════════════════════════════════════════════════════════════
+
+1. Tu es un ASSISTANT DE RECHERCHE DOCUMENTAIRE, pas un expert.
+   Tu ne sais RIEN par toi-même. Tu ne connais QUE ce qui est dans les chunks fournis.
+
+2. CHAQUE affirmation factuelle DOIT être sourcée :
+   Format obligatoire : [NomDocument, Page X, Section Y.Z]
+   Exemple : "Les pas japonais sont prévus uniquement à la Résidence Dunant [CCTP, Page 57, Section 2.3.11.1]"
+
+3. Si l'information n'est PAS dans les chunks fournis :
+   → Réponds EXACTEMENT : "Je n'ai pas trouvé cette information dans les documents disponibles."
+   → Ne JAMAIS inventer, déduire, extrapoler ou "compléter" avec des connaissances générales
+
+4. Si plusieurs chunks semblent contradictoires :
+   → Cite LES DEUX avec leurs sources respectives
+   → Précise : "Les documents présentent des informations différentes : [Source A] indique X, tandis que [Source B] indique Y."
+   → Laisse l'utilisateur trancher
+
+5. DISTINCTION L0/L1 CRITIQUE :
+   - Les chunks avec hierarchy_level=0 sont des RÉSUMÉS générés par IA → JAMAIS pour sourçage factuel
+   - Les chunks avec hierarchy_level=1 sont du TEXTE ORIGINAL → SEULS valides pour sourçage
+   - Si tu n'as que des L0, précise : "Cette information provient d'un résumé, je recommande de vérifier dans le document original."
+
+6. Pour les COMPARAISONS entre documents :
+   → Présente les informations côte à côte, document par document
+   → Cite TOUTES les sources pour chaque élément comparé
+   → Identifie explicitement les différences ET les points communs
+   → Si un élément est absent d'un document, précise "Non mentionné dans [Document X]"
+
+7. LOCALISATION dans les CCTP :
+   → Pour les questions "où se trouve X ?", cite UNIQUEMENT les résidences/zones où X est explicitement mentionné
+   → Si une section indique "Sans Objet" ou "Néant", cite-la aussi (c'est une information valide)
+   → JAMAIS d'extrapolation sur les autres zones non mentionnées
+
+═══════════════════════════════════════════════════════════════════════════════
+`
+
+// ============================================================================
 // HELPERS
 // ============================================================================
 
@@ -299,33 +406,40 @@ async function hashPrompt(prompt: string): Promise<string> {
 }
 
 // ============================================================================
-// v3.2.1: RÉSOLUTION DES PARAMÈTRES DE GÉNÉRATION PAR INTENT
+// v4.0.0: RÉSOLUTION DE LA STRATÉGIE PAR INTENT
+// ============================================================================
+
+function getIntentStrategy(intent: string | undefined): IntentStrategy {
+  if (!intent) return DEFAULT_STRATEGY
+  return INTENT_STRATEGY[intent] || DEFAULT_STRATEGY
+}
+
+// ============================================================================
+// RÉSOLUTION DES PARAMÈTRES DE GÉNÉRATION PAR INTENT
 // ============================================================================
 
 function getEffectiveGenerationParams(
   config: LibrarianConfig,
   intent: string | undefined
 ): EffectiveGenerationParams {
-  // Valeurs par défaut
   let model = config.gemini_model
   let temperature = config.temperature
   let maxTokens = config.max_tokens
 
-  // Si intent spécifié et override existe, appliquer
   if (intent && config.intent_overrides && config.intent_overrides[intent]) {
     const override = config.intent_overrides[intent]
     
     if (override.gemini_model) {
       model = override.gemini_model
-      console.log(`[lib-v3] 🎯 Intent "${intent}" → modèle: ${model}`)
+      console.log(`[lib-v4] 🎯 Intent "${intent}" → modèle: ${model}`)
     }
     if (override.temperature !== undefined) {
       temperature = override.temperature
-      console.log(`[lib-v3] 🎯 Intent "${intent}" → température: ${temperature}`)
+      console.log(`[lib-v4] 🎯 Intent "${intent}" → température: ${temperature}`)
     }
     if (override.max_tokens) {
       maxTokens = override.max_tokens
-      console.log(`[lib-v3] 🎯 Intent "${intent}" → max_tokens: ${maxTokens}`)
+      console.log(`[lib-v4] 🎯 Intent "${intent}" → max_tokens: ${maxTokens}`)
     }
   }
 
@@ -333,7 +447,7 @@ function getEffectiveGenerationParams(
 }
 
 // ============================================================================
-// v3.1.1: RÉSOLUTION NOMS DE FICHIERS → UUIDs (inclut app layer)
+// RÉSOLUTION NOMS DE FICHIERS → UUIDs
 // ============================================================================
 
 async function resolveFileNamesToUuids(
@@ -344,51 +458,41 @@ async function resolveFileNamesToUuids(
 ): Promise<string[] | null> {
   if (!fileNames || fileNames.length === 0) return null
 
-  // Vérifier si ce sont déjà des UUIDs
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
   const allAreUuids = fileNames.every(name => uuidRegex.test(name))
   
   if (allAreUuids) {
-    console.log(`[lib-v3] file_filter déjà en UUIDs: ${fileNames.join(', ')}`)
+    console.log(`[lib-v4] file_filter déjà en UUIDs: ${fileNames.join(', ')}`)
     return fileNames
   }
 
-  console.log(`[lib-v3] Résolution noms → UUIDs: ${fileNames.join(', ')}`)
+  console.log(`[lib-v4] Résolution noms → UUIDs: ${fileNames.join(', ')}`)
 
-  // v3.1.1: Chercher dans TOUS les layers accessibles (app + org + project)
-  // On ne filtre PAS par org_id pour inclure les fichiers du layer app
   let query = supabase
     .schema('sources')
     .from('files')
     .select('id, original_filename, org_id, project_id')
 
-  // Si project_id spécifié, chercher dans project + org + app layers
-  // Sinon si org_id, chercher dans org + app layers
-  // Sinon chercher dans app layer uniquement
   if (projectId) {
-    // Fichiers du projet OU de l'org OU app layer (org_id = null)
     query = query.or(`project_id.eq.${projectId},org_id.eq.${orgId},org_id.is.null`)
   } else if (orgId) {
-    // Fichiers de l'org OU app layer (org_id = null)
     query = query.or(`org_id.eq.${orgId},org_id.is.null`)
   } else {
-    // App layer uniquement
     query = query.is('org_id', null)
   }
 
   const { data: files, error } = await query
 
   if (error || !files) {
-    console.warn(`[lib-v3] Erreur recherche fichiers: ${error?.message}`)
+    console.warn(`[lib-v4] Erreur recherche fichiers: ${error?.message}`)
     return null
   }
 
-  console.log(`[lib-v3] ${files.length} fichiers accessibles trouvés`)
+  console.log(`[lib-v4] ${files.length} fichiers accessibles trouvés`)
 
   const matchedUuids: string[] = []
   
   for (const fileName of fileNames) {
-    // Extraire UNIQUEMENT le premier mot significatif (>= 2 chars)
     const words = fileName
       .toLowerCase()
       .split(/[\s\-_]+/)
@@ -397,47 +501,45 @@ async function resolveFileNamesToUuids(
     const primaryKeyword = words[0]
     
     if (!primaryKeyword) {
-      console.warn(`[lib-v3] Aucun mot-clé extrait de "${fileName}"`)
+      console.warn(`[lib-v4] Aucun mot-clé extrait de "${fileName}"`)
       continue
     }
     
-    console.log(`[lib-v3] Keyword principal pour "${fileName}": "${primaryKeyword}"`)
+    console.log(`[lib-v4] Keyword principal pour "${fileName}": "${primaryKeyword}"`)
     
     let foundMatch = false
     
     for (const file of files) {
       const originalName = (file.original_filename || '').toLowerCase()
       
-      // Match STRICT sur le premier mot uniquement
       if (originalName.includes(primaryKeyword) && !matchedUuids.includes(file.id)) {
         matchedUuids.push(file.id)
         foundMatch = true
-        console.log(`[lib-v3] ✅ Match: "${primaryKeyword}" → ${file.id} (${file.original_filename})`)
+        console.log(`[lib-v4] ✅ Match: "${primaryKeyword}" → ${file.id} (${file.original_filename})`)
       }
     }
     
-    // Fallback: essayer le 2ème mot si pas de match
     if (!foundMatch && words.length > 1) {
       const secondaryKeyword = words[1]
-      console.log(`[lib-v3] Fallback sur mot secondaire: "${secondaryKeyword}"`)
+      console.log(`[lib-v4] Fallback sur mot secondaire: "${secondaryKeyword}"`)
       
       for (const file of files) {
         const originalName = (file.original_filename || '').toLowerCase()
         
         if (originalName.includes(secondaryKeyword) && !matchedUuids.includes(file.id)) {
           matchedUuids.push(file.id)
-          console.log(`[lib-v3] ✅ Match (fallback): "${secondaryKeyword}" → ${file.id} (${file.original_filename})`)
+          console.log(`[lib-v4] ✅ Match (fallback): "${secondaryKeyword}" → ${file.id} (${file.original_filename})`)
         }
       }
     }
   }
 
   if (matchedUuids.length === 0) {
-    console.warn(`[lib-v3] ⚠️ Aucun fichier trouvé pour: ${fileNames.join(', ')}`)
+    console.warn(`[lib-v4] ⚠️ Aucun fichier trouvé pour: ${fileNames.join(', ')}`)
     return null
   }
 
-  console.log(`[lib-v3] ${matchedUuids.length} fichier(s) résolu(s)`)
+  console.log(`[lib-v4] ${matchedUuids.length} fichier(s) résolu(s)`)
   return matchedUuids
 }
 
@@ -450,7 +552,7 @@ async function getLibrarianConfig(
   appId: string = 'arpet',
   orgId?: string
 ): Promise<LibrarianConfig> {
-  console.log(`[lib-v3] Chargement config librarian_v3 (app=${appId}, org=${orgId || 'global'})...`)
+  console.log(`[lib-v4] Chargement config librarian_v3 (app=${appId}, org=${orgId || 'global'})...`)
 
   const { data, error } = await supabase
     .schema('config')
@@ -465,11 +567,11 @@ async function getLibrarianConfig(
     .single()
 
   if (error || !data) {
-    console.warn('[lib-v3] Config DB non trouvée, utilisation fallback')
+    console.warn('[lib-v4] Config DB non trouvée, utilisation fallback')
     return {
       ...FALLBACK_CONFIG,
       intent_config: FALLBACK_INTENT_CONFIG,
-      intent_overrides: {},  // v3.2.1: Fallback vide
+      intent_overrides: {},
       system_prompt: '',
       gemini_system_prompt: '',
       identity: { name: 'Assistant', role: 'assistant documentaire', personality: 'professionnel' },
@@ -506,7 +608,7 @@ async function getLibrarianConfig(
     temperature: generation.temperature ?? FALLBACK_CONFIG.temperature!,
     default_answer_format: generation.default_answer_format || 'paragraph',
     enable_format_detection: generation.enable_format_detection ?? true,
-    intent_overrides: generation.intent_overrides || {},  // v3.2.1: Lecture intent_overrides
+    intent_overrides: generation.intent_overrides || {},
     system_prompt: data.system_prompt || '',
     gemini_system_prompt: data.gemini_system_prompt || '',
     identity: prompts.identity || { name: 'Assistant', role: 'assistant', personality: 'professionnel' },
@@ -539,7 +641,7 @@ async function getAgentContext(
 ): Promise<LibrarianContext> {
 
   if (preloadedContext) {
-    console.log(`[lib-v3] Contexte pré-chargé par Brain`)
+    console.log(`[lib-v4] Contexte pré-chargé par Brain`)
     return {
       effectiveOrgId: preloadedContext.effective_org_id,
       effectiveAppId: preloadedContext.effective_app_id || 'arpet',
@@ -626,7 +728,7 @@ async function generateEmbedding(text: string): Promise<number[]> {
 }
 
 // ============================================================================
-// SEARCH WITH SCORING
+// v4.0.0: SEARCH WITH match_documents_v13
 // ============================================================================
 
 async function executeSearch(
@@ -640,9 +742,10 @@ async function executeSearch(
   config: LibrarianConfig,
   layerFlags: { app: boolean; org: boolean; project: boolean; user: boolean },
   filterSourceTypes: string[] | undefined,
-  fileFilterUuids: string[] | null,  // v3.0.1: Déjà résolu en UUIDs
+  fileFilterUuids: string[] | null,
   intent: string | undefined,
-  boostDocuments: string[]
+  boostDocuments: string[],
+  intentStrategy: IntentStrategy  // v4: Nouveau paramètre
 ): Promise<SearchResult> {
 
   const intentParams = intent ? (config.intent_config[intent] || FALLBACK_INTENT_CONFIG[intent]) : null
@@ -651,9 +754,14 @@ async function executeSearch(
     : intentParams?.match_count || config.match_count
   const effectiveThreshold = intentParams?.min_similarity || config.match_threshold
 
-  console.log(`[lib-v3] Search: match_count=${effectiveMatchCount}, threshold=${effectiveThreshold}, file_filter=${fileFilterUuids?.length || 0} UUIDs`)
+  // v4: Log de la stratégie hiérarchique
+  console.log(`[lib-v4] Search v13: match_count=${effectiveMatchCount}, threshold=${effectiveThreshold}`)
+  console.log(`[lib-v4] Hierarchy: levels=${JSON.stringify(intentStrategy.hierarchy_levels)}, include_children=${intentStrategy.include_children}`)
 
-  const { data, error } = await supabase.schema('rag').rpc('match_documents_v12', {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // v4.0.0: APPEL match_documents_v13 avec nouveaux paramètres
+  // ═══════════════════════════════════════════════════════════════════════════
+  const { data, error } = await supabase.schema('rag').rpc('match_documents_v13', {
     query_embedding: queryEmbedding,
     query_text: queryText,
     p_user_id: userId,
@@ -667,13 +775,19 @@ async function executeSearch(
     include_project_layer: layerFlags.project,
     include_user_layer: layerFlags.user,
     filter_source_types: filterSourceTypes || null,
-    filter_file_ids: fileFilterUuids,  // v3.0.1: UUIDs uniquement
+    filter_file_ids: fileFilterUuids,
     filter_filenames: null,
     enable_concept_expansion: config.enable_concept_expansion,
+    // ═══════════════════════════════════════════════════════════════
+    // NOUVEAUX PARAMÈTRES v13
+    // ═══════════════════════════════════════════════════════════════
+    p_hierarchy_levels: intentStrategy.hierarchy_levels,
+    p_include_children: intentStrategy.include_children,
   })
 
   if (error) throw new Error(`Search error: ${error.message}`)
 
+  // v4: Mapping avec les nouveaux champs v13
   const chunks: ChunkResult[] = (data || []).map((d: Record<string, unknown>) => ({
     chunk_id: d.out_chunk_id as number,
     content: d.out_content as string,
@@ -692,12 +806,25 @@ async function executeSearch(
     file_total_pages: (d.out_file_total_pages as number) || 1,
     file_max_similarity: d.out_file_max_similarity as number | null,
     file_chunk_count: d.out_file_chunk_count as number | null,
+    // ═══════════════════════════════════════════════════════════════
+    // NOUVEAUX CHAMPS v13
+    // ═══════════════════════════════════════════════════════════════
+    hierarchy_level: (d.out_hierarchy_level as number) ?? 1,
+    parent_chunk_id: d.out_parent_chunk_id as number | null,
+    retrieval_role: (d.out_retrieval_role as 'primary' | 'child') || 'primary',
+    section_title: d.out_section_title as string | null,
   }))
+
+  // v4: Log des statistiques L0/L1
+  const l0Count = chunks.filter(c => c.hierarchy_level === 0).length
+  const l1Count = chunks.filter(c => c.hierarchy_level === 1).length
+  const childCount = chunks.filter(c => c.retrieval_role === 'child').length
+  console.log(`[lib-v4] Chunks: ${chunks.length} total (L0=${l0Count}, L1=${l1Count}, children=${childCount})`)
 
   const meetingChunks = chunks.filter(c => c.metadata?.source_type === 'meeting_transcript')
   const fileChunks = chunks.filter(c => c.metadata?.source_type !== 'meeting_transcript')
 
-  console.log(`[lib-v3] Chunks: ${chunks.length} total, ${meetingChunks.length} meetings, ${fileChunks.length} fichiers`)
+  console.log(`[lib-v4] Chunks: ${meetingChunks.length} meetings, ${fileChunks.length} fichiers`)
 
   const filesMap = new Map<string, {
     info: Omit<FileInfo, 'score' | 'is_boosted' | 'avg_similarity'>
@@ -734,7 +861,7 @@ async function executeSearch(
     }
   }
 
-  const files: FileInfo[] = Array.from(filesMap.entries()).map(([fileId, data]) => {
+  const files: FileInfo[] = Array.from(filesMap.entries()).map(([_fileId, data]) => {
     const avgSimilarity = data.similarities.reduce((a, b) => a + b, 0) / data.similarities.length
     const isBoosted = boostDocuments.some(doc => 
       data.info.original_filename.toLowerCase().includes(doc.toLowerCase())
@@ -753,13 +880,12 @@ async function executeSearch(
 
   files.sort((a, b) => b.score - a.score)
   
-  // v3.0.1: Si file_filter actif, ne pas limiter davantage
   const maxFiles = fileFilterUuids && fileFilterUuids.length > 0
-    ? files.length  // Garder tous les fichiers filtrés
+    ? files.length
     : intentParams?.max_files || config.gemini_max_files
   const filteredFiles = files.slice(0, maxFiles)
 
-  console.log(`[lib-v3] Files: ${filteredFiles.map(f => `${f.original_filename}(${f.score.toFixed(2)})`).join(', ')}`)
+  console.log(`[lib-v4] Files: ${filteredFiles.map(f => `${f.original_filename}(${f.score.toFixed(2)})`).join(', ')}`)
 
   const totalPages = filteredFiles.reduce((sum, f) => sum + f.total_pages, 0)
 
@@ -792,12 +918,12 @@ async function getOrUploadGoogleFile(
   if (dbFile?.google_file_uri && dbFile.google_uri_expires_at) {
     const expiresAt = new Date(dbFile.google_uri_expires_at)
     if (expiresAt > new Date()) {
-      console.log(`[lib-v3] Réutilisation Google URI: ${file.original_filename}`)
+      console.log(`[lib-v4] Réutilisation Google URI: ${file.original_filename}`)
       return dbFile.google_file_uri
     }
   }
 
-  console.log(`[lib-v3] Upload vers Google Files: ${file.original_filename}`)
+  console.log(`[lib-v4] Upload vers Google Files: ${file.original_filename}`)
   
   const { data: fileData, error: downloadError } = await supabase.storage
     .from(file.storage_bucket)
@@ -864,7 +990,6 @@ async function getOrUploadGoogleFile(
 
 // ============================================================================
 // GLOBAL GEMINI CACHE
-// v3.2.1: Utilise les paramètres effectifs (model peut varier selon intent)
 // ============================================================================
 
 async function getOrCreateGlobalCache(
@@ -875,23 +1000,22 @@ async function getOrCreateGlobalCache(
   config: LibrarianConfig,
   orgId: string | null,
   appId: string,
-  effectiveModel: string  // v3.2.1: Paramètre explicite
+  effectiveModel: string
 ): Promise<{ cacheName: string; wasReused: boolean }> {
   
   const fileIds = files.map(f => f.file_id)
   const fileIdsHash = await hashFileIds(fileIds)
   const promptHash = await hashPrompt(systemPrompt)
 
-  console.log(`[lib-v3] Cache lookup: hash=${fileIdsHash.substring(0, 16)}..., model=${effectiveModel}`)
+  console.log(`[lib-v4] Cache lookup: hash=${fileIdsHash.substring(0, 16)}..., model=${effectiveModel}`)
 
-  // v3.2.1: Inclure le modèle dans la recherche de cache
   const { data: existingCache } = await supabase
     .schema('rag')
     .from('gemini_caches')
     .select('cache_name, expires_at')
     .eq('file_ids_hash', fileIdsHash)
     .eq('system_prompt_hash', promptHash)
-    .eq('model', effectiveModel)  // v3.2.1: Filtrer par modèle
+    .eq('model', effectiveModel)
     .or(orgId ? `org_id.eq.${orgId},org_id.is.null` : 'org_id.is.null')
     .gt('expires_at', new Date().toISOString())
     .order('expires_at', { ascending: false })
@@ -899,7 +1023,7 @@ async function getOrCreateGlobalCache(
     .single()
 
   if (existingCache) {
-    console.log(`[lib-v3] ✅ Cache GLOBAL réutilisé: ${existingCache.cache_name}`)
+    console.log(`[lib-v4] ✅ Cache GLOBAL réutilisé: ${existingCache.cache_name}`)
     
     await supabase
       .schema('rag')
@@ -912,7 +1036,7 @@ async function getOrCreateGlobalCache(
     return { cacheName: existingCache.cache_name, wasReused: true }
   }
 
-  console.log(`[lib-v3] Création nouveau cache global (${files.length} fichiers, model=${effectiveModel})...`)
+  console.log(`[lib-v4] Création nouveau cache global (${files.length} fichiers, model=${effectiveModel})...`)
 
   const parts: Array<Record<string, unknown>> = []
   parts.push({ text: systemPrompt })
@@ -934,7 +1058,7 @@ async function getOrCreateGlobalCache(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: `models/${effectiveModel}`,  // v3.2.1: Utiliser le modèle effectif
+        model: `models/${effectiveModel}`,
         contents: [{ role: "user", parts }],
         ttl: `${ttlSeconds}s`,
       }),
@@ -957,7 +1081,7 @@ async function getOrCreateGlobalCache(
       file_ids_hash: fileIdsHash,
       file_ids: fileIds,
       cache_name: cacheName,
-      model: effectiveModel,  // v3.2.1: Stocker le modèle effectif
+      model: effectiveModel,
       org_id: orgId,
       app_id: appId,
       system_prompt_hash: promptHash,
@@ -966,13 +1090,13 @@ async function getOrCreateGlobalCache(
       file_count: files.length,
     })
 
-  console.log(`[lib-v3] Cache GLOBAL créé: ${cacheName}`)
+  console.log(`[lib-v4] Cache GLOBAL créé: ${cacheName}`)
   
   return { cacheName, wasReused: false }
 }
 
 // ============================================================================
-// BUILD PROMPT
+// v4.0.0: BUILD PROMPT (avec Zero Hallucination)
 // ============================================================================
 
 function buildFinalPrompt(
@@ -981,9 +1105,13 @@ function buildFinalPrompt(
   files: FileInfo[],
   intent: string | undefined,
   answerFormat: string | undefined,
-  keyConcepts: string[] | undefined
+  keyConcepts: string[] | undefined,
+  useGemini: boolean = false  // v4: Flag pour différencier le prompt
 ): string {
   const parts: string[] = []
+
+  // v4: Ajouter le prompt Zero Hallucination en premier (priorité maximale)
+  parts.push(ZERO_HALLUCINATION_PROMPT)
 
   if (configPrompt?.trim()) {
     parts.push(configPrompt.trim())
@@ -1001,11 +1129,11 @@ function buildFinalPrompt(
     }
   }
 
-  const docCatalog = files.length > 0
-    ? files.map(f => `- ID: "${f.file_id}" | NOM: "${f.original_filename}" | PAGES: ${f.total_pages}`).join('\n')
-    : 'Aucun document disponible.'
-
-  parts.push(`\n═══════════════════════════════════════════════════════════════\nRÈGLES DE CITATION (OBLIGATOIRES)\n═══════════════════════════════════════════════════════════════\nPour chaque information citée, utilise ce format :\n<cite doc="ID_DU_DOCUMENT" page="NUMERO_PAGE">texte ou référence</cite>\n\n### Catalogue des documents disponibles\n${docCatalog}\n═══════════════════════════════════════════════════════════════`)
+  // v4: Catalogue des documents avec indication de sourçage
+  if (useGemini && files.length > 0) {
+    const docCatalog = files.map(f => `- ID: "${f.file_id}" | NOM: "${f.original_filename}" | PAGES: ${f.total_pages}`).join('\n')
+    parts.push(`\n═══════════════════════════════════════════════════════════════\nRÈGLES DE CITATION (MODE GEMINI - OBLIGATOIRES)\n═══════════════════════════════════════════════════════════════\nPour chaque information citée, utilise ce format :\n<cite doc="ID_DU_DOCUMENT" page="NUMERO_PAGE">texte ou référence</cite>\n\n### Catalogue des documents disponibles\n${docCatalog}\n═══════════════════════════════════════════════════════════════`)
+  }
 
   if (answerFormat) {
     const formatInstructions: Record<string, string> = {
@@ -1023,11 +1151,12 @@ function buildFinalPrompt(
     parts.push(`\n🔑 CONCEPTS CLÉS à rechercher: ${keyConcepts.join(', ')}`)
   }
 
+  // v4: Instructions enrichies par intent
   const intentInstructions: Record<string, string> = {
-    synthesis: `L'utilisateur demande une SYNTHÈSE. Identifie les points clés et croise les informations.`,
-    factual: `L'utilisateur cherche une INFORMATION PRÉCISE. Va droit au but, cite l'article exact.`,
-    comparison: `L'utilisateur veut COMPARER. Analyse systématiquement les DIFFÉRENCES et ÉCARTS entre les documents. Ne conclus JAMAIS "pas de différence" sans avoir vérifié point par point.`,
-    citation: `L'utilisateur veut un EXTRAIT EXACT. Reproduis le texte exact entre guillemets.`,
+    synthesis: `L'utilisateur demande une SYNTHÈSE. Identifie les points clés et croise les informations. Cite chaque source.`,
+    factual: `L'utilisateur cherche une INFORMATION PRÉCISE. Va droit au but, cite l'article/page/section exact. Si l'info n'existe pas, dis-le clairement.`,
+    comparison: `L'utilisateur veut COMPARER. Analyse systématiquement les DIFFÉRENCES et ÉCARTS entre les documents. Ne conclus JAMAIS "pas de différence" sans avoir vérifié point par point. Présente les résultats document par document.`,
+    citation: `L'utilisateur veut un EXTRAIT EXACT. Reproduis le texte exact entre guillemets avec la source [Document, Page X, Section Y].`,
   }
   if (intent && intentInstructions[intent]) {
     parts.push(`\n🎯 INTENTION: ${intentInstructions[intent]}`)
@@ -1037,14 +1166,75 @@ function buildFinalPrompt(
 }
 
 // ============================================================================
+// v4.0.0: CONTEXT FORMATTER (mode chunks avec sourçage)
+// ============================================================================
+
+function formatContext(chunks: ChunkResult[], maxLength: number): string {
+  if (chunks.length === 0) {
+    return "CONTEXTE DOCUMENTAIRE:\nAucun document pertinent trouvé.\n"
+  }
+
+  // v4: Grouper par fichier pour faciliter le sourçage
+  const fileGroups = new Map<string, ChunkResult[]>()
+  for (const chunk of chunks) {
+    const key = chunk.source_file_id || 'unknown'
+    if (!fileGroups.has(key)) fileGroups.set(key, [])
+    fileGroups.get(key)!.push(chunk)
+  }
+
+  let context = "═══════════════════════════════════════════════════════════════\nCONTEXTE DOCUMENTAIRE (CHUNKS DISPONIBLES POUR SOURÇAGE)\n═══════════════════════════════════════════════════════════════\n\n"
+  let currentLength = context.length
+
+  for (const [fileId, fileChunks] of fileGroups) {
+    const fileName = fileChunks[0]?.file_original_filename || 'Document inconnu'
+    
+    // v4: Header du fichier avec info hiérarchie
+    const header = `\n📄 DOCUMENT: "${fileName}" (ID: ${fileId})\n${'─'.repeat(60)}\n`
+    if (currentLength + header.length > maxLength) break
+    
+    context += header
+    currentLength += header.length
+
+    for (const chunk of fileChunks) {
+      // v4: Indication du niveau hiérarchique et de la section
+      const hierLabel = chunk.hierarchy_level === 0 ? '⚠️ RÉSUMÉ (L0)' : '✅ TEXTE ORIGINAL (L1)'
+      const roleLabel = chunk.retrieval_role === 'child' ? ' [enfant]' : ''
+      const sectionInfo = chunk.section_title ? `Section: ${chunk.section_title}` : ''
+      const pageInfo = chunk.metadata?.page ? `Page: ${chunk.metadata.page}` : ''
+      const sourceInfo = [hierLabel, roleLabel, sectionInfo, pageInfo].filter(Boolean).join(' | ')
+      
+      const text = `\n[${sourceInfo}]\n${chunk.content}\n`
+      if (currentLength + text.length > maxLength) break
+
+      context += text
+      currentLength += text.length
+    }
+  }
+
+  context += "\n═══════════════════════════════════════════════════════════════\n"
+
+  return context
+}
+
+// ============================================================================
+// MEETING CONTEXT
+// ============================================================================
+
+function buildMeetingContext(meetingChunks: ChunkResult[]): string {
+  if (meetingChunks.length === 0) return ''
+  const header = `\n═══════════════════════════════════════════════════════════════\nCOMPTES-RENDUS DE RÉUNIONS DE CHANTIER\n═══════════════════════════════════════════════════════════════`
+  const content = meetingChunks.map(chunk => chunk.content).join('\n\n---\n\n')
+  return header + '\n' + content
+}
+
+// ============================================================================
 // GEMINI STREAMING
-// v3.2.1: Utilise les paramètres effectifs
 // ============================================================================
 
 async function* generateWithGeminiStream(
   query: string,
   cacheName: string,
-  effectiveParams: EffectiveGenerationParams,  // v3.2.1: Paramètres effectifs
+  effectiveParams: EffectiveGenerationParams,
   meetingContext: string = ''
 ): AsyncGenerator<string, { content: string; citationMetadata: unknown }, undefined> {
   
@@ -1095,24 +1285,11 @@ async function* generateWithGeminiStream(
       try {
         const json = JSON.parse(trimmed.slice(6))
         
-        // v3.2.1: Debug - Logger les métadonnées de citation Gemini
         const candidate = json.candidates?.[0]
         if (candidate) {
-          // Vérifier toutes les métadonnées possibles
           if (candidate.citationMetadata) {
-            console.log(`[lib-v3] 🔍 DEBUG citationMetadata:`, JSON.stringify(candidate.citationMetadata))
+            console.log(`[lib-v4] 🔍 DEBUG citationMetadata:`, JSON.stringify(candidate.citationMetadata))
             lastCitationMetadata = candidate.citationMetadata
-          }
-          if (candidate.groundingMetadata) {
-            console.log(`[lib-v3] 🔍 DEBUG groundingMetadata:`, JSON.stringify(candidate.groundingMetadata))
-          }
-          if (candidate.groundingChunks) {
-            console.log(`[lib-v3] 🔍 DEBUG groundingChunks:`, JSON.stringify(candidate.groundingChunks))
-          }
-          // Logger la structure complète du premier chunk pour debug
-          if (!fullContent && candidate) {
-            const keys = Object.keys(candidate)
-            console.log(`[lib-v3] 🔍 DEBUG candidate keys:`, keys.join(', '))
           }
         }
         
@@ -1127,14 +1304,13 @@ async function* generateWithGeminiStream(
     }
   }
 
-  // v3.2.1: Logger le résumé final des métadonnées
-  console.log(`[lib-v3] 🔍 DEBUG final citationMetadata:`, lastCitationMetadata ? 'PRESENT' : 'ABSENT')
+  console.log(`[lib-v4] 🔍 DEBUG final citationMetadata:`, lastCitationMetadata ? 'PRESENT' : 'ABSENT')
   
   return { content: fullContent, citationMetadata: lastCitationMetadata }
 }
 
 // ============================================================================
-// OPENAI STREAMING (fallback)
+// OPENAI STREAMING (mode chunks)
 // ============================================================================
 
 async function* generateWithOpenAIStream(
@@ -1202,74 +1378,7 @@ async function* generateWithOpenAIStream(
 }
 
 // ============================================================================
-// CONTEXT FORMATTER (mode chunks)
-// ============================================================================
-
-function formatContext(chunks: ChunkResult[], maxLength: number): string {
-  if (chunks.length === 0) {
-    return "CONTEXTE DOCUMENTAIRE:\nAucun document pertinent trouvé.\n"
-  }
-
-  const sections: Record<string, ChunkResult[]> = {}
-  for (const chunk of chunks) {
-    const layer = chunk.layer || 'unknown'
-    if (!sections[layer]) sections[layer] = []
-    sections[layer].push(chunk)
-  }
-
-  let context = "CONTEXTE DOCUMENTAIRE:\n\n"
-  let currentLength = context.length
-
-  const layerOrder = ['app', 'org', 'project', 'user']
-  const layerLabels: Record<string, string> = {
-    app: '📚 Base de connaissances',
-    org: '🏢 Documents organisation',
-    project: '📁 Documents projet',
-    user: '👤 Documents personnels'
-  }
-
-  for (const layer of layerOrder) {
-    const layerChunks = sections[layer]
-    if (!layerChunks?.length) continue
-
-    const header = `\n${layerLabels[layer] || layer}:\n`
-    if (currentLength + header.length > maxLength) break
-
-    context += header
-    currentLength += header.length
-
-    for (const chunk of layerChunks) {
-      let docName = chunk.file_original_filename || 'Document'
-      if (chunk.metadata?.source_type === 'meeting_transcript') {
-        const meetingDate = chunk.metadata?.meeting_date || 'Date inconnue'
-        const meetingTitle = chunk.metadata?.meeting_title || 'Réunion'
-        docName = `📋 Réunion du ${meetingDate} - ${meetingTitle}`
-      }
-      
-      const text = `\n--- ${docName} ---\n${chunk.content}\n`
-      if (currentLength + text.length > maxLength) break
-
-      context += text
-      currentLength += text.length
-    }
-  }
-
-  return context
-}
-
-// ============================================================================
-// MEETING CONTEXT
-// ============================================================================
-
-function buildMeetingContext(meetingChunks: ChunkResult[]): string {
-  if (meetingChunks.length === 0) return ''
-  const header = `\n═══════════════════════════════════════════════════════════════\nCOMPTES-RENDUS DE RÉUNIONS DE CHANTIER\n═══════════════════════════════════════════════════════════════`
-  const content = meetingChunks.map(chunk => chunk.content).join('\n\n---\n\n')
-  return header + '\n' + content
-}
-
-// ============================================================================
-// SOURCES
+// v4.0.0: SOURCES (avec info hiérarchie)
 // ============================================================================
 
 function buildSourcesFromFiles(files: FileInfo[]): SourceItem[] {
@@ -1312,33 +1421,15 @@ function buildSourcesFromChunks(chunks: ChunkResult[]): SourceItem[] {
         score: chunk.similarity,
         layer: chunk.layer,
         content_preview: chunk.content?.substring(0, 200) || null,
+        // v4: Ajout des infos de sourçage
+        section_title: chunk.section_title,
+        hierarchy_level: chunk.hierarchy_level,
+        page: chunk.metadata?.page as number | undefined,
       })
     }
   }
 
   return Array.from(sourcesMap.values())
-}
-
-function filterSourcesByCitation(sources: SourceItem[], response: string): SourceItem[] {
-  if (!sources.length || !response.trim()) return sources
-
-  const citedIds = [...response.matchAll(/doc="([^"]+)"/g)].map(m => m[1])
-  
-  const cited = sources.filter(s => 
-    citedIds.includes(s.source_file_id || String(s.id)) || 
-    response.toLowerCase().includes(s.document_name.toLowerCase())
-  )
-
-  const unique = new Map<string, SourceItem>()
-  for (const source of cited) {
-    const key = source.source_file_id || source.document_name
-    if (!unique.has(key)) unique.set(key, source)
-  }
-
-  const result = Array.from(unique.values())
-  console.log(`[lib-v3] Sources filtrées: ${sources.length} → ${result.length}`)
-
-  return result.length > 0 ? result : sources.slice(0, 1)
 }
 
 // ============================================================================
@@ -1368,7 +1459,7 @@ async function searchQAMemory(
     
     if (!isUsable) return null
     
-    console.log(`[lib-v3] Memory hit: similarity=${best.similarity.toFixed(3)}, trust=${best.trust_score}`)
+    console.log(`[lib-v4] Memory hit: similarity=${best.similarity.toFixed(3)}, trust=${best.trust_score}`)
     return best
   } catch {
     return null
@@ -1406,7 +1497,7 @@ async function addMessage(
       p_processing_time_ms: processingTimeMs || null,
     })
   } catch (error) {
-    console.warn('[lib-v3] Erreur add_message:', error)
+    console.warn('[lib-v4] Erreur add_message:', error)
   }
 }
 
@@ -1419,7 +1510,7 @@ serve(async (req) => {
   const timings: Record<string, number> = {}
   const mark = (label: string) => {
     timings[label] = Date.now() - startTime
-    console.log(`[lib-v3] ⏱️ ${label}: ${timings[label]}ms`)
+    console.log(`[lib-v4] ⏱️ ${label}: ${timings[label]}ms`)
   }
 
   if (req.method === "OPTIONS") {
@@ -1451,19 +1542,23 @@ serve(async (req) => {
     if (!query?.trim()) return errorResponse("Query is required")
     if (!user_id) return errorResponse("user_id is required")
 
-    console.log(`[lib-v3] ═══════════════════════════════════════════════════`)
-    console.log(`[lib-v3] v3.2.2 - Query: "${query.substring(0, 50)}..."`)
-    console.log(`[lib-v3] intent=${intent}, answer_format=${answer_format}`)
+    console.log(`[lib-v4] ═══════════════════════════════════════════════════`)
+    console.log(`[lib-v4] v4.0.0 - Query: "${query.substring(0, 50)}..."`)
+    console.log(`[lib-v4] intent=${intent}, answer_format=${answer_format}`)
     if (rewritten_query && rewritten_query !== query) {
-      console.log(`[lib-v3] 📝 Query enrichie: "${rewritten_query.substring(0, 60)}..."`)
+      console.log(`[lib-v4] 📝 Query enrichie: "${rewritten_query.substring(0, 60)}..."`)
     }
+
+    // v4: Récupérer la stratégie basée sur l'intent
+    const intentStrategy = getIntentStrategy(intent)
+    console.log(`[lib-v4] 🎯 Stratégie: hierarchy=${JSON.stringify(intentStrategy.hierarchy_levels)}, children=${intentStrategy.include_children}, mode=${intentStrategy.mode}`)
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
     const sseStream = new ReadableStream({
       async start(controller) {
         try {
-          sendSSE(controller, 'step', { step: 'starting', message: '🚀 Démarrage...' })
+          sendSSE(controller, 'step', { step: 'starting', message: '🚀 Démarrage v4...' })
 
           // ================================================================
           // 1. CONFIG + CONTEXTE
@@ -1471,13 +1566,40 @@ serve(async (req) => {
           const config = await getLibrarianConfig(supabase, app_id, org_id)
           const libContext = await getAgentContext(supabase, user_id, org_id, project_id, app_id, preloaded_context)
           
-          // v3.2.1: Résoudre les paramètres de génération selon l'intent
           const effectiveGenParams = getEffectiveGenerationParams(config, intent)
-          console.log(`[lib-v3] Effective generation: model=${effectiveGenParams.model}, temp=${effectiveGenParams.temperature}, tokens=${effectiveGenParams.maxTokens}`)
+          console.log(`[lib-v4] Effective generation: model=${effectiveGenParams.model}, temp=${effectiveGenParams.temperature}, tokens=${effectiveGenParams.maxTokens}`)
           
           mark('1_context')
 
           await addMessage(supabase, libContext.conversationId, 'user', query)
+
+          // ================================================================
+          // v4: SKIP SEARCH pour conversational
+          // ================================================================
+          if (intentStrategy.skip_search) {
+            console.log(`[lib-v4] 💬 Intent conversational - skip search`)
+            sendSSE(controller, 'step', { step: 'conversational', message: '💬 Réponse directe...' })
+            
+            // Réponse simple pour les salutations
+            const response = "Bonjour ! Je suis votre assistant documentaire ARPET. Comment puis-je vous aider avec vos documents de chantier ?"
+            for (const word of response.split(' ')) {
+              sendSSE(controller, 'token', { content: word + ' ' })
+            }
+            
+            const processingTime = Date.now() - startTime
+            await addMessage(supabase, libContext.conversationId, 'assistant', response, [], 'conversational', processingTime)
+            
+            sendSSE(controller, 'sources', {
+              sources: [],
+              conversation_id: libContext.conversationId,
+              generation_mode: 'conversational',
+              processing_time_ms: processingTime,
+            })
+            
+            sendSSE(controller, 'done', {})
+            controller.close()
+            return
+          }
 
           // ================================================================
           // 2. EMBEDDING
@@ -1500,7 +1622,7 @@ serve(async (req) => {
             mark('3_memory')
 
             if (memoryResult) {
-              console.log(`[lib-v3] 🎯 MEMORY HIT`)
+              console.log(`[lib-v4] 🎯 MEMORY HIT`)
               sendSSE(controller, 'step', { step: 'memory_hit', message: '💡 Réponse trouvée!' })
 
               for (const word of memoryResult.answer_text.split(' ')) {
@@ -1526,44 +1648,46 @@ serve(async (req) => {
           }
 
           // ================================================================
-          // 4. FILE_FILTER DÉSACTIVÉ (v3.2.0)
-          // Le matching textuel est trop fragile. On laisse Gemini
-          // faire le tri naturellement parmi les documents scorés.
+          // 4. FILE_FILTER (désactivé v3.2.0, conservé désactivé)
           // ================================================================
           const fileFilterUuids: string[] | null = null
           
           if (search_config?.file_filter && search_config.file_filter.length > 0) {
-            console.log(`[lib-v3] file_filter ignoré (désactivé v3.2.0): ${search_config.file_filter.join(', ')}`)
+            console.log(`[lib-v4] file_filter ignoré (désactivé): ${search_config.file_filter.join(', ')}`)
           }
           
           mark('4_resolve_names')
 
           // ================================================================
-          // 5. RECHERCHE AVEC SCORING
+          // 5. RECHERCHE AVEC v13
           // ================================================================
-          sendSSE(controller, 'step', { step: 'search', message: '🔍 Recherche documentaire...' })
+          sendSSE(controller, 'step', { step: 'search', message: '🔍 Recherche documentaire v13...' })
 
           const boostDocuments = search_config?.boost_documents || []
           const searchResult = await executeSearch(
             supabase, queryEmbedding, query, user_id, libContext.effectiveOrgId,
             project_id, libContext.effectiveAppId, config,
             { app: include_app_layer, org: include_org_layer, project: include_project_layer, user: include_user_layer },
-            filter_source_types, fileFilterUuids, intent, boostDocuments
+            filter_source_types, fileFilterUuids, intent, boostDocuments,
+            intentStrategy  // v4: Passer la stratégie
           )
 
           mark('5_search')
 
           const meetingInfo = searchResult.meetingChunks.length > 0 ? ` + ${searchResult.meetingChunks.length} réunion(s)` : ''
-          // v3.1.0: Message générique (nombre de docs masqué pour l'UX)
           sendSSE(controller, 'step', { step: 'files_found', message: `📚 Documents trouvés${meetingInfo}` })
 
           // ================================================================
-          // 6. DÉCISION MODE
+          // 6. v4: DÉCISION MODE (basée sur la stratégie)
           // ================================================================
           let effectiveMode = generation_mode
 
           if (generation_mode === 'auto') {
-            if (searchResult.files.length === 0) {
+            // v4: La stratégie dicte le mode
+            if (intentStrategy.mode === 'chunks') {
+              effectiveMode = 'chunks'
+              console.log(`[lib-v4] Mode forcé chunks par stratégie intent=${intent}`)
+            } else if (searchResult.files.length === 0) {
               effectiveMode = 'chunks'
             } else if (searchResult.totalPages <= config.gemini_max_pages && GEMINI_API_KEY) {
               effectiveMode = 'gemini'
@@ -1590,7 +1714,8 @@ serve(async (req) => {
                 searchResult.files,
                 intent,
                 answer_format,
-                key_concepts
+                key_concepts,
+                true  // v4: useGemini=true
               )
 
               sendSSE(controller, 'step', { step: 'uploading', message: '📤 Upload fichiers...' })
@@ -1600,7 +1725,6 @@ serve(async (req) => {
               mark('6_upload')
 
               sendSSE(controller, 'step', { step: 'caching', message: '📦 Cache global...' })
-              // v3.2.1: Passer le modèle effectif au cache
               const cacheResult = await getOrCreateGlobalCache(
                 supabase,
                 searchResult.files,
@@ -1609,29 +1733,20 @@ serve(async (req) => {
                 config,
                 libContext.effectiveOrgId,
                 app_id,
-                effectiveGenParams.model  // v3.2.1: Modèle effectif
+                effectiveGenParams.model
               )
               cacheWasReused = cacheResult.wasReused
               mark('7_cache')
 
               sendSSE(controller, 'step', { step: 'generating', message: '✨ Génération...' })
-              // v3.2.2: Utiliser la query enrichie pour la génération
               const queryForGeneration = rewritten_query || query
               const generator = generateWithGeminiStream(queryForGeneration, cacheResult.cacheName, effectiveGenParams, meetingContext)
 
               let firstToken = true
-              let geminiCitationMetadata: unknown = null
               
               while (true) {
                 const result = await generator.next()
-                if (result.done) {
-                  // v3.2.1: Récupérer les métadonnées de citation à la fin
-                  if (result.value && typeof result.value === 'object') {
-                    geminiCitationMetadata = result.value.citationMetadata
-                    console.log(`[lib-v3] 🔍 Generator returned citationMetadata:`, geminiCitationMetadata ? 'YES' : 'NO')
-                  }
-                  break
-                }
+                if (result.done) break
                 
                 const token = result.value
                 if (firstToken) {
@@ -1643,7 +1758,7 @@ serve(async (req) => {
               }
 
             } catch (geminiError) {
-              console.error('[lib-v3] Gemini error, fallback chunks:', geminiError)
+              console.error('[lib-v4] Gemini error, fallback chunks:', geminiError)
               effectiveMode = 'chunks'
               
               const systemPrompt = buildFinalPrompt(
@@ -1652,10 +1767,10 @@ serve(async (req) => {
                 [],
                 intent,
                 answer_format,
-                key_concepts
+                key_concepts,
+                false  // v4: useGemini=false
               )
               const context = formatContext(searchResult.chunks, config.max_context_length)
-              // v3.2.2: Utiliser la query enrichie pour la génération
               const queryForGeneration = rewritten_query || query
               const generator = generateWithOpenAIStream(queryForGeneration, context, systemPrompt, config)
 
@@ -1665,16 +1780,17 @@ serve(async (req) => {
               }
             }
           } else {
+            // v4: Mode chunks (par défaut pour factual/citation)
             const systemPrompt = buildFinalPrompt(
               config.system_prompt || libContext.systemPrompt,
               libContext.projectIdentity,
               [],
               intent,
               answer_format,
-              key_concepts
+              key_concepts,
+              false
             )
             const context = formatContext(searchResult.chunks, config.max_context_length)
-            // v3.2.2: Utiliser la query enrichie pour la génération
             const queryForGeneration = rewritten_query || query
             const generator = generateWithOpenAIStream(queryForGeneration, context, systemPrompt, config)
 
@@ -1691,18 +1807,14 @@ serve(async (req) => {
 
           // ================================================================
           // 8. SOURCES
-          // v3.2.2: Retourner tous les fichiers utilisés sans filtrage
-          // Gemini ne retourne pas de citationMetadata avec le cache
           // ================================================================
           let finalSources: SourceItem[]
           if (effectiveMode === 'gemini' && searchResult.files.length > 0) {
-            // v3.2.2: Tous les fichiers envoyés à Gemini, triés par score
             finalSources = buildSourcesFromFiles(searchResult.files)
-            console.log(`[lib-v3] Sources (tous les fichiers Gemini): ${finalSources.length}`)
+            console.log(`[lib-v4] Sources (fichiers Gemini): ${finalSources.length}`)
           } else {
-            // Mode chunks: garder le filtrage pour les chunks
             finalSources = buildSourcesFromChunks(searchResult.chunks)
-            console.log(`[lib-v3] Sources (chunks): ${finalSources.length}`)
+            console.log(`[lib-v4] Sources (chunks): ${finalSources.length}`)
           }
 
           // ================================================================
@@ -1712,7 +1824,7 @@ serve(async (req) => {
           await addMessage(supabase, libContext.conversationId, 'assistant', fullResponse, finalSources, effectiveMode, processingTime)
 
           mark('9_total')
-          console.log(`[lib-v3] ⏱️ TOTAL: ${JSON.stringify(timings)}`)
+          console.log(`[lib-v4] ⏱️ TOTAL: ${JSON.stringify(timings)}`)
 
           sendSSE(controller, 'sources', {
             sources: finalSources,
@@ -1728,9 +1840,16 @@ serve(async (req) => {
             intent,
             answer_format,
             file_filter_applied: fileFilterUuids !== null,
-            // v3.2.1: Ajouter les infos du modèle effectif
             effective_model: effectiveGenParams.model,
             effective_temperature: effectiveGenParams.temperature,
+            // v4: Nouvelles métriques hiérarchie
+            hierarchy_strategy: {
+              levels: intentStrategy.hierarchy_levels,
+              include_children: intentStrategy.include_children,
+            },
+            l0_count: searchResult.chunks.filter(c => c.hierarchy_level === 0).length,
+            l1_count: searchResult.chunks.filter(c => c.hierarchy_level === 1).length,
+            child_count: searchResult.chunks.filter(c => c.retrieval_role === 'child').length,
             timings,
           })
 
@@ -1738,7 +1857,7 @@ serve(async (req) => {
           controller.close()
 
         } catch (error) {
-          console.error('[lib-v3] Error:', error)
+          console.error('[lib-v4] Error:', error)
           sendSSE(controller, 'error', { error: error instanceof Error ? error.message : 'Internal error' })
           controller.close()
         }
@@ -1748,7 +1867,7 @@ serve(async (req) => {
     return new Response(sseStream, { headers: sseHeaders })
 
   } catch (error) {
-    console.error("[lib-v3] Fatal error:", error)
+    console.error("[lib-v4] Fatal error:", error)
     return errorResponse(error instanceof Error ? error.message : "Internal server error", 500)
   }
 })

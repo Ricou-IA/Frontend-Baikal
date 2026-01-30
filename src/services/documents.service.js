@@ -1,9 +1,17 @@
 /**
  * Documents Service - Baikal Console
  * ============================================================================
- * MIGRATION PHASE 3 - Base de données Baikal v2
+ * VERSION 2.2.0 - Paths structurés pour Storage
  * 
- * MODIFICATIONS APPORTÉES:
+ * MODIFICATIONS 24/01/2026 - Paths structurés:
+ * - Nouvelle fonction _buildStoragePath() pour centraliser la logique
+ * - Layer "app": app/{appId}/{timestamp}_{filename}
+ * - Layer "org": org/{orgId}/{timestamp}_{filename}
+ * - Layer "project": project/{orgId}/{projectId}/{timestamp}_{filename}
+ * - Layer "user": user/{orgId}/{userId}/{timestamp}_{filename}
+ * - uploadToStorage() accepte maintenant un objet context
+ * 
+ * MODIFICATIONS PRÉCÉDENTES:
  * - documents → rag.documents (schéma changé)
  * - source_files → sources.files (schéma + table renommés)
  * - vertical_id → app_id (colonne renommée)
@@ -12,19 +20,10 @@
  * - Ajout storage_bucket dans payload webhook n8n
  * - Layer ajouté à la RACINE du payload (pas seulement metadata)
  * - target_layer → layer (renommé dans syncLegifranceCodes)
- * 
- * MODIFICATIONS 17/12/2025:
  * - projectId → projectIds (tableau) pour support multi-projets
- * - target_projects reçoit maintenant un tableau complet
- * 
- * MODIFICATIONS V2 (Phase 1.1):
  * - Ajout document_title à la RACINE du payload webhook
  * - Ajout category_slug à la RACINE du payload webhook
- * 
- * MODIFICATIONS 04/01/2026 - Intégration Edge Function:
- * - Suppression appel webhook N8N direct
- * - Ajout création job dans sources.ingestion_queue
- * - Appel Edge Function trigger-ingestion (flux unifié ARPET/Baikal)
+ * - Intégration Edge Function trigger-ingestion (flux unifié ARPET/Baikal)
  * ============================================================================
  */
 
@@ -84,6 +83,87 @@ function generateFilenameClean(title, originalFilename) {
     .substring(0, 100);               // Limiter la longueur
   
   return ext ? `${slug}.${ext}` : slug;
+}
+
+/**
+ * Nettoie un nom de fichier pour le storage
+ * @param {string} filename - Nom de fichier original
+ * @returns {string} Nom nettoyé
+ */
+function sanitizeFilename(filename) {
+  return filename.replace(/[^a-zA-Z0-9.-]/g, '_');
+}
+
+/**
+ * Construit le path de storage selon le layer et le contexte
+ * ============================================================================
+ * NOUVELLE LOGIQUE v2.2.0 - Paths structurés
+ * 
+ * - Layer "app":     app/{appId}/{timestamp}_{filename}
+ * - Layer "org":     org/{orgId}/{timestamp}_{filename}
+ * - Layer "project": project/{orgId}/{projectId}/{timestamp}_{filename}
+ * - Layer "user":    user/{orgId}/{userId}/{timestamp}_{filename}
+ * 
+ * @param {Object} context - Contexte de l'upload
+ * @param {string} context.layer - Couche cible ('app', 'org', 'project', 'user')
+ * @param {string} context.filename - Nom du fichier original
+ * @param {string} [context.appId] - ID de l'application (requis pour layer 'app')
+ * @param {string} [context.orgId] - ID de l'organisation (requis pour layers 'org', 'project', 'user')
+ * @param {string} [context.projectId] - ID du projet (requis pour layer 'project')
+ * @param {string} [context.userId] - ID de l'utilisateur (requis pour layer 'user')
+ * @returns {string} Path complet pour le storage
+ * @throws {Error} Si les paramètres requis sont manquants
+ * ============================================================================
+ */
+function _buildStoragePath(context) {
+  const { layer, filename, appId, orgId, projectId, userId } = context;
+  const normalizedLayer = normalizeLayer(layer);
+  const timestamp = Date.now();
+  const cleanFilename = sanitizeFilename(filename);
+
+  switch (normalizedLayer) {
+    case 'app':
+      // app/{appId}/{timestamp}_{filename}
+      if (!appId) {
+        throw new Error('[_buildStoragePath] appId requis pour layer "app"');
+      }
+      return `app/${appId}/${timestamp}_${cleanFilename}`;
+
+    case 'org':
+      // org/{orgId}/{timestamp}_{filename}
+      if (!orgId) {
+        throw new Error('[_buildStoragePath] orgId requis pour layer "org"');
+      }
+      return `org/${orgId}/${timestamp}_${cleanFilename}`;
+
+    case 'project':
+      // project/{orgId}/{projectId}/{timestamp}_{filename}
+      if (!orgId) {
+        throw new Error('[_buildStoragePath] orgId requis pour layer "project"');
+      }
+      if (!projectId) {
+        throw new Error('[_buildStoragePath] projectId requis pour layer "project"');
+      }
+      return `project/${orgId}/${projectId}/${timestamp}_${cleanFilename}`;
+
+    case 'user':
+      // user/{orgId}/{userId}/{timestamp}_{filename}
+      if (!orgId) {
+        throw new Error('[_buildStoragePath] orgId requis pour layer "user"');
+      }
+      if (!userId) {
+        throw new Error('[_buildStoragePath] userId requis pour layer "user"');
+      }
+      return `user/${orgId}/${userId}/${timestamp}_${cleanFilename}`;
+
+    default:
+      // Fallback: org/{orgId}/{timestamp}_{filename}
+      console.warn(`[_buildStoragePath] Layer inconnu "${normalizedLayer}", fallback vers "org"`);
+      if (!orgId) {
+        throw new Error('[_buildStoragePath] orgId requis pour le fallback');
+      }
+      return `org/${orgId}/${timestamp}_${cleanFilename}`;
+  }
 }
 
 /**
@@ -407,19 +487,39 @@ export const documentsService = {
   // ==========================================================================
 
   /**
-   * Upload un fichier vers le storage Supabase
+   * Upload un fichier vers le storage Supabase avec paths structurés
+   * ============================================================================
+   * VERSION 2.2.0 - Paths structurés selon le layer
+   * 
+   * - Layer "app":     app/{appId}/{timestamp}_{filename}
+   * - Layer "org":     org/{orgId}/{timestamp}_{filename}
+   * - Layer "project": project/{orgId}/{projectId}/{timestamp}_{filename}
+   * - Layer "user":    user/{orgId}/{userId}/{timestamp}_{filename}
+   * 
    * @param {File} file - Fichier à uploader
-   * @param {string} userId - ID de l'utilisateur
-   * @param {string} layer - Couche cible
-   * @param {string} bucket - Nom du bucket
+   * @param {Object} context - Contexte de l'upload
+   * @param {string} context.layer - Couche cible ('app', 'org', 'project', 'user')
+   * @param {string} [context.appId] - ID de l'application (requis pour layer 'app')
+   * @param {string} [context.orgId] - ID de l'organisation (requis pour layers 'org', 'project', 'user')
+   * @param {string} [context.projectId] - ID du projet (requis pour layer 'project')
+   * @param {string} [context.userId] - ID de l'utilisateur (requis pour layer 'user')
+   * @param {string} [bucket='premium-sources'] - Nom du bucket
    * @returns {Promise<{path: string, error: Error|null}>}
+   * ============================================================================
    */
-  async uploadToStorage(file, userId, layer = 'org', bucket = 'premium-sources') {
+  async uploadToStorage(file, context, bucket = 'premium-sources') {
     try {
-      const normalizedLayer = normalizeLayer(layer);
-      const timestamp = Date.now();
-      const cleanFilename = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-      const path = `${normalizedLayer}/${userId}/${timestamp}_${cleanFilename}`;
+      // Construire le path avec la nouvelle logique
+      const path = _buildStoragePath({
+        layer: context.layer,
+        filename: file.name,
+        appId: context.appId,
+        orgId: context.orgId,
+        projectId: context.projectId,
+        userId: context.userId,
+      });
+
+      console.log('[documentsService] uploadToStorage - path:', path);
 
       const { data, error } = await supabase.storage
         .from(bucket)
@@ -440,9 +540,10 @@ export const documentsService = {
   /**
    * Upload complet d'un document (storage + metadata + Edge Function ingestion)
    * ============================================================================
-   * FLUX UNIFIÉ ARPET / BAIKAL CONSOLE (04/01/2026)
+   * FLUX UNIFIÉ ARPET / BAIKAL CONSOLE
+   * VERSION 2.2.0 - Paths structurés
    * 
-   * 1. Upload vers Storage (premium-sources)
+   * 1. Upload vers Storage (premium-sources) avec path structuré
    * 2. Insert sources.files (processing_status: 'pending')
    * 3. Insert sources.ingestion_queue (status: 'queued')
    * 4. Appel Edge Function trigger-ingestion
@@ -499,9 +600,18 @@ export const documentsService = {
       const contentHash = await computeFileHash(file);
 
       // =========================================================================
-      // ÉTAPE 2: Upload vers Storage
+      // ÉTAPE 2: Upload vers Storage avec paths structurés v2.2.0
       // =========================================================================
-      const { path, error: uploadError } = await this.uploadToStorage(file, userId, normalizedLayer, bucket);
+      const storageContext = {
+        layer: normalizedLayer,
+        appId: appId,
+        orgId: orgId,
+        // Pour le layer "project", utiliser le premier projectId
+        projectId: normalizedProjectIds[0] || null,
+        userId: userId,
+      };
+
+      const { path, error: uploadError } = await this.uploadToStorage(file, storageContext, bucket);
       if (uploadError) throw uploadError;
 
       // =========================================================================
@@ -536,7 +646,7 @@ export const documentsService = {
 
       if (sourceError) throw sourceError;
 
-      console.log('[documentsService] Source file created:', sourceFile.id);
+      console.log('[documentsService] Source file created:', sourceFile.id, '- path:', path);
 
       // =========================================================================
       // ÉTAPE 4: Créer le job dans la queue d'ingestion

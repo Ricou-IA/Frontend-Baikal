@@ -1,18 +1,14 @@
 // ╔══════════════════════════════════════════════════════════════════════════════╗
 // ║  INGEST-DOCUMENTS - Edge Function Supabase                                   ║
-// ║  Version: 6.0.2 - UPSERT document_concepts (fix duplicate key)               ║
+// ║  Version: 7.0.0 - Support hiérarchie chunks (parent/enfant)                  ║
+// ╠══════════════════════════════════════════════════════════════════════════════╣
+// ║  Changements v7.0.0:                                                         ║
+// ║  - Ajout colonne hierarchy_level (0=section, 1=contenu)                      ║
+// ║  - Stockage _chunk_local_id dans metadata pour résolution liens              ║
+// ║  - Appel rag.resolve_chunk_hierarchy() après insertion                       ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
 // ║  Changements v6.0.2:                                                         ║
 // ║  - UPSERT au lieu de INSERT sur document_concepts (évite duplicate key)      ║
-// ╠══════════════════════════════════════════════════════════════════════════════╣
-// ║  Changements v6.0.1:                                                         ║
-// ║  - Déduplication concepts (category prioritaire sur llm)                     ║
-// ╠══════════════════════════════════════════════════════════════════════════════╣
-// ║  Changements v6.0.0:                                                         ║
-// ║  - Auto-assign concept primaire depuis category_slug (confiance 1.0)         ║
-// ║  - Champ 'source' dans document_concepts ('category' | 'llm' | 'manual')     ║
-// ║  - Support complet metadata V2 (page_start, page_end, etc.)                  ║
-// ║  - Nettoyage logs DEBUG                                                      ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
 // ║  Destinations supportées:                                                    ║
 // ║  - 'rag.documents' (défaut) : chunks texte avec embedding                    ║
@@ -116,6 +112,9 @@ serve(async (req) => {
     
     // v6.0.0 : Stocker les concepts avec leur source
     const conceptsByDocIndex: Map<number, ConceptEntry[]> = new Map()
+    
+    // v7.0.0 : Tracker les source_file_id pour résolution hiérarchie
+    const sourceFileIdsToResolve = new Set<string>()
 
     for (const doc of documents) {
       const destination = doc._DESTINATION || 'rag.documents'
@@ -123,6 +122,11 @@ serve(async (req) => {
       
       // v6.0.0 : Extraire category_slug
       const categorySlug = doc.category_slug || metadata.category_slug || null
+      
+      // v7.0.0 : Extraire hierarchy_level et chunk_local_id
+      const hierarchyLevel = doc.hierarchy_level ?? metadata.enrichment?.hierarchy?.level ?? 1
+      const chunkLocalId = doc._chunk_local_id || metadata.chunk_local_id || null
+      const parentLocalId = doc._parent_local_id || metadata.enrichment?.hierarchy?.parent_local_id || null
       
       // ════════════════════════════════════════════════════════════════════════
       // CAS 1: table_chunk → Double insertion
@@ -193,6 +197,11 @@ serve(async (req) => {
           conceptsByDocIndex.set(docIndex, conceptEntries)
         }
         
+        // v7.0.0 : Tracker pour résolution hiérarchie
+        if (sourceFileId) {
+          sourceFileIdsToResolve.add(sourceFileId)
+        }
+        
         docsForRagDocuments.push({
           content: doc.content.trim(),
           target_apps: targetApps,
@@ -203,6 +212,7 @@ serve(async (req) => {
           layer: doc.layer || null,
           status: doc.status || null,
           quality_level: doc.quality_level || null,
+          hierarchy_level: hierarchyLevel,  // v7.0.0
           metadata: {
             source_file_id: sourceFileId,
             content_type: 'table_chunk',
@@ -212,6 +222,14 @@ serve(async (req) => {
             table_index: doc.table_index ?? 0,
             row_count: doc.row_count || 0,
             column_count: doc.column_count || 0,
+            chunk_local_id: chunkLocalId,  // v7.0.0
+            enrichment: {
+              ...metadata.enrichment,
+              hierarchy: {
+                level: hierarchyLevel,
+                parent_local_id: parentLocalId,
+              }
+            }
           },
         })
         
@@ -335,6 +353,11 @@ serve(async (req) => {
       if (conceptEntries.length > 0) {
         conceptsByDocIndex.set(docIndex, conceptEntries)
       }
+      
+      // v7.0.0 : Tracker pour résolution hiérarchie
+      if (sourceFileId) {
+        sourceFileIdsToResolve.add(sourceFileId)
+      }
 
       docsForRagDocuments.push({
         content: content.trim(),
@@ -346,10 +369,12 @@ serve(async (req) => {
         layer: doc.layer || null,
         status: doc.status || null,
         quality_level: doc.quality_level || null,
+        hierarchy_level: hierarchyLevel,  // v7.0.0
         metadata: {
           ...metadata,
           source_file_id: sourceFileId,
           category_slug: categorySlug,
+          chunk_local_id: chunkLocalId,  // v7.0.0
         },
       })
     }
@@ -393,6 +418,7 @@ serve(async (req) => {
         layer: doc.layer,
         status: doc.status,
         quality_level: doc.quality_level,
+        hierarchy_level: doc.hierarchy_level,  // v7.0.0
         metadata: doc.metadata,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -410,6 +436,35 @@ serve(async (req) => {
       
       insertedDocs = data || []
       console.log(`[ingest-documents] rag.documents: ${insertedDocs.length} insérés`)
+    }
+
+    // ════════════════════════════════════════════════════════════════════════════
+    // v7.0.0 : RÉSOLUTION HIÉRARCHIE (parent_chunk_id)
+    // ════════════════════════════════════════════════════════════════════════════
+    
+    let hierarchyResolved = { updated: 0, errors: 0 }
+    
+    if (insertedDocs.length > 0 && sourceFileIdsToResolve.size > 0) {
+      console.log(`[ingest-documents] Résolution hiérarchie pour ${sourceFileIdsToResolve.size} fichier(s)...`)
+      
+      for (const sourceFileId of sourceFileIdsToResolve) {
+        try {
+          const { data: resolveResult, error: resolveError } = await supabase
+            .rpc('resolve_chunk_hierarchy', { p_source_file_id: sourceFileId })
+          
+          if (resolveError) {
+            console.error(`[ingest-documents] Erreur résolution hiérarchie ${sourceFileId}: ${resolveError.message}`)
+            hierarchyResolved.errors++
+          } else if (resolveResult && resolveResult.length > 0) {
+            hierarchyResolved.updated += resolveResult[0].updated_count || 0
+            hierarchyResolved.errors += resolveResult[0].error_count || 0
+            console.log(`[ingest-documents] Hiérarchie ${sourceFileId}: ${resolveResult[0].updated_count} liens résolus`)
+          }
+        } catch (e) {
+          console.error(`[ingest-documents] Exception résolution hiérarchie: ${e.message}`)
+          hierarchyResolved.errors++
+        }
+      }
     }
 
     // ════════════════════════════════════════════════════════════════════════════
@@ -558,6 +613,7 @@ serve(async (req) => {
           rag_document_tables: insertedTables.length,
           rag_document_concepts: insertedConcepts,
         },
+        hierarchy: hierarchyResolved,  // v7.0.0
         ids: {
           documents: insertedDocs.map((d: any) => d.id),
           tables: insertedTables.map((d: any) => d.id),

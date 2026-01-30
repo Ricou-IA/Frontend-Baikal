@@ -11,11 +11,18 @@
  * - 'avatars' → conservé tel quel
  * 
  * v2.1.0 - Ajout support customFileName pour filename_clean
+ * v2.2.0 - Restructuration des paths par layer/org/project
+ *          Path format: {layer}/{org_id}/{project_id|user_id}/{timestamp}_{filename}
  * 
  * @example
  * import { storageService, STORAGE_BUCKETS } from '@/services';
  * 
- * const { url, error } = await storageService.uploadFile(STORAGE_BUCKETS.PREMIUM_SOURCES, file);
+ * // Upload avec contexte complet (v2.2.0+)
+ * const { url, error } = await storageService.uploadFileAuto(
+ *   STORAGE_BUCKETS.PREMIUM_SOURCES, 
+ *   file,
+ *   { userId: 'xxx', orgId: 'yyy', projectId: 'zzz', layer: 'project' }
+ * );
  * ============================================================================
  */
 
@@ -93,23 +100,51 @@ export const storageService = {
   },
 
   /**
-   * Upload un fichier avec génération automatique du chemin
+   * Upload un fichier avec génération automatique du chemin structuré
+   * 
+   * v2.2.0: Nouveau format de path structuré par layer/org/project
    * 
    * @param {string} bucket - Nom du bucket
    * @param {File} file - Fichier à uploader
-   * @param {string} userId - ID de l'utilisateur
+   * @param {Object|string} context - Contexte d'upload (ou userId pour rétrocompat)
+   * @param {string} context.userId - ID de l'utilisateur (requis)
+   * @param {string} [context.orgId] - ID de l'organisation
+   * @param {string} [context.projectId] - ID du projet (requis si layer='project')
+   * @param {string} [context.layer='user'] - Layer cible: 'app', 'org', 'project', 'user'
    * @param {Object} options - Options d'upload
-   * @param {string} [options.customFileName] - Nom personnalisé (filename_clean). Fallback sur file.name si non fourni.
+   * @param {string} [options.customFileName] - Nom personnalisé (filename_clean)
    * @returns {Promise<{data: Object|null, path: string|null, error: Error|null}>}
    * 
    * @example
-   * // Avec filename_clean personnalisé
-   * const { path } = await storageService.uploadFileAuto(bucket, file, userId, { customFileName: 'CCAG-Travaux-2021.pdf' });
+   * // Upload document projet (v2.2.0+)
+   * const { path } = await storageService.uploadFileAuto(
+   *   STORAGE_BUCKETS.PREMIUM_SOURCES, 
+   *   file,
+   *   { 
+   *     userId: 'user-uuid', 
+   *     orgId: 'org-uuid', 
+   *     projectId: 'project-uuid', 
+   *     layer: 'project' 
+   *   },
+   *   { customFileName: 'CCAG-Travaux-2021.pdf' }
+   * );
+   * // → path: "project/org-uuid/project-uuid/1769209168406_CCAG-Travaux-2021.pdf"
    * 
-   * // Sans customFileName → utilise file.name
-   * const { path } = await storageService.uploadFileAuto(bucket, file, userId);
+   * @example
+   * // Upload document personnel
+   * const { path } = await storageService.uploadFileAuto(
+   *   STORAGE_BUCKETS.PREMIUM_SOURCES, 
+   *   file,
+   *   { userId: 'user-uuid', orgId: 'org-uuid', layer: 'user' }
+   * );
+   * // → path: "user/org-uuid/user-uuid/1769209168406_document.pdf"
+   * 
+   * @example
+   * // Rétrocompatibilité (deprecated) - userId string
+   * const { path } = await storageService.uploadFileAuto(bucket, file, 'user-uuid');
+   * // → path: "user-uuid/1769209168406_document.pdf" (ancien format)
    */
-  async uploadFileAuto(bucket, file, userId, options = {}) {
+  async uploadFileAuto(bucket, file, context, options = {}) {
     const actualBucket = this._migrateBucketName(bucket);
     const { customFileName } = options;
 
@@ -122,7 +157,8 @@ export const storageService = {
         ? this.sanitizeFileName(customFileName)
         : this.sanitizeFileName(file.name);
       
-      const path = `${userId}/${timestamp}_${fileName}`;
+      // Génère le path selon le contexte
+      const path = this._buildStoragePath(context, timestamp, fileName);
 
       const { data, error } = await this.uploadFile(actualBucket, path, file);
 
@@ -411,6 +447,70 @@ export const storageService = {
     }
 
     return bucket;
+  },
+
+  /**
+   * Construit le chemin de stockage selon le contexte
+   * 
+   * v2.2.0: Nouvelle structure de paths par layer
+   * 
+   * Structure des paths:
+   * - app:     app/{org_id}/{timestamp}_{filename}
+   * - org:     org/{org_id}/{timestamp}_{filename}
+   * - project: project/{org_id}/{project_id}/{timestamp}_{filename}
+   * - user:    user/{org_id}/{user_id}/{timestamp}_{filename}
+   * 
+   * @private
+   * @param {Object|string} context - Contexte d'upload ou userId (rétrocompat)
+   * @param {string} context.userId - ID utilisateur (requis)
+   * @param {string} [context.orgId] - ID organisation
+   * @param {string} [context.projectId] - ID projet
+   * @param {string} [context.layer='user'] - Layer cible
+   * @param {number} timestamp - Timestamp pour unicité
+   * @param {string} fileName - Nom du fichier sanitisé
+   * @returns {string} - Chemin complet
+   */
+  _buildStoragePath(context, timestamp, fileName) {
+    // Rétrocompatibilité: si context est une string, c'est l'ancien format (userId seul)
+    if (typeof context === 'string') {
+      console.warn('[StorageService] Format deprecated: uploadFileAuto(bucket, file, userId). Utilisez le format context object.');
+      return `${context}/${timestamp}_${fileName}`;
+    }
+
+    const { userId, orgId, projectId, layer = 'user' } = context;
+
+    // Validation
+    if (!userId) {
+      console.error('[StorageService] userId requis dans le contexte');
+      throw new Error('userId requis pour uploadFileAuto');
+    }
+
+    // Fallback pour orgId si non fourni
+    const safeOrgId = orgId || 'no-org';
+
+    // Construction du path selon le layer
+    switch (layer) {
+      case 'app':
+        // Documents métier globaux: app/{org_id}/{timestamp}_{filename}
+        return `app/${safeOrgId}/${timestamp}_${fileName}`;
+
+      case 'org':
+        // Documents organisation: org/{org_id}/{timestamp}_{filename}
+        return `org/${safeOrgId}/${timestamp}_${fileName}`;
+
+      case 'project':
+        // Documents projet: project/{org_id}/{project_id}/{timestamp}_{filename}
+        if (!projectId) {
+          console.warn('[StorageService] projectId manquant pour layer "project", fallback sur userId');
+          return `project/${safeOrgId}/${userId}/${timestamp}_${fileName}`;
+        }
+        return `project/${safeOrgId}/${projectId}/${timestamp}_${fileName}`;
+
+      case 'user':
+      default:
+        // Documents personnels: user/{org_id}/{user_id}/{timestamp}_{filename}
+        return `user/${safeOrgId}/${userId}/${timestamp}_${fileName}`;
+    }
   },
 };
 
