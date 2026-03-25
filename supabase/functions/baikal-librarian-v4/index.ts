@@ -1,5 +1,5 @@
 // ╔══════════════════════════════════════════════════════════════════════════════╗
-// ║  BAIKAL-LIBRARIAN v4.0.0 - Zero Hallucination & Hierarchy L0/L1             ║
+// ║  BAIKAL-LIBRARIAN v4.1.0 - Zero Hallucination & Hierarchy L0/L1             ║
 // ║  Edge Function Supabase                                                      ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
 // ║  v4.0.0: Migration vers match_documents_v13                                  ║
@@ -8,6 +8,9 @@
 // ║        - Stratégie par intent (factual→L1, synthesis→L0+children)           ║
 // ║        - Mode chunks par défaut (Gemini désactivé pour factual/citation)    ║
 // ║        - Prompt système Zero Hallucination avec sourçage obligatoire        ║
+// ║  v4.1.0: Ajout règle N°8 - Fallback Intelligent                             ║
+// ║        - Si aucun résultat : analyse sémantique + suggestions alternatives  ║
+// ║        - Améliore l'UX quand les termes exacts ne matchent pas              ║
 // ╚══════════════════════════════════════════════════════════════════════════════╝
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
@@ -330,7 +333,7 @@ const MODE_LABELS = {
 }
 
 // ============================================================================
-// v4.0.0: PROMPT SYSTÈME ZERO HALLUCINATION
+// v4.1.0: PROMPT SYSTÈME ZERO HALLUCINATION + FALLBACK INTELLIGENT
 // ============================================================================
 
 const ZERO_HALLUCINATION_PROMPT = `
@@ -346,7 +349,7 @@ RÈGLES ABSOLUES - ZERO HALLUCINATION (NON NÉGOCIABLES)
    Exemple : "Les pas japonais sont prévus uniquement à la Résidence Dunant [CCTP, Page 57, Section 2.3.11.1]"
 
 3. Si l'information n'est PAS dans les chunks fournis :
-   → Réponds EXACTEMENT : "Je n'ai pas trouvé cette information dans les documents disponibles."
+   → Applique d'abord la RÈGLE N°8 (Fallback Intelligent) ci-dessous
    → Ne JAMAIS inventer, déduire, extrapoler ou "compléter" avec des connaissances générales
 
 4. Si plusieurs chunks semblent contradictoires :
@@ -369,6 +372,52 @@ RÈGLES ABSOLUES - ZERO HALLUCINATION (NON NÉGOCIABLES)
    → Pour les questions "où se trouve X ?", cite UNIQUEMENT les résidences/zones où X est explicitement mentionné
    → Si une section indique "Sans Objet" ou "Néant", cite-la aussi (c'est une information valide)
    → JAMAIS d'extrapolation sur les autres zones non mentionnées
+
+═══════════════════════════════════════════════════════════════════════════════
+RÈGLE N°8 - FALLBACK INTELLIGENT (v4.1.0)
+═══════════════════════════════════════════════════════════════════════════════
+
+SI tu ne trouves AUCUN résultat pertinent dans les chunks fournis, ou si les chunks
+semblent sans rapport avec la question de l'utilisateur :
+
+a) D'abord, CONFIRME que tu n'as pas trouvé l'information exacte demandée.
+
+b) Ensuite, ANALYSE la requête de l'utilisateur :
+   → Identifie les termes clés et leurs synonymes possibles dans le domaine BTP/construction
+   → Réfléchis à ce que l'utilisateur pourrait réellement chercher
+   → Cherche des associations sémantiques (ex: "asiatique" → "japonais" → "pas japonais")
+
+c) PROPOSE des hypothèses ou reformulations :
+   
+   Format de réponse recommandé :
+   "Je n'ai pas trouvé de référence directe à '[terme recherché]' dans les documents du projet.
+   
+   Cependant, vous faites peut-être référence à :
+   • **[Suggestion 1]** - [brève explication de pourquoi cette suggestion]
+   • **[Suggestion 2]** - [brève explication si pertinent]
+   
+   Voulez-vous que je recherche des informations sur l'un de ces éléments ?"
+
+d) EXEMPLES d'inférences AUTORISÉES (basées sur le raisonnement sémantique, pas l'invention) :
+   
+   | Requête utilisateur              | Suggestion à proposer                          |
+   |----------------------------------|------------------------------------------------|
+   | "truc asiatique"                 | "pas japonais" (dalles de cheminement)         |
+   | "machin pour les PMR"            | "bandes de guidage", "rampes d'accès"          |
+   | "bidule électrique principal"    | "TGBT", "coffret électrique", "armoire"        |
+   | "protection incendie"            | "désenfumage", "extincteurs", "SSI"            |
+   | "isolant écologique"             | "laine de bois", "ouate de cellulose"          |
+   | "revêtement extérieur"           | "bardage", "enduit", "ITE"                     |
+
+e) CE QUI RESTE STRICTEMENT INTERDIT même avec le Fallback Intelligent :
+   ❌ Inventer des informations qui seraient dans les documents
+   ❌ Affirmer que quelque chose existe sans l'avoir trouvé dans les chunks
+   ❌ Donner des détails techniques (dimensions, prix, délais) non sourcés
+   ❌ Présenter une suggestion comme une certitude
+   ❌ Ignorer la question et répondre sur autre chose
+
+f) IMPORTANT : Le Fallback Intelligent sert à AIDER l'utilisateur à reformuler sa question,
+   PAS à inventer une réponse. Tu proposes des pistes, l'utilisateur choisit.
 
 ═══════════════════════════════════════════════════════════════════════════════
 `
@@ -620,7 +669,7 @@ async function getLibrarianConfig(
     boost_on_mention: scoring.boost_on_mention || FALLBACK_CONFIG.boost_on_mention!,
     min_chunks_for_inclusion: scoring.min_chunks_for_inclusion || FALLBACK_CONFIG.min_chunks_for_inclusion!,
     llm_model: FALLBACK_CONFIG.llm_model!,
-    max_context_length: FALLBACK_CONFIG.max_context_length!,
+    max_context_length: search.max_context_length || FALLBACK_CONFIG.max_context_length!,
     google_file_ttl_hours: FALLBACK_CONFIG.google_file_ttl_hours!,
     qa_memory_similarity_threshold: legacy.qa_memory_similarity_threshold || FALLBACK_CONFIG.qa_memory_similarity_threshold!,
     qa_memory_max_results: legacy.qa_memory_max_results || FALLBACK_CONFIG.qa_memory_max_results!,
@@ -1154,7 +1203,7 @@ function buildFinalPrompt(
   // v4: Instructions enrichies par intent
   const intentInstructions: Record<string, string> = {
     synthesis: `L'utilisateur demande une SYNTHÈSE. Identifie les points clés et croise les informations. Cite chaque source.`,
-    factual: `L'utilisateur cherche une INFORMATION PRÉCISE. Va droit au but, cite l'article/page/section exact. Si l'info n'existe pas, dis-le clairement.`,
+    factual: `L'utilisateur cherche une INFORMATION PRÉCISE. Va droit au but, cite l'article/page/section exact. Si l'info n'existe pas, applique la RÈGLE N°8 (Fallback Intelligent).`,
     comparison: `L'utilisateur veut COMPARER. Analyse systématiquement les DIFFÉRENCES et ÉCARTS entre les documents. Ne conclus JAMAIS "pas de différence" sans avoir vérifié point par point. Présente les résultats document par document.`,
     citation: `L'utilisateur veut un EXTRAIT EXACT. Reproduis le texte exact entre guillemets avec la source [Document, Page X, Section Y].`,
   }
@@ -1171,7 +1220,20 @@ function buildFinalPrompt(
 
 function formatContext(chunks: ChunkResult[], maxLength: number): string {
   if (chunks.length === 0) {
-    return "CONTEXTE DOCUMENTAIRE:\nAucun document pertinent trouvé.\n"
+    // v4.1.0: Message enrichi pour activer le Fallback Intelligent
+    return `CONTEXTE DOCUMENTAIRE:
+═══════════════════════════════════════════════════════════════
+⚠️ AUCUN DOCUMENT PERTINENT TROUVÉ pour cette requête.
+═══════════════════════════════════════════════════════════════
+
+INSTRUCTION: Applique la RÈGLE N°8 (Fallback Intelligent).
+- Confirme que tu n'as pas trouvé l'information exacte
+- Analyse les termes de la requête utilisateur
+- Propose des suggestions ou reformulations basées sur le vocabulaire BTP/construction
+- NE PAS inventer d'informations
+
+═══════════════════════════════════════════════════════════════
+`
   }
 
   // v4: Grouper par fichier pour faciliter le sourçage
@@ -1543,7 +1605,7 @@ serve(async (req) => {
     if (!user_id) return errorResponse("user_id is required")
 
     console.log(`[lib-v4] ═══════════════════════════════════════════════════`)
-    console.log(`[lib-v4] v4.0.0 - Query: "${query.substring(0, 50)}..."`)
+    console.log(`[lib-v4] v4.1.0 - Query: "${query.substring(0, 50)}..."`)
     console.log(`[lib-v4] intent=${intent}, answer_format=${answer_format}`)
     if (rewritten_query && rewritten_query !== query) {
       console.log(`[lib-v4] 📝 Query enrichie: "${rewritten_query.substring(0, 60)}..."`)
@@ -1558,7 +1620,7 @@ serve(async (req) => {
     const sseStream = new ReadableStream({
       async start(controller) {
         try {
-          sendSSE(controller, 'step', { step: 'starting', message: '🚀 Démarrage v4...' })
+          sendSSE(controller, 'step', { step: 'starting', message: '🚀 Démarrage v4.1.0...' })
 
           // ================================================================
           // 1. CONFIG + CONTEXTE

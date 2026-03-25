@@ -13,6 +13,7 @@ interface CreateUserRequest {
   fullName?: string
   orgId?: string
   appRole?: string
+  businessRole?: string
 }
 
 function errorResponse(message: string, status: number = 400) {
@@ -68,7 +69,7 @@ serve(async (req) => {
     }
 
     const body: CreateUserRequest = await req.json()
-    const { email, password, fullName, orgId, appRole = "user" } = body
+    const { email, password, fullName, orgId, appRole = "user", businessRole } = body
 
     if (!email || !password) {
       return errorResponse("Email and password are required", 400)
@@ -111,6 +112,7 @@ serve(async (req) => {
     await supabaseAdmin.from("profiles").update({
       full_name: fullName?.trim() || null,
       app_role: appRole,
+      business_role: businessRole || null,
       org_id: orgId || null,
     }).eq("id", newUserId)
 
@@ -130,6 +132,7 @@ serve(async (req) => {
         email: authData.user.email,
         fullName: fullName?.trim() || null,
         appRole,
+        businessRole: businessRole || null,
         orgId: orgId || null,
       }
     }, 201)

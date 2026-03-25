@@ -1,10 +1,12 @@
 // ╔══════════════════════════════════════════════════════════════════════════════╗
-// ║  BAIKAL-BRAIN v3.1.0 - Orchestrateur Intelligent                             ║
+// ║  BAIKAL-BRAIN v3.2.0 - Orchestrateur Intelligent                             ║
 // ║  Edge Function Supabase                                                      ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
 // ║  v3.0.1: Fix endpoint librarian-v3                                           ║
 // ║  v3.0.2: Safe fallback - recherche par défaut sauf salutation évidente       ║
 // ║  v3.1.0: Migration vers baikal-librarian-v4 (hierarchy L0/L1)                ║
+// ║  v3.1.1: FIX - safeRequiresSearch corrige AUSSI l'intent (bug pétanque)      ║
+// ║  v3.2.0: Routing generation_mode intelligent (gemini pour synthesis/citation) ║
 // ╚══════════════════════════════════════════════════════════════════════════════╝
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
@@ -98,7 +100,7 @@ Réponds UNIQUEMENT en JSON valide, sans texte avant ou après:
 
 | Intent | Quand | requires_search | scope | answer_format |
 |--------|-------|-----------------|-------|---------------|
-| factual | Fait précis, délai, montant, article, équipe, personne | true | narrow | paragraph |
+| factual | Fait précis, délai, montant, article, équipe, personne, localisation, emplacement | true | narrow | paragraph |
 | synthesis | Résumé, explication globale | true | broad | paragraph |
 | comparison | Comparer documents, incohérences, écarts, différences | true | broad | table |
 | citation | Extrait exact, verbatim | true | narrow | quote |
@@ -109,9 +111,19 @@ Réponds UNIQUEMENT en JSON valide, sans texte avant ou après:
 - "Bonjour" → false
 - "Bonjour, quelle est l'équipe ?" → TRUE (il y a une question)
 - "Quelle est l'équipe ?" → TRUE
+- "Où se trouve X ?" → TRUE (c'est une question de localisation)
 - "Merci pour l'info" → false
 - "Y a-t-il des incohérences ?" → TRUE (c'est une question)
 - En cas de doute → requires_search = true
+
+## RÈGLES FACTUAL (IMPORTANT)
+Les mots interrogatifs suivants indiquent une question FACTUELLE (intent=factual, requires_search=true):
+- "où", "ou" (localisation)
+- "quel", "quelle", "quels", "quelles"
+- "qui"
+- "quand"
+- "combien"
+- "comment" (si question technique)
 
 ## RÈGLES COMPARISON (IMPORTANT)
 Les mots suivants indiquent une COMPARAISON (intent=comparison, answer_format=table):
@@ -224,6 +236,16 @@ interface AnalysisResult {
 }
 
 // ============================================================================
+// v3.1.1: TYPE POUR SAFE ANALYSIS RESULT
+// ============================================================================
+
+interface SafeAnalysisOverride {
+  requires_search: boolean
+  intent: AnalysisResult['intent']
+  was_overridden: boolean
+}
+
+// ============================================================================
 // HELPERS
 // ============================================================================
 
@@ -278,26 +300,156 @@ function isTrueSalutation(query: string): boolean {
 }
 
 // ============================================================================
-// v3.0.2: SAFE REQUIRES_SEARCH OVERRIDE
-// Force la recherche sauf si c'est une vraie salutation
+// v3.1.1: DÉTECTION DE QUESTION RÉELLE
+// Détecte si la query contient une vraie question nécessitant une recherche
 // ============================================================================
 
-function safeRequiresSearch(query: string, llmResult: boolean): boolean {
-  // Si le LLM dit qu'il faut chercher, on fait confiance
-  if (llmResult === true) {
+function containsRealQuestion(query: string): boolean {
+  const q = query.trim().toLowerCase()
+  
+  // Mots interrogatifs français
+  const questionWords = [
+    'où', 'ou',           // localisation
+    'quel', 'quelle', 'quels', 'quelles',
+    'qui',
+    'quand',
+    'combien',
+    'comment',
+    'pourquoi',
+    'est-ce que', 'est ce que',
+    'y a-t-il', 'y a t il', 'y-a-t-il',
+    'existe-t-il', 'existe t il',
+  ]
+  
+  // Vérifier présence d'un mot interrogatif
+  for (const word of questionWords) {
+    if (q.includes(word)) {
+      return true
+    }
+  }
+  
+  // Vérifier si ça finit par un point d'interrogation
+  if (q.endsWith('?')) {
     return true
   }
   
-  // Si le LLM dit qu'il ne faut PAS chercher, on vérifie
-  // C'est une vraie salutation simple ? On peut skipper
-  if (isTrueSalutation(query)) {
-    console.log(`[brain-v3] ✅ Salutation détectée: "${query.substring(0, 30)}" → skip RAG autorisé`)
-    return false
+  // Patterns de questions implicites
+  const questionPatterns = [
+    /^trouve/i,           // "Trouve le terrain..."
+    /^cherche/i,          // "Cherche les documents..."
+    /^donne/i,            // "Donne-moi les détails..."
+    /^liste/i,            // "Liste les éléments..."
+    /^explique/i,         // "Explique le processus..."
+    /^décris/i,           // "Décris la procédure..."
+    /^résume/i,           // "Résume le document..."
+    /^compare/i,          // "Compare les deux..."
+    /se trouve/i,         // "...se trouve..."
+    /se situe/i,          // "...se situe..."
+    /est prévu/i,         // "...est prévu..."
+    /est mentionné/i,     // "...est mentionné..."
+    /est indiqué/i,       // "...est indiqué..."
+  ]
+  
+  for (const pattern of questionPatterns) {
+    if (pattern.test(q)) {
+      return true
+    }
   }
   
-  // Sinon, on force la recherche par sécurité
-  console.log(`[brain-v3] ⚠️ LLM a dit requires_search=false mais ce n'est pas une salutation → FORCE recherche`)
-  return true
+  return false
+}
+
+// ============================================================================
+// v3.1.1: SAFE REQUIRES_SEARCH OVERRIDE (CORRIGÉ)
+// Force la recherche ET corrige l'intent si le LLM s'est trompé
+// ============================================================================
+
+function safeRequiresSearch(
+  query: string, 
+  llmRequiresSearch: boolean,
+  llmIntent: AnalysisResult['intent']
+): SafeAnalysisOverride {
+  
+  // CAS 1: Le LLM dit qu'il faut chercher → faire confiance
+  if (llmRequiresSearch === true) {
+    return { 
+      requires_search: true, 
+      intent: llmIntent,
+      was_overridden: false
+    }
+  }
+  
+  // CAS 2: Le LLM dit qu'il ne faut PAS chercher
+  // Vérifier si c'est une vraie salutation simple
+  if (isTrueSalutation(query)) {
+    console.log(`[brain-v3] ✅ Salutation confirmée: "${query.substring(0, 30)}" → skip RAG autorisé`)
+    return { 
+      requires_search: false, 
+      intent: 'conversational',
+      was_overridden: false
+    }
+  }
+  
+  // CAS 3: Le LLM s'est trompé - ce n'est pas une salutation
+  // Vérifier si c'est une vraie question
+  if (containsRealQuestion(query)) {
+    console.log(`[brain-v3] ⚠️ OVERRIDE: LLM dit conversational mais c'est une vraie question`)
+    console.log(`[brain-v3] ⚠️ Query: "${query.substring(0, 50)}..."`)
+    console.log(`[brain-v3] ⚠️ → Force requires_search=true ET intent=factual`)
+    return { 
+      requires_search: true, 
+      intent: 'factual',  // Forcer factual car c'est une question
+      was_overridden: true
+    }
+  }
+  
+  // CAS 4: Pas une salutation, pas clairement une question
+  // Par sécurité, on force quand même la recherche
+  console.log(`[brain-v3] ⚠️ OVERRIDE: Pas une salutation, force recherche par sécurité`)
+  console.log(`[brain-v3] ⚠️ Query: "${query.substring(0, 50)}..."`)
+  return { 
+    requires_search: true, 
+    intent: llmIntent !== 'conversational' ? llmIntent : 'factual',
+    was_overridden: true
+  }
+}
+
+// ============================================================================
+// v3.2.0: ROUTING INTELLIGENT DU GENERATION_MODE
+// Décide si le mode Gemini (Full Document) doit être forcé
+// basé sur l'intent de l'analyse et les documents détectés
+// ============================================================================
+
+function resolveGenerationMode(
+  requestedMode: string | undefined,
+  analysis: AnalysisResult
+): 'chunks' | 'gemini' | 'auto' {
+  // Si le frontend a explicitement demandé un mode (pas 'auto'), respecter
+  if (requestedMode && requestedMode !== 'auto') {
+    console.log(`[brain-v3] generation_mode: '${requestedMode}' (explicite depuis frontend)`)
+    return requestedMode as 'chunks' | 'gemini'
+  }
+
+  // Intent synthesis ou citation + document(s) détecté(s) → Gemini (Full Document)
+  // Ces intents nécessitent la lecture du document complet pour produire
+  // un résumé cohérent ou une citation exacte
+  const fullDocIntents: AnalysisResult['intent'][] = ['synthesis', 'citation']
+
+  if (fullDocIntents.includes(analysis.intent) && analysis.detected_documents.length > 0) {
+    console.log(`[brain-v3] 📄 generation_mode: 'gemini' (intent=${analysis.intent}, docs=[${analysis.detected_documents.join(', ')}])`)
+    return 'gemini'
+  }
+
+  // Intent comparison + documents détectés → Gemini aussi
+  // La comparaison nécessite une vue large des documents
+  if (analysis.intent === 'comparison' && analysis.detected_documents.length > 0) {
+    console.log(`[brain-v3] 📄 generation_mode: 'gemini' (comparison avec docs=[${analysis.detected_documents.join(', ')}])`)
+    return 'gemini'
+  }
+
+  // Sinon, laisser le librarian décider (auto)
+  console.log(`[brain-v3] generation_mode: 'auto' (intent=${analysis.intent}, docs=${analysis.detected_documents.length})`)
+  return 'auto'
 }
 
 // ============================================================================
@@ -516,13 +668,14 @@ async function analyzeQuery(
 
     const parsed = JSON.parse(jsonMatch[0])
     
-    // v3.0.2: Appliquer la sécurité sur requires_search
+    // v3.1.1: Appliquer la sécurité sur requires_search ET intent
     const llmRequiresSearch = parsed.requires_search ?? true
-    const safeSearch = safeRequiresSearch(query, llmRequiresSearch)
+    const llmIntent = parsed.intent || 'factual'
+    const safeOverride = safeRequiresSearch(query, llmRequiresSearch, llmIntent)
     
     const result: AnalysisResult = {
-      intent: parsed.intent || 'factual',
-      requires_search: safeSearch,  // v3.0.2: Utiliser la valeur sécurisée
+      intent: safeOverride.intent,                    // v3.1.1: Utiliser l'intent sécurisé
+      requires_search: safeOverride.requires_search,  // v3.1.1: Utiliser requires_search sécurisé
       rewritten_query: parsed.rewritten_query || query,
       detected_documents: parsed.detected_documents || [],
       search_config: {
@@ -537,8 +690,14 @@ async function analyzeQuery(
       reasoning: parsed.reasoning || 'Analyse automatique',
     }
 
-    // v3.0.2: Log plus détaillé
-    console.log(`[brain-v3] Analyse: intent=${result.intent}, llm_requires_search=${llmRequiresSearch}, safe_requires_search=${safeSearch}`)
+    // v3.1.1: Log amélioré avec détection d'override
+    console.log(`[brain-v3] LLM response: intent=${llmIntent}, requires_search=${llmRequiresSearch}`)
+    if (safeOverride.was_overridden) {
+      console.log(`[brain-v3] ⚠️ SAFETY OVERRIDE APPLIED!`)
+      console.log(`[brain-v3] ⚠️ Final: intent=${safeOverride.intent}, requires_search=${safeOverride.requires_search}`)
+    } else {
+      console.log(`[brain-v3] ✅ Final: intent=${result.intent}, requires_search=${result.requires_search}`)
+    }
     console.log(`[brain-v3] search_config: scope=${result.search_config.scope}, max_files=${result.search_config.max_files}`)
     console.log(`[brain-v3] answer_format=${result.answer_format}, key_concepts=[${result.key_concepts.join(', ')}]`)
     if (result.rewritten_query !== query) {
@@ -563,18 +722,17 @@ function buildFallbackAnalysis(
   query: string,
   documentsCles: Array<{ slug: string; label: string }>
 ): AnalysisResult {
-  const intent = detectIntentByKeywords(query)
-  
-  // v3.0.2: Fallback TOUJOURS avec recherche sauf salutation
-  const requiresSearch = !isTrueSalutation(query)
+  // v3.1.1: Utiliser la même logique de sécurité
+  const detectedIntent = detectIntentByKeywords(query)
+  const safeOverride = safeRequiresSearch(query, false, detectedIntent)
   
   return {
-    intent,
-    requires_search: requiresSearch,
+    intent: safeOverride.intent,
+    requires_search: safeOverride.requires_search,
     rewritten_query: query,
     detected_documents: detectDocumentsByKeywords(query, documentsCles),
-    search_config: getDefaultSearchConfig(intent),
-    answer_format: getDefaultAnswerFormat(intent),
+    search_config: getDefaultSearchConfig(safeOverride.intent),
+    answer_format: getDefaultAnswerFormat(safeOverride.intent),
     key_concepts: extractKeywords(query),
     reasoning: 'Fallback: analyse par mots-clés',
   }
@@ -583,14 +741,17 @@ function buildFallbackAnalysis(
 function detectIntentByKeywords(query: string): AnalysisResult['intent'] {
   const q = query.toLowerCase()
   
-  // v3.0.2: Vérifier d'abord si c'est une vraie salutation
+  // v3.1.1: Vérifier d'abord si c'est une vraie salutation
   if (isTrueSalutation(query)) return 'conversational'
   
-  // v3.0.2: Améliorer détection comparison
+  // v3.1.1: Améliorer détection comparison
   if (/incohéren|écart|différen|compar|conforme|conformité|cohéren|entre .+ et|versus|vs\b|par rapport/i.test(q)) return 'comparison'
   
   if (/résume|synthèse|synthétise|explique|présente|décris|parle-moi/i.test(q)) return 'synthesis'
   if (/cite|citation|extrait|texte exact|mot pour mot/i.test(q)) return 'citation'
+  
+  // v3.1.1: Détection explicite factual pour les questions de localisation
+  if (/où|ou se trouve|emplacement|localisation|situe/i.test(q)) return 'factual'
   
   return 'factual'
 }
@@ -605,7 +766,7 @@ function getDefaultSearchConfig(intent: AnalysisResult['intent']): AnalysisResul
   const configs: Record<string, AnalysisResult['search_config']> = {
     factual: { scope: 'narrow', max_files: 2, min_similarity: 0.5, boost_documents: [], file_filter: null },
     synthesis: { scope: 'broad', max_files: 5, min_similarity: 0.35, boost_documents: [], file_filter: null },
-    comparison: { scope: 'broad', max_files: 5, min_similarity: 0.35, boost_documents: [], file_filter: null },  // v3.0.2: max_files 5 pour comparison
+    comparison: { scope: 'broad', max_files: 5, min_similarity: 0.35, boost_documents: [], file_filter: null },
     citation: { scope: 'narrow', max_files: 1, min_similarity: 0.6, boost_documents: [], file_filter: null },
     conversational: { scope: 'narrow', max_files: 0, min_similarity: 0.5, boost_documents: [], file_filter: null },
   }
@@ -682,7 +843,10 @@ async function callLibrarianWithProxy(
   context: AgentContext,
   analysis: AnalysisResult
 ): Promise<Response> {
-  console.log(`[brain-v3] Appel Librarian v4 (stream=${body.stream !== false})...`)
+  // v3.2.0: Résoudre le generation_mode basé sur l'analyse
+  const resolvedMode = resolveGenerationMode(body.generation_mode, analysis)
+
+  console.log(`[brain-v3] Appel Librarian v4 (stream=${body.stream !== false}, mode=${resolvedMode})...`)
 
   const librarianPayload = {
     query: body.query,
@@ -697,7 +861,7 @@ async function callLibrarianWithProxy(
     project_id: body.project_id,
     app_id: body.app_id,
     conversation_id: context.conversationId,
-    generation_mode: body.generation_mode || 'auto',
+    generation_mode: resolvedMode,
     stream: body.stream !== false,
     include_app_layer: body.include_app_layer,
     include_org_layer: body.include_org_layer,
@@ -824,7 +988,7 @@ serve(async (req) => {
     if (!user_id) return errorResponse("user_id is required")
 
     console.log(`[brain-v3] ═══════════════════════════════════════════════════`)
-    console.log(`[brain-v3] v3.1.0 - Query: "${query.substring(0, 60)}..."`)
+    console.log(`[brain-v3] v3.2.0 - Query: "${query.substring(0, 60)}..."`)
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
@@ -839,9 +1003,9 @@ serve(async (req) => {
     console.log(`[brain-v3] Analyse terminée en ${Date.now() - startTime}ms`)
 
     // 4. ROUTING
-    // v3.0.2: requires_search est déjà sécurisé dans analyzeQuery
+    // v3.1.1: L'intent ET requires_search sont maintenant correctement sécurisés
     if (!analysis.requires_search && brainConfig.routing.skip_search_for_conversational) {
-      console.log(`[brain-v3] ⏭️ Skip RAG (salutation confirmée)`)
+      console.log(`[brain-v3] ⏭️ Skip RAG (salutation confirmée, intent=${analysis.intent})`)
       return await handleConversational(query, context, analysis, stream)
     }
 

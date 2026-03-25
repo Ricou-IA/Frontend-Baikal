@@ -1,6 +1,12 @@
 // ╔══════════════════════════════════════════════════════════════════════════════╗
 // ║  INGEST-DOCUMENTS - Edge Function Supabase                                   ║
-// ║  Version: 7.0.0 - Support hiérarchie chunks (parent/enfant)                  ║
+// ║  Version: 8.0.0 - Support colonnes QQOQCCP                                  ║
+// ╠══════════════════════════════════════════════════════════════════════════════╣
+// ║  Changements v8.0.0:                                                         ║
+// ║  - Extraction des 6 colonnes QQOQCCP depuis le payload n8n                  ║
+// ║  - quand_date (DATE), quand_phase (TEXT), qui_lots (TEXT[])                  ║
+// ║  - comment_normes (TEXT[]), contenu_types (TEXT[]), qqoqccp (JSONB)          ║
+// ║  - Ajout helper parseDate() pour validation YYYY-MM-DD                      ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
 // ║  Changements v7.0.0:                                                         ║
 // ║  - Ajout colonne hierarchy_level (0=section, 1=contenu)                      ║
@@ -52,6 +58,22 @@ function parseMetadata(metadata: any): Record<string, any> {
   return {}
 }
 
+// ════════════════════════════════════════════════════════════════════════════════
+// v8.0.0 HELPER: Valider et parser une date YYYY-MM-DD
+// ════════════════════════════════════════════════════════════════════════════════
+
+function parseDate(value: any): string | null {
+  if (!value || typeof value !== 'string') return null
+  // Format YYYY-MM-DD strict
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) return null
+  const year = parseInt(match[1], 10)
+  const month = parseInt(match[2], 10)
+  const day = parseInt(match[3], 10)
+  if (month < 1 || month > 12 || day < 1 || day > 31 || year < 1900 || year > 2100) return null
+  return value
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -61,7 +83,7 @@ serve(async (req) => {
     const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY')
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
     const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-    
+
     if (!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY manquant')
     if (!SUPABASE_URL) throw new Error('SUPABASE_URL manquant')
     if (!SUPABASE_SERVICE_KEY) throw new Error('SUPABASE_SERVICE_ROLE_KEY manquant')
@@ -69,29 +91,29 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
     const payload = await req.json()
     const documents = Array.isArray(payload) ? payload : [payload]
-    
-    console.log(`[ingest-documents] Reçu ${documents.length} document(s)`)
-    
+
+    console.log(`[ingest-documents v8.0.0] Reçu ${documents.length} document(s)`)
+
     // ════════════════════════════════════════════════════════════════════════════
     // V6.0.0 : Charger le mapping category_slug → concept_id
     // ════════════════════════════════════════════════════════════════════════════
-    
+
     const categorySlugs = new Set<string>()
     for (const doc of documents) {
       const metadata = parseMetadata(doc.metadata)
       const categorySlug = doc.category_slug || metadata.category_slug
       if (categorySlug) categorySlugs.add(categorySlug)
     }
-    
+
     const categoryToConceptId = new Map<string, string>()
-    
+
     if (categorySlugs.size > 0) {
       const { data: categoriesData, error: categoriesError } = await supabase
         .schema('config')
         .from('document_categories')
         .select('slug, linked_concept_id')
         .in('slug', Array.from(categorySlugs))
-      
+
       if (!categoriesError && categoriesData) {
         categoriesData.forEach((cat: any) => {
           if (cat.linked_concept_id) {
@@ -101,39 +123,49 @@ serve(async (req) => {
         console.log(`[ingest-documents] Categories mappées: ${categoryToConceptId.size}`)
       }
     }
-    
+
     // ════════════════════════════════════════════════════════════════════════════
     // SÉPARATION PAR DESTINATION
     // ════════════════════════════════════════════════════════════════════════════
-    
+
     const docsForRagDocuments: any[] = []
     const docsForRagTables: any[] = []
     const errors: any[] = []
-    
+
     // v6.0.0 : Stocker les concepts avec leur source
     const conceptsByDocIndex: Map<number, ConceptEntry[]> = new Map()
-    
+
     // v7.0.0 : Tracker les source_file_id pour résolution hiérarchie
     const sourceFileIdsToResolve = new Set<string>()
 
     for (const doc of documents) {
       const destination = doc._DESTINATION || 'rag.documents'
       const metadata = parseMetadata(doc.metadata)
-      
+
       // v6.0.0 : Extraire category_slug
       const categorySlug = doc.category_slug || metadata.category_slug || null
-      
+
       // v7.0.0 : Extraire hierarchy_level et chunk_local_id
       const hierarchyLevel = doc.hierarchy_level ?? metadata.enrichment?.hierarchy?.level ?? 1
       const chunkLocalId = doc._chunk_local_id || metadata.chunk_local_id || null
       const parentLocalId = doc._parent_local_id || metadata.enrichment?.hierarchy?.parent_local_id || null
-      
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // v8.0.0 : Extraire les colonnes QQOQCCP depuis le payload n8n
+      // ═══════════════════════════════════════════════════════════════════════
+      const quandDate = parseDate(doc.quand_date) || null
+      const quandPhase = doc.quand_phase || null
+      const quiLots = normalizeArray(doc.qui_lots || [])
+      const commentNormes = normalizeArray(doc.comment_normes || [])
+      const contenuTypes = normalizeArray(doc.contenu_types || [])
+      const qqoqccp = (doc.qqoqccp && typeof doc.qqoqccp === 'object') ? doc.qqoqccp : {}
+
       // ════════════════════════════════════════════════════════════════════════
       // CAS 1: table_chunk → Double insertion
       // ════════════════════════════════════════════════════════════════════════
-      
+
       if (destination === 'table_chunk') {
-        
+
         if (!doc.content || doc.content.trim().length < 10) {
           errors.push({ error: 'content manquant pour table_chunk', doc: doc.document_title })
           continue
@@ -142,12 +174,12 @@ serve(async (req) => {
           errors.push({ error: 'content_markdown manquant pour table_chunk', doc: doc.document_title })
           continue
         }
-        
+
         let orgId = parseUUID(doc.org_id)
         let targetApps = normalizeArray(doc.target_apps || [])
         const userId = parseUUID(doc.created_by)
         const sourceFileId = parseUUID(doc.source_file_id)
-        
+
         if (userId && (!orgId || targetApps.length === 0)) {
           const { data: profile, error: profileError } = await supabase
             .schema('core')
@@ -155,24 +187,24 @@ serve(async (req) => {
             .select('org_id, app_id, app_role')
             .eq('id', userId)
             .single()
-          
+
           if (profile && !profileError) {
             if (!orgId) orgId = profile.org_id
             if (targetApps.length === 0) {
-              targetApps = profile.app_role === 'super_admin' 
-                ? ['all'] 
+              targetApps = profile.app_role === 'super_admin'
+                ? ['all']
                 : profile.app_id ? [profile.app_id] : ['default']
             }
           }
         }
-        
+
         if (targetApps.length === 0) targetApps = ['default']
-        
+
         const targetProjects = normalizeUUIDArray(doc.target_projects)
-        
+
         // v6.0.0 : Concepts avec source
         const conceptEntries: ConceptEntry[] = []
-        
+
         // Concept primaire depuis catégorie (ajouté EN PREMIER = prioritaire)
         if (categorySlug && categoryToConceptId.has(categorySlug)) {
           conceptEntries.push({
@@ -181,7 +213,7 @@ serve(async (req) => {
             relevance_score: 1.0
           })
         }
-        
+
         // Concepts secondaires depuis LLM
         const llmConcepts = normalizeArray(metadata.concepts || [])
         llmConcepts.forEach(slug => {
@@ -191,17 +223,17 @@ serve(async (req) => {
             relevance_score: 0.85
           })
         })
-        
+
         const docIndex = docsForRagDocuments.length
         if (conceptEntries.length > 0) {
           conceptsByDocIndex.set(docIndex, conceptEntries)
         }
-        
+
         // v7.0.0 : Tracker pour résolution hiérarchie
         if (sourceFileId) {
           sourceFileIdsToResolve.add(sourceFileId)
         }
-        
+
         docsForRagDocuments.push({
           content: doc.content.trim(),
           target_apps: targetApps,
@@ -213,6 +245,13 @@ serve(async (req) => {
           status: doc.status || null,
           quality_level: doc.quality_level || null,
           hierarchy_level: hierarchyLevel,  // v7.0.0
+          // v8.0.0 : Colonnes QQOQCCP
+          quand_date: quandDate,
+          quand_phase: quandPhase,
+          qui_lots: quiLots,
+          comment_normes: commentNormes,
+          contenu_types: contenuTypes,
+          qqoqccp: qqoqccp,
           metadata: {
             source_file_id: sourceFileId,
             content_type: 'table_chunk',
@@ -232,7 +271,7 @@ serve(async (req) => {
             }
           },
         })
-        
+
         docsForRagTables.push({
           source_file_id: sourceFileId,
           content_markdown: doc.content_markdown.trim(),
@@ -247,21 +286,21 @@ serve(async (req) => {
           org_id: orgId,
           created_by: userId,
         })
-        
+
         continue
       }
-      
+
       // ════════════════════════════════════════════════════════════════════════
       // CAS 2: rag.document_tables (tableaux bruts, sans embedding)
       // ════════════════════════════════════════════════════════════════════════
-      
+
       if (destination === 'rag.document_tables') {
-        
+
         if (!doc.content_markdown || doc.content_markdown.trim().length < 10) {
           errors.push({ error: 'content_markdown manquant ou trop court', doc })
           continue
         }
-        
+
         docsForRagTables.push({
           source_file_id: parseUUID(doc.source_file_id),
           content_markdown: doc.content_markdown.trim(),
@@ -276,16 +315,16 @@ serve(async (req) => {
           org_id: parseUUID(doc.org_id),
           created_by: parseUUID(doc.created_by),
         })
-        
+
         continue
       }
-      
+
       // ════════════════════════════════════════════════════════════════════════
       // CAS 3: rag.documents (défaut - chunks texte avec embedding)
       // ════════════════════════════════════════════════════════════════════════
-      
+
       const content = doc.pageContent || doc.content
-      
+
       if (!content || content.trim().length < 30) {
         errors.push({ error: 'Contenu trop court', filename: metadata.filename })
         continue
@@ -295,7 +334,7 @@ serve(async (req) => {
       let targetApps = normalizeArray(doc.target_apps || metadata.target_apps || [])
       const userId = parseUUID(doc.created_by) || parseUUID(metadata.user_id)
       const sourceFileId = parseUUID(doc.source_file_id) || parseUUID(metadata.source_file_id)
-      
+
       if (userId && (!orgId || targetApps.length === 0)) {
         const { data: profile, error: profileError } = await supabase
           .schema('core')
@@ -303,12 +342,12 @@ serve(async (req) => {
           .select('org_id, app_id, app_role')
           .eq('id', userId)
           .single()
-        
+
         if (profile && !profileError) {
           if (!orgId) {
             orgId = profile.org_id
           }
-          
+
           if (targetApps.length === 0) {
             if (profile.app_role === 'super_admin') {
               targetApps = ['all']
@@ -320,7 +359,7 @@ serve(async (req) => {
           }
         }
       }
-      
+
       if (targetApps.length === 0) {
         targetApps = ['default']
       }
@@ -329,7 +368,7 @@ serve(async (req) => {
 
       // v6.0.0 : Concepts avec source
       const conceptEntries: ConceptEntry[] = []
-      
+
       // Concept primaire depuis catégorie (ajouté EN PREMIER = prioritaire)
       if (categorySlug && categoryToConceptId.has(categorySlug)) {
         conceptEntries.push({
@@ -338,7 +377,7 @@ serve(async (req) => {
           relevance_score: 1.0
         })
       }
-      
+
       // Concepts secondaires depuis LLM
       const llmConcepts = normalizeArray(metadata.concepts || [])
       llmConcepts.forEach(slug => {
@@ -348,12 +387,12 @@ serve(async (req) => {
           relevance_score: 0.85
         })
       })
-      
+
       const docIndex = docsForRagDocuments.length
       if (conceptEntries.length > 0) {
         conceptsByDocIndex.set(docIndex, conceptEntries)
       }
-      
+
       // v7.0.0 : Tracker pour résolution hiérarchie
       if (sourceFileId) {
         sourceFileIdsToResolve.add(sourceFileId)
@@ -370,6 +409,13 @@ serve(async (req) => {
         status: doc.status || null,
         quality_level: doc.quality_level || null,
         hierarchy_level: hierarchyLevel,  // v7.0.0
+        // v8.0.0 : Colonnes QQOQCCP
+        quand_date: quandDate,
+        quand_phase: quandPhase,
+        qui_lots: quiLots,
+        comment_normes: commentNormes,
+        contenu_types: contenuTypes,
+        qqoqccp: qqoqccp,
         metadata: {
           ...metadata,
           source_file_id: sourceFileId,
@@ -382,9 +428,9 @@ serve(async (req) => {
     // ════════════════════════════════════════════════════════════════════════════
     // INSERTION rag.documents (avec embedding)
     // ════════════════════════════════════════════════════════════════════════════
-    
+
     let insertedDocs: any[] = []
-    
+
     if (docsForRagDocuments.length > 0) {
       const texts = docsForRagDocuments.map(d => d.content)
       const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
@@ -419,6 +465,13 @@ serve(async (req) => {
         status: doc.status,
         quality_level: doc.quality_level,
         hierarchy_level: doc.hierarchy_level,  // v7.0.0
+        // v8.0.0 : Colonnes QQOQCCP
+        quand_date: doc.quand_date,
+        quand_phase: doc.quand_phase,
+        qui_lots: doc.qui_lots,
+        comment_normes: doc.comment_normes,
+        contenu_types: doc.contenu_types,
+        qqoqccp: doc.qqoqccp,
         metadata: doc.metadata,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -433,7 +486,7 @@ serve(async (req) => {
       if (error) {
         throw new Error(`Supabase insert rag.documents error: ${error.message}`)
       }
-      
+
       insertedDocs = data || []
       console.log(`[ingest-documents] rag.documents: ${insertedDocs.length} insérés`)
     }
@@ -441,17 +494,17 @@ serve(async (req) => {
     // ════════════════════════════════════════════════════════════════════════════
     // v7.0.0 : RÉSOLUTION HIÉRARCHIE (parent_chunk_id)
     // ════════════════════════════════════════════════════════════════════════════
-    
+
     let hierarchyResolved = { updated: 0, errors: 0 }
-    
+
     if (insertedDocs.length > 0 && sourceFileIdsToResolve.size > 0) {
       console.log(`[ingest-documents] Résolution hiérarchie pour ${sourceFileIdsToResolve.size} fichier(s)...`)
-      
+
       for (const sourceFileId of sourceFileIdsToResolve) {
         try {
           const { data: resolveResult, error: resolveError } = await supabase
             .rpc('resolve_chunk_hierarchy', { p_source_file_id: sourceFileId })
-          
+
           if (resolveError) {
             console.error(`[ingest-documents] Erreur résolution hiérarchie ${sourceFileId}: ${resolveError.message}`)
             hierarchyResolved.errors++
@@ -470,9 +523,9 @@ serve(async (req) => {
     // ════════════════════════════════════════════════════════════════════════════
     // INSERTION rag.document_concepts (GraphRAG v6.0.2 - UPSERT avec déduplication)
     // ════════════════════════════════════════════════════════════════════════════
-    
+
     let insertedConcepts = 0
-    
+
     if (insertedDocs.length > 0 && conceptsByDocIndex.size > 0) {
       // Collecter tous les slugs à résoudre
       const slugsToResolve = new Set<string>()
@@ -481,46 +534,46 @@ serve(async (req) => {
           if (entry.slug) slugsToResolve.add(entry.slug)
         })
       })
-      
+
       // Résoudre slugs → concept_id
       const slugToId = new Map<string, string>()
-      
+
       if (slugsToResolve.size > 0) {
         const { data: conceptsData, error: conceptsError } = await supabase
           .schema('config')
           .from('concepts')
           .select('id, slug')
           .in('slug', Array.from(slugsToResolve))
-        
+
         if (!conceptsError && conceptsData) {
           conceptsData.forEach((c: any) => slugToId.set(c.slug, c.id))
         }
       }
-      
+
       // Construire les lignes à insérer (avec déduplication)
       const conceptRows: any[] = []
-      
+
       conceptsByDocIndex.forEach((entries, docIndex) => {
         const documentId = insertedDocs[docIndex]?.id
         if (!documentId) return
-        
+
         // Déduplication : Map concept_id → entry (premier ajouté gagne)
         const uniqueForDoc = new Map<string, ConceptEntry>()
-        
+
         entries.forEach(entry => {
           let conceptId = entry.concept_id
-          
+
           // Résoudre le slug si pas de concept_id direct
           if (!conceptId && entry.slug) {
             conceptId = slugToId.get(entry.slug)
           }
-          
+
           // Ajouter seulement si concept_id valide et pas déjà présent
           if (conceptId && !uniqueForDoc.has(conceptId)) {
             uniqueForDoc.set(conceptId, { ...entry, concept_id: conceptId })
           }
         })
-        
+
         // Convertir en lignes à insérer
         uniqueForDoc.forEach((entry, conceptId) => {
           conceptRows.push({
@@ -532,17 +585,17 @@ serve(async (req) => {
           })
         })
       })
-      
+
       // v6.0.2 : UPSERT au lieu de INSERT (évite duplicate key error)
       if (conceptRows.length > 0) {
         const { error: insertConceptsError } = await supabase
           .schema('rag')
           .from('document_concepts')
-          .upsert(conceptRows, { 
+          .upsert(conceptRows, {
             onConflict: 'document_id,concept_id',
-            ignoreDuplicates: true 
+            ignoreDuplicates: true
           })
-        
+
         if (insertConceptsError) {
           console.error(`[ingest-documents] Erreur insertion document_concepts: ${insertConceptsError.message}`)
           errors.push({ error: 'Insertion concepts échouée', details: insertConceptsError.message })
@@ -556,9 +609,9 @@ serve(async (req) => {
     // ════════════════════════════════════════════════════════════════════════════
     // INSERTION rag.document_tables (sans embedding)
     // ════════════════════════════════════════════════════════════════════════════
-    
+
     let insertedTables: any[] = []
-    
+
     if (docsForRagTables.length > 0) {
       const tablesToInsert = docsForRagTables.map(doc => ({
         source_file_id: doc.source_file_id,
@@ -586,7 +639,7 @@ serve(async (req) => {
       if (error) {
         throw new Error(`Supabase insert rag.document_tables error: ${error.message}`)
       }
-      
+
       insertedTables = data || []
       console.log(`[ingest-documents] rag.document_tables: ${insertedTables.length} insérés`)
     }
@@ -596,7 +649,7 @@ serve(async (req) => {
     // ════════════════════════════════════════════════════════════════════════════
 
     const totalInserted = insertedDocs.length + insertedTables.length
-    
+
     if (totalInserted === 0 && errors.length > 0) {
       return new Response(
         JSON.stringify({ success: false, error: 'Aucun document valide', errors }),
@@ -607,6 +660,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
+        version: '8.0.0',  // v8.0.0
         inserted: {
           total: totalInserted,
           rag_documents: insertedDocs.length,
