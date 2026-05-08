@@ -54,6 +54,30 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 
 // ============================================================================
+// LATENCY THRESHOLDS (alarme observabilite)
+// ============================================================================
+
+const LATENCY_THRESHOLD_MS = {
+  fast: 5_000,       // fast path = ~5s cible
+  agentic: 10_000,   // agentic = +5s tolerance
+}
+
+function warnIfSlow(
+  totalMs: number,
+  mode: 'fast' | 'agentic',
+  query: string,
+  timings: Record<string, number>,
+): void {
+  const threshold = LATENCY_THRESHOLD_MS[mode]
+  if (totalMs > threshold) {
+    console.warn(
+      `[retrieval] SLOW_REQUEST mode=${mode} total=${totalMs}ms threshold=${threshold}ms ` +
+      `query="${query.substring(0, 80).replace(/\n/g, ' ')}" timings=${JSON.stringify(timings)}`,
+    )
+  }
+}
+
+// ============================================================================
 // MODE LABELS
 // ============================================================================
 
@@ -352,6 +376,7 @@ serve(async (req) => {
             metrics.timings.total = processingTime
 
             console.log(`[retrieval] Agentic done in ${processingTime}ms (${agenticResult.iterations} iterations, timed_out=${agenticResult.timedOut})`)
+            warnIfSlow(processingTime, 'agentic', query, metrics.timings)
 
             sendSSE(controller, 'sources', {
               sources: agenticResult.sources,
@@ -531,6 +556,7 @@ serve(async (req) => {
           metrics.timings.total = processingTime
 
           console.log(`[retrieval] Fast-path done in ${processingTime}ms: ${JSON.stringify(metrics.timings)}`)
+          warnIfSlow(processingTime, 'fast', query, metrics.timings)
 
           sendSSE(controller, 'sources', {
             sources: finalSources,
