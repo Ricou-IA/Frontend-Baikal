@@ -34,10 +34,20 @@ export async function executeSearch(
   const effectiveMatchCount = intentParams?.match_count || config.match_count
   const effectiveThreshold = intentParams?.min_similarity || config.match_threshold
 
+  // Hard restriction: si l'analyse a explicitement detecte un filtre fichier
+  // (ex: utilisateur dit "uniquement dans le CCAP"), restreindre la recherche
+  // a ces noms. Sinon, laisser la recherche large et compter sur le boost
+  // soft des boost_documents dans buildFileInfos.
+  const effectiveFileFilter = (searchConfig.file_filter && searchConfig.file_filter.length > 0)
+    ? searchConfig.file_filter
+    : null
+
   console.log(`[retrieval] Search v14: match_count=${effectiveMatchCount}, threshold=${effectiveThreshold}`)
   console.log(`[retrieval] Hierarchy: levels=${JSON.stringify(intentStrategy.hierarchy_levels)}, include_children=${intentStrategy.include_children}`)
+  if (effectiveFileFilter) {
+    console.log(`[retrieval] Hard file filter applied: filenames=[${effectiveFileFilter.join(', ')}]`)
+  }
 
-  // v1.1.1: Like librarian-v4: filter_filenames=null, filter_file_ids used if provided
   const { data, error } = await supabase.schema('rag').rpc('match_documents_v14', {
     query_embedding: queryEmbedding,
     query_text: queryText,
@@ -52,8 +62,8 @@ export async function executeSearch(
     include_project_layer: layerFlags.project,
     include_user_layer: layerFlags.user,
     filter_source_types: filterSourceTypes || null,
-    filter_file_ids: null,            // v1.1.1: like librarian-v4
-    filter_filenames: null,           // v1.1.1: like librarian-v4 (was fileFilter - caused issues)
+    filter_file_ids: null,
+    filter_filenames: effectiveFileFilter,
     enable_concept_expansion: config.enable_concept_expansion,
     p_hierarchy_levels: intentStrategy.hierarchy_levels,
     p_include_children: intentStrategy.include_children,
@@ -86,7 +96,7 @@ export async function executeSearch(
     files: filteredFiles,
     meetingChunks,
     totalPages,
-    filterApplied: false,    // v1.1.1: simplified (no file_filter used)
+    filterApplied: effectiveFileFilter !== null,
     fallbackUsed: false,     // v1.1.1: match librarian-v4 interface
     reranked: false,
   }
