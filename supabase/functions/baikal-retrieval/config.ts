@@ -71,7 +71,10 @@ const FALLBACK_LIBRARIAN: LibrarianConfig = {
 }
 
 const FALLBACK_FEATURES: FeatureFlags = {
-  enable_reranking: false,
+  // Reranking active par defaut. Echec gracieux si COHERE_API_KEY absent
+  // (search/reranker.ts:18-22 retourne le SearchResult original sans erreur).
+  // Override possible par org via config.agent_prompts.parameters.features.
+  enable_reranking: true,
   cohere_model: 'rerank-v3.5',
   cohere_top_n: 10,
   adaptive_threshold_enabled: false,       // v1.1.0: disabled - was eliminating relevant chunks (petanque bug)
