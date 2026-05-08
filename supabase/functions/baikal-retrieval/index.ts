@@ -28,7 +28,7 @@ import { corsHeaders, sseHeaders, sendSSE, errorResponse } from "./utils.ts"
 import { createTimer } from "./utils.ts"
 import { loadConfig, getIntentStrategy, getEffectiveGenerationParams } from "./config.ts"
 import { getAgentContext, addMessage } from "./context.ts"
-import { buildFallbackAnalysis } from "./routing/analyzer.ts"
+import { analyzeQuery, buildFallbackAnalysis } from "./routing/analyzer.ts"
 import { resolveRoute, buildConversationalResponse } from "./routing/router.ts"
 import { generateEmbedding } from "./search/embedding.ts"
 import { searchQAMemory, incrementQAUsage } from "./search/memory.ts"
@@ -152,10 +152,10 @@ serve(async (req) => {
           const config = await loadConfig(supabase, app_id, org_id)
           metrics.timings.config = timer.mark('config')
 
-          // A2. PARALLEL: context + embedding
+          // A2. PARALLEL: context + initial embedding (on raw query)
           sendSSE(controller, 'step', { step: 'analyzing', message: 'Analyse de la question...' })
 
-          const [context, queryEmbedding] = await Promise.all([
+          const [context, initialEmbedding] = await Promise.all([
             getAgentContext(supabase, user_id, org_id, project_id, app_id, conversation_id, config.brain),
             generateEmbedding(query, OPENAI_API_KEY),
           ])
@@ -163,8 +163,32 @@ serve(async (req) => {
 
           await addMessage(supabase, context.conversationId, 'user', query)
 
-          // A3. FAST ANALYSIS (synchronous, ~0ms)
-          const fastAnalysis = buildFallbackAnalysis(query, context.documentsCles)
+          // A3. ANALYSIS — LLM brain if enabled (query rewriting + intent + doc detection),
+          // else rule-based keyword fallback. analyzeQuery has its own internal fallback to
+          // buildFallbackAnalysis on OpenAI error when use_keywords_extraction is true.
+          let fastAnalysis: AnalysisResult
+          let queryEmbedding = initialEmbedding
+
+          if (config.brain.analysis.enable_query_rewriting) {
+            try {
+              fastAnalysis = await analyzeQuery(query, context, config.brain, config.features, OPENAI_API_KEY)
+              metrics.timings.brain_analysis = timer.mark('brain_analysis')
+
+              // Re-embed if rewritten query is meaningfully different (anaphora resolution case).
+              const rewritten = fastAnalysis.rewritten_query?.trim()
+              if (rewritten && rewritten !== query.trim()) {
+                console.log(`[retrieval] Query rewritten: "${query.substring(0, 60)}" -> "${rewritten.substring(0, 80)}"`)
+                queryEmbedding = await generateEmbedding(rewritten, OPENAI_API_KEY)
+                metrics.timings.reembedding = timer.mark('reembedding')
+              }
+            } catch (err) {
+              console.warn('[retrieval] Brain LLM analysis threw, using rule-based fallback:', err)
+              fastAnalysis = buildFallbackAnalysis(query, context.documentsCles)
+            }
+          } else {
+            fastAnalysis = buildFallbackAnalysis(query, context.documentsCles)
+          }
+
           const intentStrategy = getIntentStrategy(fastAnalysis.intent)
 
           metrics.decisions.intent = fastAnalysis.intent
