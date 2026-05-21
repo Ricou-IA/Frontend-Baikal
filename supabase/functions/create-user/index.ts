@@ -109,11 +109,22 @@ serve(async (req) => {
 
     await new Promise(resolve => setTimeout(resolve, 500))
 
+    let orgAppId: string | null = null
+    if (orgId) {
+      const { data: org } = await supabaseAdmin
+        .from("organizations")
+        .select("app_id")
+        .eq("id", orgId)
+        .single()
+      orgAppId = org?.app_id ?? null
+    }
+
     await supabaseAdmin.from("profiles").update({
       full_name: fullName?.trim() || null,
       app_role: appRole,
       business_role: businessRole || null,
       org_id: orgId || null,
+      app_id: orgAppId,
     }).eq("id", newUserId)
 
     if (orgId) {
