@@ -1,0 +1,613 @@
+{
+  "version": "v1-2026-08-15",
+  "entries": [
+    {
+      "id": "C1-001",
+      "classe": "C1",
+      "project_ref": "bessieres",
+      "question": "Où se trouve le terrain de pétanque ?",
+      "conversation_context": null,
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCTP TCE",
+        "source_page": 56,
+        "answer_must_contain": ["Dunant", "espaces publics"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "conversation réelle du 2026-01-15 (question la plus posée de l'historique : 80+ occurrences entre janvier et avril 2026 ; réponse stable : Résidence Dunant, CCTP TCE p.56 §2.3.9.1)"
+    },
+    {
+      "id": "C1-002",
+      "classe": "C1",
+      "project_ref": "bessieres",
+      "question": "Quel est le délai global des travaux ?",
+      "conversation_context": null,
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "Mémoire Technique",
+        "source_page": 19,
+        "answer_must_contain": ["9 mois"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "conversation réelle du 2026-02-03 (réponse : 9 mois préparation incluse, Mémoire Technique p.19-20 ; question benchmark Q2 des tests A/B — échouait en v1.3.0)"
+    },
+    {
+      "id": "C1-003",
+      "classe": "C1",
+      "project_ref": "bessieres",
+      "question": "Quel est le numéro de la CARSAT ?",
+      "conversation_context": null,
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "PGC",
+        "source_page": 8,
+        "answer_must_contain": ["09 71 10 39 60"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "conversation réelle du 2026-01-15 (réponse : PGC-Bessières.pdf p.8 §1.3 Liste des intervenants)"
+    },
+    {
+      "id": "C1-004",
+      "classe": "C1",
+      "project_ref": "golfpark",
+      "question": "Quelle est la zone climatique du projet ?",
+      "conversation_context": null,
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCTP GOLF PARK",
+        "source_page": 7,
+        "answer_must_contain": ["H1"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "conversation réelle du 2026-02-11 (réponse : zone H1 [CCTP GOLF PARK, Page 7, Section PRESENTATION])"
+    },
+    {
+      "id": "C1-005",
+      "classe": "C1",
+      "project_ref": "bessieres",
+      "question": "L'architecte m'indique que le terrain de pétanque est à la Résidence Saint Jean, c'est exact ?",
+      "conversation_context": null,
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCTP TCE",
+        "source_page": 56,
+        "answer_must_contain": ["Dunant"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "conversation réelle du 2026-02-03 (test anti-complaisance : le système doit contredire l'affirmation fausse ; réponse d'époque correcte : « Non… le terrain de pétanque est situé à la Résidence Dunant »)"
+    },
+    {
+      "id": "C1-006",
+      "classe": "C1",
+      "project_ref": "bessieres",
+      "question": "L'architecte me parle de pas japonais mais je ne sais pas de quoi il parle, c'est où ?",
+      "conversation_context": null,
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCTP TCE",
+        "source_page": 57,
+        "answer_must_contain": ["Dunant", "Ecoles"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "conversation réelle du 2026-01-26 (bessieres_old) et 2026-01-31 (bessieres) — réponse : résidences Dunant et Les Ecoles, CCTP TCE p.57 §2.3.11 ; fait à deux valeurs, plus dur que la pétanque"
+    },
+    {
+      "id": "C1-007",
+      "classe": "C1",
+      "project_ref": "ehpad",
+      "question": "Dans les pièces marché que tu as en ta possession, qui doit le nettoyage extérieur ?",
+      "conversation_context": null,
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCAP",
+        "source_page": null,
+        "answer_must_contain": ["entrepreneur"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "conversation réelle du 2026-03-27 (réponse : l'Entrepreneur ayant mis en œuvre une installation en assure l'entretien et le nettoyage, CCAP)"
+    },
+    {
+      "id": "C1-008",
+      "classe": "C1",
+      "project_ref": "bessieres_old",
+      "question": "Quel est le sujet de la dernière réunion de chantier ?",
+      "conversation_context": null,
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": null,
+        "source_page": null,
+        "answer_must_contain": ["coordination des lots techniques"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "conversation réelle du 2026-01-29 — réponse d'époque : réunion du 29 janvier 2026 « Réunion de coordination des lots techniques » (transcript de réunion ingéré) ; ATTENTION : le corpus bessieres_old ne contient plus que 4 chunks aujourd'hui, à arbitrer (rejouer, migrer vers bessieres, ou écarter)",
+      "resolution": "2026-08-15 : vérifié en base — les 4 chunks restants sont précisément les transcripts de réunion (26/01, 28/01, 29/01 « Réunion de coordination des lots techniques »). L'entrée est jouable telle quelle ; source_doc_contains reste null car ces chunks n'ont pas de source_file_id."
+    },
+    {
+      "id": "C2-001",
+      "classe": "C2",
+      "project_ref": "bessieres",
+      "question": "Quelles sont les prestations du lot VRD ?",
+      "conversation_context": null,
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCTP TCE",
+        "source_page": null,
+        "answer_must_contain": ["cheminement", "réseaux"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "conversation réelle du 2026-01-13 (réponse : création de cheminements piétons, raccordements aux réseaux divers — section 2.3 VRD du CCTP)"
+    },
+    {
+      "id": "C2-002",
+      "classe": "C2",
+      "project_ref": "bessieres",
+      "question": "Résume les prescriptions acoustiques du projet",
+      "conversation_context": null,
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCTP TCE",
+        "source_page": null,
+        "answer_must_contain": ["bruit"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "conversation réelle du 2026-02-02/03 (question benchmark Q4 des tests A/B ; réponse : NRA, limites de bruit réglementaires — info éclatée dans plusieurs sections du CCTP ; a échoué en mode gemini, réussi en mode chunks)"
+    },
+    {
+      "id": "C2-003",
+      "classe": "C2",
+      "project_ref": "bessieres",
+      "question": "Quelles sont les pénalités de retard prévues au marché ?",
+      "conversation_context": null,
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCAG",
+        "source_page": null,
+        "answer_must_contain": ["10 %"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "conversation réelle du 2026-02-02 (question benchmark Q3 des tests A/B ; réponse : plafond 10 % du montant total HT du marché, pénalité journalière — CCAG art. 19)"
+    },
+    {
+      "id": "C2-004",
+      "classe": "C2",
+      "project_ref": "golfpark",
+      "question": "Comment sont traitées les centrales de traitement d'air ?",
+      "conversation_context": null,
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCTP GOLF PARK",
+        "source_page": null,
+        "answer_must_contain": ["thermique", "hygiénique"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "conversation réelle du 2026-02-10 (réponse : distinction CTA thermiques / CTA hygiéniques, CCTP GOLF PARK)"
+    },
+    {
+      "id": "C2-005",
+      "classe": "C2",
+      "project_ref": "ehpad",
+      "question": "Peux-tu me sortir les articles du CCAP qui traitent des phases de réception et de livraison, et de la mise à disposition ou également MADA ?",
+      "conversation_context": null,
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCAP",
+        "source_page": 29,
+        "answer_must_contain": ["11.1", "réception"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "conversation réelle du 2026-03-27 (réponse : Article 11.1 Dispositions générales p.29, 11.2 OPR, 11.3 réception amiable / mises à disposition — 2139_CCAP.pdf)"
+    },
+    {
+      "id": "C3-001",
+      "classe": "C3",
+      "project_ref": "bessieres",
+      "question": "Est-ce qu'il y a des incohérences entre le mémoire technique et le CCTP ?",
+      "conversation_context": null,
+      "synthetic": false,
+      "a_valider": true,
+      "expected": {
+        "source_doc_contains": "Mémoire Technique",
+        "source_page": null,
+        "answer_must_contain": ["désamiantage"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "conversation réelle du 2026-01-14 (4 runs aux réponses contradictoires : « aucune incohérence », tableau comparatif, ou « extrapolation du désamiantage à la résidence Dunant » — réponse de référence à définir par Eric)",
+      "resolution": "2026-08-15 — PROPOSITION à confirmer par Eric : en base, le désamiantage est traité au CCTP TCE (§2.2, pages 3 et 50) mais n'apparaît nulle part dans les 171 chunks du Mémoire Technique. L'« incohérence » de référence serait donc une omission : le CCTP prévoit le désamiantage, le mémoire technique n'en parle pas. Si tu valides cette lecture, passe a_valider à false."
+    },
+    {
+      "id": "C3-002",
+      "classe": "C3",
+      "project_ref": "golfpark",
+      "question": "Quels sont les délais de pénalité prévus dans le CCAP et comment se comparent-ils aux obligations de la charte chantier vert ?",
+      "conversation_context": null,
+      "synthetic": false,
+      "a_valider": true,
+      "expected": {
+        "source_doc_contains": "CCAP Travaux",
+        "source_page": null,
+        "answer_must_contain": [],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "conversation réelle du 2026-02-11 (croisement CCAP × Charte Chantier Vert ; réponse d'époque : délai d'exécution 5 mois à compter de la notification — volet comparatif charte non visible dans l'extrait, à valider)"
+    },
+    {
+      "id": "C3-003",
+      "classe": "C3",
+      "project_ref": "ehpad",
+      "question": "Analyse-moi tous les documents pour me faire un résumé des obligations de chacun pour les phases OPL et OPR",
+      "conversation_context": null,
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCAP",
+        "source_page": 29,
+        "answer_must_contain": ["OPR"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "conversation réelle du 2026-03-27 (synthèse multi-documents ; obligations OPR/OPL principalement dans 2139_CCAP.pdf art. 11.2 p.29)"
+    },
+    {
+      "id": "C3-004",
+      "classe": "C3",
+      "project_ref": "bessieres",
+      "question": "Peux-tu me donner les limites de prestations des autres lots avec le gros-œuvre ?",
+      "conversation_context": null,
+      "synthetic": false,
+      "a_valider": true,
+      "expected": {
+        "source_doc_contains": "CCTP TCE",
+        "source_page": null,
+        "answer_must_contain": [],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "conversations réelles du 2026-01-15, 2026-01-16 et 2026-01-30 (réponses instables : tableau comparatif CCAP/CCTP ou « non explicitement définies » — le CCTP étant TCE, la notion de limites de prestations inter-lots est diffuse ; réponse de référence à définir)"
+    },
+    {
+      "id": "C4-001",
+      "classe": "C4",
+      "project_ref": "bessieres",
+      "question": "Synthétise-moi le CCTP sur 20 lignes",
+      "conversation_context": null,
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCTP TCE",
+        "source_page": null,
+        "answer_must_contain": ["réhabilitation énergétique", "7 résidences"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "conversation réelle du 2026-02-06 (réponse : réhabilitation énergétique de 7 résidences OPH 31 à Bessières)"
+    },
+    {
+      "id": "C4-002",
+      "classe": "C4",
+      "project_ref": "bessieres",
+      "question": "Résume-moi le mémoire technique",
+      "conversation_context": null,
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "Mémoire Technique",
+        "source_page": null,
+        "answer_must_contain": ["OPH 31", "site occupé"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "conversation réelle du 2026-01-14 (réponse : réhabilitation énergétique 7 résidences OPH 31, méthodologie travaux en site occupé, moyens dédiés)"
+    },
+    {
+      "id": "C4-003",
+      "classe": "C4",
+      "project_ref": "golfpark",
+      "question": "Prépare une synthèse du CCTP GTB",
+      "conversation_context": null,
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCTP GOLF PARK",
+        "source_page": null,
+        "answer_must_contain": ["GTB", "Toulouse"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "conversation réelle du 2026-02-11 (réponse : rénovation GTB du bâtiment GOLF PARK à Toulouse, tertiaire 54 000 m², zone H1)"
+    },
+    {
+      "id": "C4-004",
+      "classe": "C4",
+      "project_ref": "bessieres",
+      "question": "Résume le CCAG",
+      "conversation_context": null,
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCAG",
+        "source_page": null,
+        "answer_must_contain": ["marchés publics", "30 mars 2021"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "conversation réelle du 2026-01-13 (2e question la plus posée : 25+ occurrences ; réponse stable : CCAG marchés publics de travaux approuvé par l'arrêté du 30 mars 2021 ; cible un document de la couche app)"
+    },
+    {
+      "id": "C5-001",
+      "classe": "C5",
+      "project_ref": "bessieres",
+      "question": "Quelle est la localisation ?",
+      "conversation_context": [
+        { "question": "L'architecte me parle du terrain de pétanque, de quoi s'agit-il ?" }
+      ],
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCTP TCE",
+        "source_page": 56,
+        "answer_must_contain": ["Dunant"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "conversation réelle du 2026-03-05 (suivi avec référent implicite « le terrain de pétanque » ; le mode agentic avait correctement résolu : Résidence Dunant, CCTP TCE p.56)"
+    },
+    {
+      "id": "C5-002",
+      "classe": "C5",
+      "project_ref": "bessieres",
+      "question": "dans le ccap ?",
+      "conversation_context": [
+        { "question": "Le marché est actualisable ou révisable ?" }
+      ],
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCAP",
+        "source_page": 9,
+        "answer_must_contain": ["variation des prix"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "conversation réelle du 2026-03-18 (ÉCHEC d'époque : la 1re réponse citait NFP03-001 p.18 « prix actualisables et révisables », le suivi « dans le ccap ? » a répondu « pas trouvé » — vérifier ce que dit réellement le CCAP Bessières sur la variation des prix avant de figer l'attendu)",
+      "resolution": "2026-08-15 : vérifié en base — le CCAP Bessières contient bien une section « 7.2 - Modalités de variation des prix » (page 9, chunk 31/107). Le refus d'époque était donc un faux négatif de retrieval. Réserve mineure : le contenu du chunk 7.2 semble décalé (il commence par « Le délai d'exécution est de 12 mois ») — frontière de chunking à surveiller."
+    },
+    {
+      "id": "C5-003",
+      "classe": "C5",
+      "project_ref": "ehpad",
+      "question": "Sors-moi l'article correspondant",
+      "conversation_context": [
+        { "question": "Dans les CR est-il fait mention d'OPR, OPL, de pré-réception ou de pré-livraison ?" }
+      ],
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCAP",
+        "source_page": 29,
+        "answer_must_contain": ["11.2"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "conversation réelle du 2026-03-27 (suivi implicite « l'article » = celui des OPR ; réponse d'époque correcte : ARTICLE 11.2 LES OPERATIONS PREALABLES A LA RECEPTION [2139_CCAP.pdf, Page 29])"
+    },
+    {
+      "id": "C5-004",
+      "classe": "C5",
+      "project_ref": "bessieres",
+      "question": "et les autres lots ?",
+      "conversation_context": [
+        { "question": "Donne-moi l'intégralité des articles qui donnent une référence au DTU dans le CCTP" }
+      ],
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCTP TCE",
+        "source_page": null,
+        "answer_must_contain": ["DTU"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "conversation réelle du 2026-02-03 (ÉCHEC d'époque : « Je n'ai pas trouvé d'informations spécifiques sur les autres lots » — perte du contexte conversationnel ; attendu plausible : listes DTU des autres sections 1.3.x du CCTP, à valider)",
+      "resolution": "2026-08-15 : attendu minimal posé — la réponse doit citer des références DTU d'autres lots du CCTP TCE (le CCTP en liste par lot, cf. C6-001 plomberie) et ne pas refuser. À durcir avec des DTU précis après le premier run."
+    },
+    {
+      "id": "C6-001",
+      "classe": "C6",
+      "project_ref": "bessieres",
+      "question": "Quels sont les DTU prévus dans le CCTP pour le lot plomberie ?",
+      "conversation_context": null,
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCTP TCE",
+        "source_page": null,
+        "answer_must_contain": ["DTU 65.3", "DTU 65.4"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "conversation réelle du 2026-02-03 (réponse : liste DTU 65.3, 65.4… de la section plomberie sanitaire du CCTP, 2 runs cohérents)"
+    },
+    {
+      "id": "C6-002",
+      "classe": "C6",
+      "project_ref": "ehpad",
+      "question": "Dans le document marché, est-il fait référence à la norme NFP03-001 ?",
+      "conversation_context": null,
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCAP",
+        "source_page": null,
+        "answer_must_contain": ["03-001"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "conversation réelle du 2026-03-27 (réponse : oui, le CCAP indique que le CCAG du marché est constitué par la norme NF P 03-001 — marché privé)"
+    },
+    {
+      "id": "C6-003",
+      "classe": "C6",
+      "project_ref": "bessieres",
+      "question": "Que disent les pièces du marché sur les articles L. 8221-3 à L. 8221-5 ?",
+      "conversation_context": null,
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCAP",
+        "source_page": null,
+        "answer_must_contain": ["travail dissimulé"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "conversation réelle du 2026-03-18 (l'utilisateur a collé brut « L. 8221-3 à L. 8221-5, » ; réponse : obligations de lutte contre le travail dissimulé, clause CCAP ; question reformulée a minima pour l'éval)"
+    },
+    {
+      "id": "C7-001",
+      "classe": "C7",
+      "project_ref": "bessieres",
+      "question": "Quels sont les matériaux utilisés sur la Lune ?",
+      "conversation_context": null,
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": null,
+        "source_page": null,
+        "answer_must_contain": [],
+        "answer_must_not_contain": [],
+        "must_refuse": true
+      },
+      "origine": "conversation réelle du 2026-01-29 et 2026-02-09 (hors corpus assumé ; réponse d'époque correcte : « Je n'ai pas trouvé cette information dans les documents disponibles »)"
+    },
+    {
+      "id": "C7-002",
+      "classe": "C7",
+      "project_ref": "golfpark",
+      "question": "Quelle est la recette de la quiche lorraine ?",
+      "conversation_context": null,
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": null,
+        "source_page": null,
+        "answer_must_contain": [],
+        "answer_must_not_contain": [],
+        "must_refuse": true
+      },
+      "origine": "conversation réelle du 2026-02-11 (réponse d'époque correcte : recadrage sur le rôle d'assistant documentaire BTP, aucune invention ; variante « tarte aux pommes » posée 3 fois sur bessieres)"
+    },
+    {
+      "id": "C7-003",
+      "classe": "C7",
+      "project_ref": "golfpark",
+      "question": "Quel est le coefficient de transmission thermique des menuiseries extérieures et quelles sont les exigences acoustiques en façade ?",
+      "conversation_context": null,
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": null,
+        "source_page": null,
+        "answer_must_contain": [],
+        "answer_must_not_contain": [],
+        "must_refuse": true
+      },
+      "origine": "conversation réelle du 2026-02-11 (question dans le domaine mais info a priori absente d'un CCTP GTB : « pas trouvé » 2 fois d'affilée — confirmer l'absence réelle dans le corpus golfpark avant de figer must_refuse)",
+      "resolution": "2026-08-15 : vérifié en base — 0 occurrence de « coefficient + therm », « Uw », « menuiser », « acoustiq + façade » dans les 142 chunks du CCTP GOLF PARK. L'information est réellement absente : must_refuse confirmé."
+    },
+    {
+      "id": "C7-004",
+      "classe": "C7",
+      "project_ref": "ehpad",
+      "question": "Dans le CCTP du gros œuvre, aborde-t-on le nettoyage extérieur ?",
+      "conversation_context": null,
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": null,
+        "source_page": null,
+        "answer_must_contain": [],
+        "answer_must_not_contain": [],
+        "must_refuse": true
+      },
+      "origine": "conversation réelle du 2026-03-27 — SENTINELLE ANTI-HALLUCINATION : aucun CCTP gros œuvre n'existe dans le corpus EHPAD (lots 02, 03, 05, 07, 08, 12 uniquement, vérifié en base), or la réponse d'époque a affirmé « Dans le CCTP du gros œuvre, il est indiqué que l'entrepreneur doit assurer le nettoyage… » = invention"
+    },
+    {
+      "id": "C8-001",
+      "classe": "C8",
+      "project_ref": "bessieres",
+      "question": "Que dit l'article 2.3.9 du CCTP ?",
+      "conversation_context": null,
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCTP TCE",
+        "source_page": 56,
+        "answer_must_contain": ["terrain de pétanque", "terrassement"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "conversation réelle du 2026-01-15 (réponse verbatim : « L'entrepreneure devra la réalisation d'un terrain de pétanque, comprenant : Le terrassement qui se fera en masse… »)"
+    },
+    {
+      "id": "C8-002",
+      "classe": "C8",
+      "project_ref": "ehpad",
+      "question": "Quelles informations sont dans l'article 2 Définitions ?",
+      "conversation_context": null,
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCAG",
+        "source_page": 4,
+        "answer_must_contain": ["acheteur"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "conversation réelle du 2026-03-27 (réponse : définitions du CCAG Travaux p.4 — « Maître d'ouvrage : l'acheteur pour le compte duquel les travaux sont exécutés » ; cible la couche app)"
+    },
+    {
+      "id": "C8-003",
+      "classe": "C8",
+      "project_ref": "golfpark",
+      "question": "Que contient l'annexe 2 de la charte chantier vert ?",
+      "conversation_context": null,
+      "synthetic": false,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CHARTE CHANTIER VERT",
+        "source_page": 7,
+        "answer_must_contain": ["Communication Parties Prenantes"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "conversation réelle du 2026-02-10 (intitulé exact attendu : « Communication Parties Prenantes » [CHARTE CHANTIER VERT, Page 7] ; l'utilisateur a dû reformuler 3 fois avant d'obtenir la réponse)"
+    }
+  ]
+}

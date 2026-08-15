@@ -1,0 +1,17 @@
+{
+  "endpoint": "https://<PROJECT_REF>.supabase.co/functions/v1/baikal-retrieval",
+  "app_id": "arpet",
+  "contexts": {
+    "exemple": {
+      "project_id": "<uuid-projet-de-test>",
+      "org_id": "<uuid-org-de-test>",
+      "user_id": "<uuid-utilisateur-de-test>",
+      "note": "Utiliser un environnement de staging ou des comptes de test dedies. Ne jamais committer de vrais identifiants clients : copier ce fichier vers eval/config.json (gitignore)."
+    }
+  },
+  "defaults": {
+    "top_k_for_recall": 10,
+    "request_timeout_ms": 90000,
+    "delay_between_calls_ms": 1500
+  }
+}
