@@ -9,3 +9,17 @@ entrypoint = "./functions/ingest-documents/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/ingest-documents/*.html" ]
+
+# verify_jwt explicite : la cle anon (JWT valide) suffit a passer la gateway ;
+# le controle d'appartenance org/projet reste a implementer dans le code (P0 audit).
+[functions.baikal-retrieval]
+enabled = true
+verify_jwt = true
+import_map = "./functions/import_map.json"
+entrypoint = "./functions/baikal-retrieval/index.ts"
+
+[functions.trigger-ingestion]
+enabled = true
+verify_jwt = true
+import_map = "./functions/import_map.json"
+entrypoint = "./functions/trigger-ingestion/index.ts"

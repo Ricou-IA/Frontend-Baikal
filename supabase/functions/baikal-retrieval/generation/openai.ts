@@ -31,6 +31,7 @@ export async function* generateWithOpenAIStream(
       max_tokens: config.max_tokens,
       stream: true,
     }),
+    signal: AbortSignal.timeout(120_000),
   })
 
   if (!response.ok) {

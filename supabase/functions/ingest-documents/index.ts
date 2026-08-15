@@ -1,6 +1,6 @@
 // ╔══════════════════════════════════════════════════════════════════════════════╗
 // ║  INGEST-DOCUMENTS - Edge Function Supabase                                   ║
-// ║  Version: 8.0.0 - Support colonnes QQOQCCP                                  ║
+// ║  Version: 8.1.0 - Upsert idempotent (source_file_id, chunk_local_id)        ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
 // ║  Changements v8.0.0:                                                         ║
 // ║  - Extraction des 6 colonnes QQOQCCP depuis le payload n8n                  ║
@@ -477,14 +477,19 @@ serve(async (req) => {
         updated_at: new Date().toISOString(),
       }))
 
+      // v8.1.0 : upsert idempotent sur (source_file_id, chunk_local_id) — un retry
+      // d'ingestion rafraichit les chunks au lieu de les dupliquer. Le mode merge
+      // (et non ignoreDuplicates) garantit que .select('id') retourne une ligne par
+      // element du payload, dans l'ordre : l'alignement conceptsByDocIndex est preserve.
+      // Les chunks sans chunk_local_id (NULL) ne conflictent jamais (comportement inchange).
       const { data, error } = await supabase
         .schema('rag')
         .from('documents')
-        .insert(rowsToInsert)
+        .upsert(rowsToInsert, { onConflict: 'source_file_id,chunk_local_id' })
         .select('id')
 
       if (error) {
-        throw new Error(`Supabase insert rag.documents error: ${error.message}`)
+        throw new Error(`Supabase upsert rag.documents error: ${error.message}`)
       }
 
       insertedDocs = data || []
@@ -660,7 +665,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        version: '8.0.0',  // v8.0.0
+        version: '8.1.0',  // v8.1.0 upsert idempotent
         inserted: {
           total: totalInserted,
           rag_documents: insertedDocs.length,

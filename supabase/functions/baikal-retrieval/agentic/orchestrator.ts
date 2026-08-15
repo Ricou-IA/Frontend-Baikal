@@ -205,13 +205,21 @@ export function shouldTriggerAgentic(
   }
 
   // Low average similarity → agentic
-  const avgSimilarity = chunks.reduce((sum, c) => sum + c.similarity, 0) / chunks.length
+  // v2.0.1: seuls les chunks vector/intersection portent une vraie similarité cosine.
+  // graphrag (ratio de concepts), fulltext (ts_rank) et child (héritée) sont sur
+  // d'autres échelles et faussaient la moyenne dans les deux sens.
+  const cosineChunks = chunks.filter(c => c.match_source === 'vector' || c.match_source === 'intersection')
+  if (cosineChunks.length === 0) {
+    console.log(`[agentic] Triggered: no vector-backed chunks (${chunks.length} total from other sources)`)
+    return true
+  }
+  const avgSimilarity = cosineChunks.reduce((sum, c) => sum + c.similarity, 0) / cosineChunks.length
   if (avgSimilarity < agenticConfig.similarity_threshold) {
-    console.log(`[agentic] Triggered: avg similarity ${avgSimilarity.toFixed(3)} < ${agenticConfig.similarity_threshold}`)
+    console.log(`[agentic] Triggered: avg cosine similarity ${avgSimilarity.toFixed(3)} < ${agenticConfig.similarity_threshold} (${cosineChunks.length}/${chunks.length} vector chunks)`)
     return true
   }
 
-  console.log(`[agentic] Fast path OK: ${chunks.length} chunks, avg similarity ${avgSimilarity.toFixed(3)}`)
+  console.log(`[agentic] Fast path OK: ${chunks.length} chunks, avg cosine similarity ${avgSimilarity.toFixed(3)} (${cosineChunks.length} vector)`)
   return false
 }
 

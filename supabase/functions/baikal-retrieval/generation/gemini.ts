@@ -57,6 +57,7 @@ export async function getOrUploadGoogleFile(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ file: { display_name: file.original_filename } }),
+      signal: AbortSignal.timeout(15_000),
     },
   )
 
@@ -76,6 +77,7 @@ export async function getOrUploadGoogleFile(
       "Content-Type": file.mime_type,
     },
     body: fileBuffer,
+    signal: AbortSignal.timeout(120_000),
   })
 
   if (!uploadResponse.ok) {
@@ -161,6 +163,7 @@ export async function getOrCreateGlobalCache(
         contents: [{ role: "user", parts }],
         ttl: `${ttlSeconds}s`,
       }),
+      signal: AbortSignal.timeout(30_000),
     },
   )
 
@@ -216,6 +219,7 @@ export async function* generateWithGeminiStream(
           maxOutputTokens: effectiveParams.maxTokens,
         },
       }),
+      signal: AbortSignal.timeout(120_000),
     },
   )
 

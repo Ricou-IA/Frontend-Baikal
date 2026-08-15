@@ -106,6 +106,7 @@ export async function callGeminiAgent(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(20_000),
   })
 
   if (!response.ok) {
@@ -171,6 +172,7 @@ export async function* streamGeminiAgentResponse(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(120_000),
   })
 
   if (!response.ok) {

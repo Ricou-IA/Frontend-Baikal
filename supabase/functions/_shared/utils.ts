@@ -200,6 +200,7 @@ export async function generateEmbedding(
       model,
       input: text.trim(),
     }),
+    signal: AbortSignal.timeout(10_000),
   })
 
   if (!response.ok) {

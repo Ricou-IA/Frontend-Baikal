@@ -94,6 +94,7 @@ async function callCohereRerank(
       documents,
       top_n: Math.min(topN, documents.length),
     }),
+    signal: AbortSignal.timeout(8_000),
   })
 
   if (!response.ok) {
