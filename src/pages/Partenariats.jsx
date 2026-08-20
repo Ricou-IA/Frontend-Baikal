@@ -176,7 +176,8 @@ function Prospects({ appId }) {
                   className="bg-baikal-bg border border-baikal-border rounded px-1"
                   value={p.statut}
                   onChange={async (e) => {
-                    await partenariatsService.saveProspect(appId, { ...p, statut: e.target.value });
+                    const { error } = await partenariatsService.saveProspect(appId, { ...p, statut: e.target.value });
+                    if (error) setMessage(error.message);
                     charger();
                   }}
                 >
@@ -215,8 +216,11 @@ function Campagnes({ appId }) {
   useEffect(() => {
     if (!edition) { setApercu(null); return; }
     partenariatsService.previewSegment(appId, edition.segment ?? {})
-      .then(({ data }) => setApercu(data?.destinataires ?? null));
-  }, [appId, edition?.segment?.type, edition?.segment?.statut, edition?.segment?.departement]);
+      .then(({ data, error }) => {
+        if (error) setMessage(error.message);
+        setApercu(data?.destinataires ?? null);
+      });
+  }, [appId, !!edition, edition?.segment?.type, edition?.segment?.statut, edition?.segment?.departement]);
 
   async function sauvegarder() {
     setOccupe(true);
