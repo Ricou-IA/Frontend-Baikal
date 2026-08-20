@@ -57,9 +57,13 @@ Transposition multi-sites de l'écran SEO de Pack Vendeur :
 
 - POST unique, dispatch sur `{ action }` : `overview`, `compare`, `top-queries`,
   `top-pages`, `all-sites`.
-- Proxy de l'API Search Console (Search Analytics) avec le **compte de service
-  Google** (JWT signé côté serveur). Secret : `GOOGLE_GSC_SERVICE_ACCOUNT` (JSON du
-  compte de service) dans les secrets du projet Baikal.
+- Proxy de l'API Search Console (Search Analytics). Authentification par **OAuth
+  refresh token**, comme Pack Vendeur (`_shared/google-search-console.ts` : grant
+  `refresh_token`, cache mémoire du token d'accès) — pas de compte de service.
+  Secrets à répliquer dans le projet Baikal : `GOOGLE_GSC_OAUTH_CLIENT_ID`,
+  `GOOGLE_GSC_OAUTH_CLIENT_SECRET`, `GOOGLE_GSC_OAUTH_REFRESH_TOKEN`. La propriété
+  interrogée vient de `config.apps.gsc_propriete` (plus de `GOOGLE_GSC_SITE_URL`
+  global).
 - Vérifie la session et le droit de l'utilisateur sur l'`app_id` demandé avant tout
   appel sortant. Réponses `{ data, error }`, jamais de throw non catché.
 - Pas de cache en v1 ; si les quotas GSC deviennent un sujet, un cache table viendra
@@ -68,9 +72,11 @@ Transposition multi-sites de l'écran SEO de Pack Vendeur :
 ### Dépendances (gestes d'Eric)
 
 - Déclarer la propriété `monsieurdpe.fr` dans Search Console si absent.
-- Ajouter l'adresse du compte de service (celui de Pack Vendeur) en **lecture** sur
-  chaque propriété à suivre (MonsieurDPE, ARPET si souhaité, Pack Vendeur déjà fait).
-- Copier le JSON du compte de service dans les secrets du projet Supabase Baikal.
+- S'assurer que le **compte Google qui a émis le refresh token** de Pack Vendeur a
+  accès (lecture suffit) à chaque propriété à suivre : MonsieurDPE, ARPET si
+  souhaité, Pack Vendeur déjà fait.
+- Copier les trois secrets `GOOGLE_GSC_OAUTH_*` de Pack Vendeur dans les secrets du
+  projet Supabase Baikal.
 
 ## 4. Module Partenariats
 
@@ -115,10 +121,11 @@ Toutes portent `app_id` (le site), RLS alignée sur les conventions du repo
   `send-campaign`, `campaign-stats`.
 - `import-diagnostiqueurs` appelle l'environnement MonsieurDPE avec la clé lue depuis
   le secret référencé par `env_secret_ref` — la clé ne transite jamais par le client.
-- Envoi via **Resend**, expéditeur au domaine du site de la campagne. Un webhook
-  Resend (Edge Function `resend-webhook-admin` ou route dédiée) met à jour
-  `campagne_envois`. Secret namespacé pour ne pas entrer en collision avec ceux des
-  autres produits du projet.
+- Envoi via **Resend**, expéditeur au domaine du site de la campagne. Secrets
+  namespacés `ADMIN_*` pour ne pas entrer en collision avec ceux des autres
+  produits du projet. En v1, les statuts suivis sont `envoyé`/`erreur` (posés à
+  l'envoi), `désinscrit` (via le lien de retrait) et `répondu` (posé à la main) ;
+  le webhook Resend (ouvertures, clics, bounces) est reporté en v2.
 - Chaque envoi porte un **lien de désinscription** (token par prospect) ; la
   désinscription pose `statut = 'désinscrit'` et exclut le prospect de tout envoi
   futur du même site.
@@ -150,6 +157,7 @@ Toutes portent `app_id` (le site), RLS alignée sur les conventions du repo
 - Écran de gestion des accès (qui voit quel site) — géré en table tant qu'Eric est
   seul utilisateur.
 - Synchronisation continue des prospects, scoring, relances automatiques.
+- Webhook Resend (ouvertures, clics, bounces) — v2.
 - Refonte des aliases `vertical` deprecated d'`AppContext`.
 - Migration du `/admin` de Pack Vendeur.
 
