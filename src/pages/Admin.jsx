@@ -41,6 +41,7 @@ import {
     Loader2,
     LogOut,
     Settings,
+    TrendingUp,
 } from 'lucide-react';
 
 // ============================================================================
@@ -66,6 +67,13 @@ const getTabs = (isSuperAdmin, pendingCount = 0) => {
             icon: BookOpen,
             description: 'Base documentaire RAG',
             badge: pendingCount > 0 ? pendingCount : null,
+        },
+        {
+            id: 'seo',
+            label: 'SEO',
+            icon: TrendingUp,
+            description: 'Search Console multi-sites',
+            route: '/seo',
         },
     ];
 

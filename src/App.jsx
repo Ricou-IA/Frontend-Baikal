@@ -40,6 +40,7 @@ import Invitations from './pages/admin/Invitations';
 import UsersPage from './pages/admin/Users';
 import Projects from './pages/admin/Projects';
 import Ingestion from './pages/admin/Ingestion';
+import Seo from './pages/Seo';
 
 function App() {
   return (
@@ -229,6 +230,16 @@ function App() {
             element={
               <AdminRoute>
                 <Ingestion />
+              </AdminRoute>
+            }
+          />
+
+          {/* Admin - SEO multi-sites */}
+          <Route
+            path="/seo"
+            element={
+              <AdminRoute>
+                <Seo />
               </AdminRoute>
             }
           />
