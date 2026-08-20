@@ -193,3 +193,25 @@ npx supabase functions deploy <name>  # Deploy edge function
 - Public schema functions are SECURITY DEFINER wrappers calling schema-specific functions
 - Config is DB-driven via `config.agent_prompts.parameters` (JSONB)
 - French language throughout UI, prompts, and documentation
+
+## Modules admin multi-sites (2026-08-20)
+
+`config.apps` sert de registre des sites administres (colonnes `domaine`,
+`gsc_propriete`, `env_url`, `env_secret_ref` — le secret lui-meme n'est jamais en
+table). Spec et plan dans `docs/superpowers/specs/` et `docs/superpowers/plans/`
+(2026-08-20-admin-multi-sites-*).
+
+- **SEO** : page `/seo` (`src/pages/Seo.jsx`) + EF `admin-seo` — proxy Search
+  Console multi-proprietes, OAuth refresh token (secrets `GOOGLE_GSC_OAUTH_*`),
+  fenetres ancrees a J-3. Actions : overview, top, all-sites.
+- **Partenariats** : page `/partenariats` + EF `admin-partenariats` — prospects,
+  import CSV, import diagnostiqueurs (via `env_url` + secret nomme par
+  `env_secret_ref`), campagnes Resend par lots de 50 avec reprise (`restants`),
+  lien de desinscription HMAC (EF `admin-desinscription`, verify_jwt off, GET
+  affiche / POST execute). Tables `admin.prospects|campagnes|campagne_envois`,
+  RLS forcee sans policy, acces service_role uniquement.
+- Secrets attendus : `GOOGLE_GSC_OAUTH_CLIENT_ID|CLIENT_SECRET|REFRESH_TOKEN`,
+  `ADMIN_RESEND_API_KEY`, `ADMIN_UNSUBSCRIBE_SECRET`, `ADMIN_ENV_MONSIEURDPE_KEY`.
+- Gotcha : le trigger `tr_create_documents_cles_on_app_insert` casse toute
+  insertion d'app avec `is_active=true` (slug de concept constant deja pris) —
+  inserer inactif puis activer par UPDATE, ou corriger le trigger.
