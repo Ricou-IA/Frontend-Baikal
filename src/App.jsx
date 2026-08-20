@@ -42,6 +42,7 @@ import Projects from './pages/admin/Projects';
 import Ingestion from './pages/admin/Ingestion';
 import Seo from './pages/Seo';
 import Partenariats from './pages/Partenariats';
+import Sites from './pages/Sites';
 
 function App() {
   return (
@@ -251,6 +252,16 @@ function App() {
             element={
               <AdminRoute>
                 <Partenariats />
+              </AdminRoute>
+            }
+          />
+
+          {/* Admin - Parametrage des sites (super admin) */}
+          <Route
+            path="/sites"
+            element={
+              <AdminRoute>
+                <Sites />
               </AdminRoute>
             }
           />

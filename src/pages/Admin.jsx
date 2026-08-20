@@ -43,6 +43,7 @@ import {
     Settings,
     TrendingUp,
     Mail,
+    Globe,
 } from 'lucide-react';
 
 // ============================================================================
@@ -87,6 +88,13 @@ const getTabs = (isSuperAdmin, pendingCount = 0) => {
 
     // Onglets super_admin uniquement
     if (isSuperAdmin) {
+        tabs.push({
+            id: 'sites',
+            label: 'Sites',
+            icon: Globe,
+            description: 'Registre des sites et expediteurs',
+            route: '/sites',
+        });
         tabs.push({
             id: 'prompts',
             label: 'Prompts',

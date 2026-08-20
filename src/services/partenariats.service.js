@@ -34,4 +34,10 @@ export const partenariatsService = {
   campaignStats(appId, campagneId) {
     return appelerEdge('admin-partenariats', { action: 'campaign-stats', appId, campagneId });
   },
+  listSites() {
+    return appelerEdge('admin-partenariats', { action: 'list-sites' });
+  },
+  saveSite(site) {
+    return appelerEdge('admin-partenariats', { action: 'save-site', site });
+  },
 };
