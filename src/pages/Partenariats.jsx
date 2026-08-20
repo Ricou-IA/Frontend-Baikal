@@ -244,7 +244,8 @@ function Campagnes({ appId }) {
     setOccupe(false);
     setMessage(error
       ? error.message
-      : `Envoyé : ${data.envoyes} ok, ${data.erreurs} erreurs, ${data.dejaTraites} déjà traités.`);
+      : `Envoyé : ${data.envoyes} ok, ${data.erreurs} erreurs, ${data.dejaTraites} déjà traités, ${data.restants} restants.`
+        + (data.restants > 0 ? ' Relancer l\'envoi pour continuer.' : ''));
     setEdition(null);
     charger();
   }

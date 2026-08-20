@@ -78,8 +78,8 @@ serve(async (req) => {
         if (body.type) q = q.eq("type", body.type);
         if (body.statut) q = q.eq("statut", body.statut);
         if (body.recherche) {
-          const r = String(body.recherche).replaceAll("%", "").replaceAll(",", " ");
-          q = q.or(`email.ilike.%${r}%,nom.ilike.%${r}%,entreprise.ilike.%${r}%`);
+          const r = String(body.recherche).replace(/[%,().]/g, " ").trim();
+          if (r) q = q.or(`email.ilike.%${r}%,nom.ilike.%${r}%,entreprise.ilike.%${r}%`);
         }
         const { data, error, count } = await q;
         if (error) throw error;
@@ -247,7 +247,9 @@ serve(async (req) => {
           .eq("app_id", appId).neq("statut", "desinscrit");
         if (s.type) q = q.eq("type", s.type);
         if (s.statut) q = q.eq("statut", s.statut);
-        if (s.departement) q = q.like("code_postal", `${s.departement}%`);
+        if (s.departement && /^\d{2,3}$/.test(String(s.departement))) {
+          q = q.like("code_postal", `${s.departement}%`);
+        }
         const { count, error } = await q;
         if (error) throw error;
         return json({ data: { destinataires: count }, error: null });
@@ -276,36 +278,30 @@ serve(async (req) => {
         if (c.statut === "envoyee") {
           return json({ data: null, error: "Campagne deja envoyee" }, 409);
         }
-        const s = c.segment ?? {};
-        let q = admin.schema("admin").from("prospects").select("*")
-          .eq("app_id", appId).neq("statut", "desinscrit").limit(2000);
-        if (s.type) q = q.eq("type", s.type);
-        if (s.statut) q = q.eq("statut", s.statut);
-        if (s.departement) q = q.like("code_postal", `${s.departement}%`);
-        const { data: cibles, error: pErr } = await q;
-        if (pErr) throw pErr;
-
+        // Envoi par lots : LOT_MAX prospects par invocation, pause entre deux
+        // envois pour respecter le rate limit Resend (~2/s). Relancer l'action
+        // tant que restants > 0.
+        const LOT_MAX = 50;
+        const pause = () => new Promise((r) => setTimeout(r, 600));
         const exp = expediteurDe(appId);
         let envoyes = 0, erreurs = 0, dejaTraites = 0;
-        for (const p of cibles ?? []) {
-          // claim atomique : l'unicite (campagne_id, prospect_id) garantit
-          // qu'un rejeu de l'action ne renvoie jamais deux fois au meme prospect
-          const { error: claimErr } = await admin.schema("admin")
-            .from("campagne_envois")
-            .insert({ campagne_id: c.id, prospect_id: p.id, statut: "envoye" });
-          if (claimErr) { dejaTraites++; continue; } // 23505 = deja traite
+        let traitesDansLot = 0;
+
+        // Envoie a un prospect deja claime et met a jour sa ligne campagne_envois.
+        const envoyerA = async (p: { id: string; email: string } & Record<string, unknown>) => {
           const lien = await buildUnsubscribeUrl(p.email);
           if (!lien) {
             await admin.schema("admin").from("campagne_envois")
-              .update({ statut: "erreur", erreur: "ADMIN_UNSUBSCRIBE_SECRET absent" })
+              .update({ statut: "erreur", erreur: "ADMIN_UNSUBSCRIBE_SECRET absent", maj_le: new Date().toISOString() })
               .eq("campagne_id", c.id).eq("prospect_id", p.id);
-            erreurs++; continue;
+            erreurs++;
+            return;
           }
           const html = renderTemplate(c.corps_html, p) + piedDePage(lien);
           const r = await sendOneEmail(exp.nom, exp.email, exp.replyTo, p.email, c.objet, html);
           await admin.schema("admin").from("campagne_envois")
             .update(r.ok
-              ? { resend_id: r.resendId, maj_le: new Date().toISOString() }
+              ? { statut: "envoye", resend_id: r.resendId, erreur: null, maj_le: new Date().toISOString() }
               : { statut: "erreur", erreur: r.error, maj_le: new Date().toISOString() })
             .eq("campagne_id", c.id).eq("prospect_id", p.id);
           if (r.ok) {
@@ -316,14 +312,79 @@ serve(async (req) => {
           } else {
             erreurs++;
           }
+        };
+
+        // 1. Reprendre d'abord les envois orphelins d'un run precedent :
+        // claim pose (statut='envoye') mais aucun resend_id enregistre.
+        const { data: orphelins, error: oErr } = await admin.schema("admin")
+          .from("campagne_envois")
+          .select("prospect_id, prospects:prospect_id(*)")
+          .eq("campagne_id", c.id).eq("statut", "envoye").is("resend_id", null);
+        if (oErr) throw oErr;
+        for (const o of orphelins ?? []) {
+          if (traitesDansLot >= LOT_MAX) break;
+          const p = o.prospects as unknown as ({ id: string; email: string } & Record<string, unknown>) | null;
+          if (!p) continue;
+          if (traitesDansLot > 0) await pause();
+          await envoyerA(p);
+          traitesDansLot++;
         }
-        await admin.schema("admin").from("campagnes")
-          .update({ statut: "envoyee", envoyee_le: new Date().toISOString() })
-          .eq("id", c.id);
-        return json({ data: { envoyes, erreurs, dejaTraites }, error: null });
+
+        // 2. Cibles du segment, en excluant les prospects deja traites
+        // (une ligne campagne_envois existe, quel qu'en soit le statut).
+        const { data: dejaLignes, error: dErr } = await admin.schema("admin")
+          .from("campagne_envois")
+          .select("prospect_id").eq("campagne_id", c.id);
+        if (dErr) throw dErr;
+        const dejaIds = new Set((dejaLignes ?? []).map((l) => l.prospect_id));
+
+        const s = c.segment ?? {};
+        let q = admin.schema("admin").from("prospects").select("*")
+          .eq("app_id", appId).neq("statut", "desinscrit");
+        if (s.type) q = q.eq("type", s.type);
+        if (s.statut) q = q.eq("statut", s.statut);
+        if (s.departement && /^\d{2,3}$/.test(String(s.departement))) {
+          q = q.like("code_postal", `${s.departement}%`);
+        }
+        const { data: toutes, error: pErr } = await q;
+        if (pErr) throw pErr;
+        const cibles = (toutes ?? []).filter((p) => !dejaIds.has(p.id));
+
+        let index = 0;
+        for (; index < cibles.length; index++) {
+          if (traitesDansLot >= LOT_MAX) break;
+          const p = cibles[index];
+          if (traitesDansLot > 0) await pause();
+          // claim atomique : l'unicite (campagne_id, prospect_id) garantit
+          // qu'un rejeu de l'action ne renvoie jamais deux fois au meme prospect
+          const { error: claimErr } = await admin.schema("admin")
+            .from("campagne_envois")
+            .insert({ campagne_id: c.id, prospect_id: p.id, statut: "envoye" });
+          if (claimErr) {
+            if (claimErr.code === "23505") { dejaTraites++; continue; }
+            console.error("[admin-partenariats] claim send-campaign", claimErr);
+            erreurs++; continue;
+          }
+          traitesDansLot++;
+          await envoyerA(p);
+        }
+        const restants = cibles.length - index;
+
+        // Cloture : uniquement si tout est traite, qu'au moins un envoi a
+        // abouti (ou etait deja fait), et que ce run n'est pas un echec total.
+        const echecTotal = envoyes === 0 && erreurs > 0 && dejaTraites === 0;
+        if (restants === 0 && envoyes + dejaTraites > 0 && !echecTotal) {
+          await admin.schema("admin").from("campagnes")
+            .update({ statut: "envoyee", envoyee_le: new Date().toISOString() })
+            .eq("id", c.id);
+        }
+        return json({ data: { envoyes, erreurs, dejaTraites, restants }, error: null });
       }
 
       case "campaign-stats": {
+        const { data: camp, error: campErr } = await admin.schema("admin").from("campagnes")
+          .select("id").eq("id", body.campagneId).eq("app_id", appId).single();
+        if (campErr || !camp) return json({ data: null, error: "Campagne introuvable" }, 404);
         const { data, error } = await admin.schema("admin").from("campagne_envois")
           .select("statut").eq("campagne_id", body.campagneId);
         if (error) throw error;

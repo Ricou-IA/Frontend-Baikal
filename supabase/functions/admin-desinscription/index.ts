@@ -4,6 +4,15 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // bundle MCP ne suit pas les imports inter-dossiers. Garder les deux copies en phase.
 import { normalizeEmail, verifyUnsubscribeToken } from "./envoi.ts";
 
+function escapeHtml(texte: string): string {
+  return texte
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 function page(corps: string): Response {
   return new Response(
     `<!doctype html><html lang="fr"><meta charset="utf-8">` +
@@ -19,11 +28,11 @@ serve(async (req) => {
   const email = url.searchParams.get("e") ?? "";
   const token = url.searchParams.get("t") ?? "";
   const valide = email && token && await verifyUnsubscribeToken(email, token);
-  if (!valide) return page(`<p>Lien invalide ou expire.</p>`);
+  if (!valide) return page(`<p>Lien invalide.</p>`);
 
   if (req.method === "GET") {
     return page(
-      `<p>Ne plus recevoir d'emails a l'adresse <strong>${normalizeEmail(email)}</strong> ?</p>` +
+      `<p>Ne plus recevoir d'emails a l'adresse <strong>${escapeHtml(normalizeEmail(email))}</strong> ?</p>` +
       `<form method="post"><button type="submit" ` +
       `style="padding:10px 20px;cursor:pointer">Confirmer la desinscription</button></form>`,
     );
