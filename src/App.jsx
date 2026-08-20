@@ -41,6 +41,7 @@ import UsersPage from './pages/admin/Users';
 import Projects from './pages/admin/Projects';
 import Ingestion from './pages/admin/Ingestion';
 import Seo from './pages/Seo';
+import Partenariats from './pages/Partenariats';
 
 function App() {
   return (
@@ -240,6 +241,16 @@ function App() {
             element={
               <AdminRoute>
                 <Seo />
+              </AdminRoute>
+            }
+          />
+
+          {/* Admin - Partenariats multi-sites */}
+          <Route
+            path="/partenariats"
+            element={
+              <AdminRoute>
+                <Partenariats />
               </AdminRoute>
             }
           />

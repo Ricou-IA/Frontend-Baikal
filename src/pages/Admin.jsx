@@ -42,6 +42,7 @@ import {
     LogOut,
     Settings,
     TrendingUp,
+    Mail,
 } from 'lucide-react';
 
 // ============================================================================
@@ -74,6 +75,13 @@ const getTabs = (isSuperAdmin, pendingCount = 0) => {
             icon: TrendingUp,
             description: 'Search Console multi-sites',
             route: '/seo',
+        },
+        {
+            id: 'partenariats',
+            label: 'Partenariats',
+            icon: Mail,
+            description: 'Prospection et campagnes email',
+            route: '/partenariats',
         },
     ];
 
