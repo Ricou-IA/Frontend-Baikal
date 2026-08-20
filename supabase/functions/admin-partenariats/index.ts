@@ -1,0 +1,342 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { buildUnsubscribeUrl, renderTemplate, sendOneEmail } from "./envoi.ts";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-app-id",
+};
+
+function json(payload: unknown, status = 200): Response {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+// Expediteur par site. En v1, seul MonsieurDPE envoie ; ajouter une entree ici
+// quand un nouveau site obtient son domaine Resend verifie.
+function expediteurDe(appId: string): { nom: string; email: string; replyTo: string } {
+  const table: Record<string, { nom: string; email: string; replyTo: string }> = {
+    monsieurdpe: {
+      nom: "Eric de MonsieurDPE",
+      email: "eric@monsieurdpe.fr",
+      replyTo: "eric.pudebat@confer-sas.fr",
+    },
+  };
+  const exp = table[appId];
+  if (!exp) throw new Error(`Pas d'expediteur configure pour le site ${appId}`);
+  return exp;
+}
+
+function piedDePage(lienDesinscription: string): string {
+  return `<p style="margin-top:32px;font-size:12px;color:#888">` +
+    `Vous recevez cet email dans le cadre d'une prise de contact professionnelle. ` +
+    `<a href="${lienDesinscription}" style="color:#888">Ne plus recevoir d'emails</a></p>`;
+}
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST") return json({ data: null, error: "POST attendu" }, 405);
+
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) return json({ data: null, error: "Non authentifie" }, 401);
+    const caller = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user }, error: authError } = await caller.auth.getUser();
+    if (authError || !user) return json({ data: null, error: "Non authentifie" }, 401);
+    const { data: profile } = await caller
+      .from("profiles").select("app_role").eq("id", user.id).single();
+    if (!profile || !["super_admin", "org_admin"].includes(profile.app_role)) {
+      return json({ data: null, error: "Acces refuse" }, 403);
+    }
+
+    const admin = createClient(supabaseUrl, serviceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    const body = await req.json();
+    const { action, appId } = body;
+    if (!appId && action !== "resend-status") {
+      return json({ data: null, error: "appId requis" }, 400);
+    }
+
+    switch (action) {
+      case "list-prospects": {
+        let q = admin.schema("admin").from("prospects")
+          .select("*", { count: "exact" })
+          .eq("app_id", appId)
+          .order("cree_le", { ascending: false })
+          .range(body.offset ?? 0, (body.offset ?? 0) + (body.limit ?? 50) - 1);
+        if (body.type) q = q.eq("type", body.type);
+        if (body.statut) q = q.eq("statut", body.statut);
+        if (body.recherche) {
+          const r = String(body.recherche).replaceAll("%", "").replaceAll(",", " ");
+          q = q.or(`email.ilike.%${r}%,nom.ilike.%${r}%,entreprise.ilike.%${r}%`);
+        }
+        const { data, error, count } = await q;
+        if (error) throw error;
+        return json({ data: { prospects: data, total: count }, error: null });
+      }
+
+      case "save-prospect": {
+        const p = body.prospect ?? {};
+        if (!p.email || !p.type) {
+          return json({ data: null, error: "email et type requis" }, 400);
+        }
+        const ligne = {
+          app_id: appId,
+          type: p.type,
+          statut: p.statut ?? "nouveau",
+          email: String(p.email).trim().toLowerCase(),
+          nom: p.nom ?? null, prenom: p.prenom ?? null,
+          entreprise: p.entreprise ?? null, telephone: p.telephone ?? null,
+          site_web: p.site_web ?? null, code_postal: p.code_postal ?? null,
+          source: p.source ?? "manuel",
+          donnees: p.donnees ?? {},
+          maj_le: new Date().toISOString(),
+        };
+        const { data, error } = await admin.schema("admin").from("prospects")
+          .upsert(ligne, { onConflict: "app_id,email" }).select().single();
+        if (error) throw error;
+        return json({ data, error: null });
+      }
+
+      case "delete-prospect": {
+        const { error } = await admin.schema("admin").from("prospects")
+          .delete().eq("id", body.prospectId).eq("app_id", appId);
+        if (error) throw error;
+        return json({ data: { ok: true }, error: null });
+      }
+
+      case "import-csv": {
+        // Le front a deja parse le CSV : on recoit des lignes normalisees.
+        const lignes = Array.isArray(body.lignes) ? body.lignes : [];
+        if (lignes.length === 0 || lignes.length > 5000) {
+          return json({ data: null, error: "Entre 1 et 5000 lignes attendues" }, 400);
+        }
+        const valides = lignes
+          .filter((l: Record<string, unknown>) =>
+            typeof l.email === "string" && l.email.includes("@"))
+          .map((l: Record<string, string>) => ({
+            app_id: appId,
+            type: body.type === "diagnostiqueur" ? "diagnostiqueur" : "agence",
+            email: l.email.trim().toLowerCase(),
+            nom: l.nom ?? null, prenom: l.prenom ?? null,
+            entreprise: l.entreprise ?? null, telephone: l.telephone ?? null,
+            site_web: l.site_web ?? null, code_postal: l.code_postal ?? null,
+            source: "csv",
+            donnees: l.donnees ?? {},
+          }));
+        // ignoreDuplicates : un email deja present (quel que soit son statut,
+        // desinscrit compris) n'est JAMAIS reecrit par un import.
+        const { data, error } = await admin.schema("admin").from("prospects")
+          .upsert(valides, { onConflict: "app_id,email", ignoreDuplicates: true })
+          .select("id");
+        if (error) throw error;
+        return json({
+          data: {
+            recus: lignes.length,
+            valides: valides.length,
+            inseres: data?.length ?? 0,
+            doublons: valides.length - (data?.length ?? 0),
+          },
+          error: null,
+        });
+      }
+
+      case "import-diagnostiqueurs": {
+        // Lit dpe.diag_certifie dans l'environnement du site via PostgREST.
+        const { data: app, error: appError } = await admin
+          .schema("config").from("apps")
+          .select("env_url, env_secret_ref").eq("id", appId).single();
+        if (appError || !app?.env_url || !app?.env_secret_ref) {
+          return json({ data: null, error: "Site sans environnement configure" }, 400);
+        }
+        const cle = Deno.env.get(app.env_secret_ref);
+        if (!cle) {
+          return json(
+            { data: null, error: `Secret ${app.env_secret_ref} absent des Edge Function Secrets` },
+            500,
+          );
+        }
+        let url = `${app.env_url}/rest/v1/diag_certifie` +
+          `?select=nom,prenom,email,telephone,diag_site!inner(nom_affiche,code_postal,commune)` +
+          `&email=not.is.null&limit=10000`;
+        if (body.departement && /^\d{2,3}$/.test(body.departement)) {
+          url += `&diag_site.code_postal=like.${body.departement}*`;
+        }
+        const res = await fetch(url, {
+          headers: {
+            apikey: cle,
+            Authorization: `Bearer ${cle}`,
+            "Accept-Profile": "dpe",
+          },
+        });
+        if (!res.ok) {
+          const t = await res.text();
+          return json({ data: null, error: `Environnement site ${res.status}: ${t.slice(0, 200)}` }, 502);
+        }
+        const certifies = await res.json();
+        const parEmail = new Map<string, Record<string, unknown>>();
+        for (const c of certifies) {
+          const email = String(c.email ?? "").trim().toLowerCase();
+          if (!email.includes("@") || parEmail.has(email)) continue;
+          parEmail.set(email, {
+            app_id: appId,
+            type: "diagnostiqueur",
+            email,
+            nom: c.nom ?? null, prenom: c.prenom ?? null,
+            entreprise: c.diag_site?.nom_affiche ?? null,
+            telephone: c.telephone ?? null,
+            code_postal: c.diag_site?.code_postal ?? null,
+            source: "diag_certifie",
+            donnees: { commune: c.diag_site?.commune ?? null },
+          });
+        }
+        const lignes = [...parEmail.values()];
+        const { data, error } = await admin.schema("admin").from("prospects")
+          .upsert(lignes, { onConflict: "app_id,email", ignoreDuplicates: true })
+          .select("id");
+        if (error) throw error;
+        return json({
+          data: {
+            lus: certifies.length,
+            avecEmail: lignes.length,
+            inseres: data?.length ?? 0,
+            doublons: lignes.length - (data?.length ?? 0),
+          },
+          error: null,
+        });
+      }
+
+      case "list-campagnes": {
+        const { data, error } = await admin.schema("admin").from("campagnes")
+          .select("*").eq("app_id", appId).order("cree_le", { ascending: false });
+        if (error) throw error;
+        return json({ data, error: null });
+      }
+
+      case "save-campagne": {
+        const c = body.campagne ?? {};
+        const ligne = {
+          ...(c.id ? { id: c.id } : {}),
+          app_id: appId,
+          nom: c.nom ?? "Sans nom",
+          objet: c.objet ?? "",
+          corps_html: c.corps_html ?? "",
+          segment: c.segment ?? {},
+        };
+        const { data, error } = await admin.schema("admin").from("campagnes")
+          .upsert(ligne).select().single();
+        if (error) throw error;
+        return json({ data, error: null });
+      }
+
+      case "preview-segment": {
+        const s = body.segment ?? {};
+        let q = admin.schema("admin").from("prospects")
+          .select("id", { count: "exact", head: true })
+          .eq("app_id", appId).neq("statut", "desinscrit");
+        if (s.type) q = q.eq("type", s.type);
+        if (s.statut) q = q.eq("statut", s.statut);
+        if (s.departement) q = q.like("code_postal", `${s.departement}%`);
+        const { count, error } = await q;
+        if (error) throw error;
+        return json({ data: { destinataires: count }, error: null });
+      }
+
+      case "send-test": {
+        const { data: c, error: cErr } = await admin.schema("admin").from("campagnes")
+          .select("*").eq("id", body.campagneId).eq("app_id", appId).single();
+        if (cErr || !c) return json({ data: null, error: "Campagne introuvable" }, 404);
+        const exp = expediteurDe(appId);
+        const lien = await buildUnsubscribeUrl(body.email);
+        if (!lien) return json({ data: null, error: "ADMIN_UNSUBSCRIBE_SECRET absent" }, 500);
+        const html = renderTemplate(c.corps_html, { prenom: "Test", nom: "Test", entreprise: "Test" })
+          + piedDePage(lien);
+        const r = await sendOneEmail(exp.nom, exp.email, exp.replyTo, body.email,
+          `[TEST] ${c.objet}`, html);
+        return r.ok
+          ? json({ data: { ok: true }, error: null })
+          : json({ data: null, error: r.error }, 502);
+      }
+
+      case "send-campaign": {
+        const { data: c, error: cErr } = await admin.schema("admin").from("campagnes")
+          .select("*").eq("id", body.campagneId).eq("app_id", appId).single();
+        if (cErr || !c) return json({ data: null, error: "Campagne introuvable" }, 404);
+        if (c.statut === "envoyee") {
+          return json({ data: null, error: "Campagne deja envoyee" }, 409);
+        }
+        const s = c.segment ?? {};
+        let q = admin.schema("admin").from("prospects").select("*")
+          .eq("app_id", appId).neq("statut", "desinscrit").limit(2000);
+        if (s.type) q = q.eq("type", s.type);
+        if (s.statut) q = q.eq("statut", s.statut);
+        if (s.departement) q = q.like("code_postal", `${s.departement}%`);
+        const { data: cibles, error: pErr } = await q;
+        if (pErr) throw pErr;
+
+        const exp = expediteurDe(appId);
+        let envoyes = 0, erreurs = 0, dejaTraites = 0;
+        for (const p of cibles ?? []) {
+          // claim atomique : l'unicite (campagne_id, prospect_id) garantit
+          // qu'un rejeu de l'action ne renvoie jamais deux fois au meme prospect
+          const { error: claimErr } = await admin.schema("admin")
+            .from("campagne_envois")
+            .insert({ campagne_id: c.id, prospect_id: p.id, statut: "envoye" });
+          if (claimErr) { dejaTraites++; continue; } // 23505 = deja traite
+          const lien = await buildUnsubscribeUrl(p.email);
+          if (!lien) {
+            await admin.schema("admin").from("campagne_envois")
+              .update({ statut: "erreur", erreur: "ADMIN_UNSUBSCRIBE_SECRET absent" })
+              .eq("campagne_id", c.id).eq("prospect_id", p.id);
+            erreurs++; continue;
+          }
+          const html = renderTemplate(c.corps_html, p) + piedDePage(lien);
+          const r = await sendOneEmail(exp.nom, exp.email, exp.replyTo, p.email, c.objet, html);
+          await admin.schema("admin").from("campagne_envois")
+            .update(r.ok
+              ? { resend_id: r.resendId, maj_le: new Date().toISOString() }
+              : { statut: "erreur", erreur: r.error, maj_le: new Date().toISOString() })
+            .eq("campagne_id", c.id).eq("prospect_id", p.id);
+          if (r.ok) {
+            envoyes++;
+            await admin.schema("admin").from("prospects")
+              .update({ statut: "contacte", maj_le: new Date().toISOString() })
+              .eq("id", p.id).eq("statut", "nouveau");
+          } else {
+            erreurs++;
+          }
+        }
+        await admin.schema("admin").from("campagnes")
+          .update({ statut: "envoyee", envoyee_le: new Date().toISOString() })
+          .eq("id", c.id);
+        return json({ data: { envoyes, erreurs, dejaTraites }, error: null });
+      }
+
+      case "campaign-stats": {
+        const { data, error } = await admin.schema("admin").from("campagne_envois")
+          .select("statut").eq("campagne_id", body.campagneId);
+        if (error) throw error;
+        const stats: Record<string, number> = {};
+        for (const e of data ?? []) stats[e.statut] = (stats[e.statut] ?? 0) + 1;
+        return json({ data: stats, error: null });
+      }
+
+      default:
+        return json({ data: null, error: `Action inconnue: ${action}` }, 400);
+    }
+  } catch (e) {
+    console.error("[admin-partenariats]", e);
+    return json({ data: null, error: String(e instanceof Error ? e.message : e) }, 500);
+  }
+});
