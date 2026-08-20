@@ -15,20 +15,20 @@ function json(payload: unknown, status = 200): Response {
   });
 }
 
-// Expediteur par site. En v1, seul MonsieurDPE envoie ; ajouter une entree ici
-// quand un nouveau site obtient son domaine Resend verifie.
-function expediteurDe(appId: string): { nom: string; email: string; replyTo: string } {
-  const table: Record<string, { nom: string; email: string; replyTo: string }> = {
-    monsieurdpe: {
-      nom: "Eric de MonsieurDPE",
-      email: "eric@monsieurdpe.fr",
-      replyTo: "eric.pudebat@confer-sas.fr",
-    },
-  };
-  const exp = table[appId];
-  if (!exp) throw new Error(`Pas d'expediteur configure pour le site ${appId}`);
-  return exp;
-}
+// Champs de config.apps modifiables par save-site. La creation d'app reste
+// une migration : jamais d'insert ici, jamais name/is_active/system_prompt.
+const CHAMPS_SITE = [
+  "domaine",
+  "gsc_propriete",
+  "env_url",
+  "env_secret_ref",
+  "expediteur_nom",
+  "expediteur_email",
+  "reply_to",
+] as const;
+
+// Actions qui ne portent pas sur un site en particulier.
+const ACTIONS_SANS_APP_ID = ["resend-status", "list-sites", "save-site"];
 
 function piedDePage(lienDesinscription: string): string {
   return `<p style="margin-top:32px;font-size:12px;color:#888">` +
@@ -64,11 +64,56 @@ serve(async (req) => {
 
     const body = await req.json();
     const { action, appId } = body;
-    if (!appId && action !== "resend-status") {
+    if (!appId && !ACTIONS_SANS_APP_ID.includes(action)) {
       return json({ data: null, error: "appId requis" }, 400);
     }
 
+    // Expediteur du site, lu en base. Echoue fort si non configure.
+    const chargerExpediteur = async (): Promise<
+      { nom: string; email: string; replyTo: string } | null
+    > => {
+      const { data: app, error } = await admin.schema("config").from("apps")
+        .select("expediteur_nom, expediteur_email, reply_to")
+        .eq("id", appId).single();
+      if (error || !app?.expediteur_email) return null;
+      return {
+        nom: app.expediteur_nom ?? app.expediteur_email,
+        email: app.expediteur_email,
+        replyTo: app.reply_to || app.expediteur_email,
+      };
+    };
+    const erreurExpediteur = () =>
+      json({ data: null, error: "Pas d'expediteur configure pour ce site (parametrage Sites)" }, 400);
+
     switch (action) {
+      case "list-sites": {
+        const { data, error } = await admin.schema("config").from("apps")
+          .select("id, name, domaine, gsc_propriete, env_url, env_secret_ref, " +
+            "expediteur_nom, expediteur_email, reply_to, is_active")
+          .order("sort_order");
+        if (error) throw error;
+        return json({ data, error: null });
+      }
+
+      case "save-site": {
+        if (profile.app_role !== "super_admin") {
+          return json({ data: null, error: "Acces refuse" }, 403);
+        }
+        const s = body.site ?? {};
+        if (!s.id) return json({ data: null, error: "site.id requis" }, 400);
+        const maj: Record<string, unknown> = {};
+        for (const champ of CHAMPS_SITE) {
+          if (champ in s) maj[champ] = s[champ] === "" ? null : s[champ];
+        }
+        if (Object.keys(maj).length === 0) {
+          return json({ data: null, error: "Aucun champ a enregistrer" }, 400);
+        }
+        const { data, error } = await admin.schema("config").from("apps")
+          .update(maj).eq("id", s.id).select("id").single();
+        if (error) throw error;
+        return json({ data, error: null });
+      }
+
       case "list-prospects": {
         let q = admin.schema("admin").from("prospects")
           .select("*", { count: "exact" })
@@ -259,7 +304,8 @@ serve(async (req) => {
         const { data: c, error: cErr } = await admin.schema("admin").from("campagnes")
           .select("*").eq("id", body.campagneId).eq("app_id", appId).single();
         if (cErr || !c) return json({ data: null, error: "Campagne introuvable" }, 404);
-        const exp = expediteurDe(appId);
+        const exp = await chargerExpediteur();
+        if (!exp) return erreurExpediteur();
         const lien = await buildUnsubscribeUrl(body.email);
         if (!lien) return json({ data: null, error: "ADMIN_UNSUBSCRIBE_SECRET absent" }, 500);
         const html = renderTemplate(c.corps_html, { prenom: "Test", nom: "Test", entreprise: "Test" })
@@ -283,7 +329,8 @@ serve(async (req) => {
         // tant que restants > 0.
         const LOT_MAX = 50;
         const pause = () => new Promise((r) => setTimeout(r, 600));
-        const exp = expediteurDe(appId);
+        const exp = await chargerExpediteur();
+        if (!exp) return erreurExpediteur();
         let envoyes = 0, erreurs = 0, dejaTraites = 0;
         let traitesDansLot = 0;
 
