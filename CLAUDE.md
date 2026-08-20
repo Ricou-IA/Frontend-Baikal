@@ -210,6 +210,12 @@ table). Spec et plan dans `docs/superpowers/specs/` et `docs/superpowers/plans/`
   lien de desinscription HMAC (EF `admin-desinscription`, verify_jwt off, GET
   affiche / POST execute). Tables `admin.prospects|campagnes|campagne_envois`,
   RLS forcee sans policy, acces service_role uniquement.
+- **Parametrage** : page `/sites` (super_admin) — edite les champs propres a
+  chaque site dans `config.apps` (domaine, GSC, env, expediteur des campagnes).
+  Regle de partage : les credentials mutualises de l'outil vivent dans les
+  secrets Edge Functions, tout ce qui est propre au site vit dans ce parametrage,
+  et une cle d'environnement de site reste un secret dont la table ne porte que
+  le nom (`env_secret_ref`). La creation d'une app reste une migration.
 - Secrets attendus : `GOOGLE_GSC_OAUTH_CLIENT_ID|CLIENT_SECRET|REFRESH_TOKEN`,
   `ADMIN_RESEND_API_KEY`, `ADMIN_UNSUBSCRIBE_SECRET`, `ADMIN_ENV_MONSIEURDPE_KEY`.
 - Gotcha : le trigger `tr_create_documents_cles_on_app_insert` casse toute
