@@ -1,7 +1,7 @@
 /**
  * Partenariats.jsx - Baikal Console
  * ============================================================================
- * CRM de prospection multi-sites : prospects (imports CSV et diagnostiqueurs)
+ * CRM de prospection multi-sites : prospects (import CSV, sync diagnostiqueurs)
  * et campagnes email Resend (module admin).
  * Enrobage et selecteur de site fournis par ConsoleLayout ; le site affiche
  * est le site global de la console (useApp).
@@ -91,14 +91,14 @@ function Prospects({ appId }) {
     charger();
   }
 
-  async function importerDiagnostiqueurs() {
-    const departement = window.prompt('Département (vide = tous) :') ?? '';
+  async function synchroniserDiagnostiqueurs() {
     setOccupe(true);
-    const { data, error } = await partenariatsService.importDiagnostiqueurs(
-      appId, departement.trim() || undefined);
+    const { data, error } = await partenariatsService.syncDiagnostiqueurs(appId);
     setMessage(error
       ? error.message
-      : `Import : ${data.inseres} insérés, ${data.doublons} doublons (${data.lus} certifiés lus, ${data.avecEmail} avec email).`);
+      : `Synchronisation : ${data.inseres} insérés, ${data.doublons} doublons `
+        + `(${data.lus} certifiés lus, ${data.avecEmail} avec email). `
+        + `Tourne aussi chaque nuit à 03h30.`);
     setOccupe(false);
     charger();
   }
@@ -139,11 +139,12 @@ function Prospects({ appId }) {
         </button>
         <input ref={fichierRef} type="file" accept=".csv" className="hidden" onChange={importerCsv} />
         <button
-          onClick={importerDiagnostiqueurs}
+          onClick={synchroniserDiagnostiqueurs}
           disabled={occupe}
+          title="Tourne aussi automatiquement chaque nuit à 03h30"
           className="px-3 py-1 rounded border border-baikal-border text-baikal-text flex items-center gap-2"
         >
-          <RefreshCw className="w-4 h-4" /> Import diagnostiqueurs
+          <RefreshCw className="w-4 h-4" /> Synchroniser les diagnostiqueurs
         </button>
       </div>
 

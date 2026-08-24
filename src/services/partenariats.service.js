@@ -13,8 +13,8 @@ export const partenariatsService = {
   importCsv(appId, type, lignes) {
     return appelerEdge('admin-partenariats', { action: 'import-csv', appId, type, lignes });
   },
-  importDiagnostiqueurs(appId, departement) {
-    return appelerEdge('admin-partenariats', { action: 'import-diagnostiqueurs', appId, departement });
+  syncDiagnostiqueurs(appId) {
+    return appelerEdge('admin-partenariats', { action: 'sync-diagnostiqueurs', appId });
   },
   listCampagnes(appId) {
     return appelerEdge('admin-partenariats', { action: 'list-campagnes', appId });
