@@ -129,9 +129,11 @@ export const usersService = {
    *   console.log(`${data.length} utilisateurs en attente`);
    * }
    */
-  async getPendingUsers() {
+  async getPendingUsers(appId = null) {
     try {
-      const { data, error } = await supabase.rpc('get_pending_users');
+      const { data, error } = await supabase.rpc('get_pending_users', {
+        p_app_id: appId,
+      });
 
       if (error) throw error;
 
@@ -171,6 +173,7 @@ export const usersService = {
     search = null,
     limit = DEFAULT_LIMIT,
     offset = DEFAULT_OFFSET,
+    appId = null,
   } = {}) {
     try {
       const { data, error } = await supabase.rpc('get_users_for_admin', {
@@ -178,6 +181,7 @@ export const usersService = {
         p_search: search,
         p_limit: limit,
         p_offset: offset,
+        p_app_id: appId,
       });
 
       if (error) throw error;

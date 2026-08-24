@@ -28,6 +28,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@contexts/AuthContext';
+import { useApp } from '@contexts/AppContext';
+import ConsoleLayout from '../../components/console/ConsoleLayout';
 import { usersService, organizationService } from '@services';
 import { supabase } from '@lib/supabaseClient';
 import {
@@ -61,10 +63,11 @@ import {
 // PAGE PRINCIPALE
 // ============================================================================
 
-export default function UsersPage() {
+function UsersContent() {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const { isSuperAdmin, isOrgAdmin, profile } = useAuth();
+    const { currentApp } = useApp();
 
     // Onglet actif (super_admin uniquement)
     const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'pending');
@@ -122,7 +125,7 @@ export default function UsersPage() {
 
         setLoadingPending(true);
         try {
-            const result = await usersService.getPendingUsers();
+            const result = await usersService.getPendingUsers(currentApp);
 
             if (result.error) {
                 throw new Error(result.error.message || result.error);
@@ -135,7 +138,7 @@ export default function UsersPage() {
         } finally {
             setLoadingPending(false);
         }
-    }, [isSuperAdmin]);
+    }, [isSuperAdmin, currentApp]);
 
     // Charger tous les utilisateurs
     const loadUsers = useCallback(async () => {
@@ -144,6 +147,7 @@ export default function UsersPage() {
             const params = {
                 orgId: isSuperAdmin ? (orgFilter || null) : profile?.org_id,
                 search: search.trim() || null,
+                appId: currentApp,
             };
 
             const result = await usersService.getUsersForAdmin(params);
@@ -159,7 +163,7 @@ export default function UsersPage() {
         } finally {
             setLoadingUsers(false);
         }
-    }, [isSuperAdmin, orgFilter, search, profile?.org_id]);
+    }, [isSuperAdmin, orgFilter, search, profile?.org_id, currentApp]);
 
     // Charger les données initiales
     useEffect(() => {
@@ -262,38 +266,19 @@ export default function UsersPage() {
 
     if (!isSuperAdmin && isOrgAdmin) {
         return (
-            <div className="min-h-screen bg-baikal-bg">
-                {/* Header */}
-                <header className="bg-baikal-surface border-b border-baikal-border sticky top-0 z-30">
-                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                        <div className="flex items-center justify-between h-16">
-                            <div className="flex items-center gap-4">
-                                <button
-                                    onClick={() => navigate('/admin')}
-                                    className="p-2 text-baikal-text hover:text-white hover:bg-baikal-bg rounded-md transition-colors"
-                                >
-                                    <ChevronLeft className="w-5 h-5" />
-                                </button>
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-baikal-cyan/20 rounded-md">
-                                        <Users className="w-5 h-5 text-baikal-cyan" />
-                                    </div>
-                                    <div>
-                                        <h1 className="text-lg font-mono font-bold text-white">
-                                            UTILISATEURS
-                                        </h1>
-                                        <p className="text-xs text-baikal-text font-mono">
-                                            Membres de votre organisation
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+            <div>
+                <div className="mb-2 flex items-center gap-3">
+                    <div className="p-2 bg-baikal-cyan/20 rounded-md">
+                        <Users className="w-5 h-5 text-baikal-cyan" />
                     </div>
-                </header>
+                    <div>
+                        <h1 className="text-lg font-mono font-bold text-white">UTILISATEURS</h1>
+                        <p className="text-xs text-baikal-text font-mono">Membres de votre organisation</p>
+                    </div>
+                </div>
 
                 {/* Contenu */}
-                <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                <main>
                     {/* Feedback */}
                     {feedback && (
                         <div className={`mb-6 p-4 rounded-md flex items-center gap-3 ${
@@ -411,44 +396,25 @@ export default function UsersPage() {
     // =========================================================================
 
     return (
-        <div className="min-h-screen bg-baikal-bg">
-            {/* Header */}
-            <header className="bg-baikal-surface border-b border-baikal-border sticky top-0 z-30">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex items-center justify-between h-16">
-                        <div className="flex items-center gap-4">
-                            <button
-                                onClick={() => navigate('/admin')}
-                                className="p-2 text-baikal-text hover:text-white hover:bg-baikal-bg rounded-md transition-colors"
-                            >
-                                <ChevronLeft className="w-5 h-5" />
-                            </button>
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-baikal-cyan/20 rounded-md">
-                                    <Users className="w-5 h-5 text-baikal-cyan" />
-                                </div>
-                                <div>
-                                    <h1 className="text-lg font-mono font-bold text-white">
-                                        UTILISATEURS
-                                    </h1>
-                                    <p className="text-xs text-baikal-text font-mono">
-                                        Gestion des utilisateurs
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Bouton Créer */}
-                        <button
-                            onClick={() => setCreatingUser(true)}
-                            className="flex items-center gap-2 px-4 py-2 bg-baikal-cyan text-black font-medium rounded-md hover:bg-baikal-cyan/90 transition-colors font-mono"
-                        >
-                            <Plus className="w-4 h-4" />
-                            NOUVEL_USER
-                        </button>
+        <div>
+            <div className="mb-2 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <div className="p-2 bg-baikal-cyan/20 rounded-md">
+                        <Users className="w-5 h-5 text-baikal-cyan" />
+                    </div>
+                    <div>
+                        <h1 className="text-lg font-mono font-bold text-white">UTILISATEURS</h1>
+                        <p className="text-xs text-baikal-text font-mono">Gestion des utilisateurs du site selectionne</p>
                     </div>
                 </div>
-            </header>
+                <button
+                    onClick={() => setCreatingUser(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-baikal-cyan text-black font-medium rounded-md hover:bg-baikal-cyan/90 transition-colors font-mono"
+                >
+                    <Plus className="w-4 h-4" />
+                    NOUVEL_USER
+                </button>
+            </div>
 
             {/* Tabs */}
             <div className="bg-baikal-surface border-b border-baikal-border">
@@ -490,7 +456,7 @@ export default function UsersPage() {
             </div>
 
             {/* Contenu */}
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <main>
                 {/* Feedback */}
                 {feedback && (
                     <div className={`mb-6 p-4 rounded-md flex items-center gap-3 ${
@@ -694,5 +660,17 @@ export default function UsersPage() {
                 onConfirm={handleDeleted}
             />
         </div>
+    );
+}
+
+// ============================================================================
+// PAGE (enrobage console)
+// ============================================================================
+
+export default function UsersPage() {
+    return (
+        <ConsoleLayout actif="users">
+            <UsersContent />
+        </ConsoleLayout>
     );
 }
