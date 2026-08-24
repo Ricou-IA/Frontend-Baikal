@@ -48,7 +48,7 @@ begin
       select distinct on (email) *
       from lignes
       where position('@' in email) > 0
-      order by email
+      order by email, nom_affiche, nom, prenom
     ),
     inserees as (
       insert into admin.prospects
@@ -68,7 +68,7 @@ begin
   into v_lus, v_avec_email, v_inseres
   using p_app_id;
 
-  -- Trace pour les nuits sans temoin (Postgres logs + cron.job_run_details).
+  -- Trace des compteurs dans les logs Postgres (cron.job_run_details ne porte que le statut).
   raise log '[sync_diagnostiqueurs] app=% lus=% avec_email=% inseres=%',
     p_app_id, v_lus, v_avec_email, v_inseres;
 
@@ -84,7 +84,8 @@ $$;
 revoke all on function admin.sync_diagnostiqueurs(text) from public, anon, authenticated;
 grant execute on function admin.sync_diagnostiqueurs(text) to service_role;
 
--- Rejouable : on deprogramme d'abord pour que la commande soit remplacee aussi.
+-- Rejouable : on deprogramme puis on reprogramme (pattern DPE). Un rejeu reattribue un jobid,
+-- l'historique cron.job_run_details repart a zero -- acceptable pour un rejeu exceptionnel.
 select cron.unschedule('admin-sync-diag-prospects')
 where exists (select 1 from cron.job where jobname = 'admin-sync-diag-prospects');
 
