@@ -96,9 +96,8 @@ function Prospects({ appId }) {
     const { data, error } = await partenariatsService.syncDiagnostiqueurs(appId);
     setMessage(error
       ? error.message
-      : `Synchronisation : ${data.inseres} insérés, ${data.doublons} doublons `
-        + `(${data.lus} certifiés lus, ${data.avecEmail} avec email). `
-        + `Tourne aussi chaque nuit à 03h30.`);
+      : `Synchronisation : ${data.inseres} insérés, ${data.doublons} doublons ignorés `
+        + `(${data.lus} certifiés lus, ${data.avecEmail} avec email).`);
     setOccupe(false);
     charger();
   }
@@ -142,9 +141,9 @@ function Prospects({ appId }) {
           onClick={synchroniserDiagnostiqueurs}
           disabled={occupe}
           title="Tourne aussi automatiquement chaque nuit à 03h30"
-          className="px-3 py-1 rounded border border-baikal-border text-baikal-text flex items-center gap-2"
+          className="px-3 py-1 rounded border border-baikal-border text-baikal-text flex items-center gap-2 disabled:opacity-50"
         >
-          <RefreshCw className="w-4 h-4" /> Synchroniser les diagnostiqueurs
+          <RefreshCw className={`w-4 h-4 ${occupe ? 'animate-spin' : ''}`} /> Synchroniser les diagnostiqueurs
         </button>
       </div>
 
