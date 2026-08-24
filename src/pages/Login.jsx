@@ -68,7 +68,7 @@ export default function Login() {
   const [inviteValidation, setInviteValidation] = useState(null); // { valid, org_name, org_id, default_app_role, error }
   const [validatingInvite, setValidatingInvite] = useState(false);
 
-  const { signIn, signUp, signInWithGoogle, resetPassword, loading, error, clearError, isAuthenticated, hasProfile, isOnboarded } = useAuth();
+  const { signIn, signUp, signInWithGoogle, resetPassword, loading, error, clearError, isAuthenticated, hasProfile } = useAuth();
   const navigate = useNavigate();
 
   // Détecter le code d'invitation dans l'URL
@@ -141,16 +141,12 @@ export default function Login() {
       setIsRedirecting(true);
       setTimeout(() => {
         if (hasProfile) {
-          if (!isOnboarded) {
-            navigate('/onboarding', { replace: true });
-          } else {
-            navigate('/admin', { replace: true });
-          }
+          navigate('/admin', { replace: true });
         }
       }, 500);
     }
     wasAuthenticatedRef.current = isAuthenticated;
-  }, [isAuthenticated, hasProfile, isOnboarded, navigate]);
+  }, [isAuthenticated, hasProfile, navigate]);
   
   useEffect(() => {
     if (!isAuthenticated && isRedirecting) {

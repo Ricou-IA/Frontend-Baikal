@@ -12,6 +12,11 @@
 
 ## Architecture
 
+> **Repartition des repos** : le chat RAG (consommation SSE de `baikal-retrieval`) est
+> implemente dans le repo **Frontend-ARPET** (`Dashboard.tsx`,
+> `src/services/chat/chat-sse.ts`). **Frontend-Baikal** porte la console
+> (connaissances, admin, users) ; son onglet chat est un placeholder.
+
 ### Frontend (`src/`)
 ```
 src/
@@ -184,7 +189,9 @@ npx supabase functions deploy <name>  # Deploy edge function
 - `processing_status` in `sources.files` may not update if n8n node 3.8b has errors
 - Cohere reranking is implemented but disabled for MVP (`enable_reranking: false`)
 - Frontend admin settings page not yet updated for baikal-retrieval agentic config
-- Frontend does not yet handle agentic SSE events (`agent_thinking`, `agent_searching`, `agent_found`)
+- Les evenements SSE agentiques (`agent_thinking`, `agent_searching`, `agent_found`) arrivent
+  comme des evenements `step` generiques et sont affiches par ARPET ; il manque un traitement
+  UI dedie. L'evenement SSE `analysis` (intent, rewritten_query) n'est pas consomme cote front.
 
 ### Conventions
 - Edge Functions use Deno runtime with TypeScript

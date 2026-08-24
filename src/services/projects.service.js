@@ -69,10 +69,9 @@ export async function getProjects({
             .from('projects')
             .select(`
                 *,
-                organization:organizations!inner(id, name, app_id),
+                organization:organizations(id, name),
                 member_count:project_members(count)
             `)
-            .eq('organization.app_id', 'arpet')
             .order('created_at', { ascending: false });
 
         // Filtre par organisation

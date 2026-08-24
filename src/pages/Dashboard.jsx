@@ -248,6 +248,8 @@ function DashboardLayout() {
                   // MIGRATION: defaultVertical → defaultApp (si le composant est migré)
                   defaultVertical={currentApp || 'audit'}
                   onUpload={handleUploadSuccess}
+                  userId={user?.id}
+                  orgId={profile?.org_id}
                 />
               </div>
             </div>

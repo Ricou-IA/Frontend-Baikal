@@ -401,13 +401,8 @@ export function AuthProvider({ children }) {
   // VALEURS DÉRIVÉES
   // ========================================================================
 
-  // Un user est "onboardé" si :
-  // - Il est en impersonation, OU
-  // - Il a une org ET une app (invité via code), OU
-  // - Il a un business_role (onboarding classique)
-  const isOnboarded = isImpersonating 
-    ? true 
-    : !!(effectiveProfile?.org_id && effectiveProfile?.app_id) || !!effectiveProfile?.business_role;
+  // Un user est "onboardé" dès qu'il a un profil
+  const isOnboarded = !!effectiveProfile;
 
   // isSuperAdmin est TOUJOURS basé sur le profil RÉEL (pas impersoné)
   const isSuperAdmin = profile?.app_role === 'super_admin';

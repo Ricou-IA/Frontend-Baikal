@@ -16,7 +16,6 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import {
   ProtectedRoute,
-  OnboardingRoute,
   PublicRoute,
   AdminRoute
 } from './components/OnboardingGuard';
@@ -24,7 +23,6 @@ import {
 // Pages
 import Login from './pages/Login';
 import ResetPassword from './pages/ResetPassword';
-import Onboarding from './pages/Onboarding';
 import Dashboard from './pages/Dashboard';
 import Settings from './pages/Settings';
 import Admin from './pages/Admin';
@@ -91,21 +89,7 @@ function App() {
           />
 
           {/* ============================================ */}
-          {/* ROUTES ONBOARDING */}
-          {/* ============================================ */}
-          
-          {/* Onboarding (requiert auth, redirige si déjà onboardé) */}
-          <Route
-            path="/onboarding"
-            element={
-              <OnboardingRoute>
-                <Onboarding />
-              </OnboardingRoute>
-            }
-          />
-
-          {/* ============================================ */}
-          {/* ROUTES PROTÉGÉES (auth + onboarding requis) */}
+          {/* ROUTES PROTÉGÉES (auth requis) */}
           {/* ============================================ */}
           
           {/* Dashboard utilisateur */}

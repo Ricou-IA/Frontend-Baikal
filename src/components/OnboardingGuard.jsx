@@ -108,7 +108,7 @@ function AccessDeniedScreen() {
  * Vérifie également que l'onboarding est complété
  */
 export function ProtectedRoute({ children }) {
-  const { isAuthenticated, isOnboarded, hasProfile, loading, refreshProfile, signOut } = useAuth();
+  const { isAuthenticated, hasProfile, loading, refreshProfile, signOut } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -121,37 +121,6 @@ export function ProtectedRoute({ children }) {
 
   if (!hasProfile) {
     return <ProfileErrorScreen onRetry={refreshProfile} onSignOut={signOut} />;
-  }
-
-  if (!isOnboarded) {
-    return <Navigate to="/onboarding" replace />;
-  }
-
-  return children;
-}
-
-/**
- * Guard pour la route d'onboarding
- * Requiert auth, redirige vers /admin si déjà onboardé
- */
-export function OnboardingRoute({ children }) {
-  const { isAuthenticated, isOnboarded, hasProfile, loading, refreshProfile, signOut } = useAuth();
-  const location = useLocation();
-
-  if (loading) {
-    return <LoadingScreen />;
-  }
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
-  }
-
-  if (!hasProfile) {
-    return <ProfileErrorScreen onRetry={refreshProfile} onSignOut={signOut} />;
-  }
-
-  if (isOnboarded) {
-    return <Navigate to="/admin" replace />;
   }
 
   return children;
@@ -159,22 +128,16 @@ export function OnboardingRoute({ children }) {
 
 /**
  * Guard pour les routes publiques (login, etc.)
- * Redirige vers /admin si déjà connecté et onboardé
+ * Redirige vers /admin si déjà connecté
  */
 export function PublicRoute({ children }) {
-  const { isAuthenticated, isOnboarded, hasProfile, loading } = useAuth();
+  const { isAuthenticated, hasProfile, loading } = useAuth();
 
   if (loading) {
     return <LoadingScreen />;
   }
 
-  if (isAuthenticated) {
-    if (!hasProfile) {
-      return children;
-    }
-    if (!isOnboarded) {
-      return <Navigate to="/onboarding" replace />;
-    }
+  if (isAuthenticated && hasProfile) {
     return <Navigate to="/admin" replace />;
   }
 
@@ -187,7 +150,7 @@ export function PublicRoute({ children }) {
  * Affiche un écran d'accès refusé si non admin
  */
 export function AdminRoute({ children }) {
-  const { isAuthenticated, isOnboarded, isOrgAdmin, hasProfile, loading, refreshProfile, signOut } = useAuth();
+  const { isAuthenticated, isOrgAdmin, hasProfile, loading, refreshProfile, signOut } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -200,10 +163,6 @@ export function AdminRoute({ children }) {
 
   if (!hasProfile) {
     return <ProfileErrorScreen onRetry={refreshProfile} onSignOut={signOut} />;
-  }
-
-  if (!isOnboarded) {
-    return <Navigate to="/onboarding" replace />;
   }
 
   if (!isOrgAdmin) {
