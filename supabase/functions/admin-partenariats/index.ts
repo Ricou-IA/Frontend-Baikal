@@ -215,9 +215,13 @@ serve(async (req) => {
       case "sync-diagnostiqueurs": {
         // Le mapping vit dans admin.sync_diagnostiqueurs, partage avec le
         // cron nocturne admin-sync-diag-prospects (03h30).
+        // Reponse : {lus, avecEmail, inseres, doublons}.
         const { data, error } = await admin.schema("admin")
           .rpc("sync_diagnostiqueurs", { p_app_id: appId });
-        if (error) throw error;
+        if (error) {
+          if (error.code === "P0001") return json({ data: null, error: error.message }, 400);
+          throw error;
+        }
         return json({ data, error: null });
       }
 
