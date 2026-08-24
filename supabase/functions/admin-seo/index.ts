@@ -109,16 +109,18 @@ serve(async (req) => {
         const site = await proprieteDe(appId);
         const cur = windowAnchored(nbJours);
         const prev = previousWindow(nbJours);
-        const [agregat, agregatPrev, requetes, pages, daily] = await Promise.all([
+        const [agregat, agregatPrev, requetes, requetesPrev, pages, daily] = await Promise.all([
           searchAnalytics(site, cur.startDate, cur.endDate),
           searchAnalytics(site, prev.startDate, prev.endDate),
           searchAnalytics(site, cur.startDate, cur.endDate, ["query"], 5000),
+          searchAnalytics(site, prev.startDate, prev.endDate, ["query"], 5000),
           searchAnalytics(site, cur.startDate, cur.endDate, ["page"], 25),
           searchAnalytics(site, cur.startDate, cur.endDate, ["date"], 100),
         ]);
 
         // Bruit "phrase exacte" ecarte des tops et des buckets (regle PV).
         const reelles = requetes.filter((r) => !isExactPhraseQuery(r.keys?.[0]));
+        const reellesPrev = requetesPrev.filter((r) => !isExactPhraseQuery(r.keys?.[0]));
 
         // Distribution des impressions par bucket de position ; "hidden" =
         // impressions totales moins celles des requetes detaillees (Google
@@ -135,12 +137,20 @@ serve(async (req) => {
         const totaux = totals(agregat);
         buckets.hidden = Math.max(0, totaux.impressions - imprDetaillees);
 
+        // Position moyenne : methode PV — ponderee par impressions sur les
+        // requetes DETAILLEES (bruit ecarte), pas la ligne agregee Google qui
+        // inclut les recherches masquees. Clics/impressions/CTR restent ceux
+        // de l'agregat (totaux reels du site).
+        const totauxPrecedents = totals(agregatPrev);
+        totaux.position = totals(reelles).position;
+        totauxPrecedents.position = totals(reellesPrev).position;
+
         return json({
           data: {
             fenetre: cur,
             fenetrePrecedente: prev,
             totaux,
-            totauxPrecedents: totals(agregatPrev),
+            totauxPrecedents,
             buckets,
             topRequetes: reelles.slice(0, 50).map(versLigne),
             topPages: pages.map(versLigne),
