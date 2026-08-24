@@ -277,16 +277,16 @@ serve(async (req) => {
 
       case "bing-vs-google": {
         exigerSite(sites, appId);
-        // Serie mensuelle : Google = somme des requetes archivees (mois,
-        // is_noise=false) ; Bing = somme de la serie quotidienne (dimension
-        // site). Mois sans mesure Bing = null, JAMAIS 0 (Bing n'a pas
-        // d'historique : les mois d'avant le cron sont definitivement vides).
+        // Serie mensuelle : Google = somme des PAGES archivees (les requetes
+        // detaillees rateraient les clics des recherches masquees — methode
+        // PV) ; Bing = somme de la serie quotidienne (dimension site). Mois
+        // sans mesure Bing = null, JAMAIS 0 (Bing n'a pas d'historique : les
+        // mois d'avant le cron sont definitivement vides).
         const [gRes, bRes, obsRes] = await Promise.all([
           admin.schema("admin").from("seo_snapshots")
-            .select("period_start, clicks")
+            .select("period_start, clicks, impressions")
             .eq("app_id", appId).eq("source", "google")
-            .eq("dimension", "query").eq("granularity", "month")
-            .eq("is_noise", false),
+            .eq("dimension", "page").eq("granularity", "month"),
           admin.schema("admin").from("seo_snapshots")
             .select("period_start, clicks")
             .eq("app_id", appId).eq("source", "bing")
@@ -303,20 +303,34 @@ serve(async (req) => {
         if (obsRes.error) throw obsRes.error;
 
         const mois = (d: string) => d.slice(0, 7);
-        const google = new Map<string, number>();
+        const google = new Map<string, { clicks: number; impressions: number }>();
         for (const r of gRes.data ?? []) {
-          google.set(mois(r.period_start), (google.get(mois(r.period_start)) ?? 0) + r.clicks);
+          const m = mois(r.period_start);
+          const cur = google.get(m) ?? { clicks: 0, impressions: 0 };
+          cur.clicks += r.clicks;
+          cur.impressions += r.impressions;
+          google.set(m, cur);
         }
         const bing = new Map<string, number>();
         for (const r of bRes.data ?? []) {
           bing.set(mois(r.period_start), (bing.get(mois(r.period_start)) ?? 0) + r.clicks);
         }
+        const moisCourant = new Date().toISOString().slice(0, 7);
         const tousMois = [...new Set([...google.keys(), ...bing.keys()])].sort();
-        const mensuel = tousMois.map((m) => ({
-          mois: `${m}-01`,
-          google: google.get(m) ?? 0,
-          bing: bing.has(m) ? bing.get(m)! : null,
-        }));
+        const mensuel = tousMois.map((m) => {
+          const g = google.get(m) ?? { clicks: 0, impressions: 0 };
+          const b = bing.has(m) ? bing.get(m)! : null;
+          return {
+            mois: `${m}-01`,
+            google: g.clicks,
+            impressionsGoogle: g.impressions,
+            bing: b,
+            partBingPct: b !== null && g.clicks + b > 0
+              ? Number(((b / (g.clicks + b)) * 100).toFixed(0))
+              : null,
+            enCours: m === moisCourant,
+          };
+        });
 
         // Ecarts de position : dernier releve Bing vs dernier mois Google —
         // requetes ou Bing classe nettement mieux (>= 5 rangs).

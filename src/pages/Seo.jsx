@@ -588,13 +588,6 @@ function Comparatif({ appId }) {
 // 3. BING VS GOOGLE (archive admin.seo_snapshots)
 // ============================================================================
 
-function moisLisible(iso) {
-  if (!iso) return 'inconnu';
-  const d = new Date(`${String(iso).slice(0, 7)}-01T00:00:00Z`);
-  if (Number.isNaN(d.getTime())) return 'inconnu';
-  return d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
-}
-
 function BingVsGoogle({ appId }) {
   const { donnees, erreur, enCours } = useDonneesCachees(
     `bing:${appId}`,
@@ -621,37 +614,47 @@ function BingVsGoogle({ appId }) {
     );
   }
 
-  const maxClics = Math.max(1, ...donnees.mensuel.map((m) => Math.max(m.google || 0, m.bing || 0)));
-
   return (
     <Section titre="Bing vs Google" sousTitre={sousTitre}>
-      <div className="bg-baikal-surface border border-baikal-border rounded-lg p-4 space-y-2">
-        <p className="text-xs font-mono text-baikal-text uppercase mb-1">Clics organiques par mois</p>
-        {donnees.mensuel.map((m) => (
-          <div key={m.mois} className="flex items-center gap-3 text-sm text-baikal-text">
-            <span className="w-32 text-xs capitalize">{moisLisible(m.mois)}</span>
-            <div className="flex-1 space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="w-14 text-[10px] uppercase opacity-60">Google</span>
-                <span className="flex-1 h-2 bg-baikal-bg rounded-full overflow-hidden">
-                  <span className="block h-full bg-blue-500" style={{ width: `${((m.google || 0) / maxClics) * 100}%` }} />
-                </span>
-                <span className="w-16 text-right text-xs tabular-nums">{fmtInt(m.google)}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-14 text-[10px] uppercase opacity-60">Bing</span>
-                <span className="flex-1 h-2 bg-baikal-bg rounded-full overflow-hidden">
-                  {m.bing !== null && (
-                    <span className="block h-full bg-teal-400" style={{ width: `${(m.bing / maxClics) * 100}%` }} />
+      <p className="text-[11px] text-baikal-text opacity-60">
+        Bing ne conserve aucun historique interrogeable : ses clics ne sont comptes que
+        depuis la mise en place du releve quotidien. Un « — » signifie
+        {' '}<strong className="opacity-100">pas de mesure</strong>, pas zero clic.
+      </p>
+      <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
+        <table className="w-full text-sm text-baikal-text">
+          <thead>
+            <tr className="text-left text-xs opacity-70">
+              <th className="px-4 py-2">Mois</th>
+              <th className="text-right px-2 py-2">Clics Google</th>
+              <th className="text-right px-2 py-2">Clics Bing</th>
+              <th className="text-right px-2 py-2">Part Bing</th>
+              <th className="text-right px-4 py-2">Impressions Google</th>
+            </tr>
+          </thead>
+          <tbody>
+            {donnees.mensuel.map((m) => (
+              <tr key={m.mois} className="border-t border-baikal-border/50">
+                <td className="px-4 py-2 font-mono">
+                  {m.mois.slice(0, 7)}
+                  {m.enCours && (
+                    <span className="ml-2 text-[10px] text-amber-400 uppercase">en cours</span>
                   )}
-                </span>
-                <span className="w-16 text-right text-xs tabular-nums">
+                </td>
+                <td className="text-right px-2 py-2 tabular-nums">{fmtInt(m.google)}</td>
+                <td className="text-right px-2 py-2 tabular-nums">
                   {m.bing === null ? '—' : fmtInt(m.bing)}
-                </span>
-              </div>
-            </div>
-          </div>
-        ))}
+                </td>
+                <td className={`text-right px-2 py-2 tabular-nums ${m.partBingPct !== null && m.partBingPct >= 20 ? 'text-emerald-400' : ''}`}>
+                  {m.partBingPct === null ? '—' : `${m.partBingPct} %`}
+                </td>
+                <td className="text-right px-4 py-2 tabular-nums opacity-70">
+                  {fmtInt(m.impressionsGoogle)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
       {donnees.ecarts.length > 0 && (
@@ -695,63 +698,6 @@ function BingVsGoogle({ appId }) {
 }
 
 // ============================================================================
-// 4. TOUS LES SITES
-// ============================================================================
-
-function TousLesSites() {
-  const [jours, setJours] = useState(28);
-  const { donnees, erreur, enCours } = useDonneesCachees(
-    `allsites:${jours}`,
-    () => seoService.getAllSites(jours),
-  );
-
-  return (
-    <Section
-      titre="Tous les sites"
-      sousTitre="Sites du registre avec une propriete Search Console"
-      action={<ChoixFenetre valeur={jours} onChange={setJours} occupe={enCours} />}
-    >
-      {erreur && <Erreur message={erreur} />}
-      {!donnees && !erreur && <Chargement />}
-      {donnees && (
-        <div className={`bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden ${enCours ? 'opacity-50' : ''}`}>
-          <table className="w-full text-sm text-baikal-text">
-            <thead>
-              <tr className="text-left text-xs opacity-70">
-                <th className="px-4 py-2">Site</th>
-                <th className="text-right px-2 py-2">Clics</th>
-                <th className="text-right px-2 py-2">Impressions</th>
-                <th className="text-right px-2 py-2">CTR</th>
-                <th className="text-right px-4 py-2">Position</th>
-              </tr>
-            </thead>
-            <tbody>
-              {donnees.sites.map((s) => (
-                <tr key={s.appId} className="border-t border-baikal-border/50">
-                  <td className="px-4 py-2">{s.nom}</td>
-                  {s.erreur ? (
-                    <td colSpan={4} className="px-2 py-2 text-red-400 text-xs">{s.erreur}</td>
-                  ) : (
-                    <>
-                      <td className="text-right px-2 py-2 tabular-nums">{fmtInt(s.clicks)}</td>
-                      <td className="text-right px-2 py-2 tabular-nums opacity-70">{fmtInt(s.impressions)}</td>
-                      <td className={`text-right px-2 py-2 tabular-nums ${classeCtr(s.ctr * 100)}`}>{pct(s.ctr)}</td>
-                      <td className={`text-right px-4 py-2 tabular-nums ${classePosition(s.position)}`}>
-                        {fmtPos(s.position)}
-                      </td>
-                    </>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </Section>
-  );
-}
-
-// ============================================================================
 // PAGE
 // ============================================================================
 
@@ -762,7 +708,6 @@ function SeoContent() {
       <VueEnsemble appId={currentApp} />
       <Comparatif appId={currentApp} />
       <BingVsGoogle appId={currentApp} />
-      <TousLesSites />
     </div>
   );
 }
