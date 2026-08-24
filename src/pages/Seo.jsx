@@ -88,6 +88,23 @@ function Delta({ actuel, precedent, inverse = false }) {
   );
 }
 
+// Variation en VALEUR (rangs) — pour les positions, ou un % n'a pas de sens.
+// inverse : une baisse de rang est une bonne nouvelle.
+function DeltaRangs({ actuel, precedent }) {
+  if (actuel === null || actuel === undefined
+    || precedent === null || precedent === undefined || precedent === 0) {
+    return <Minus className="w-4 h-4 text-baikal-text" />;
+  }
+  const delta = actuel - precedent;
+  const positif = delta < 0; // rang qui baisse = mieux classe
+  const Icone = delta === 0 ? Minus : (delta > 0 ? TrendingUp : TrendingDown);
+  return (
+    <span className={delta === 0 ? 'text-baikal-text' : positif ? 'text-emerald-400' : 'text-red-400'}>
+      <Icone className="w-4 h-4 inline" /> {delta > 0 ? '+' : ''}{delta.toFixed(1)} rang{Math.abs(delta) >= 2 ? 's' : ''}
+    </span>
+  );
+}
+
 function Section({ titre, sousTitre, action, children }) {
   return (
     <section className="space-y-4">
@@ -213,13 +230,13 @@ function VueEnsemble({ appId }) {
         <KpiCarte
           label="Position mots-cles"
           valeur={fmtPos(totaux.position)}
-          sous={<Delta actuel={totaux.position} precedent={totauxPrecedents.position} inverse />}
+          sous={<DeltaRangs actuel={totaux.position} precedent={totauxPrecedents.position} />}
           accent={accentPosition(totaux.position)}
         />
         <KpiCarte
           label="Position longue traine"
           valeur={fmtPos(totaux.positionLongueTraine)}
-          sous={`Suit le travail des mots-cles · ${totaux.partLongueTrainePct ?? 0} % des impressions`}
+          sous={<DeltaRangs actuel={totaux.positionLongueTraine} precedent={totauxPrecedents.positionLongueTraine} />}
           accent={accentPosition(totaux.positionLongueTraine)}
         />
       </div>
