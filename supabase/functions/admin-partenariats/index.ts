@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { buildUnsubscribeUrl, renderTemplate, sendOneEmail } from "./envoi.ts";
+import { chargerSite, ErreurSite, lecteurSite } from "../_shared/sites.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -198,38 +199,27 @@ serve(async (req) => {
       }
 
       case "import-diagnostiqueurs": {
-        // Lit dpe.diag_certifie dans l'environnement du site via PostgREST.
-        const { data: app, error: appError } = await admin
-          .schema("config").from("apps")
-          .select("env_url, env_secret_ref").eq("id", appId).single();
-        if (appError || !app?.env_url || !app?.env_secret_ref) {
-          return json({ data: null, error: "Site sans environnement configure" }, 400);
+        // Lit diag_certifie dans la base du site via le connecteur (SQL lecture seule).
+        const site = await chargerSite(admin, appId);
+        if (!site.db_schema) {
+          return json({ data: null, error: "Site sans base configuree (db_schema)" }, 400);
         }
-        const cle = Deno.env.get(app.env_secret_ref);
-        if (!cle) {
-          return json(
-            { data: null, error: `Secret ${app.env_secret_ref} absent des Edge Function Secrets` },
-            500,
-          );
+        const sql = lecteurSite(site);
+        let certifies: Array<Record<string, unknown>>;
+        try {
+          const filtreDept = body.departement && /^\d{2,3}$/.test(body.departement)
+            ? sql`AND s.code_postal LIKE ${body.departement + "%"}`
+            : sql``;
+          certifies = await sql`
+            SELECT c.nom, c.prenom, c.email, c.telephone,
+                   s.nom_affiche, s.code_postal, s.commune
+            FROM ${sql(site.db_schema)}.diag_certifie c
+            JOIN ${sql(site.db_schema)}.diag_site s ON s.slug = c.slug
+            WHERE c.email IS NOT NULL ${filtreDept}
+            LIMIT 10000`;
+        } finally {
+          await sql.end();
         }
-        let url = `${app.env_url}/rest/v1/diag_certifie` +
-          `?select=nom,prenom,email,telephone,diag_site!inner(nom_affiche,code_postal,commune)` +
-          `&email=not.is.null&limit=10000`;
-        if (body.departement && /^\d{2,3}$/.test(body.departement)) {
-          url += `&diag_site.code_postal=like.${body.departement}*`;
-        }
-        const res = await fetch(url, {
-          headers: {
-            apikey: cle,
-            Authorization: `Bearer ${cle}`,
-            "Accept-Profile": "dpe",
-          },
-        });
-        if (!res.ok) {
-          const t = await res.text();
-          return json({ data: null, error: `Environnement site ${res.status}: ${t.slice(0, 200)}` }, 502);
-        }
-        const certifies = await res.json();
         const parEmail = new Map<string, Record<string, unknown>>();
         for (const c of certifies) {
           const email = String(c.email ?? "").trim().toLowerCase();
@@ -239,11 +229,11 @@ serve(async (req) => {
             type: "diagnostiqueur",
             email,
             nom: c.nom ?? null, prenom: c.prenom ?? null,
-            entreprise: c.diag_site?.nom_affiche ?? null,
+            entreprise: c.nom_affiche ?? null,
             telephone: c.telephone ?? null,
-            code_postal: c.diag_site?.code_postal ?? null,
+            code_postal: c.code_postal ?? null,
             source: "diag_certifie",
-            donnees: { commune: c.diag_site?.commune ?? null },
+            donnees: { commune: c.commune ?? null },
           });
         }
         const lignes = [...parEmail.values()];
@@ -445,6 +435,9 @@ serve(async (req) => {
     }
   } catch (e) {
     console.error("[admin-partenariats]", e);
+    if (e instanceof ErreurSite) {
+      return json({ data: null, error: e.message }, 400);
+    }
     return json({ data: null, error: String(e instanceof Error ? e.message : e) }, 500);
   }
 });
