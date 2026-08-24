@@ -81,7 +81,7 @@ type Ligne = {
   period_start: string;
   period_end: string;
   granularity: "month" | "day" | "observation";
-  dimension: "query" | "page" | "site";
+  dimension: "query" | "page" | "site" | "device" | "country" | "appearance";
   key: string;
   clicks: number;
   impressions: number;
@@ -164,7 +164,7 @@ serve(async (req) => {
   function lignesGoogle(
     site: SiteRegistre,
     rows: Array<{ keys?: string[]; clicks: number; impressions: number; ctr: number; position: number }>,
-    dimension: "query" | "page",
+    dimension: "query" | "page" | "device" | "country" | "appearance",
     periode: { start: string; end: string },
   ): Ligne[] {
     return rows
@@ -188,13 +188,22 @@ serve(async (req) => {
 
   async function captureGoogle(site: SiteRegistre, periode: { start: string; end: string }, dataEnd?: string) {
     const finDonnees = dataEnd && dataEnd < periode.end ? dataEnd : periode.end;
-    const [requetes, pages] = await Promise.all([
-      searchAnalytics(site.gsc_propriete!, periode.start, finDonnees, ["query"], ROW_LIMIT),
-      searchAnalytics(site.gsc_propriete!, periode.start, finDonnees, ["page"], ROW_LIMIT),
+    const prop = site.gsc_propriete!;
+    // L'ensemble des dimensions des exports GSC : requetes, pages, appareils,
+    // pays, apparence dans les resultats — tout vit en base.
+    const [requetes, pages, appareils, pays, apparences] = await Promise.all([
+      searchAnalytics(prop, periode.start, finDonnees, ["query"], ROW_LIMIT),
+      searchAnalytics(prop, periode.start, finDonnees, ["page"], ROW_LIMIT),
+      searchAnalytics(prop, periode.start, finDonnees, ["device"], 10),
+      searchAnalytics(prop, periode.start, finDonnees, ["country"], 250),
+      searchAnalytics(prop, periode.start, finDonnees, ["searchAppearance"], 25),
     ]);
     const n = await upsert([
       ...lignesGoogle(site, requetes, "query", periode),
       ...lignesGoogle(site, pages, "page", periode),
+      ...lignesGoogle(site, appareils, "device", periode),
+      ...lignesGoogle(site, pays, "country", periode),
+      ...lignesGoogle(site, apparences, "appearance", periode),
     ]);
     return { periode: `${periode.start}..${periode.end}`, lignes: n };
   }

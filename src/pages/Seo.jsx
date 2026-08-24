@@ -21,7 +21,6 @@ import {
   X,
   AlertTriangle,
   Loader2,
-  Download,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -224,23 +223,6 @@ const SERIES_PERF = [
   { cle: 'position', libelle: 'Position', couleur: '#f59e0b' },
 ];
 
-// Export CSV cote client : BOM UTF-8 + point-virgule (Excel FR).
-function exporterCsv(nom, lignes, colonnes) {
-  const entetes = colonnes.map((c) => c[1]).join(';');
-  const corps = lignes
-    .map((l) => colonnes.map((c) => l[c[0]] ?? '').join(';'))
-    .join('\n');
-  const blob = new Blob(['\ufeff' + entetes + '\n' + corps], {
-    type: 'text/csv;charset=utf-8',
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = nom;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 function InfoBulle({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   const brut = payload[0]?.payload?.brut;
@@ -288,7 +270,7 @@ function Performances({ appId }) {
   return (
     <Section
       titre="Performances"
-      sousTitre="Serie quotidienne Google — archive interne, analysable en SQL a la demande"
+      sousTitre="Serie quotidienne Google — archivee en base, analysable a la demande (demande a Claude)"
       action={(
         <div className="flex gap-2 items-center flex-wrap">
           {enCours && <Loader2 className="w-4 h-4 text-baikal-cyan animate-spin" />}
@@ -304,16 +286,6 @@ function Performances({ appId }) {
               {m} mois
             </button>
           ))}
-          <button
-            onClick={() => exporterCsv(`seo-${appId}-serie.csv`, donnees?.jours ?? [], [
-              ['date', 'Date'], ['clicks', 'Clics'], ['impressions', 'Impressions'],
-              ['ctr_pct', 'CTR %'], ['position', 'Position'],
-            ])}
-            disabled={!donnees?.jours?.length}
-            className="flex items-center gap-1.5 px-3 py-1 rounded border border-baikal-border text-baikal-text hover:text-white disabled:opacity-50"
-          >
-            <Download className="w-4 h-4" /> CSV
-          </button>
         </div>
       )}
     >
@@ -513,26 +485,14 @@ function VueEnsemble({ appId }) {
                 ? `Top ${requetesFiltrees.length} requetes par clics`
                 : `${requetesFiltrees.length} requete(s) dans le filtre`}
             </p>
-            <div className="flex items-center gap-3">
-              {filtreBucket !== 'all' && (
-                <button
-                  onClick={() => setFiltreBucket('all')}
-                  className="flex items-center gap-1 text-[11px] text-baikal-text hover:text-white"
-                >
-                  <X className="w-3 h-3" /> Effacer le filtre
-                </button>
-              )}
+            {filtreBucket !== 'all' && (
               <button
-                onClick={() => exporterCsv(`seo-${appId}-requetes.csv`, requetesFiltrees, [
-                  ['cle', 'Requete'], ['clicks', 'Clics'], ['impressions', 'Impressions'],
-                  ['ctr_pct', 'CTR %'], ['position', 'Position'],
-                ])}
+                onClick={() => setFiltreBucket('all')}
                 className="flex items-center gap-1 text-[11px] text-baikal-text hover:text-white"
-                title="Exporter en CSV"
               >
-                <Download className="w-3 h-3" /> CSV
+                <X className="w-3 h-3" /> Effacer le filtre
               </button>
-            </div>
+            )}
           </div>
           <div className="max-h-[420px] overflow-y-auto">
             <table className="w-full text-sm text-baikal-text">

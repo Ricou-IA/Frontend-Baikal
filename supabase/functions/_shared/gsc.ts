@@ -52,7 +52,13 @@ async function fetchAccessToken(): Promise<string> {
   return json.access_token;
 }
 
-export type GscDimension = "query" | "page" | "country" | "device" | "date";
+export type GscDimension =
+  | "query"
+  | "page"
+  | "country"
+  | "device"
+  | "date"
+  | "searchAppearance";
 
 export interface GscRow {
   keys?: string[];
