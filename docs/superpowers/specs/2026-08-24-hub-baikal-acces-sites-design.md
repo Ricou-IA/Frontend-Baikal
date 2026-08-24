@@ -197,9 +197,9 @@ filtres département, même dédoublonnage par email, même upsert
   sur chaque schéma accordé rend des lignes (policies effectives) ; un
   `INSERT`/`UPDATE`/`DELETE` échoue ; un `SET transaction_read_only = off` ne
   donne toujours aucun droit d'écriture (GRANTs absents).
-- **Registre** : `SELECT` de contrôle après migration — 13 lignes attendues,
-  `perfec` absente, `zelty` inactive, les 2 lignes dédiées portant `env_url` +
-  `db_ro_secret_ref`.
+- **Registre** : `SELECT` de contrôle après migration — 12 lignes attendues
+  (les 13 du tableau moins `perfec`, supprimée), `zelty` inactive, les 2 lignes
+  dédiées portant `env_url` + `db_ro_secret_ref`.
 - **Module** : `import-diagnostiqueurs` iso-fonctionnel (mêmes comptes
   lus/insérés/doublons sur un département témoin, avant/après refactor) ;
   tentative d'écriture via `lecteurSite` sur schéma local → erreur
