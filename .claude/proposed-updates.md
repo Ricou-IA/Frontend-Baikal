@@ -22,6 +22,13 @@
 « Le registre config.apps porte aussi db_schema (schéma des données du produit) et db_ro_secret_ref (nom du secret DSN lecture seule pour les produits sur base dédiée : ADMIN_RO_MAJORDHOME_DSN, ADMIN_RO_PACKVENDEUR_DSN). 12 produits déclarés, zelty inactif. Le trigger tr_create_documents_cles_on_app_insert a été supprimé (créer une app = simple INSERT). Lecture des données d'un site : module supabase/functions/_shared/sites.ts (chargerSite + lecteurSite, SQL lecture seule via postgres-js — DSN baikal_reader sur base dédiée, SUPABASE_DB_URL en local). Règle d'exploitation : dans chaque projet dédié, le rôle baikal_reader n'a que des policies SELECT posées par migration — rejouer la boucle CREATE POLICY baikal_read quand une nouvelle table apparaît. Hosts pooler : aws-1-eu-west-3 (org principale), aws-0-eu-west-3 (org Pré-état-daté). Secrets attendus corrigés : l'emailing admin lit RESEND_API_KEY (la clé commune du projet — ADMIN_RESEND_API_KEY n'existe plus dans le code) ; ADMIN_UNSUBSCRIBE_SECRET est posé ; ADMIN_ENV_MONSIEURDPE_KEY n'est plus nécessaire (connecteur SQL). verify_jwt est ancré dans config.toml pour admin-partenariats (true) et admin-desinscription (false, lien public HMAC). »
 ---
 
+## [2026-08-24 21:00] UI console hub : ConsoleLayout, onglets contextuels, users par site
+**Statut** : PENDING
+**Commit** : b178e2b..d611739
+**Contexte** : La console est passée sous un layout partagé avec sélecteur de site global. Le CLAUDE.md décrit encore l'ancienne structure (onglets à plat dans Admin.jsx).
+**Proposition** : Ajouter dans « Modules admin multi-sites » : « La console est enveloppée par src/components/console/ConsoleLayout.jsx (header + sélecteur de site global AppProvider/AppSelector + navigation). Onglets contextuels : modules ARPET (Dashboard, Connaissances, Prompts, Indexation — pilotés par /admin?tab=…) visibles seulement quand le site sélectionné est arpet ; SEO/Partenariats/Utilisateurs/Sites sont transverses. La vue public.apps expose domaine, db_schema, heberge_dedie (jamais db_ro_secret_ref). Les RPC get_pending_users/get_users_for_admin prennent p_app_id ; le site d'un profil se résout par COALESCE(profiles.app_id, auth.users.raw_user_meta_data->>'source', 'arpet') — les inscriptions hors console (ex. voirie) ne posent pas profiles.app_id. »
+---
+
 ## [2026-08-15 12:00] Le « Brain » LLM (analyzeQuery) n'est jamais appelé en production
 **Statut** : PENDING
 **Commit** : (audit de session, hors commit)
