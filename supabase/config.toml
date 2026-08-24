@@ -23,3 +23,17 @@ enabled = true
 verify_jwt = true
 import_map = "./functions/import_map.json"
 entrypoint = "./functions/trigger-ingestion/index.ts"
+
+[functions.admin-partenariats]
+enabled = true
+verify_jwt = true
+import_map = "./functions/import_map.json"
+entrypoint = "./functions/admin-partenariats/index.ts"
+
+# Lien public de desinscription (GET affiche / POST execute) : pas de JWT,
+# la securite est le token HMAC dans l'URL.
+[functions.admin-desinscription]
+enabled = true
+verify_jwt = false
+import_map = "./functions/import_map.json"
+entrypoint = "./functions/admin-desinscription/index.ts"

@@ -51,8 +51,8 @@ export async function sendOneEmail(
   fromName: string, fromEmail: string, replyTo: string,
   to: string, subject: string, html: string,
 ): Promise<{ ok: boolean; resendId?: string; error?: string }> {
-  const apiKey = Deno.env.get("ADMIN_RESEND_API_KEY");
-  if (!apiKey) return { ok: false, error: "Secret ADMIN_RESEND_API_KEY absent" };
+  const apiKey = Deno.env.get("RESEND_API_KEY");
+  if (!apiKey) return { ok: false, error: "Secret RESEND_API_KEY absent" };
   const res = await fetch(RESEND_API_URL, {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
