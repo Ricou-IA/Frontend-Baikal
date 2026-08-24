@@ -3,29 +3,22 @@
  * ============================================================================
  * CRM de prospection multi-sites : prospects (imports CSV et diagnostiqueurs)
  * et campagnes email Resend (module admin).
- * Enrobage repris de Admin.jsx (header sticky BAIKAL_CONSOLE), avec le
- * sélecteur d'app de Dashboard.jsx pour piloter le site affiché.
+ * Enrobage et selecteur de site fournis par ConsoleLayout ; le site affiche
+ * est le site global de la console (useApp).
  * Le contenu appelle l'Edge Function admin-partenariats via partenariatsService.
  * ============================================================================
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Upload,
   Users,
   Mail,
   Send,
   RefreshCw,
-  Shield,
-  Settings,
-  LogOut,
-  ArrowLeft,
 } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
-import { AppProvider, useApp } from '../contexts/AppContext';
-import AppSelector from '../components/AppSelector';
-import supabase from '../lib/supabaseClient';
+import { useApp } from '../contexts/AppContext';
+import ConsoleLayout from '../components/console/ConsoleLayout';
 import { partenariatsService } from '../services/partenariats.service';
 import { parseCsv, versProspects } from '../utils/csv';
 
@@ -359,86 +352,10 @@ function Campagnes({ appId }) {
   );
 }
 
-function PartenariatsLayout() {
-  const navigate = useNavigate();
-  const { isSuperAdmin, signOut } = useAuth();
-  const { currentApp, setCurrentApp } = useApp();
-
-  const handleSignOut = async () => {
-    await signOut();
-    navigate('/login');
-  };
-
-  return (
-    <div className="min-h-screen bg-baikal-bg">
-      {/* Header */}
-      <header className="bg-baikal-surface border-b border-baikal-border sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            {/* Logo */}
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => navigate('/admin')}
-                className="p-2 text-baikal-text hover:text-baikal-cyan hover:bg-baikal-bg rounded-md transition-colors"
-                title="Retour à l'administration"
-              >
-                <ArrowLeft className="w-5 h-5" />
-              </button>
-              <div className="w-9 h-9 bg-baikal-cyan rounded-md flex items-center justify-center">
-                <Shield className="w-5 h-5 text-black" />
-              </div>
-              <h1 className="text-lg font-mono font-bold text-white">
-                BAIKAL_CONSOLE
-              </h1>
-            </div>
-
-            {/* Actions */}
-            <div className="flex items-center gap-3">
-              <AppSelector
-                currentApp={currentApp}
-                onAppChange={setCurrentApp}
-                supabaseClient={supabase}
-                showLabel={false}
-              />
-
-              {/* Badge rôle */}
-              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-baikal-cyan/20 text-baikal-cyan border border-baikal-cyan rounded-md text-sm font-mono">
-                <Shield className="w-4 h-4" />
-                {isSuperAdmin ? 'SUPER_ADMIN' : 'ADMIN'}
-              </div>
-
-              {/* Bouton paramètres */}
-              <button
-                onClick={() => navigate('/settings')}
-                className="p-2 text-baikal-text hover:text-baikal-cyan hover:bg-baikal-bg rounded-md transition-colors"
-              >
-                <Settings className="w-5 h-5" />
-              </button>
-
-              {/* Bouton déconnexion */}
-              <button
-                onClick={handleSignOut}
-                className="p-2 text-baikal-text hover:text-red-400 hover:bg-red-900/20 rounded-md transition-colors"
-              >
-                <LogOut className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Contenu principal */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <PartenariatsContent />
-      </main>
-    </div>
-  );
-}
-
 export default function Partenariats() {
   return (
-    <AppProvider supabaseClient={supabase} defaultApp="audit">
-      <PartenariatsLayout />
-    </AppProvider>
+    <ConsoleLayout actif="partenariats">
+      <PartenariatsContent />
+    </ConsoleLayout>
   );
 }

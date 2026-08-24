@@ -9,9 +9,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Shield, Settings, LogOut, ArrowLeft, Save } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
+import { Save } from 'lucide-react';
+import ConsoleLayout from '../components/console/ConsoleLayout';
 import { partenariatsService } from '../services/partenariats.service';
 
 const CHAMPS = [
@@ -134,68 +133,9 @@ function SitesContent() {
 }
 
 export default function Sites() {
-  const navigate = useNavigate();
-  const { isSuperAdmin, signOut } = useAuth();
-
-  const handleSignOut = async () => {
-    await signOut();
-    navigate('/login');
-  };
-
-  if (!isSuperAdmin) {
-    return (
-      <div className="min-h-screen bg-baikal-bg flex items-center justify-center">
-        <p className="text-baikal-text">Accès réservé au super admin.</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-baikal-bg">
-      <header className="bg-baikal-surface border-b border-baikal-border sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => navigate('/admin')}
-                className="p-2 text-baikal-text hover:text-baikal-cyan hover:bg-baikal-bg rounded-md transition-colors"
-                title="Retour à l'administration"
-              >
-                <ArrowLeft className="w-5 h-5" />
-              </button>
-              <div className="w-9 h-9 bg-baikal-cyan rounded-md flex items-center justify-center">
-                <Shield className="w-5 h-5 text-black" />
-              </div>
-              <h1 className="text-lg font-mono font-bold text-white">
-                BAIKAL_CONSOLE
-              </h1>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-baikal-cyan/20 text-baikal-cyan border border-baikal-cyan rounded-md text-sm font-mono">
-                <Shield className="w-4 h-4" />
-                SUPER_ADMIN
-              </div>
-              <button
-                onClick={() => navigate('/settings')}
-                className="p-2 text-baikal-text hover:text-baikal-cyan hover:bg-baikal-bg rounded-md transition-colors"
-              >
-                <Settings className="w-5 h-5" />
-              </button>
-              <button
-                onClick={handleSignOut}
-                className="p-2 text-baikal-text hover:text-red-400 hover:bg-red-900/20 rounded-md transition-colors"
-              >
-                <LogOut className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <SitesContent />
-      </main>
-    </div>
+    <ConsoleLayout actif="sites">
+      <SitesContent />
+    </ConsoleLayout>
   );
 }
