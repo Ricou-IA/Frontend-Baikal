@@ -56,36 +56,23 @@ export default function CreateUserModal({ isOpen, onClose, organizations, onCrea
         setError(null);
 
         try {
-            // Récupérer le token de session pour l'authentification
-            const { data: { session } } = await supabase.auth.getSession();
-            
-            if (!session?.access_token) {
-                throw new Error('Session expirée. Veuillez vous reconnecter.');
+            // Appeler l'Edge Function create-user via le client Supabase (auth automatique)
+            const { data: result, error: fnError } = await supabase.functions.invoke('create-user', {
+                body: {
+                    email: email.trim(),
+                    password: password,
+                    fullName: fullName.trim() || null,
+                    orgId: selectedOrg || null,
+                    appRole: appRole,
+                },
+            });
+
+            if (fnError) {
+                throw new Error(fnError.message || 'Erreur lors de la création');
             }
 
-            // Appeler l'Edge Function create-user
-            const response = await fetch(
-                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${session.access_token}`,
-                    },
-                    body: JSON.stringify({
-                        email: email.trim(),
-                        password: password,
-                        fullName: fullName.trim() || null,
-                        orgId: selectedOrg || null,
-                        appRole: appRole,
-                    }),
-                }
-            );
-
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(result.error || 'Erreur lors de la création');
+            if (result?.error) {
+                throw new Error(result.error);
             }
 
             onCreate();

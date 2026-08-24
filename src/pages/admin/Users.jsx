@@ -54,6 +54,7 @@ import {
     AssignOrgModal,
     EditRoleModal,
     RemoveUserModal,
+    DeleteUserModal,
 } from '@features/users/components';
 
 // ============================================================================
@@ -94,6 +95,7 @@ export default function UsersPage() {
     const [assigningUser, setAssigningUser] = useState(null);
     const [editingUser, setEditingUser] = useState(null);
     const [removingUser, setRemovingUser] = useState(null);
+    const [deletingUser, setDeletingUser] = useState(null);
 
     // Charger les organisations
     useEffect(() => {
@@ -231,6 +233,18 @@ export default function UsersPage() {
 
     const handleRemoved = () => {
         loadUsers();
+    };
+
+    const handleDelete = (user) => {
+        setDeletingUser(user);
+    };
+
+    const handleDeleted = () => {
+        loadUsers();
+        setFeedback({
+            type: 'success',
+            message: 'Compte supprimé définitivement',
+        });
     };
 
     // Déterminer les rôles éditables selon le contexte
@@ -625,6 +639,8 @@ export default function UsersPage() {
                                                     onEditRole={handleEditRole}
                                                     onResetPassword={handleResetPassword}
                                                     onRemove={handleRemove}
+                                                    onDelete={handleDelete}
+                                                    isSuperAdmin={true}
                                                     canEdit={user.app_role !== 'super_admin'}
                                                 />
                                             ))}
@@ -669,6 +685,13 @@ export default function UsersPage() {
                 onClose={() => setRemovingUser(null)}
                 user={removingUser}
                 onConfirm={handleRemoved}
+            />
+
+            <DeleteUserModal
+                isOpen={!!deletingUser}
+                onClose={() => setDeletingUser(null)}
+                user={deletingUser}
+                onConfirm={handleDeleted}
             />
         </div>
     );

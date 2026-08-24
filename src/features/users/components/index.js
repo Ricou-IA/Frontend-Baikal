@@ -25,3 +25,4 @@ export { default as CreateUserModal } from './CreateUserModal';
 export { default as AssignOrgModal } from './AssignOrgModal';
 export { default as EditRoleModal } from './EditRoleModal';
 export { default as RemoveUserModal } from './RemoveUserModal';
+export { default as DeleteUserModal } from './DeleteUserModal';

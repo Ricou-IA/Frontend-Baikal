@@ -450,6 +450,40 @@ export const usersService = {
     }
   },
 
+  /**
+   * Supprime définitivement un compte utilisateur (super_admin uniquement)
+   *
+   * Supprime : organization_members, profiles, auth.users
+   *
+   * @param {string} userId - ID de l'utilisateur à supprimer
+   * @returns {Promise<{data: Object|null, error: Error|null}>}
+   */
+  async deleteUser(userId) {
+    try {
+      if (!userId) {
+        return { data: null, error: new Error('ID utilisateur requis') };
+      }
+
+      const { data, error } = await supabase.functions.invoke('delete-user', {
+        body: { userId },
+      });
+
+      if (error) throw error;
+
+      if (data?.success) {
+        return { data, error: null };
+      } else {
+        return {
+          data: null,
+          error: new Error(data?.error || 'Erreur lors de la suppression'),
+        };
+      }
+    } catch (error) {
+      console.error('[usersService.deleteUser]', error);
+      return { data: null, error };
+    }
+  },
+
   // ==========================================================================
   // HELPERS
   // ==========================================================================

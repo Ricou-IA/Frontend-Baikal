@@ -6,7 +6,7 @@
  */
 
 import React, { useState } from 'react';
-import { Building2, Pencil, Trash2, KeyRound, Loader2, Shield } from 'lucide-react';
+import { Building2, Pencil, Trash2, UserX, KeyRound, Loader2, Shield } from 'lucide-react';
 import { formatDate } from '@shared/utils/dateFormatter';
 import UserAvatar from './UserAvatar';
 import AppRoleBadge from './AppRoleBadge';
@@ -17,7 +17,9 @@ import AppRoleBadge from './AppRoleBadge';
  * @param {Object} props.user - Utilisateur
  * @param {Function} props.onEditRole - Callback pour éditer le rôle
  * @param {Function} props.onResetPassword - Callback pour reset password
- * @param {Function} props.onRemove - Callback pour retirer l'utilisateur
+ * @param {Function} props.onRemove - Callback pour retirer l'utilisateur de son org
+ * @param {Function} [props.onDelete] - Callback pour supprimer le compte (super_admin)
+ * @param {boolean} [props.isSuperAdmin] - L'utilisateur courant est super_admin
  * @param {boolean} props.showOrg - Afficher la colonne organisation
  * @param {boolean} props.canEdit - Peut éditer cet utilisateur
  */
@@ -26,6 +28,8 @@ export default function UserRow({
     onEditRole,
     onResetPassword,
     onRemove,
+    onDelete,
+    isSuperAdmin = false,
     showOrg = true,
     canEdit = true
 }) {
@@ -98,13 +102,24 @@ export default function UserRow({
                                 <KeyRound className="w-3.5 h-3.5" />
                             )}
                         </button>
-                        <button
-                            onClick={() => onRemove(user)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-mono text-red-400 hover:text-white hover:bg-red-900/30 border border-red-500/30 rounded transition-colors"
-                            title="Retirer de l'organisation"
-                        >
-                            <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {user.org_id ? (
+                            <button
+                                onClick={() => onRemove(user)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-mono text-red-400 hover:text-white hover:bg-red-900/30 border border-red-500/30 rounded transition-colors"
+                                title="Retirer de l'organisation"
+                            >
+                                <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                        ) : isSuperAdmin && onDelete ? (
+                            <button
+                                onClick={() => onDelete(user)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-mono text-red-400 hover:text-white hover:bg-red-900/30 border border-red-500/30 rounded transition-colors"
+                                title="Supprimer le compte définitivement"
+                            >
+                                <UserX className="w-3.5 h-3.5" />
+                                Supprimer
+                            </button>
+                        ) : null}
                     </div>
                 ) : (
                     <div className="flex items-center justify-end">
