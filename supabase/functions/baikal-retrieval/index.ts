@@ -39,6 +39,7 @@ import { generateWithOpenAIStream } from "./generation/openai.ts"
 import { generateWithGeminiStream, getOrUploadGoogleFile, getOrCreateGlobalCache } from "./generation/gemini.ts"
 import { buildSourcesFromFiles, buildSourcesFromChunks } from "./sources.ts"
 import { generateSuggestions } from "./generation/suggestions.ts"
+import { logQuery, slimSources, chunkStats } from "./logging.ts"
 
 // v2.0: Agentic imports
 import { runAgenticLoop, shouldTriggerAgentic } from "./agentic/orchestrator.ts"
@@ -186,6 +187,13 @@ serve(async (req) => {
               generation_mode: 'conversational', processing_time_ms: processingTime,
               timings: metrics.timings,
             })
+            await logQuery(supabase, {
+              conversation_id: context.conversationId, user_id,
+              org_id: context.effectiveOrgId || org_id || null, project_id: project_id || null, app_id,
+              query, intent: fastAnalysis.intent, answer_format: fastAnalysis.answer_format,
+              fast_path: true, generation_mode: 'conversational',
+              timings: metrics.timings, processing_time_ms: processingTime,
+            })
             sendSSE(controller, 'done', {})
             controller.close()
             return
@@ -212,6 +220,14 @@ serve(async (req) => {
                 generation_mode: 'memory', processing_time_ms: processingTime,
                 from_memory: true,
                 timings: metrics.timings,
+              })
+              await logQuery(supabase, {
+                conversation_id: context.conversationId, user_id,
+                org_id: memoryOrgId, project_id: project_id || null, app_id,
+                query, intent: fastAnalysis.intent, answer_format: fastAnalysis.answer_format,
+                fast_path: true, generation_mode: 'memory', memory_hit: true,
+                top_similarities: [memoryResult.similarity],
+                timings: metrics.timings, processing_time_ms: processingTime,
               })
               sendSSE(controller, 'done', {})
               controller.close()
@@ -328,6 +344,20 @@ serve(async (req) => {
             metrics.timings.total = processingTime
 
             console.log(`[retrieval] Agentic done in ${processingTime}ms (${agenticResult.iterations} iterations, timed_out=${agenticResult.timedOut})`)
+
+            const agStats = chunkStats(agenticResult.allChunks)
+            await logQuery(supabase, {
+              conversation_id: context.conversationId, user_id,
+              org_id: context.effectiveOrgId || org_id || null, project_id: project_id || null, app_id,
+              query, intent: fastAnalysis.intent, answer_format: fastAnalysis.answer_format,
+              fast_path: false, generation_mode: 'agentic', model: config.agentic.model,
+              reranked: metrics.decisions.reranking_applied,
+              agentic: { triggered: true, iterations: agenticResult.iterations, timed_out: agenticResult.timedOut, steps: agenticResult.steps },
+              counts: { ...metrics.counts },
+              top_similarities: agStats.top_similarities, match_sources: agStats.match_sources,
+              sources: slimSources(agenticResult.sources),
+              timings: metrics.timings, processing_time_ms: processingTime,
+            })
 
             sendSSE(controller, 'sources', {
               sources: agenticResult.sources,
@@ -508,6 +538,23 @@ serve(async (req) => {
 
           console.log(`[retrieval] Fast-path done in ${processingTime}ms: ${JSON.stringify(metrics.timings)}`)
 
+          const fpStats = chunkStats(searchResult.chunks)
+          await logQuery(supabase, {
+            conversation_id: context.conversationId, user_id,
+            org_id: context.effectiveOrgId || org_id || null, project_id: project_id || null, app_id,
+            query,
+            rewritten_query: effectiveAnalysis.rewritten_query !== query ? effectiveAnalysis.rewritten_query : null,
+            intent: effectiveAnalysis.intent, answer_format: effectiveAnalysis.answer_format,
+            fast_path: true, generation_mode: effectiveMode,
+            model: effectiveMode === 'gemini' ? effectiveGenParams.model : config.librarian.llm_model,
+            memory_hit: false, reranked: metrics.decisions.reranking_applied,
+            agentic: null,
+            counts: { ...metrics.counts },
+            top_similarities: fpStats.top_similarities, match_sources: fpStats.match_sources,
+            sources: slimSources(finalSources),
+            timings: metrics.timings, processing_time_ms: processingTime,
+          })
+
           sendSSE(controller, 'sources', {
             sources: finalSources,
             conversation_id: context.conversationId,
@@ -539,6 +586,11 @@ serve(async (req) => {
 
         } catch (error) {
           console.error('[retrieval] Pipeline error:', error)
+          await logQuery(supabase, {
+            user_id, org_id: org_id || null, project_id: project_id || null, app_id,
+            query, timings: metrics.timings, processing_time_ms: timer.elapsed,
+            error: error instanceof Error ? error.message : String(error),
+          })
           sendSSE(controller, 'error', { error: error instanceof Error ? error.message : 'Internal error' })
           controller.close()
         }

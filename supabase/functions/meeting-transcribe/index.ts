@@ -277,6 +277,28 @@ Deno.serve(async (req) => {
     console.log(`[meeting-transcribe] Done meeting=${meetingId} total=${totalMs}ms`);
 
     // -----------------------------------------------------------------------
+    // Step 6 — Chain to meeting-extract (fire-and-forget)
+    // Non-bloquant : on n'attend pas la réponse pour ne pas bloquer le frontend
+    // -----------------------------------------------------------------------
+    try {
+      const extractUrl = `${supabaseUrl}/functions/v1/meeting-extract`;
+      fetch(extractUrl, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${supabaseServiceKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ meeting_id: meetingId }),
+      }).then((res) => {
+        console.log(`[meeting-transcribe] meeting-extract triggered: ${res.status}`);
+      }).catch((err) => {
+        console.error(`[meeting-transcribe] meeting-extract trigger failed:`, err.message);
+      });
+    } catch (chainErr) {
+      console.error("[meeting-transcribe] Failed to chain meeting-extract:", (chainErr as Error).message);
+    }
+
+    // -----------------------------------------------------------------------
     // Response
     // -----------------------------------------------------------------------
     const response: TranscribeResult = {
