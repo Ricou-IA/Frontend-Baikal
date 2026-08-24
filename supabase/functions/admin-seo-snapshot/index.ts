@@ -123,12 +123,42 @@ serve(async (req) => {
 
   const resume: Record<string, Record<string, unknown>> = {};
 
+  // L'API Bing peut renvoyer la meme cle deux fois dans un meme releve :
+  // Postgres refuse alors l'upsert ("cannot affect row a second time").
+  // Dedoublonnage par cle d'unicite, en agregeant clics/impressions et en
+  // ponderant la position.
+  function dedupliquer(lignes: Ligne[]): Ligne[] {
+    const parCle = new Map<string, Ligne>();
+    for (const l of lignes) {
+      const cle = `${l.source}|${l.period_start}|${l.period_end}|${l.dimension}|${l.key}`;
+      const existant = parCle.get(cle);
+      if (!existant) {
+        parCle.set(cle, { ...l });
+        continue;
+      }
+      const impressions = existant.impressions + l.impressions;
+      existant.position = impressions > 0
+        ? Number(
+          (((existant.position ?? 0) * existant.impressions +
+            (l.position ?? 0) * l.impressions) / impressions).toFixed(2),
+        )
+        : existant.position;
+      existant.clicks += l.clicks;
+      existant.impressions = impressions;
+      existant.ctr = impressions > 0
+        ? Number((existant.clicks / impressions).toFixed(5))
+        : null;
+    }
+    return [...parCle.values()];
+  }
+
   async function upsert(lignes: Ligne[]): Promise<number> {
-    if (lignes.length === 0) return 0;
+    const uniques = dedupliquer(lignes);
+    if (uniques.length === 0) return 0;
     const { error } = await admin.schema("admin").from("seo_snapshots")
-      .upsert(lignes, { onConflict: ON_CONFLICT });
+      .upsert(uniques, { onConflict: ON_CONFLICT });
     if (error) throw new Error(error.message);
-    return lignes.length;
+    return uniques.length;
   }
 
   function lignesGoogle(
