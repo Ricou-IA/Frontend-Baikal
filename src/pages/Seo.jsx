@@ -192,7 +192,7 @@ function VueEnsemble({ appId }) {
       sousTitre={`Fenetre ${jours} j ancree a J-3 (delai de consolidation Search Console)`}
       action={<ChoixFenetre valeur={jours} onChange={setJours} />}
     >
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <KpiCarte
           label="Clics SEO"
           valeur={fmtInt(totaux.clicks)}
@@ -211,10 +211,16 @@ function VueEnsemble({ appId }) {
           accent={accentCtr(totaux.ctr)}
         />
         <KpiCarte
-          label="Position moyenne"
+          label="Position mots-cles"
           valeur={fmtPos(totaux.position)}
           sous={<Delta actuel={totaux.position} precedent={totauxPrecedents.position} inverse />}
           accent={accentPosition(totaux.position)}
+        />
+        <KpiCarte
+          label="Position longue traine"
+          valeur={fmtPos(totaux.positionLongueTraine)}
+          sous={`Suit le travail des mots-cles · ${totaux.partLongueTrainePct ?? 0} % des impressions`}
+          accent={accentPosition(totaux.positionLongueTraine)}
         />
       </div>
 

@@ -134,16 +134,36 @@ serve(async (req) => {
           else if (r.position <= 20) buckets.top20 += r.impressions;
           else buckets.beyond += r.impressions;
         }
-        const totaux = totals(agregat);
+        // Deux positions moyennes distinctes (souhait Eric) :
+        //  - "mots-cles" : ponderee par impressions sur les requetes DETAILLEES
+        //    (bruit ecarte) — coherente avec les buckets et le top 50 (methode PV) ;
+        //  - "longue traine" : celle des recherches MASQUEES par Google, derivee
+        //    par soustraction ponderee de l'agregat (qui couvre 100 % des
+        //    impressions) moins les detaillees. Null si rien n'est masque.
+        function avecPositions(
+          agg: ReturnType<typeof totals>,
+          detaillees: GscRow[],
+        ) {
+          const det = totals(detaillees);
+          const imprMasquees = Math.max(0, agg.impressions - det.impressions);
+          let positionLongueTraine: number | null = null;
+          if (imprMasquees > 0 && agg.impressions > 0) {
+            const brut = (agg.position * agg.impressions - det.position * det.impressions) /
+              imprMasquees;
+            positionLongueTraine = Math.max(1, Number(brut.toFixed(1)));
+          }
+          return {
+            ...agg,
+            position: det.position,
+            positionLongueTraine,
+            partLongueTrainePct: agg.impressions > 0
+              ? Number(((imprMasquees / agg.impressions) * 100).toFixed(0))
+              : 0,
+          };
+        }
+        const totaux = avecPositions(totals(agregat), reelles);
+        const totauxPrecedents = avecPositions(totals(agregatPrev), reellesPrev);
         buckets.hidden = Math.max(0, totaux.impressions - imprDetaillees);
-
-        // Position moyenne : methode PV — ponderee par impressions sur les
-        // requetes DETAILLEES (bruit ecarte), pas la ligne agregee Google qui
-        // inclut les recherches masquees. Clics/impressions/CTR restent ceux
-        // de l'agregat (totaux reels du site).
-        const totauxPrecedents = totals(agregatPrev);
-        totaux.position = totals(reelles).position;
-        totauxPrecedents.position = totals(reellesPrev).position;
 
         return json({
           data: {
