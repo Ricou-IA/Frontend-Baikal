@@ -275,6 +275,35 @@ serve(async (req) => {
         });
       }
 
+      case "serie": {
+        // Serie quotidienne Google depuis l'archive (graphe Performances +
+        // export). L'archive est la source : instantane, et analysable en SQL.
+        exigerSite(sites, appId);
+        const moisDemandes = [3, 6, 12, 16].includes(body.mois) ? body.mois : 16;
+        const depuis = new Date();
+        depuis.setUTCMonth(depuis.getUTCMonth() - moisDemandes);
+        const { data, error } = await admin.schema("admin").from("seo_snapshots")
+          .select("period_start, clicks, impressions, ctr, position")
+          .eq("app_id", appId).eq("source", "google")
+          .eq("dimension", "site").eq("granularity", "day")
+          .gte("period_start", depuis.toISOString().slice(0, 10))
+          .order("period_start")
+          .limit(5000);
+        if (error) throw error;
+        return json({
+          data: {
+            jours: (data ?? []).map((r) => ({
+              date: r.period_start,
+              clicks: r.clicks,
+              impressions: r.impressions,
+              ctr_pct: r.ctr !== null ? Number((Number(r.ctr) * 100).toFixed(2)) : null,
+              position: r.position !== null ? Number(r.position) : null,
+            })),
+          },
+          error: null,
+        });
+      }
+
       case "bing-vs-google": {
         exigerSite(sites, appId);
         // Serie mensuelle : Google = somme des PAGES archivees (les requetes

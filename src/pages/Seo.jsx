@@ -21,7 +21,17 @@ import {
   X,
   AlertTriangle,
   Loader2,
+  Download,
 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+} from 'recharts';
 import { useApp } from '../contexts/AppContext';
 import ConsoleLayout from '../components/console/ConsoleLayout';
 import KpiCarte from '../components/console/KpiCarte';
@@ -204,6 +214,167 @@ function Chargement() {
 }
 
 // ============================================================================
+// 0. PERFORMANCES (serie quotidienne, archive interne)
+// ============================================================================
+
+const SERIES_PERF = [
+  { cle: 'clicks', libelle: 'Clics', couleur: '#3b82f6' },
+  { cle: 'impressions', libelle: 'Impressions', couleur: '#8b5cf6' },
+  { cle: 'ctr_pct', libelle: 'CTR %', couleur: '#10b981' },
+  { cle: 'position', libelle: 'Position', couleur: '#f59e0b' },
+];
+
+// Export CSV cote client : BOM UTF-8 + point-virgule (Excel FR).
+function exporterCsv(nom, lignes, colonnes) {
+  const entetes = colonnes.map((c) => c[1]).join(';');
+  const corps = lignes
+    .map((l) => colonnes.map((c) => l[c[0]] ?? '').join(';'))
+    .join('\n');
+  const blob = new Blob(['\ufeff' + entetes + '\n' + corps], {
+    type: 'text/csv;charset=utf-8',
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = nom;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function InfoBulle({ active, payload, label }) {
+  if (!active || !payload?.length) return null;
+  const brut = payload[0]?.payload?.brut;
+  if (!brut) return null;
+  return (
+    <div className="bg-baikal-bg border border-baikal-border rounded p-2 text-xs text-baikal-text space-y-0.5">
+      <p className="font-mono opacity-70">{label}</p>
+      <p style={{ color: '#3b82f6' }}>Clics : {fmtInt(brut.clicks)}</p>
+      <p style={{ color: '#8b5cf6' }}>Impressions : {fmtInt(brut.impressions)}</p>
+      <p style={{ color: '#10b981' }}>CTR : {brut.ctr_pct ?? '—'} %</p>
+      <p style={{ color: '#f59e0b' }}>Position : {fmtPos(brut.position)}</p>
+    </div>
+  );
+}
+
+function Performances({ appId }) {
+  const [moisPeriode, setMoisPeriode] = useState(16);
+  const [actives, setActives] = useState({
+    clicks: true, impressions: true, ctr_pct: true, position: true,
+  });
+  const { donnees, erreur, enCours } = useDonneesCachees(
+    `serie:${appId}:${moisPeriode}`,
+    () => seoService.getSerie(appId, moisPeriode),
+  );
+
+  // Normalisation 0-100 par serie, comme Search Console : chaque metrique a
+  // sa propre echelle, l'infobulle montre les valeurs reelles.
+  const points = useMemo(() => {
+    const jours = donnees?.jours ?? [];
+    const maxi = {};
+    for (const serie of SERIES_PERF) {
+      maxi[serie.cle] = Math.max(1, ...jours.map((j) => j[serie.cle] ?? 0));
+    }
+    return jours.map((j) => {
+      const point = { date: j.date, brut: j };
+      for (const serie of SERIES_PERF) {
+        point[serie.cle] = j[serie.cle] !== null
+          ? (j[serie.cle] / maxi[serie.cle]) * 100
+          : null;
+      }
+      return point;
+    });
+  }, [donnees]);
+
+  return (
+    <Section
+      titre="Performances"
+      sousTitre="Serie quotidienne Google — archive interne, analysable en SQL a la demande"
+      action={(
+        <div className="flex gap-2 items-center flex-wrap">
+          {enCours && <Loader2 className="w-4 h-4 text-baikal-cyan animate-spin" />}
+          {[3, 6, 12, 16].map((m) => (
+            <button
+              key={m}
+              onClick={() => setMoisPeriode(m)}
+              disabled={enCours}
+              className={`px-3 py-1 rounded border disabled:opacity-50 ${moisPeriode === m
+                ? 'border-baikal-cyan text-baikal-cyan'
+                : 'border-baikal-border text-baikal-text'}`}
+            >
+              {m} mois
+            </button>
+          ))}
+          <button
+            onClick={() => exporterCsv(`seo-${appId}-serie.csv`, donnees?.jours ?? [], [
+              ['date', 'Date'], ['clicks', 'Clics'], ['impressions', 'Impressions'],
+              ['ctr_pct', 'CTR %'], ['position', 'Position'],
+            ])}
+            disabled={!donnees?.jours?.length}
+            className="flex items-center gap-1.5 px-3 py-1 rounded border border-baikal-border text-baikal-text hover:text-white disabled:opacity-50"
+          >
+            <Download className="w-4 h-4" /> CSV
+          </button>
+        </div>
+      )}
+    >
+      {erreur && <Erreur message={erreur} />}
+      {!donnees && !erreur && <Chargement />}
+      {donnees && (
+        <div className={enCours ? 'opacity-50' : ''}>
+          <div className="flex gap-2 flex-wrap mb-3">
+            {SERIES_PERF.map((serie) => (
+              <button
+                key={serie.cle}
+                onClick={() => setActives((a) => ({ ...a, [serie.cle]: !a[serie.cle] }))}
+                className={`px-3 py-1 rounded border text-sm transition-opacity ${actives[serie.cle] ? '' : 'opacity-40'}`}
+                style={{ borderColor: serie.couleur, color: serie.couleur }}
+              >
+                {serie.libelle}
+              </button>
+            ))}
+          </div>
+          <div className="bg-baikal-surface border border-baikal-border rounded-lg p-4">
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={points} margin={{ top: 8, right: 12, bottom: 0, left: 12 }}>
+                <CartesianGrid stroke="#1f2937" strokeDasharray="3 3" vertical={false} />
+                <XAxis
+                  dataKey="date"
+                  stroke="#6b7280"
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                  minTickGap={40}
+                  tickFormatter={(d) =>
+                    new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}
+                />
+                <YAxis hide domain={[0, 100]} />
+                <Tooltip content={<InfoBulle />} />
+                {SERIES_PERF.filter((serie) => actives[serie.cle]).map((serie) => (
+                  <Line
+                    key={serie.cle}
+                    type="monotone"
+                    dataKey={serie.cle}
+                    stroke={serie.couleur}
+                    dot={false}
+                    strokeWidth={1.5}
+                    isAnimationActive={false}
+                    connectNulls
+                  />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+            <p className="text-[10px] text-baikal-text opacity-40 mt-2">
+              Chaque serie est tracee sur sa propre echelle (normalisee), comme dans
+              Search Console — survole pour lire les valeurs reelles.
+            </p>
+          </div>
+        </div>
+      )}
+    </Section>
+  );
+}
+
+// ============================================================================
 // 1. VUE D'ENSEMBLE
 // ============================================================================
 
@@ -342,14 +513,26 @@ function VueEnsemble({ appId }) {
                 ? `Top ${requetesFiltrees.length} requetes par clics`
                 : `${requetesFiltrees.length} requete(s) dans le filtre`}
             </p>
-            {filtreBucket !== 'all' && (
+            <div className="flex items-center gap-3">
+              {filtreBucket !== 'all' && (
+                <button
+                  onClick={() => setFiltreBucket('all')}
+                  className="flex items-center gap-1 text-[11px] text-baikal-text hover:text-white"
+                >
+                  <X className="w-3 h-3" /> Effacer le filtre
+                </button>
+              )}
               <button
-                onClick={() => setFiltreBucket('all')}
+                onClick={() => exporterCsv(`seo-${appId}-requetes.csv`, requetesFiltrees, [
+                  ['cle', 'Requete'], ['clicks', 'Clics'], ['impressions', 'Impressions'],
+                  ['ctr_pct', 'CTR %'], ['position', 'Position'],
+                ])}
                 className="flex items-center gap-1 text-[11px] text-baikal-text hover:text-white"
+                title="Exporter en CSV"
               >
-                <X className="w-3 h-3" /> Effacer le filtre
+                <Download className="w-3 h-3" /> CSV
               </button>
-            )}
+            </div>
           </div>
           <div className="max-h-[420px] overflow-y-auto">
             <table className="w-full text-sm text-baikal-text">
@@ -705,6 +888,7 @@ function SeoContent() {
   const { currentApp } = useApp();
   return (
     <div className="p-6 space-y-10">
+      <Performances appId={currentApp} />
       <VueEnsemble appId={currentApp} />
       <Comparatif appId={currentApp} />
       <BingVsGoogle appId={currentApp} />

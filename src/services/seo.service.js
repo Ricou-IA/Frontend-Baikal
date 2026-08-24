@@ -37,6 +37,9 @@ export const seoService = {
   getBingVsGoogle(appId) {
     return appelerEdge('admin-seo', { action: 'bing-vs-google', appId });
   },
+  getSerie(appId, mois = 16) {
+    return appelerEdge('admin-seo', { action: 'serie', appId, mois });
+  },
   getAllSites(days = 28) {
     return appelerEdge('admin-seo', { action: 'all-sites', days });
   },

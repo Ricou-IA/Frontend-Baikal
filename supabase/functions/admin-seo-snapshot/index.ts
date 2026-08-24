@@ -214,6 +214,35 @@ serve(async (req) => {
     return { lignes: n };
   }
 
+  // Serie quotidienne Google (dimension date) : une ligne par jour, site
+  // entier — alimente le graphe Performances et l'analyse SQL directe.
+  async function captureGoogleSerie(
+    site: SiteRegistre,
+    start: string,
+    end: string,
+  ) {
+    const rows = await searchAnalytics(site.gsc_propriete!, start, end, ["date"], 5000);
+    const lignes: Ligne[] = rows
+      .filter((r) => (r.keys?.[0] ?? "") !== "")
+      .map((r) => ({
+        app_id: site.id,
+        source: "google" as const,
+        period_start: r.keys![0],
+        period_end: r.keys![0],
+        granularity: "day" as const,
+        dimension: "site" as const,
+        key: "site",
+        clicks: r.clicks,
+        impressions: r.impressions,
+        ctr: Number(r.ctr.toFixed(5)),
+        position: Number(r.position.toFixed(2)),
+        is_noise: false,
+        captured_at: maintenant,
+      }));
+    const n = await upsert(lignes);
+    return { periode: `${start}..${end}`, jours: n };
+  }
+
   async function captureBingQuotidien(site: SiteRegistre) {
     if (!bingKey) return "BING_WEBMASTER_API_KEY absente — Bing ignore";
     if (!site.domaine) return "domaine absent du registre — Bing ignore";
@@ -243,11 +272,19 @@ serve(async (req) => {
     for (const site of (sites ?? []) as SiteRegistre[]) {
       const r: Record<string, unknown> = {};
       try {
-        if (body.start && body.end) {
+        if (body.scope === "serie" && body.start && body.end) {
+          // Backfill de la serie quotidienne Google (16 mois max cote GSC).
+          r.google = await captureGoogleSerie(site, body.start, body.end);
+        } else if (body.start && body.end) {
           r.google = await captureGoogle(site, { start: body.start, end: body.end });
         } else if (body.scope === "daily") {
           const mois = moisEnCours();
           r.google = await captureGoogle(site, { start: mois.start, end: mois.end }, mois.dataEnd);
+          // Rafraichit aussi les 10 derniers jours de la serie quotidienne
+          // (les 2-3 derniers se consolident encore).
+          const fin = fmtDate(new Date(Date.now() - 24 * 3600 * 1000));
+          const debut = fmtDate(new Date(Date.now() - 10 * 24 * 3600 * 1000));
+          r.googleSerie = await captureGoogleSerie(site, debut, fin);
           r.bing = await captureBingQuotidien(site);
         } else {
           r.google = await captureGoogle(site, moisPrecedent());
