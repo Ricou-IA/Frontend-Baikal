@@ -2,8 +2,8 @@
  * ConsoleLayout.jsx - Baikal Console
  * ============================================================================
  * Layout commun de la console multi-sites : header sticky BAIKAL_CONSOLE,
- * selecteur de site global (AppProvider monte ici, une seule fois),
- * navigation contextuelle (modules du site + modules transverses).
+ * colonne de gauche listant les sites (AppProvider monte ici, une seule
+ * fois), navigation contextuelle (modules du site + modules transverses).
  *
  * Usage : <ConsoleLayout actif="seo">…contenu…</ConsoleLayout>
  * `actif` ∈ dashboard|knowledge|prompts|indexation|seo|partenariats|users|sites
@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { AppProvider, useApp } from '../../contexts/AppContext';
-import AppSelector from '../AppSelector';
+import SiteSidebar, { SiteBarre } from './SiteSidebar';
 import { ProfileSwitcher } from '../admin';
 import supabase from '../../lib/supabaseClient';
 
@@ -104,23 +104,16 @@ function LayoutInterne({ actif, badges = {}, children }) {
     return (
         <div className="min-h-screen bg-baikal-bg">
             <header className="bg-baikal-surface border-b border-baikal-border sticky top-0 z-40">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div className="px-4 sm:px-6 lg:px-8">
                     <div className="flex items-center justify-between h-16">
-                        <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 bg-baikal-cyan rounded-md flex items-center justify-center">
+                        {/* Bloc identite, cale sur la largeur de la colonne des sites */}
+                        <div className="flex items-center gap-3 xl:w-64 xl:pr-6">
+                            <div className="w-9 h-9 bg-baikal-cyan rounded-md flex items-center justify-center shrink-0">
                                 <Shield className="w-5 h-5 text-black" />
                             </div>
                             <h1 className="text-lg font-mono font-bold text-white hidden md:block">
                                 BAIKAL_CONSOLE
                             </h1>
-                            {/* Selecteur de site global */}
-                            <AppSelector
-                                currentApp={currentApp}
-                                onAppChange={setCurrentApp}
-                                apps={sitesVisibles}
-                                showLabel={false}
-                                className="w-56"
-                            />
                         </div>
                         <div className="flex items-center gap-3">
                             {isSuperAdmin && !isImpersonating && <ProfileSwitcher />}
@@ -150,29 +143,38 @@ function LayoutInterne({ actif, badges = {}, children }) {
                 </div>
             </header>
 
-            <div className="bg-baikal-surface border-b border-baikal-border">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <nav className="flex gap-1 -mb-px overflow-x-auto items-center">
-                        {modulesSite.map((tab) => (
-                            <Onglet key={tab.id} tab={tab} actif={actif}
-                                badge={badges[tab.id]}
-                                onClick={() => navigate(tab.route)} />
-                        ))}
-                        {modulesSite.length > 0 && (
-                            <span className="mx-2 h-6 w-px bg-baikal-border" aria-hidden="true" />
-                        )}
-                        {transverses.map((tab) => (
-                            <Onglet key={tab.id} tab={tab} actif={actif}
-                                badge={badges[tab.id]}
-                                onClick={() => navigate(tab.route)} />
-                        ))}
-                    </nav>
+            {/* Sous `xl`, la liste des sites se replie en une rangee defilante */}
+            <SiteBarre sites={sitesVisibles} actif={currentApp} onSelect={setCurrentApp} />
+
+            <div className="flex items-start">
+                <SiteSidebar sites={sitesVisibles} actif={currentApp} onSelect={setCurrentApp} />
+
+                <div className="flex-1 min-w-0">
+                    <div className="bg-baikal-surface border-b border-baikal-border">
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                            <nav className="flex gap-1 -mb-px overflow-x-auto items-center">
+                                {modulesSite.map((tab) => (
+                                    <Onglet key={tab.id} tab={tab} actif={actif}
+                                        badge={badges[tab.id]}
+                                        onClick={() => navigate(tab.route)} />
+                                ))}
+                                {modulesSite.length > 0 && (
+                                    <span className="mx-2 h-6 w-px bg-baikal-border" aria-hidden="true" />
+                                )}
+                                {transverses.map((tab) => (
+                                    <Onglet key={tab.id} tab={tab} actif={actif}
+                                        badge={badges[tab.id]}
+                                        onClick={() => navigate(tab.route)} />
+                                ))}
+                            </nav>
+                        </div>
+                    </div>
+
+                    <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                        {children}
+                    </main>
                 </div>
             </div>
-
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                {children}
-            </main>
         </div>
     );
 }
