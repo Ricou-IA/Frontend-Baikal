@@ -11,6 +11,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Save, UserPlus, X } from 'lucide-react';
 import ConsoleLayout from '../components/console/ConsoleLayout';
+import { useApp } from '../contexts/AppContext';
 import { partenariatsService } from '../services/partenariats.service';
 import { droitsService } from '../services/droits.service';
 
@@ -175,6 +176,7 @@ function FicheSite({ site, onSaved }) {
 }
 
 function SitesContent() {
+  const { currentApp } = useApp();
   const [sites, setSites] = useState([]);
   const [erreur, setErreur] = useState(null);
   const [chargement, setChargement] = useState(true);
@@ -190,13 +192,19 @@ function SitesContent() {
 
   useEffect(() => { charger(); }, [charger]);
 
+  // Parametrage du site selectionne dans le header — une fiche a la fois.
+  const site = sites.find((s) => s.id === currentApp);
+
   return (
     <div className="p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-baikal-text">Sites</h1>
+        <h1 className="text-2xl font-semibold text-baikal-text">
+          Parametrage du site{site ? ` — ${site.name}` : ''}
+        </h1>
         <p className="text-sm text-baikal-text opacity-70 mt-1">
-          Registre des sites (config.apps) : domaine, Search Console, environnement et
-          expediteur des campagnes. La creation d'un site reste une migration.
+          Registre config.apps : domaine, Search Console, environnement, expediteur
+          des campagnes et admins delegues. Changer de site via le selecteur du
+          header. La creation d'un site reste une migration.
         </p>
       </div>
 
@@ -204,10 +212,13 @@ function SitesContent() {
         <p className="text-red-400 border border-red-400 rounded p-3">{erreur}</p>
       )}
       {chargement && <p className="text-baikal-text">Chargement…</p>}
+      {!chargement && !site && !erreur && (
+        <p className="text-baikal-text opacity-70">
+          Site introuvable dans le registre (inactif ?).
+        </p>
+      )}
 
-      {sites.map((site) => (
-        <FicheSite key={site.id} site={site} onSaved={charger} />
-      ))}
+      {site && <FicheSite key={site.id} site={site} onSaved={charger} />}
     </div>
   );
 }

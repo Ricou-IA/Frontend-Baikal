@@ -110,6 +110,11 @@ serve(async (req) => {
     }
   } catch (e) {
     console.error("[admin-droits]", e);
-    return json({ data: null, error: String(e instanceof Error ? e.message : e) }, 500);
+    const message = e instanceof Error
+      ? e.message
+      : (typeof e === "object" && e !== null && "message" in e
+        ? String((e as { message: unknown }).message)
+        : String(e));
+    return json({ data: null, error: message }, 500);
   }
 });
