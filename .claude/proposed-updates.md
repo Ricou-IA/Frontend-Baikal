@@ -61,6 +61,13 @@ admin-sync-diag-prospects 03h30 + bouton console ; source amont :
 dpe.diag_certifie, synchronisée à 02h30 par le projet DPE) ».
 ---
 
+## [2026-08-25 01:30] SEO v2 : parité Pack Vendeur + archive Google/Bing
+**Statut** : PENDING
+**Commit** : (serie seo v2 jusqu'a 5fee480)
+**Contexte** : Le module SEO est passé en v2 (vue riche, comparatif, Bing vs Google) avec archivage multi-sites.
+**Proposition** : Dans « Modules admin multi-sites », remplacer la description du module SEO par : « SEO : page /seo en 4 blocs (vue d'ensemble avec buckets de position cliquables et top 50, comparatif période/période avec statuts régression/disparue/nouvelle/progression/stable — logique PV ±1 rang, bruit <10 impressions écarté —, Bing vs Google, tous-sites). EF admin-seo (actions overview/compare/bing-vs-google/all-sites, droits par site) sur helpers _shared/gsc.ts (OAuth via GOOGLE_GSC_OAUTH_* avec repli GOOGLE_ADS_OAUTH_* — un seul client Google, projet GCP pre-etat-date-ads) et _shared/bing-webmaster.ts (clé BING_WEBMASTER_API_KEY, propriété = https://domaine/ vérifiée dans Bing). Archive admin.seo_snapshots (unique app_id+source+période+dimension+clé, is_noise = phrases exactes) alimentée par l'EF admin-seo-snapshot (X-Cron-Secret = ADMIN_SEO_CRON_SECRET, aussi dans Vault) via 2 crons pg_cron : quotidien 04h15 (série Bing datée + refresh mois courant Google), mensuel le 4 à 05h00 (mois civil précédent + tops Bing non datés). Backfill : POST {start,end}. Limites Bing : aucun historique interrogeable, positions = relevé ponctuel. »
+---
+
 ## [2026-08-15 12:00] Le « Brain » LLM (analyzeQuery) n'est jamais appelé en production
 **Statut** : PENDING
 **Commit** : (audit de session, hors commit)
