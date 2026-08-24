@@ -71,7 +71,7 @@ const AppSelector = ({
             try {
                 const { data, error } = await supabaseClient
                     .from('apps')                        // Tables dans search_path: config
-                    .select('id, name, description, icon, color, sort_order')
+                    .select('id, name, description, icon, color, sort_order, domaine, db_schema, heberge_dedie')
                     .eq('is_active', true)
                     .order('sort_order', { ascending: true });
 
