@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { searchAnalytics, windowAnchored, previousWindow, type GscRow } from "./gsc.ts";
+import { ErreurAcces, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -49,9 +50,12 @@ serve(async (req) => {
     const { data: { user }, error: authError } = await caller.auth.getUser();
     if (authError || !user) return json({ data: null, error: "Non authentifie" }, 401);
 
+    // Droits par site : super_admin voit tout, un delegue ses sites, les
+    // autres (y compris org_admin sans droit delegue) rien.
     const { data: profile } = await caller
       .from("profiles").select("app_role").eq("id", user.id).single();
-    if (!profile || !["super_admin", "org_admin"].includes(profile.app_role)) {
+    const sites = await sitesAutorises(caller);
+    if (profile?.app_role !== "super_admin" && sites.length === 0) {
       return json({ data: null, error: "Acces refuse" }, 403);
     }
 
@@ -75,6 +79,7 @@ serve(async (req) => {
 
     switch (action) {
       case "overview": {
+        exigerSite(sites, appId);
         const site = await proprieteDe(appId);
         const cur = windowAnchored(nbJours);
         const prev = previousWindow(nbJours);
@@ -100,6 +105,7 @@ serve(async (req) => {
       }
 
       case "top": {
+        exigerSite(sites, appId);
         const site = await proprieteDe(appId);
         const dimension = body.dimension === "page" ? "page" : "query";
         const w = windowAnchored(nbJours);
@@ -117,10 +123,12 @@ serve(async (req) => {
       }
 
       case "all-sites": {
+        // Restreint aux sites autorises (super_admin = toutes les apps actives).
         const { data: apps, error } = await admin
           .schema("config").from("apps")
           .select("id, name, gsc_propriete")
-          .not("gsc_propriete", "is", null);
+          .not("gsc_propriete", "is", null)
+          .in("id", sites);
         if (error) throw error;
         const w = windowAnchored(nbJours);
         const resultats = await Promise.all((apps ?? []).map(async (a) => {
@@ -143,6 +151,9 @@ serve(async (req) => {
     }
   } catch (e) {
     console.error("[admin-seo]", e);
+    if (e instanceof ErreurAcces) {
+      return json({ data: null, error: e.message }, 403);
+    }
     return json({ data: null, error: String(e instanceof Error ? e.message : e) }, 500);
   }
 });

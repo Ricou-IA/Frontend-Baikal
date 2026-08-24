@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { buildUnsubscribeUrl, renderTemplate, sendOneEmail } from "./envoi.ts";
 import { chargerSite, ErreurSite, lecteurSite } from "../_shared/sites.ts";
+import { ErreurAcces, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -53,9 +54,12 @@ serve(async (req) => {
     });
     const { data: { user }, error: authError } = await caller.auth.getUser();
     if (authError || !user) return json({ data: null, error: "Non authentifie" }, 401);
+    // Droits par site : super_admin voit tout, un delegue ses sites, les
+    // autres (y compris org_admin sans droit delegue) rien.
     const { data: profile } = await caller
       .from("profiles").select("app_role").eq("id", user.id).single();
-    if (!profile || !["super_admin", "org_admin"].includes(profile.app_role)) {
+    const sites = await sitesAutorises(caller);
+    if (profile?.app_role !== "super_admin" && sites.length === 0) {
       return json({ data: null, error: "Acces refuse" }, 403);
     }
 
@@ -68,6 +72,7 @@ serve(async (req) => {
     if (!appId && !ACTIONS_SANS_APP_ID.includes(action)) {
       return json({ data: null, error: "appId requis" }, 400);
     }
+    if (appId) exigerSite(sites, appId);
 
     // Expediteur du site, lu en base. Echoue fort si non configure.
     const chargerExpediteur = async (): Promise<
@@ -88,16 +93,26 @@ serve(async (req) => {
 
     switch (action) {
       case "list-sites": {
+        // Champs env/secret : super_admin uniquement. Un delegue ne voit que
+        // ses sites, avec les champs inoffensifs.
+        if (profile?.app_role === "super_admin") {
+          const { data, error } = await admin.schema("config").from("apps")
+            .select("id, name, domaine, gsc_propriete, env_url, env_secret_ref, " +
+              "expediteur_nom, expediteur_email, reply_to, is_active")
+            .order("sort_order");
+          if (error) throw error;
+          return json({ data, error: null });
+        }
         const { data, error } = await admin.schema("config").from("apps")
-          .select("id, name, domaine, gsc_propriete, env_url, env_secret_ref, " +
-            "expediteur_nom, expediteur_email, reply_to, is_active")
+          .select("id, name, domaine, expediteur_nom, expediteur_email, reply_to, is_active")
+          .in("id", sites)
           .order("sort_order");
         if (error) throw error;
         return json({ data, error: null });
       }
 
       case "save-site": {
-        if (profile.app_role !== "super_admin") {
+        if (profile?.app_role !== "super_admin") {
           return json({ data: null, error: "Acces refuse" }, 403);
         }
         const s = body.site ?? {};
@@ -435,6 +450,9 @@ serve(async (req) => {
     }
   } catch (e) {
     console.error("[admin-partenariats]", e);
+    if (e instanceof ErreurAcces) {
+      return json({ data: null, error: e.message }, 403);
+    }
     if (e instanceof ErreurSite) {
       return json({ data: null, error: e.message }, 400);
     }

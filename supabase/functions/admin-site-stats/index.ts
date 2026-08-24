@@ -5,6 +5,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { chargerSite, ErreurSite, lecteurSite } from "../_shared/sites.ts";
+import { ErreurAcces, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 import { statsParSite } from "./stats-sites.ts";
 
 const corsHeaders = {
@@ -36,9 +37,11 @@ serve(async (req) => {
     });
     const { data: { user }, error: authError } = await caller.auth.getUser();
     if (authError || !user) return json({ data: null, error: "Non authentifie" }, 401);
+    // super_admin, ou admin delegue du site demande (verifie plus bas).
     const { data: profile } = await caller
       .from("profiles").select("app_role").eq("id", user.id).single();
-    if (profile?.app_role !== "super_admin") {
+    const sites = await sitesAutorises(caller);
+    if (profile?.app_role !== "super_admin" && sites.length === 0) {
       return json({ data: null, error: "Acces refuse" }, 403);
     }
 
@@ -52,6 +55,7 @@ serve(async (req) => {
       return json({ data: null, error: `Action inconnue: ${action}` }, 400);
     }
     if (!appId) return json({ data: null, error: "appId requis" }, 400);
+    exigerSite(sites, appId);
     const jours = Number.isInteger(body.jours) && body.jours > 0 && body.jours <= 365
       ? body.jours
       : 30;
@@ -81,6 +85,9 @@ serve(async (req) => {
     }
   } catch (e) {
     console.error("[admin-site-stats]", e);
+    if (e instanceof ErreurAcces) {
+      return json({ data: null, error: e.message }, 403);
+    }
     if (e instanceof ErreurSite) {
       return json({ data: null, error: e.message }, 400);
     }
