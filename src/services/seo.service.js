@@ -31,8 +31,11 @@ export const seoService = {
   getOverview(appId, days = 28) {
     return appelerEdge('admin-seo', { action: 'overview', appId, days });
   },
-  getTop(appId, dimension, days = 28, limit = 50) {
-    return appelerEdge('admin-seo', { action: 'top', appId, dimension, days, limit });
+  getCompare(appId, days = 28) {
+    return appelerEdge('admin-seo', { action: 'compare', appId, days });
+  },
+  getBingVsGoogle(appId) {
+    return appelerEdge('admin-seo', { action: 'bing-vs-google', appId });
   },
   getAllSites(days = 28) {
     return appelerEdge('admin-seo', { action: 'all-sites', days });
