@@ -43,6 +43,21 @@
 **Proposition** : Ajouter dans « Modules admin multi-sites » : « Droits par site : table admin.droits_sites (service_role only), source de vérité core.sites_autorises(uuid) exposée par public.mes_droits_sites() — consommée par AuthContext (sitesAdmin) et par les EF via _shared/droits.ts (client caller). Deux notions étanches : appartenance org = modules du site ; droit délégué = modules transverses (SEO, Partenariats, stats, users en consultation). Les org_admin sans droit délégué n'accèdent plus à SEO/Partenariats. Gestion : page Sites → bloc Admins délégués (EF admin-droits : list/grant/revoke, grant par email d'un compte existant). super_admin = tout, basé sur le profil réel. »
 ---
 
+## [2026-08-24 23:30] Partenariats : sync nocturne des diagnostiqueurs
+**Statut** : PENDING
+**Commit** : b380c2c..431c8b3
+**Contexte** : L'import manuel des diagnostiqueurs est remplacé par
+admin.sync_diagnostiqueurs() (fonction SQL, INSERT...SELECT depuis
+dpe.diag_certifie, ON CONFLICT DO NOTHING), appelée par le cron
+admin-sync-diag-prospects à 03h30 (après la sync annuaire DPE de 02h30) et par
+le bouton « Synchroniser les diagnostiqueurs » (RPC via admin-partenariats).
+**Proposition** : Dans la section Partenariats du CLAUDE.md, remplacer
+« import diagnostiqueurs (via env_url + secret nomme par env_secret_ref) » par
+« sync diagnostiqueurs (fonction SQL admin.sync_diagnostiqueurs, cron
+admin-sync-diag-prospects 03h30 + bouton console ; source amont :
+dpe.diag_certifie, synchronisée à 02h30 par le projet DPE) ».
+---
+
 ## [2026-08-15 12:00] Le « Brain » LLM (analyzeQuery) n'est jamais appelé en production
 **Statut** : PENDING
 **Commit** : (audit de session, hors commit)
