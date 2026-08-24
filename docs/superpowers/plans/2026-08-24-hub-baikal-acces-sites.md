@@ -23,7 +23,7 @@
 **Files:**
 - Create: `supabase/migrations/20260824150000_registre_sites_hub.sql`
 
-- [ ] **Step 1.1: Pré-vérifier les FK qui référencent config.apps et l'absence de perfec**
+- [x] **Step 1.1: Pré-vérifier les FK qui référencent config.apps et l'absence de perfec**
 
 Via MCP `execute_sql` sur `odspcxgafcqxjzrarsqf` :
 
@@ -36,7 +36,7 @@ WHERE confrelid = 'config.apps'::regclass AND contype = 'f';
 Puis pour chaque table listée : `SELECT count(*) FROM <table> WHERE app_id = 'perfec';`
 Attendu : 0 partout. Si non-zéro quelque part : STOP, remonter à Eric.
 
-- [ ] **Step 1.2: Écrire le fichier de migration**
+- [x] **Step 1.2: Écrire le fichier de migration**
 
 Contenu exact de `supabase/migrations/20260824150000_registre_sites_hub.sql` :
 
@@ -89,9 +89,9 @@ ON CONFLICT (id) DO NOTHING;
 DELETE FROM config.apps WHERE id = 'perfec';
 ```
 
-- [ ] **Step 1.3: Appliquer via MCP `apply_migration`** sur `odspcxgafcqxjzrarsqf`, name `registre_sites_hub`, même SQL.
+- [x] **Step 1.3: Appliquer via MCP `apply_migration`** sur `odspcxgafcqxjzrarsqf`, name `registre_sites_hub`, même SQL.
 
-- [ ] **Step 1.4: Vérifier le registre**
+- [x] **Step 1.4: Vérifier le registre**
 
 ```sql
 SELECT id, is_active, db_schema, db_ro_secret_ref, env_url
@@ -101,7 +101,7 @@ FROM config.apps ORDER BY sort_order;
 Attendu : **12 lignes** (13 du tableau de la spec moins `perfec` supprimée), `zelty.is_active = false`, `majordhome` et
 `pack-vendeur` avec `env_url` dédiée + `db_ro_secret_ref`, `db_schema` non NULL partout.
 
-- [ ] **Step 1.5: Commit**
+- [x] **Step 1.5: Commit**
 
 ```bash
 git add supabase/migrations/20260824150000_registre_sites_hub.sql docs/superpowers/plans/2026-08-24-hub-baikal-acces-sites.md
@@ -112,7 +112,7 @@ git commit -m "feat(hub): registre config.apps complet (13 produits, db_schema, 
 
 ### Task 2: Rôle `baikal_reader` sur Majord'home
 
-- [ ] **Step 2.1: Appliquer la migration** via MCP `apply_migration` sur `ejqqqwudmizqisdkxohw`, name `baikal_reader_lecture_seule` :
+- [x] **Step 2.1: Appliquer la migration** via MCP `apply_migration` sur `ejqqqwudmizqisdkxohw`, name `baikal_reader_lecture_seule` :
 
 ```sql
 -- Role lecture seule pour le hub Baikal (spec Baikal 2026-08-24).
@@ -153,7 +153,7 @@ BEGIN
 END $$;
 ```
 
-- [ ] **Step 2.2: Vérifier lecture OK** via `execute_sql` :
+- [x] **Step 2.2: Vérifier lecture OK** via `execute_sql` :
 
 ```sql
 SET ROLE baikal_reader;
@@ -162,7 +162,7 @@ SELECT count(*) AS rdv FROM majordhome.appointments;
 
 Attendu : count ≥ 418 (pas d'erreur, pas de 0 causé par la RLS).
 
-- [ ] **Step 2.3: Vérifier écriture bloquée** via `execute_sql` (appel séparé, l'erreur est le résultat attendu) :
+- [x] **Step 2.3: Vérifier écriture bloquée** via `execute_sql` (appel séparé, l'erreur est le résultat attendu) :
 
 ```sql
 SET ROLE baikal_reader;
@@ -171,7 +171,7 @@ DELETE FROM majordhome.appointments WHERE false;
 
 Attendu : `ERROR: permission denied for table appointments` (le GRANT SELECT seul suffit ; le `WHERE false` garantit qu'aucune ligne ne serait touchée même en cas de surprise).
 
-- [ ] **Step 2.4: Vérifier le nombre de policies posées**
+- [x] **Step 2.4: Vérifier le nombre de policies posées**
 
 ```sql
 SELECT count(*) FROM pg_policies WHERE policyname = 'baikal_read';
@@ -183,7 +183,7 @@ Attendu : ≈ 102 (10+1+5+84+2 tables).
 
 ### Task 3: Rôle `baikal_reader` sur Pré-état-daté
 
-- [ ] **Step 3.1: Appliquer la migration** via MCP `apply_migration` sur `ycmavnmtyvodqawvwrrd`, name `baikal_reader_lecture_seule` — même SQL que 2.1 avec la liste de schémas réduite à `pack_vendeur` :
+- [x] **Step 3.1: Appliquer la migration** via MCP `apply_migration` sur `ycmavnmtyvodqawvwrrd`, name `baikal_reader_lecture_seule` — même SQL que 2.1 avec la liste de schémas réduite à `pack_vendeur` :
 
 ```sql
 DO $$ BEGIN
@@ -213,9 +213,9 @@ BEGIN
 END $$;
 ```
 
-- [ ] **Step 3.2: Lister une table témoin** : `SELECT tablename FROM pg_tables WHERE schemaname='pack_vendeur' ORDER BY tablename LIMIT 5;` puis **vérifier lecture OK / écriture bloquée** comme en 2.2/2.3 sur la première table listée (count sans erreur ; `DELETE ... WHERE false` → permission denied).
+- [x] **Step 3.2: Lister une table témoin** : `SELECT tablename FROM pg_tables WHERE schemaname='pack_vendeur' ORDER BY tablename LIMIT 5;` puis **vérifier lecture OK / écriture bloquée** comme en 2.2/2.3 sur la première table listée (count sans erreur ; `DELETE ... WHERE false` → permission denied).
 
-- [ ] **Step 3.3: Vérifier policies** : `SELECT count(*) FROM pg_policies WHERE policyname='baikal_read';` — attendu : 19.
+- [x] **Step 3.3: Vérifier policies** : `SELECT count(*) FROM pg_policies WHERE policyname='baikal_read';` — attendu : 19.
 
 ---
 
@@ -224,7 +224,7 @@ END $$;
 Aucun mot de passe en clair ne transite par le serveur SQL (verifier SCRAM calculé
 localement) ni ne reste sur disque en fin de tâche.
 
-- [ ] **Step 4.1: Générer les credentials** — écrire `<scratchpad>/gen-ro-creds.mjs` :
+- [x] **Step 4.1: Générer les credentials** — écrire `<scratchpad>/gen-ro-creds.mjs` :
 
 ```js
 import crypto from "node:crypto";
@@ -260,13 +260,13 @@ console.log("ecrit: ro-creds.json, ro-secrets.env");
 
 Run (dans le scratchpad) : `node gen-ro-creds.mjs` — attendu : `ecrit: ...`.
 
-- [ ] **Step 4.2: Poser les mots de passe** — pour chaque projet, via `execute_sql` (verifier lu dans `ro-creds.json`, jamais le mot de passe) :
+- [x] **Step 4.2: Poser les mots de passe** — pour chaque projet, via `execute_sql` (verifier lu dans `ro-creds.json`, jamais le mot de passe) :
 
 ```sql
 ALTER ROLE baikal_reader PASSWORD 'SCRAM-SHA-256$4096:<salt>$<storedkey>:<serverkey>';
 ```
 
-- [ ] **Step 4.3: Poser les secrets Baikal**
+- [x] **Step 4.3: Poser les secrets Baikal**
 
 ```bash
 npx supabase secrets set --env-file <scratchpad>/ro-secrets.env --project-ref odspcxgafcqxjzrarsqf
@@ -274,7 +274,7 @@ npx supabase secrets set --env-file <scratchpad>/ro-secrets.env --project-ref od
 
 Attendu : sortie listant les 2 secrets. Vérifier : `npx supabase secrets list --project-ref odspcxgafcqxjzrarsqf` contient `ADMIN_RO_MAJORDHOME_DSN` et `ADMIN_RO_PACKVENDEUR_DSN`.
 
-- [ ] **Step 4.4: Test de connexion réel** — écrire `<scratchpad>/test-ro.ts` :
+- [x] **Step 4.4: Test de connexion réel** — écrire `<scratchpad>/test-ro.ts` :
 
 ```ts
 import postgres from "https://deno.land/x/postgresjs@v3.4.5/mod.js";
@@ -324,7 +324,7 @@ Si le paramètre de startup `default_transaction_read_only` est rejeté par Supa
 le retirer de l'option `connection` du module (Task 5) pour le chemin dédié — le
 `ALTER ROLE SET` du serveur garde la protection.
 
-- [ ] **Step 4.5: Nettoyage** — supprimer `ro-creds.json`, `ro-secrets.env` et `gen-ro-creds.mjs` du scratchpad. Le mot de passe ne vit plus que dans le secret Baikal (rotation : re-dérouler Task 4).
+- [x] **Step 4.5: Nettoyage** — supprimer `ro-creds.json`, `ro-secrets.env` et `gen-ro-creds.mjs` du scratchpad. Le mot de passe ne vit plus que dans le secret Baikal (rotation : re-dérouler Task 4).
 
 ---
 
@@ -334,7 +334,7 @@ le retirer de l'option `connection` du module (Task 5) pour le chemin dédié �
 - Create: `supabase/functions/_shared/sites.ts`
 - Test: `supabase/functions/_shared/sites.test.ts`
 
-- [ ] **Step 5.1: Écrire le test qui échoue** — `supabase/functions/_shared/sites.test.ts` :
+- [x] **Step 5.1: Écrire le test qui échoue** — `supabase/functions/_shared/sites.test.ts` :
 
 ```ts
 import {
@@ -407,9 +407,9 @@ Deno.test("lecteurSite: local sans SUPABASE_DB_URL -> ErreurSite", () => {
 });
 ```
 
-- [ ] **Step 5.2: Vérifier l'échec** — `deno test --allow-env supabase/functions/_shared/sites.test.ts` → attendu : échec de résolution de `./sites.ts`.
+- [x] **Step 5.2: Vérifier l'échec** — `deno test --allow-env supabase/functions/_shared/sites.test.ts` → attendu : échec de résolution de `./sites.ts`.
 
-- [ ] **Step 5.3: Implémenter** — `supabase/functions/_shared/sites.ts` :
+- [x] **Step 5.3: Implémenter** — `supabase/functions/_shared/sites.ts` :
 
 ```ts
 // Connecteur d'acces aux donnees des sites du registre config.apps.
@@ -480,9 +480,9 @@ export function lecteurSite(site: Site) {
 (Si 4.4 a montré que Supavisor rejette le paramètre de startup : le passer
 conditionnel — uniquement quand `db_ro_secret_ref` est NULL.)
 
-- [ ] **Step 5.4: Vérifier que les tests passent** — `deno test --allow-env supabase/functions/_shared/sites.test.ts` → 6 tests OK.
+- [x] **Step 5.4: Vérifier que les tests passent** — `deno test --allow-env supabase/functions/_shared/sites.test.ts` → 6 tests OK.
 
-- [ ] **Step 5.5: Commit**
+- [x] **Step 5.5: Commit**
 
 ```bash
 git add supabase/functions/_shared/sites.ts supabase/functions/_shared/sites.test.ts
@@ -496,7 +496,7 @@ git commit -m "feat(hub): connecteur _shared/sites.ts, lecture seule unifiee des
 **Files:**
 - Modify: `supabase/functions/admin-partenariats/index.ts:200-263` (le case) + import en tête + catch global
 
-- [ ] **Step 6.1: Contrôle d'équivalence AVANT refactor** — via `execute_sql` sur la base partagée, mémoriser les comptes de référence (sémantique PostgREST actuelle : inner join, email non null, limit 10000) :
+- [x] **Step 6.1: Contrôle d'équivalence AVANT refactor** — via `execute_sql` sur la base partagée, mémoriser les comptes de référence (sémantique PostgREST actuelle : inner join, email non null, limit 10000) :
 
 ```sql
 SELECT count(*) AS total FROM (
@@ -509,7 +509,7 @@ SELECT count(*) AS dept69 FROM (
   WHERE c.email IS NOT NULL AND s.code_postal LIKE '69%' LIMIT 10000) x;
 ```
 
-- [ ] **Step 6.2: Modifier le code**
+- [x] **Step 6.2: Modifier le code**
 
 En tête de `admin-partenariats/index.ts`, après les imports existants :
 
@@ -583,9 +583,9 @@ Dans le `catch` global (fin de fichier), avant le `return json(..., 500)` :
     }
 ```
 
-- [ ] **Step 6.3: Type-check** — `deno check supabase/functions/admin-partenariats/index.ts` → attendu : OK (les erreurs préexistantes d'autres fichiers ne bloquent pas).
+- [x] **Step 6.3: Type-check** — `deno check supabase/functions/admin-partenariats/index.ts` → attendu : OK (les erreurs préexistantes d'autres fichiers ne bloquent pas).
 
-- [ ] **Step 6.4: Commit**
+- [x] **Step 6.4: Commit**
 
 ```bash
 git add supabase/functions/admin-partenariats/index.ts
@@ -596,9 +596,9 @@ git commit -m "refactor(partenariats): import-diagnostiqueurs via le connecteur 
 
 ### Task 7: Déploiement et vérification
 
-- [ ] **Step 7.1: Déployer** — `npx supabase functions deploy admin-partenariats --project-ref odspcxgafcqxjzrarsqf` (la CLI bundle `../_shared/sites.ts`). Attendu : `Deployed Function admin-partenariats`.
+- [x] **Step 7.1: Déployer** — `npx supabase functions deploy admin-partenariats --project-ref odspcxgafcqxjzrarsqf` (la CLI bundle `../_shared/sites.ts`). Attendu : `Deployed Function admin-partenariats`.
 
-- [ ] **Step 7.2: Smoke test de boot** — récupérer la clé anon (frontend `.env*` local ou MCP), puis :
+- [x] **Step 7.2: Smoke test de boot** — récupérer la clé anon (frontend `.env*` local ou MCP), puis :
 
 ```bash
 curl -s -X POST "https://odspcxgafcqxjzrarsqf.supabase.co/functions/v1/admin-partenariats" -H "Authorization: Bearer <ANON_KEY>" -H "apikey: <ANON_KEY>" -H "Content-Type: application/json" -d '{"action":"list-sites"}'
@@ -609,11 +609,11 @@ fonction démarre avec le nouvel import (pas de crash de boot), et que l'auth
 reste en place. Le test fonctionnel complet (bouton « Importer diagnostiqueurs »
 sur MonsieurDPE, comparaison avec les comptes de 6.1) est un clic d'Eric.
 
-- [ ] **Step 7.3: Documentation et mémoire**
+- [x] **Step 7.3: Documentation et mémoire**
   - Append dans `.claude/proposed-updates.md` (statut PENDING) : proposition de mise à jour CLAUDE.md — gotcha du trigger obsolète (supprimé), colonnes `db_schema`/`db_ro_secret_ref`, module `_shared/sites.ts`, règle « policies baikal_read à rejouer sur nouvelle table des projets dédiés ».
   - Mettre à jour la mémoire `hub-baikal-objectif` (fondation posée) et `baikal-infra-reelle` (registre complété, trigger supprimé).
 
-- [ ] **Step 7.4: Commit final**
+- [x] **Step 7.4: Commit final**
 
 ```bash
 git add docs/superpowers/plans/2026-08-24-hub-baikal-acces-sites.md .claude/proposed-updates.md
