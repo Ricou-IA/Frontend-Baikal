@@ -13,7 +13,7 @@
  * ============================================================================
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   TrendingUp,
   TrendingDown,
@@ -122,20 +122,66 @@ function Section({ titre, sousTitre, action, children }) {
   );
 }
 
-function ChoixFenetre({ valeur, onChange, options = FENETRES }) {
+function ChoixFenetre({ valeur, onChange, options = FENETRES, occupe = false }) {
   return (
-    <div className="flex gap-2">
+    <div className="flex gap-2 items-center">
+      {occupe && <Loader2 className="w-4 h-4 text-baikal-cyan animate-spin" />}
       {options.map((f) => (
         <button
           key={f}
           onClick={() => onChange(f)}
-          className={`px-3 py-1 rounded border ${valeur === f
+          disabled={occupe}
+          className={`px-3 py-1 rounded border disabled:opacity-50 ${valeur === f
             ? 'border-baikal-cyan text-baikal-cyan'
             : 'border-baikal-border text-baikal-text'}`}
         >
           {f} j
         </button>
       ))}
+    </div>
+  );
+}
+
+// Chargement de donnees avec cache par cle : re-basculer sur une fenetre deja
+// vue est instantane, et pendant un fetch les donnees precedentes restent
+// affichees (estompees) — pas de saut de mise en page.
+function useDonneesCachees(cle, chargeur) {
+  const cache = useRef(new Map());
+  const [donnees, setDonnees] = useState(null);
+  const [erreur, setErreur] = useState(null);
+  const [enCours, setEnCours] = useState(true);
+
+  useEffect(() => {
+    if (cache.current.has(cle)) {
+      setDonnees(cache.current.get(cle));
+      setErreur(null);
+      setEnCours(false);
+      return;
+    }
+    let actif = true;
+    setEnCours(true);
+    setErreur(null);
+    chargeur().then(({ data, error }) => {
+      if (!actif) return;
+      if (error) {
+        setErreur(error.message);
+      } else {
+        cache.current.set(cle, data);
+        setDonnees(data);
+      }
+      setEnCours(false);
+    });
+    return () => { actif = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cle]);
+
+  return { donnees, erreur, enCours };
+}
+
+function ContenuEstompe({ enCours, children }) {
+  return (
+    <div className={enCours ? 'opacity-50 pointer-events-none transition-opacity space-y-4' : 'space-y-4'}>
+      {children}
     </div>
   );
 }
@@ -171,24 +217,13 @@ const BUCKETS_UI = [
 
 function VueEnsemble({ appId }) {
   const [jours, setJours] = useState(28);
-  const [donnees, setDonnees] = useState(null);
-  const [erreur, setErreur] = useState(null);
-  const [chargement, setChargement] = useState(true);
   const [filtreBucket, setFiltreBucket] = useState('all');
+  const { donnees, erreur, enCours } = useDonneesCachees(
+    `overview:${appId}:${jours}`,
+    () => seoService.getOverview(appId, jours),
+  );
 
-  useEffect(() => {
-    let actif = true;
-    setChargement(true);
-    setErreur(null);
-    setFiltreBucket('all');
-    seoService.getOverview(appId, jours).then(({ data, error }) => {
-      if (!actif) return;
-      if (error) setErreur(error.message);
-      setDonnees(data);
-      setChargement(false);
-    });
-    return () => { actif = false; };
-  }, [appId, jours]);
+  useEffect(() => { setFiltreBucket('all'); }, [appId, jours]);
 
   const requetesFiltrees = useMemo(() => {
     const toutes = donnees?.topRequetes ?? [];
@@ -196,19 +231,19 @@ function VueEnsemble({ appId }) {
     return toutes.filter((q) => bucketDe(q.position) === filtreBucket);
   }, [donnees, filtreBucket]);
 
-  if (chargement) return <Chargement />;
-  if (erreur) return <Erreur message={erreur} />;
-  if (!donnees) return null;
-
-  const { totaux, totauxPrecedents, buckets, topPages } = donnees;
+  const { totaux, totauxPrecedents, buckets, topPages } = donnees ?? {};
   const totalBuckets = BUCKETS_UI.reduce((s, b) => s + (buckets?.[b.cle] || 0), 0);
 
   return (
     <Section
       titre="Vue d'ensemble"
       sousTitre={`Fenetre ${jours} j ancree a J-3 (delai de consolidation Search Console)`}
-      action={<ChoixFenetre valeur={jours} onChange={setJours} />}
+      action={<ChoixFenetre valeur={jours} onChange={setJours} occupe={enCours} />}
     >
+      {erreur && <Erreur message={erreur} />}
+      {!donnees && !erreur && <Chargement />}
+      {donnees && (
+      <ContenuEstompe enCours={enCours}>
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <KpiCarte
           label="Clics SEO"
@@ -318,7 +353,7 @@ function VueEnsemble({ appId }) {
           </div>
           <div className="max-h-[420px] overflow-y-auto">
             <table className="w-full text-sm text-baikal-text">
-              <thead className="sticky top-0 bg-baikal-surface">
+              <thead className="sticky top-0 z-10 bg-baikal-surface">
                 <tr className="text-left text-xs opacity-70">
                   <th className="px-4 py-2">Requete</th>
                   <th className="text-right px-2 py-2">Clics</th>
@@ -353,7 +388,7 @@ function VueEnsemble({ appId }) {
           </div>
           <div className="max-h-[420px] overflow-y-auto">
             <table className="w-full text-sm text-baikal-text">
-              <thead className="sticky top-0 bg-baikal-surface">
+              <thead className="sticky top-0 z-10 bg-baikal-surface">
                 <tr className="text-left text-xs opacity-70">
                   <th className="px-4 py-2">Page</th>
                   <th className="text-right px-2 py-2">Clics</th>
@@ -389,6 +424,8 @@ function VueEnsemble({ appId }) {
         avec le gros chiffre de l'interface Search Console. Les recherches en « phrase
         exacte » (guillemets, outils de verification) sont ecartees des tops.
       </p>
+      </ContenuEstompe>
+      )}
     </Section>
   );
 }
@@ -415,24 +452,13 @@ const BADGE_STATUT = {
 
 function Comparatif({ appId }) {
   const [jours, setJours] = useState(28);
-  const [donnees, setDonnees] = useState(null);
-  const [erreur, setErreur] = useState(null);
-  const [chargement, setChargement] = useState(true);
   const [filtre, setFiltre] = useState('all');
+  const { donnees, erreur, enCours } = useDonneesCachees(
+    `compare:${appId}:${jours}`,
+    () => seoService.getCompare(appId, jours),
+  );
 
-  useEffect(() => {
-    let actif = true;
-    setChargement(true);
-    setErreur(null);
-    setFiltre('all');
-    seoService.getCompare(appId, jours).then(({ data, error }) => {
-      if (!actif) return;
-      if (error) setErreur(error.message);
-      setDonnees(data);
-      setChargement(false);
-    });
-    return () => { actif = false; };
-  }, [appId, jours]);
+  useEffect(() => { setFiltre('all'); }, [appId, jours]);
 
   const lignes = useMemo(() => {
     const toutes = donnees?.requetes ?? [];
@@ -440,25 +466,27 @@ function Comparatif({ appId }) {
     return toutes.filter((q) => q.statut === filtre);
   }, [donnees, filtre]);
 
-  if (chargement) return <Chargement />;
-  if (erreur) return <Erreur message={erreur} />;
-  if (!donnees) return null;
-
-  const d = donnees.totauxDelta;
-  const compteurs = {
+  const d = donnees?.totauxDelta;
+  const compteurs = donnees ? {
     regression: donnees.resume.regressions,
     lost: donnees.resume.disparues,
     new: donnees.resume.nouvelles,
     progress: donnees.resume.progressions,
     stable: donnees.resume.stables,
-  };
+  } : {};
 
   return (
     <Section
       titre="Comparatif periode vs periode"
-      sousTitre={`${donnees.fenetre.startDate} → ${donnees.fenetre.endDate} vs ${donnees.fenetrePrecedente.startDate} → ${donnees.fenetrePrecedente.endDate}`}
-      action={<ChoixFenetre valeur={jours} onChange={setJours} options={[7, 28]} />}
+      sousTitre={donnees
+        ? `${donnees.fenetre.startDate} → ${donnees.fenetre.endDate} vs ${donnees.fenetrePrecedente.startDate} → ${donnees.fenetrePrecedente.endDate}`
+        : undefined}
+      action={<ChoixFenetre valeur={jours} onChange={setJours} options={[7, 28]} occupe={enCours} />}
     >
+      {erreur && <Erreur message={erreur} />}
+      {!donnees && !erreur && <Chargement />}
+      {donnees && (
+      <ContenuEstompe enCours={enCours}>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCarte
           label="Δ Clics"
@@ -503,7 +531,7 @@ function Comparatif({ appId }) {
       <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
         <div className="max-h-[480px] overflow-y-auto overflow-x-auto">
           <table className="w-full text-sm text-baikal-text">
-            <thead className="sticky top-0 bg-baikal-surface">
+            <thead className="sticky top-0 z-10 bg-baikal-surface">
               <tr className="text-left text-xs opacity-70">
                 <th className="px-4 py-2">Requete</th>
                 <th className="px-2 py-2">Statut</th>
@@ -550,6 +578,8 @@ function Comparatif({ appId }) {
         Requetes de moins de 10 impressions cumulees ecartees (bruit). Δ position positif =
         rang qui se degrade. Tri : pires regressions en tete.
       </p>
+      </ContenuEstompe>
+      )}
     </Section>
   );
 }
@@ -566,24 +596,12 @@ function moisLisible(iso) {
 }
 
 function BingVsGoogle({ appId }) {
-  const [donnees, setDonnees] = useState(null);
-  const [erreur, setErreur] = useState(null);
-  const [chargement, setChargement] = useState(true);
+  const { donnees, erreur, enCours } = useDonneesCachees(
+    `bing:${appId}`,
+    () => seoService.getBingVsGoogle(appId),
+  );
 
-  useEffect(() => {
-    let actif = true;
-    setChargement(true);
-    setErreur(null);
-    seoService.getBingVsGoogle(appId).then(({ data, error }) => {
-      if (!actif) return;
-      if (error) setErreur(error.message);
-      setDonnees(data);
-      setChargement(false);
-    });
-    return () => { actif = false; };
-  }, [appId]);
-
-  if (chargement) return <Chargement />;
+  if (enCours && !donnees) return <Chargement />;
   if (erreur) return <Erreur message={erreur} />;
 
   const sousTitre = "Archive mensuelle — « Bing » inclut Yahoo, DuckDuckGo et Ecosia (meme index)";
@@ -682,29 +700,21 @@ function BingVsGoogle({ appId }) {
 
 function TousLesSites() {
   const [jours, setJours] = useState(28);
-  const [donnees, setDonnees] = useState(null);
-  const [erreur, setErreur] = useState(null);
-
-  useEffect(() => {
-    let actif = true;
-    setErreur(null);
-    seoService.getAllSites(jours).then(({ data, error }) => {
-      if (!actif) return;
-      if (error) setErreur(error.message);
-      setDonnees(data);
-    });
-    return () => { actif = false; };
-  }, [jours]);
+  const { donnees, erreur, enCours } = useDonneesCachees(
+    `allsites:${jours}`,
+    () => seoService.getAllSites(jours),
+  );
 
   return (
     <Section
       titre="Tous les sites"
       sousTitre="Sites du registre avec une propriete Search Console"
-      action={<ChoixFenetre valeur={jours} onChange={setJours} />}
+      action={<ChoixFenetre valeur={jours} onChange={setJours} occupe={enCours} />}
     >
       {erreur && <Erreur message={erreur} />}
+      {!donnees && !erreur && <Chargement />}
       {donnees && (
-        <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
+        <div className={`bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden ${enCours ? 'opacity-50' : ''}`}>
           <table className="w-full text-sm text-baikal-text">
             <thead>
               <tr className="text-left text-xs opacity-70">
