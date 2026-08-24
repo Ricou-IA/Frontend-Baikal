@@ -21,6 +21,7 @@ import {
   X,
   AlertTriangle,
   Loader2,
+  Database,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -154,11 +155,25 @@ function ChoixFenetre({ valeur, onChange, options = FENETRES, occupe = false }) 
 // Chargement de donnees avec cache par cle : re-basculer sur une fenetre deja
 // vue est instantane, et pendant un fetch les donnees precedentes restent
 // affichees (estompees) — pas de saut de mise en page.
-function useDonneesCachees(cle, chargeur) {
+// `scope` (le site) borne cet effet de persistance : changer de site vide
+// l'affichage immediatement, sinon on lirait les chiffres du site precedent
+// sous le nom du nouveau. Une erreur vide egalement l'affichage.
+function useDonneesCachees(cle, chargeur, scope = null) {
   const cache = useRef(new Map());
   const [donnees, setDonnees] = useState(null);
   const [erreur, setErreur] = useState(null);
   const [enCours, setEnCours] = useState(true);
+  const [scopeRendu, setScopeRendu] = useState(scope);
+
+  // Vidage PENDANT le rendu (et non dans un effet) : React reexecute le
+  // composant avant de peindre, donc aucune image, meme fugace, ne montre
+  // les chiffres du site precedent sous le nom du nouveau.
+  if (scope !== scopeRendu) {
+    setScopeRendu(scope);
+    setDonnees(null);
+    setErreur(null);
+    setEnCours(true);
+  }
 
   useEffect(() => {
     if (cache.current.has(cle)) {
@@ -174,6 +189,7 @@ function useDonneesCachees(cle, chargeur) {
       if (!actif) return;
       if (error) {
         setErreur(error.message);
+        setDonnees(null);
       } else {
         cache.current.set(cle, data);
         setDonnees(data);
@@ -182,7 +198,7 @@ function useDonneesCachees(cle, chargeur) {
     });
     return () => { actif = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cle]);
+  }, [cle, scope]);
 
   return { donnees, erreur, enCours };
 }
@@ -201,6 +217,28 @@ function Erreur({ message }) {
       <AlertTriangle className="w-5 h-5 flex-shrink-0" />
       <p className="font-mono text-sm">{message}</p>
     </div>
+  );
+}
+
+// Distinct de <Erreur> : la requete a abouti, il n'y a simplement rien a
+// montrer. Rouge = quelque chose a echoue, neutre = le site n'a pas (encore)
+// de donnees sur cette periode.
+function Vide({ message }) {
+  return (
+    <div className="p-4 bg-baikal-surface border border-baikal-border rounded-md flex items-start gap-3 text-baikal-text">
+      <Database className="w-5 h-5 flex-shrink-0 opacity-60 mt-0.5" />
+      <p className="text-sm">{message}</p>
+    </div>
+  );
+}
+
+function LigneVide({ colonnes, message }) {
+  return (
+    <tr className="border-t border-baikal-border/50">
+      <td colSpan={colonnes} className="px-4 py-6 text-center text-sm text-baikal-text opacity-60">
+        {message}
+      </td>
+    </tr>
   );
 }
 
@@ -246,6 +284,7 @@ function Performances({ appId }) {
   const { donnees, erreur, enCours } = useDonneesCachees(
     `serie:${appId}:${moisPeriode}`,
     () => seoService.getSerie(appId, moisPeriode),
+    appId,
   );
 
   // Normalisation 0-100 par serie, comme Search Console : chaque metrique a
@@ -291,7 +330,10 @@ function Performances({ appId }) {
     >
       {erreur && <Erreur message={erreur} />}
       {!donnees && !erreur && <Chargement />}
-      {donnees && (
+      {donnees && points.length === 0 && (
+        <Vide message={`Aucune journee archivee pour ce site sur les ${moisPeriode} derniers mois. L'archive se remplit au fil des releves quotidiens, et uniquement pour un site dote d'une propriete Search Console.`} />
+      )}
+      {donnees && points.length > 0 && (
         <div className={enCours ? 'opacity-50' : ''}>
           <div className="flex gap-2 flex-wrap mb-3">
             {SERIES_PERF.map((serie) => (
@@ -364,6 +406,7 @@ function VueEnsemble({ appId }) {
   const { donnees, erreur, enCours } = useDonneesCachees(
     `overview:${appId}:${jours}`,
     () => seoService.getOverview(appId, jours),
+    appId,
   );
 
   useEffect(() => { setFiltreBucket('all'); }, [appId, jours]);
@@ -377,6 +420,12 @@ function VueEnsemble({ appId }) {
   const { totaux, totauxPrecedents, buckets, topPages } = donnees ?? {};
   const totalBuckets = BUCKETS_UI.reduce((s, b) => s + (buckets?.[b.cle] || 0), 0);
 
+  // Requete aboutie mais rien a montrer : ni impression, ni requete, ni page.
+  const rienARemonter = Boolean(donnees)
+    && !totaux?.impressions
+    && (donnees.topRequetes?.length ?? 0) === 0
+    && (topPages?.length ?? 0) === 0;
+
   return (
     <Section
       titre="Vue d'ensemble"
@@ -385,7 +434,10 @@ function VueEnsemble({ appId }) {
     >
       {erreur && <Erreur message={erreur} />}
       {!donnees && !erreur && <Chargement />}
-      {donnees && (
+      {rienARemonter && (
+        <Vide message={`Search Console n'a remonte aucune impression pour ce site sur les ${jours} derniers jours.`} />
+      )}
+      {donnees && !rienARemonter && (
       <ContenuEstompe enCours={enCours}>
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <KpiCarte
@@ -506,6 +558,14 @@ function VueEnsemble({ appId }) {
                 </tr>
               </thead>
               <tbody>
+                {requetesFiltrees.length === 0 && (
+                  <LigneVide
+                    colonnes={5}
+                    message={filtreBucket === 'all'
+                      ? 'Aucune requete detaillee sur cette fenetre — les recherches trop rares restent masquees par Google.'
+                      : 'Aucune requete dans ce filtre.'}
+                  />
+                )}
                 {requetesFiltrees.map((q, i) => (
                   <tr key={`${q.cle}-${i}`} className="border-t border-baikal-border/50">
                     <td className="px-4 py-1.5">{q.cle}</td>
@@ -540,6 +600,9 @@ function VueEnsemble({ appId }) {
                 </tr>
               </thead>
               <tbody>
+                {(topPages ?? []).length === 0 && (
+                  <LigneVide colonnes={4} message="Aucune page remontee sur cette fenetre." />
+                )}
                 {(topPages ?? []).map((p, i) => (
                   <tr key={`${p.cle}-${i}`} className="border-t border-baikal-border/50">
                     <td className="px-4 py-1.5 max-w-[280px] truncate" title={p.cle}>
@@ -599,6 +662,7 @@ function Comparatif({ appId }) {
   const { donnees, erreur, enCours } = useDonneesCachees(
     `compare:${appId}:${jours}`,
     () => seoService.getCompare(appId, jours),
+    appId,
   );
 
   useEffect(() => { setFiltre('all'); }, [appId, jours]);
@@ -685,6 +749,14 @@ function Comparatif({ appId }) {
               </tr>
             </thead>
             <tbody>
+              {lignes.length === 0 && (
+                <LigneVide
+                  colonnes={6}
+                  message={filtre === 'all'
+                    ? 'Aucune requete comparable entre les deux periodes.'
+                    : 'Aucune requete dans ce filtre.'}
+                />
+              )}
               {lignes.map((q, i) => {
                 const [libelle, classes] = BADGE_STATUT[q.statut] ?? BADGE_STATUT.stable;
                 return (
@@ -710,9 +782,6 @@ function Comparatif({ appId }) {
                   </tr>
                 );
               })}
-              {lignes.length === 0 && (
-                <tr><td colSpan={6} className="px-4 py-6 text-center opacity-60">Aucune requete dans ce filtre.</td></tr>
-              )}
             </tbody>
           </table>
         </div>
@@ -735,24 +804,26 @@ function BingVsGoogle({ appId }) {
   const { donnees, erreur, enCours } = useDonneesCachees(
     `bing:${appId}`,
     () => seoService.getBingVsGoogle(appId),
+    appId,
   );
 
-  if (enCours && !donnees) return <Chargement />;
-  if (erreur) return <Erreur message={erreur} />;
-
   const sousTitre = "Archive mensuelle — « Bing » inclut Yahoo, DuckDuckGo et Ecosia (meme index)";
+
+  if (enCours && !donnees) return <Chargement />;
+  // Meme en echec, la section garde son titre : sinon un bandeau rouge
+  // orphelin flotte entre deux sections.
+  if (erreur) {
+    return (
+      <Section titre="Bing vs Google" sousTitre={sousTitre}>
+        <Erreur message={erreur} />
+      </Section>
+    );
+  }
 
   if (!donnees?.disponible) {
     return (
       <Section titre="Bing vs Google" sousTitre={sousTitre}>
-        <div className="flex items-start gap-2 text-amber-400/90 text-sm py-2">
-          <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-          <span>
-            Archive vide pour ce site. Les crons la remplissent (quotidien 04h15, mensuel
-            le 4 a 05h00 UTC) ; Bing demande la cle BING_WEBMASTER_API_KEY et une
-            propriete verifiee dans Bing Webmaster Tools.
-          </span>
-        </div>
+        <Vide message="Archive vide pour ce site. Les crons la remplissent (quotidien 04h15, mensuel le 4 a 05h00 UTC) ; Bing demande la cle BING_WEBMASTER_API_KEY et une propriete verifiee dans Bing Webmaster Tools." />
       </Section>
     );
   }
