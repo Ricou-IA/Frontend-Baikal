@@ -36,6 +36,13 @@
 **Proposition** : Ajouter dans « Modules admin multi-sites » : « Vue d'ensemble par site : EF admin-site-stats (super_admin uniquement) — KPIs par site définis dans admin-site-stats/stats-sites.ts (pack-vendeur, voirie, majordhome), fallback générique tables/volumes pour les autres. Affichée sur /admin quand le site sélectionné n'est pas ARPET. Ajouter un site = une fonction dans stats-sites.ts, redéploiement. »
 ---
 
+## [2026-08-24 23:45] Droits par site (admins délégués)
+**Statut** : PENDING
+**Commit** : 0363e2f..3aff555
+**Contexte** : Les droits d'admin délégué par site sont en place ; le CLAUDE.md ne documente pas le modèle d'accès.
+**Proposition** : Ajouter dans « Modules admin multi-sites » : « Droits par site : table admin.droits_sites (service_role only), source de vérité core.sites_autorises(uuid) exposée par public.mes_droits_sites() — consommée par AuthContext (sitesAdmin) et par les EF via _shared/droits.ts (client caller). Deux notions étanches : appartenance org = modules du site ; droit délégué = modules transverses (SEO, Partenariats, stats, users en consultation). Les org_admin sans droit délégué n'accèdent plus à SEO/Partenariats. Gestion : page Sites → bloc Admins délégués (EF admin-droits : list/grant/revoke, grant par email d'un compte existant). super_admin = tout, basé sur le profil réel. »
+---
+
 ## [2026-08-15 12:00] Le « Brain » LLM (analyzeQuery) n'est jamais appelé en production
 **Statut** : PENDING
 **Commit** : (audit de session, hors commit)
