@@ -10,11 +10,17 @@ const OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 let cachedAccessToken: { value: string; expiresAt: number } | null = null;
 
 function getConfig() {
-  const clientId = Deno.env.get("GOOGLE_GSC_OAUTH_CLIENT_ID");
-  const clientSecret = Deno.env.get("GOOGLE_GSC_OAUTH_CLIENT_SECRET");
-  const refreshToken = Deno.env.get("GOOGLE_GSC_OAUTH_REFRESH_TOKEN");
+  // Meme repli que Pack Vendeur : un seul client OAuth et un seul refresh
+  // token couvrent Ads et Search Console — les GOOGLE_GSC_OAUTH_* n'existent
+  // pas en pratique, les GOOGLE_ADS_OAUTH_* portent les valeurs.
+  const clientId = Deno.env.get("GOOGLE_GSC_OAUTH_CLIENT_ID") ||
+    Deno.env.get("GOOGLE_ADS_OAUTH_CLIENT_ID");
+  const clientSecret = Deno.env.get("GOOGLE_GSC_OAUTH_CLIENT_SECRET") ||
+    Deno.env.get("GOOGLE_ADS_OAUTH_CLIENT_SECRET");
+  const refreshToken = Deno.env.get("GOOGLE_GSC_OAUTH_REFRESH_TOKEN") ||
+    Deno.env.get("GOOGLE_ADS_OAUTH_REFRESH_TOKEN");
   if (!clientId || !clientSecret || !refreshToken) {
-    throw new Error("Secrets GOOGLE_GSC_OAUTH_* manquants");
+    throw new Error("Secrets GOOGLE_GSC_OAUTH_* ou GOOGLE_ADS_OAUTH_* manquants");
   }
   return { clientId, clientSecret, refreshToken };
 }
