@@ -66,8 +66,11 @@ import {
 function UsersContent() {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
-    const { isSuperAdmin, isOrgAdmin, profile } = useAuth();
+    const { isSuperAdmin, isOrgAdmin, sitesAdmin, profile } = useAuth();
     const { currentApp } = useApp();
+    // Un admin delegue (ni super ni org_admin) consulte sans agir.
+    const peutAgir = isSuperAdmin || isOrgAdmin;
+    const peutVoirAttente = isSuperAdmin || (!isOrgAdmin && (sitesAdmin || []).includes(currentApp));
 
     // Onglet actif (super_admin uniquement)
     const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'pending');
@@ -121,7 +124,7 @@ function UsersContent() {
 
     // Charger les utilisateurs en attente
     const loadPendingUsers = useCallback(async () => {
-        if (!isSuperAdmin) return;
+        if (!peutVoirAttente) return;
 
         setLoadingPending(true);
         try {
@@ -138,7 +141,7 @@ function UsersContent() {
         } finally {
             setLoadingPending(false);
         }
-    }, [isSuperAdmin, currentApp]);
+    }, [peutVoirAttente, currentApp]);
 
     // Charger tous les utilisateurs
     const loadUsers = useCallback(async () => {
@@ -167,11 +170,11 @@ function UsersContent() {
 
     // Charger les données initiales
     useEffect(() => {
-        if (isSuperAdmin) {
+        if (peutVoirAttente) {
             loadPendingUsers();
         }
         loadUsers();
-    }, [isSuperAdmin, loadPendingUsers, loadUsers]);
+    }, [peutVoirAttente, loadPendingUsers, loadUsers]);
 
     // Auto-hide feedback
     useEffect(() => {
@@ -346,7 +349,7 @@ function UsersContent() {
                                                 onEditRole={handleEditRole}
                                                 onResetPassword={handleResetPassword}
                                                 onRemove={handleRemove}
-                                                canEdit={user.app_role !== 'org_admin' && user.app_role !== 'super_admin'}
+                                                canEdit={peutAgir && user.app_role !== 'org_admin' && user.app_role !== 'super_admin'}
                                             />
                                         ))}
                                     </tbody>
@@ -407,13 +410,15 @@ function UsersContent() {
                         <p className="text-xs text-baikal-text font-mono">Gestion des utilisateurs du site selectionne</p>
                     </div>
                 </div>
-                <button
-                    onClick={() => setCreatingUser(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-baikal-cyan text-black font-medium rounded-md hover:bg-baikal-cyan/90 transition-colors font-mono"
-                >
-                    <Plus className="w-4 h-4" />
-                    NOUVEL_USER
-                </button>
+                {isSuperAdmin && (
+                    <button
+                        onClick={() => setCreatingUser(true)}
+                        className="flex items-center gap-2 px-4 py-2 bg-baikal-cyan text-black font-medium rounded-md hover:bg-baikal-cyan/90 transition-colors font-mono"
+                    >
+                        <Plus className="w-4 h-4" />
+                        NOUVEL_USER
+                    </button>
+                )}
             </div>
 
             {/* Tabs */}
@@ -519,7 +524,7 @@ function UsersContent() {
                                                 <PendingUserRow
                                                     key={user.id}
                                                     user={user}
-                                                    onAssign={handleAssign}
+                                                    onAssign={peutAgir ? handleAssign : undefined}
                                                 />
                                             ))}
                                         </tbody>
@@ -607,7 +612,7 @@ function UsersContent() {
                                                     onRemove={handleRemove}
                                                     onDelete={handleDelete}
                                                     isSuperAdmin={true}
-                                                    canEdit={user.app_role !== 'super_admin'}
+                                                    canEdit={peutAgir && user.app_role !== 'super_admin'}
                                                 />
                                             ))}
                                         </tbody>

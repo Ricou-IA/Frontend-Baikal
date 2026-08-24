@@ -10,6 +10,7 @@
  * `badges` optionnel : { knowledge: 3 } affiche un badge sur l'onglet.
  * ============================================================================
  */
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     LayoutDashboard, BookOpen, MessageSquareCode, Database,
@@ -63,13 +64,37 @@ function Onglet({ tab, actif, badge, onClick }) {
 
 function LayoutInterne({ actif, badges = {}, children }) {
     const navigate = useNavigate();
-    const { profile, isSuperAdmin, isImpersonating, signOut } = useAuth();
+    const { profile, isSuperAdmin, isOrgAdmin, sitesAdmin, isImpersonating, signOut } = useAuth();
     const { currentApp, setCurrentApp, availableApps } = useApp();
 
-    const modulesSite = (MODULES_SITE[currentApp] || [])
+    // Sites visibles dans le selecteur : super_admin -> tous ; sinon les
+    // sites delegues (admin.droits_sites) + le site de sa propre org.
+    const appOrg = profile?.app_id || 'arpet';
+    const sitesVisibles = isSuperAdmin
+        ? availableApps
+        : availableApps.filter((a) =>
+            sitesAdmin.includes(a.id) || (isOrgAdmin && a.id === appOrg));
+
+    // Si le site courant n'est pas visible, basculer sur le premier autorise.
+    useEffect(() => {
+        if (sitesVisibles.length > 0 && !sitesVisibles.some((a) => a.id === currentApp)) {
+            setCurrentApp(sitesVisibles[0].id);
+        }
+    }, [sitesVisibles, currentApp, setCurrentApp]);
+
+    // Modules du site : membres d'une org du site, delegues du site, super.
+    const peutModulesSite = isSuperAdmin
+        || sitesAdmin.includes(currentApp)
+        || (isOrgAdmin && appOrg === currentApp);
+    const modulesSite = (peutModulesSite ? (MODULES_SITE[currentApp] || []) : [])
         .filter((t) => !t.superAdmin || isSuperAdmin);
-    const transverses = MODULES_TRANSVERSES
-        .filter((t) => !t.superAdmin || isSuperAdmin);
+
+    // Modules transverses : droit delegue sur le site courant (ou super).
+    // L'appartenance a une org ne donne jamais les transverses.
+    const peutTransverses = isSuperAdmin || sitesAdmin.includes(currentApp);
+    const transverses = peutTransverses
+        ? MODULES_TRANSVERSES.filter((t) => !t.superAdmin || isSuperAdmin)
+        : [];
 
     const handleSignOut = async () => {
         await signOut();
@@ -92,7 +117,7 @@ function LayoutInterne({ actif, badges = {}, children }) {
                             <AppSelector
                                 currentApp={currentApp}
                                 onAppChange={setCurrentApp}
-                                apps={availableApps}
+                                apps={sitesVisibles}
                                 showLabel={false}
                                 className="w-56"
                             />

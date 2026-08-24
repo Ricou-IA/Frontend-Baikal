@@ -50,6 +50,7 @@ export default function PendingUserRow({ user, onAssign }) {
 
             {/* Actions */}
             <td className="px-4 py-4">
+                {onAssign && (
                 <button
                     onClick={() => onAssign(user)}
                     className="flex items-center gap-2 px-3 py-1.5 bg-baikal-cyan text-black text-sm font-medium rounded hover:bg-baikal-cyan/90 transition-colors font-mono"
@@ -57,6 +58,7 @@ export default function PendingUserRow({ user, onAssign }) {
                     <Building2 className="w-4 h-4" />
                     ASSIGNER
                 </button>
+                )}
             </td>
         </tr>
     );

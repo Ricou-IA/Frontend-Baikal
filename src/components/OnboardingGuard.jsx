@@ -150,7 +150,7 @@ export function PublicRoute({ children }) {
  * Affiche un écran d'accès refusé si non admin
  */
 export function AdminRoute({ children }) {
-  const { isAuthenticated, isOrgAdmin, hasProfile, loading, refreshProfile, signOut } = useAuth();
+  const { isAuthenticated, isOrgAdmin, sitesAdmin, hasProfile, loading, refreshProfile, signOut } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -165,7 +165,8 @@ export function AdminRoute({ children }) {
     return <ProfileErrorScreen onRetry={refreshProfile} onSignOut={signOut} />;
   }
 
-  if (!isOrgAdmin) {
+  // org_admin/super_admin, ou admin délégué d'au moins un site
+  if (!isOrgAdmin && !(sitesAdmin?.length > 0)) {
     return <AccessDeniedScreen />;
   }
 

@@ -47,6 +47,7 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [organization, setOrganization] = useState(null);
+  const [sitesAdmin, setSitesAdmin] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -109,6 +110,7 @@ export function AuthProvider({ children }) {
         // PGRST116 = No rows found (profil non créé)
         if (profileError.code === 'PGRST116') {
           setProfile(null);
+          setSitesAdmin([]);
           setOrganization(null);
           profileLoadedRef.current = true;
           return;
@@ -117,6 +119,15 @@ export function AuthProvider({ children }) {
       }
 
       setProfile(profileData);
+
+      // Droits d'admin delegue par site (table admin.droits_sites) :
+      // super_admin -> toutes les apps actives, delegue -> ses sites, sinon [].
+      try {
+        const { data: droits } = await supabase.rpc('mes_droits_sites');
+        setSitesAdmin(Array.isArray(droits) ? droits : []);
+      } catch {
+        setSitesAdmin([]);
+      }
 
       // Charger l'organisation si présente
       if (profileData?.org_id) {
@@ -205,6 +216,7 @@ export function AuthProvider({ children }) {
           }
         } else if (event === 'SIGNED_OUT') {
           setProfile(null);
+          setSitesAdmin([]);
           setOrganization(null);
           profileLoadedRef.current = false;
           loadingProfileRef.current = false;
@@ -332,6 +344,7 @@ export function AuthProvider({ children }) {
       setUser(null);
       setSession(null);
       setProfile(null);
+      setSitesAdmin([]);
       setOrganization(null);
       profileLoadedRef.current = false;
 
@@ -410,8 +423,10 @@ export function AuthProvider({ children }) {
   // isOrgAdmin est basé sur le profil effectif
   const isOrgAdmin = effectiveProfile?.app_role === 'org_admin' || effectiveProfile?.app_role === 'super_admin';
 
-  // Accès à la console admin (super_admin ou org_admin)
-  const hasConsoleAccess = ['super_admin', 'org_admin'].includes(effectiveProfile?.app_role);
+  // Accès à la console admin : super_admin, org_admin, ou admin délégué
+  // d'au moins un site (admin.droits_sites)
+  const hasConsoleAccess = ['super_admin', 'org_admin'].includes(effectiveProfile?.app_role)
+    || sitesAdmin.length > 0;
 
   // ========================================================================
   // VALEUR DU CONTEXTE
@@ -433,6 +448,7 @@ export function AuthProvider({ children }) {
     isOnboarded,
     isOrgAdmin,
     isSuperAdmin, // Toujours basé sur le profil réel
+    sitesAdmin, // Sites où l'utilisateur est admin délégué (tous si super_admin)
     hasProfile: !!effectiveProfile,
     hasConsoleAccess, // Nouveau flag pour accès admin
 
