@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { searchAnalytics, windowAnchored, previousWindow, type GscRow } from "./gsc.ts";
+import { searchAnalytics, windowAnchored, previousWindow, type GscRow } from "../_shared/gsc.ts";
 import { ErreurAcces, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 
 const corsHeaders = {

@@ -120,3 +120,9 @@ export function previousWindow(days: number): { startDate: string; endDate: stri
   start.setUTCDate(start.getUTCDate() - (days - 1));
   return { startDate: toIsoDate(start), endDate: toIsoDate(end) };
 }
+
+// Requetes en "phrase exacte" (guillemets) : du bruit d'outils de verification
+// automatisee, ecarte des agregats mais conserve en archive (is_noise).
+export function isExactPhraseQuery(query: string | null | undefined): boolean {
+  return (query ?? "").includes('"');
+}
