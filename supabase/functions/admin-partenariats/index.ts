@@ -1,7 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { buildUnsubscribeUrl, renderTemplate, sendOneEmail } from "./envoi.ts";
-import { chargerSite, ErreurSite, lecteurSite } from "../_shared/sites.ts";
 import { ErreurAcces, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 
 const corsHeaders = {
@@ -213,58 +212,13 @@ serve(async (req) => {
         });
       }
 
-      case "import-diagnostiqueurs": {
-        // Lit diag_certifie dans la base du site via le connecteur (SQL lecture seule).
-        const site = await chargerSite(admin, appId);
-        if (!site.db_schema) {
-          return json({ data: null, error: "Site sans base configuree (db_schema)" }, 400);
-        }
-        const sql = lecteurSite(site);
-        let certifies: Array<Record<string, unknown>>;
-        try {
-          const filtreDept = body.departement && /^\d{2,3}$/.test(body.departement)
-            ? sql`AND s.code_postal LIKE ${body.departement + "%"}`
-            : sql``;
-          certifies = await sql`
-            SELECT c.nom, c.prenom, c.email, c.telephone,
-                   s.nom_affiche, s.code_postal, s.commune
-            FROM ${sql(site.db_schema)}.diag_certifie c
-            JOIN ${sql(site.db_schema)}.diag_site s ON s.slug = c.slug
-            WHERE c.email IS NOT NULL ${filtreDept}
-            LIMIT 10000`;
-        } finally {
-          await sql.end();
-        }
-        const parEmail = new Map<string, Record<string, unknown>>();
-        for (const c of certifies) {
-          const email = String(c.email ?? "").trim().toLowerCase();
-          if (!email.includes("@") || parEmail.has(email)) continue;
-          parEmail.set(email, {
-            app_id: appId,
-            type: "diagnostiqueur",
-            email,
-            nom: c.nom ?? null, prenom: c.prenom ?? null,
-            entreprise: c.nom_affiche ?? null,
-            telephone: c.telephone ?? null,
-            code_postal: c.code_postal ?? null,
-            source: "diag_certifie",
-            donnees: { commune: c.commune ?? null },
-          });
-        }
-        const lignes = [...parEmail.values()];
-        const { data, error } = await admin.schema("admin").from("prospects")
-          .upsert(lignes, { onConflict: "app_id,email", ignoreDuplicates: true })
-          .select("id");
+      case "sync-diagnostiqueurs": {
+        // Le mapping vit dans admin.sync_diagnostiqueurs, partage avec le
+        // cron nocturne admin-sync-diag-prospects (03h30).
+        const { data, error } = await admin.schema("admin")
+          .rpc("sync_diagnostiqueurs", { p_app_id: appId });
         if (error) throw error;
-        return json({
-          data: {
-            lus: certifies.length,
-            avecEmail: lignes.length,
-            inseres: data?.length ?? 0,
-            doublons: lignes.length - (data?.length ?? 0),
-          },
-          error: null,
-        });
+        return json({ data, error: null });
       }
 
       case "list-campagnes": {
@@ -452,9 +406,6 @@ serve(async (req) => {
     console.error("[admin-partenariats]", e);
     if (e instanceof ErreurAcces) {
       return json({ data: null, error: e.message }, 403);
-    }
-    if (e instanceof ErreurSite) {
-      return json({ data: null, error: e.message }, 400);
     }
     const message = e instanceof Error
       ? e.message
