@@ -29,6 +29,13 @@
 **Proposition** : Ajouter dans « Modules admin multi-sites » : « La console est enveloppée par src/components/console/ConsoleLayout.jsx (header + sélecteur de site global AppProvider/AppSelector + navigation). Onglets contextuels : modules ARPET (Dashboard, Connaissances, Prompts, Indexation — pilotés par /admin?tab=…) visibles seulement quand le site sélectionné est arpet ; SEO/Partenariats/Utilisateurs/Sites sont transverses. La vue public.apps expose domaine, db_schema, heberge_dedie (jamais db_ro_secret_ref). Les RPC get_pending_users/get_users_for_admin prennent p_app_id ; le site d'un profil se résout par COALESCE(profiles.app_id, auth.users.raw_user_meta_data->>'source', 'arpet') — les inscriptions hors console (ex. voirie) ne posent pas profiles.app_id. »
 ---
 
+## [2026-08-24 22:30] Vue d'ensemble par site : EF admin-site-stats
+**Statut** : PENDING
+**Commit** : 5975c07
+**Contexte** : Premier module métier du hub sur le connecteur lecture seule.
+**Proposition** : Ajouter dans « Modules admin multi-sites » : « Vue d'ensemble par site : EF admin-site-stats (super_admin uniquement) — KPIs par site définis dans admin-site-stats/stats-sites.ts (pack-vendeur, voirie, majordhome), fallback générique tables/volumes pour les autres. Affichée sur /admin quand le site sélectionné n'est pas ARPET. Ajouter un site = une fonction dans stats-sites.ts, redéploiement. »
+---
+
 ## [2026-08-15 12:00] Le « Brain » LLM (analyzeQuery) n'est jamais appelé en production
 **Statut** : PENDING
 **Commit** : (audit de session, hors commit)
