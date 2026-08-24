@@ -43,9 +43,12 @@
 **Proposition** : Ajouter dans « Modules admin multi-sites » : « Droits par site : table admin.droits_sites (service_role only), source de vérité core.sites_autorises(uuid) exposée par public.mes_droits_sites() — consommée par AuthContext (sitesAdmin) et par les EF via _shared/droits.ts (client caller). Deux notions étanches : appartenance org = modules du site ; droit délégué = modules transverses (SEO, Partenariats, stats, users en consultation). Les org_admin sans droit délégué n'accèdent plus à SEO/Partenariats. Gestion : page Sites → bloc Admins délégués (EF admin-droits : list/grant/revoke, grant par email d'un compte existant). super_admin = tout, basé sur le profil réel. »
 ---
 
-## [2026-08-24 23:30] Partenariats : sync nocturne des diagnostiqueurs
+## [2026-08-24 23:55] Partenariats : sync nocturne des diagnostiqueurs
 **Statut** : PENDING
 **Commit** : b380c2c..431c8b3
+**Dépendance** : appliquer d'abord la proposition du [2026-08-24 16:00] — elle
+modifie la même phrase du CLAUDE.md (l'ancre ci-dessous n'existera plus telle
+quelle après son application ; viser alors la mention du connecteur SQL).
 **Contexte** : L'import manuel des diagnostiqueurs est remplacé par
 admin.sync_diagnostiqueurs() (fonction SQL, INSERT...SELECT depuis
 dpe.diag_certifie, ON CONFLICT DO NOTHING), appelée par le cron

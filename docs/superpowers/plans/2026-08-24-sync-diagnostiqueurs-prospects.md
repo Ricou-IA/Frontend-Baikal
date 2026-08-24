@@ -28,7 +28,7 @@ casserait le bouton.
 **Files:**
 - Create: `supabase/migrations/20260825010000_sync_diagnostiqueurs_prospects.sql`
 
-- [ ] **Step 1 : Écrire la migration**
+- [x] **Step 1 : Écrire la migration**
 
 ```sql
 -- ---------------------------------------------------------------------------
@@ -135,7 +135,7 @@ select cron.schedule(
 notify pgrst, 'reload schema';
 ```
 
-- [ ] **Step 2 : Appliquer la migration**
+- [x] **Step 2 : Appliquer la migration**
 
 Run : `npx supabase db push`
 Attendu : `Applying migration 20260825010000_sync_diagnostiqueurs_prospects.sql... Finished supabase db push.`
@@ -143,7 +143,7 @@ Attendu : `Applying migration 20260825010000_sync_diagnostiqueurs_prospects.sql.
 tel quel dans le SQL editor du dashboard — projet odspcxgafcqxjzrarsqf — puis
 noter dans le commit que la migration a été appliquée à la main.)
 
-- [ ] **Step 3 : Vérifier la fonction (SQL editor du dashboard)**
+- [x] **Step 3 : Vérifier la fonction (SQL editor du dashboard)**
 
 ```sql
 select admin.sync_diagnostiqueurs('monsieurdpe');
@@ -163,7 +163,7 @@ select jobname, schedule, command from cron.job
 ```
 Attendu : 1 ligne, `30 3 * * *`, commande `select admin.sync_diagnostiqueurs('monsieurdpe');`.
 
-- [ ] **Step 4 : Commit**
+- [x] **Step 4 : Commit**
 
 ```bash
 git add supabase/migrations/20260825010000_sync_diagnostiqueurs_prospects.sql
@@ -178,7 +178,7 @@ git commit -m "feat(partenariats): fonction admin.sync_diagnostiqueurs + cron 03
 - Modify: `supabase/functions/admin-partenariats/index.ts:4` (imports),
   `:216-268` (action), `:453-458` (catch)
 
-- [ ] **Step 1 : Remplacer l'action `import-diagnostiqueurs`**
+- [x] **Step 1 : Remplacer l'action `import-diagnostiqueurs`**
 
 Supprimer tout le bloc `case "import-diagnostiqueurs": { ... }` (lignes
 216-268, de `// Lit diag_certifie...` à la fermeture du case) et le remplacer
@@ -195,7 +195,7 @@ par :
       }
 ```
 
-- [ ] **Step 2 : Retirer le connecteur sites.ts devenu inutile**
+- [x] **Step 2 : Retirer le connecteur sites.ts devenu inutile**
 
 L'action supprimée était le seul usage du connecteur dans cette EF.
 
@@ -212,17 +212,17 @@ Dans le `catch` final (vers la ligne 453), supprimer le bloc :
 ```
 (Garder le bloc `ErreurAcces`, toujours utilisé par `exigerSite`.)
 
-- [ ] **Step 3 : Vérifier qu'il ne reste aucune référence**
+- [x] **Step 3 : Vérifier qu'il ne reste aucune référence**
 
 Run : `grep -n "ErreurSite\|chargerSite\|lecteurSite\|import-diagnostiqueurs" supabase/functions/admin-partenariats/index.ts`
 Attendu : aucune sortie.
 
-- [ ] **Step 4 : Déployer**
+- [x] **Step 4 : Déployer**
 
 Run : `npx supabase functions deploy admin-partenariats`
 Attendu : `Deployed Functions on project odspcxgafcqxjzrarsqf: admin-partenariats`.
 
-- [ ] **Step 5 : Commit**
+- [x] **Step 5 : Commit**
 
 ```bash
 git add supabase/functions/admin-partenariats/index.ts
@@ -237,7 +237,7 @@ git commit -m "feat(partenariats): action sync-diagnostiqueurs via RPC, retrait 
 - Modify: `src/services/partenariats.service.js:16-18`
 - Modify: `src/pages/Partenariats.jsx:4`, `:94-104` (handler), `:141-147` (bouton)
 
-- [ ] **Step 1 : Service**
+- [x] **Step 1 : Service**
 
 Remplacer :
 ```js
@@ -252,7 +252,7 @@ par :
   },
 ```
 
-- [ ] **Step 2 : Handler de la page**
+- [x] **Step 2 : Handler de la page**
 
 Dans `src/pages/Partenariats.jsx`, remplacer la fonction
 `importerDiagnostiqueurs` (lignes 94-104, `window.prompt` compris) par :
@@ -271,7 +271,7 @@ Dans `src/pages/Partenariats.jsx`, remplacer la fonction
   }
 ```
 
-- [ ] **Step 3 : Bouton**
+- [x] **Step 3 : Bouton**
 
 Remplacer le bouton (lignes 141-147) par :
 
@@ -289,7 +289,7 @@ Remplacer le bouton (lignes 141-147) par :
 Et ligne 4, ajuster le commentaire d'en-tête :
 `* CRM de prospection multi-sites : prospects (import CSV, sync diagnostiqueurs)`.
 
-- [ ] **Step 4 : Vérifier le build et l'absence de référence morte**
+- [x] **Step 4 : Vérifier le build et l'absence de référence morte**
 
 Run : `npm run build`
 Attendu : build Vite sans erreur.
@@ -297,14 +297,14 @@ Attendu : build Vite sans erreur.
 Run : `grep -rn "importDiagnostiqueurs\|import-diagnostiqueurs" src/`
 Attendu : aucune sortie.
 
-- [ ] **Step 5 : Test manuel dans la console**
+- [x] **Step 5 : Test manuel dans la console**
 
 Page Partenariats, site MonsieurDPE → clic « Synchroniser les
 diagnostiqueurs » → message « Synchronisation : 0 insérés, N doublons… » (la
 migration de la Task 1 a déjà tout inséré) ; la liste des prospects se
 recharge.
 
-- [ ] **Step 6 : Commit**
+- [x] **Step 6 : Commit**
 
 ```bash
 git add src/services/partenariats.service.js src/pages/Partenariats.jsx
@@ -322,7 +322,7 @@ sans accord explicite — on passe par `.claude/proposed-updates.md`.
 **Files:**
 - Modify: `.claude/proposed-updates.md` (append)
 
-- [ ] **Step 1 : Appender la proposition**
+- [x] **Step 1 : Appender la proposition**
 
 ```markdown
 ## [2026-08-24 23:30] Partenariats : sync nocturne des diagnostiqueurs
@@ -341,7 +341,7 @@ dpe.diag_certifie, synchronisee a 02h30 par le projet DPE) ».
 ---
 ```
 
-- [ ] **Step 2 : Commit**
+- [x] **Step 2 : Commit**
 
 ```bash
 git add .claude/proposed-updates.md

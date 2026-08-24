@@ -97,7 +97,8 @@ function Prospects({ appId }) {
     setMessage(error
       ? error.message
       : `Synchronisation : ${data.inseres} insérés, ${data.doublons} doublons ignorés `
-        + `(${data.lus} certifiés lus, ${data.avecEmail} avec email).`);
+        + `(${data.lus} certifiés lus, ${data.avecEmail} avec email). `
+        + `La synchronisation est également automatique chaque nuit à 03h30.`);
     setOccupe(false);
     charger();
   }
