@@ -264,6 +264,36 @@ serve(async (req) => {
       return json({ data: { lignes: data ?? [] }, error: null });
     }
 
+    if (action === "partenariat") {
+      const { data: contrats } = await admin.schema("admin").from("partenariats")
+        .select("*").eq("app_id", appId).order("debut");
+      if (!contrats || contrats.length === 0) {
+        return json({ data: { contrat: null, lignes: [] }, error: null });
+      }
+      const contrat = contrats[0];
+      // Les surcharges simulent une autre lecture SANS toucher au contrat :
+      // c'est ce qui doit eclairer l'arbitrage des definitions de l'article 1.
+      // Wrapper public SECURITY DEFINER (convention du depot), plutot que de
+      // dependre de l'exposition des fonctions du schema admin par PostgREST.
+      const { data, error } = await admin.rpc("admin_partenariat_serie", {
+        p_partenariat: contrat.id,
+        p_assiette: body.assiette ?? null,
+        p_prix_unitaire: body.prixUnitaire ?? null,
+      });
+      if (error) throw new Error(error.message);
+      return json({
+        data: {
+          contrat,
+          simulation: {
+            assiette: body.assiette ?? contrat.assiette,
+            prix_unitaire: body.prixUnitaire ?? contrat.prix_unitaire,
+          },
+          lignes: data ?? [],
+        },
+        error: null,
+      });
+    }
+
     if (action === "charges") {
       const { data, error } = await admin.schema("admin").from("charges_recurrentes")
         .select("*").eq("app_id", appId).order("debut", { ascending: false });

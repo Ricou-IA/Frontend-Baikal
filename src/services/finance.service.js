@@ -44,6 +44,9 @@ export const financeService = {
   getVentes(appId, debut, fin) {
     return appelerEdge('admin-finance', { action: 'ventes', appId, debut, fin });
   },
+  getPartenariat(appId, assiette = null, prixUnitaire = null) {
+    return appelerEdge('admin-finance', { action: 'partenariat', appId, assiette, prixUnitaire });
+  },
   getCharges(appId) {
     return appelerEdge('admin-finance', { action: 'charges', appId });
   },

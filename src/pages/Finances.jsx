@@ -456,6 +456,119 @@ function Ventes({ appId }) {
   );
 }
 
+const ASSIETTES = [
+  ['organic', 'Organique seul'],
+  ['organic_unattributed', 'Organique + sans origine'],
+  ['hors_ads', 'Tout sauf publicité'],
+  ['toutes', 'Toutes les ventes'],
+];
+
+function Partenariat({ appId }) {
+  const [assiette, setAssiette] = useState(null);
+
+  const { donnees, erreur, enCours } = useDonneesCachees(
+    `partenariat:${appId}:${assiette ?? 'contrat'}`,
+    () => financeService.getPartenariat(appId, assiette),
+    appId,
+  );
+
+  const contrat = donnees?.contrat;
+  const lignes = donnees?.lignes ?? [];
+  const assietteActive = donnees?.simulation?.assiette;
+
+  return (
+    <Section
+      titre="Partenariat au résultat"
+      sousTitre={contrat
+        ? `${contrat.partenaire} — franchise de ${contrat.franchise} ventes par mois civil, partage à ${Math.round(contrat.part * 100)} %, depuis le ${contrat.debut}`
+        : undefined}
+      action={contrat && (
+        <div className="flex gap-2 items-center flex-wrap">
+          {ASSIETTES.map(([cle, libelle]) => (
+            <button
+              key={cle}
+              onClick={() => setAssiette(cle)}
+              disabled={enCours}
+              className={`px-3 py-1 rounded border text-sm disabled:opacity-50 ${assietteActive === cle
+                ? 'border-baikal-cyan text-baikal-cyan'
+                : 'border-baikal-border text-baikal-text'}`}
+            >
+              {libelle}
+            </button>
+          ))}
+        </div>
+      )}
+    >
+      {erreur && <Erreur message={erreur} />}
+      {!donnees && !erreur && <Chargement />}
+      {donnees && !contrat && (
+        <Vide message="Aucun partenariat au résultat sur ce site." />
+      )}
+      {contrat && (
+        <ContenuEstompe enCours={enCours}>
+          <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
+            <table className="w-full text-sm text-baikal-text">
+              <thead>
+                <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
+                  <th className="px-4 py-2">Mois</th>
+                  <th className="text-right px-2 py-2">Ventes</th>
+                  <th className="text-right px-2 py-2">Partageables</th>
+                  <th className="text-right px-2 py-2">CA partageable</th>
+                  <th className="text-right px-2 py-2">Coûts imputés</th>
+                  <th className="text-right px-2 py-2">Résultat</th>
+                  <th className="text-right px-2 py-2">Report</th>
+                  <th className="text-right px-4 py-2">Quote-part</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lignes.length === 0 && (
+                  <LigneVide colonnes={8} message="Aucun mois depuis le début du contrat." />
+                )}
+                {lignes.map((l) => (
+                  <tr key={l.mois} className="border-t border-baikal-border/50">
+                    <td className="px-4 py-2 font-mono text-xs">{String(l.mois).slice(0, 7)}</td>
+                    <td className="text-right px-2 py-2 tabular-nums">{fmtNombre(l.ventes)}</td>
+                    <td className={`text-right px-2 py-2 tabular-nums ${l.ventes_partageables === 0 ? 'opacity-40' : 'text-white'}`}>
+                      {fmtNombre(l.ventes_partageables)}
+                    </td>
+                    <td className="text-right px-2 py-2 tabular-nums">{fmtEur(Number(l.ca_partageable_ht))}</td>
+                    <td className="text-right px-2 py-2 tabular-nums opacity-70">{fmtEur(Number(l.couts_imputables))}</td>
+                    <td className="text-right px-2 py-2 tabular-nums">{fmtEur(Number(l.resultat_partageable))}</td>
+                    <td className={`text-right px-2 py-2 tabular-nums ${Number(l.report_sortant) < 0 ? 'text-red-400' : 'opacity-40'}`}>
+                      {Number(l.report_sortant) < 0 ? fmtEur(Number(l.report_sortant)) : '—'}
+                    </td>
+                    <td className={`text-right px-4 py-2 tabular-nums font-semibold ${Number(l.quote_part) > 0 ? 'text-emerald-400' : 'opacity-40'}`}>
+                      {Number(l.quote_part) > 0 ? fmtEur(Number(l.quote_part)) : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[11px] text-baikal-text opacity-50 leading-relaxed">
+            <strong className="opacity-100">Lecture</strong> · Les {contrat.franchise} premières
+            ventes de chaque mois civil ne sont pas partagées. Le seuil s'apprécie mois par mois,
+            sans report des ventes non réalisées — mais un résultat négatif, lui, se reporte
+            jusqu'à apurement. Les coûts directs retenus ({contrat.couts_directs.join(', ')}) sont
+            imputés au prorata des ventes partageables.
+            {' '}<strong className="opacity-100">Les boutons ci-dessus simulent une autre assiette</strong> ;
+            ils ne modifient pas le contrat, dont l'assiette reste « {contrat.assiette} ».
+          </p>
+          <div className="p-3 bg-amber-900/20 border border-amber-500/50 rounded-md flex items-start gap-3 text-amber-300 text-sm">
+            <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+            <span>
+              Trois termes de l'article 7 ne sont pas encore définis contractuellement : l'assiette
+              des « Ventes du mois », le « prix unitaire HT encaissé » (ici {fmtEur(Number(contrat.prix_catalogue_ht))},
+              mode « {contrat.prix_unitaire} ») et la liste des « Coûts Directs ». Les valeurs
+              affichées sont des hypothèses de travail, pas un décompte opposable.
+            </span>
+          </div>
+        </ContenuEstompe>
+      )}
+    </Section>
+  );
+}
+
 function FinancesContent() {
   const { currentApp } = useApp();
   return (
@@ -463,6 +576,7 @@ function FinancesContent() {
       <Synthese appId={currentApp} />
       <Tendance appId={currentApp} />
       <Ventes appId={currentApp} />
+      <Partenariat appId={currentApp} />
       <ChargesRecurrentes appId={currentApp} />
     </div>
   );
