@@ -354,7 +354,7 @@ Deno.test("une charge et son remboursement donnent une vente au net trace", () =
 
   assertEquals(ventes.length, 1);
   assertEquals(ventes[0].montant_ttc, 24.99);
-  assertEquals(ventes[0].montant_ht, 20.83);          // 24.99 / 1.20, arrondi 2 dec.
+  assertEquals(ventes[0].montant_ht, 20.82);          // (24.99 / 1.20).toFixed(2), comme PV
   assertEquals(ventes[0].montant_rembourse, 24.99);   // le CA reste, le remboursement est un cout
   assertEquals(ventes[0].frais_stripe_eur, 0.62);
 });
