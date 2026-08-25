@@ -16,7 +16,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ErreurAcces, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 import { captureJour, capturePeriode } from "./capture.ts";
-import { enrichirSite } from "./enrichissement.ts";
+import { enrichirSite, sitesAvecVue } from "./enrichissement.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -161,11 +161,28 @@ serve(async (req) => {
       const rattrapage = Number(body.rattrapage ?? 0);
       const base = body.jour ? new Date(`${body.jour}T00:00:00Z`) : new Date();
       const resultats = [];
-      for (let i = 0; i <= rattrapage; i++) {
-        const jour = new Date(base.getTime() - i * 86_400_000);
-        resultats.push({ jour: jour.toISOString().slice(0, 10), ...(await captureJour(admin, jour)) });
+      if (body.jour && rattrapage === 0) {
+        // Une journee precise, a la demande.
+        resultats.push({ jour: body.jour, ...(await captureJour(admin, base)) });
+      } else {
+        // Fenetre de rattrapage : UNE passe pour toute la periode. Boucler jour
+        // par jour rouvrait une connexion distante par jour et par site, et la
+        // fonction depassait sa limite de ressources (statut 546).
+        const depuisJour = new Date(base.getTime() - rattrapage * 86_400_000);
+        resultats.push({
+          periode: `${depuisJour.toISOString().slice(0, 10)} → ${base.toISOString().slice(0, 10)}`,
+          ...(await capturePeriode(admin, depuisJour, base)),
+        });
       }
-      return json({ data: { jours: resultats }, error: null });
+      // L'attribution suit dans la meme passe : une vente capturee sans son
+      // origine resterait « sans origine » jusqu'au lendemain, ce qui se lirait
+      // comme une baisse de l'organique.
+      const enrichis = [];
+      const depuis = new Date(base.getTime() - rattrapage * 86_400_000);
+      for (const appId of sitesAvecVue()) {
+        enrichis.push({ appId, ...(await enrichirSite(admin, appId, depuis, base)) });
+      }
+      return json({ data: { jours: resultats, attribution: enrichis }, error: null });
     }
 
     // Enrichissement par la vue du site : meme porte que la capture (cron).

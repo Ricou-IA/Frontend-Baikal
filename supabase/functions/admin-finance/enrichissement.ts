@@ -22,6 +22,11 @@ const VUE_VENTES: Record<string, string> = {
   "pack-vendeur": "public.pv_ventes_baikal",
 };
 
+/** Sites disposant d'une vue au contrat. */
+export function sitesAvecVue(): string[] {
+  return Object.keys(VUE_VENTES);
+}
+
 export interface ResultatEnrichissement {
   lues: number;
   enrichies: number;
