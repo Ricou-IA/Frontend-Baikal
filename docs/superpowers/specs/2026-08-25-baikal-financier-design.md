@@ -125,8 +125,13 @@ Un site sans adaptateur n'a pas de module Financier — il n'est pas approximé.
 MonsieurDPE. Deux chemins, dans cet ordre :
 
 1. `metadata.application` sur le PaymentIntent, quand les sites l'auront posée ;
-2. **en attendant**, rapprochement par `stripe_payment_intent_id` avec la vue de
-   chaque site — c'est la vue qui dit à quel site appartient la vente.
+2. **correspondance produit → site** via `admin.stripe_mapping` : le Product ou
+   le Price de la ligne de commande, à défaut le libellé de la ligne pour les
+   prix construits en `price_data` (Voirie). Alimentée automatiquement pour
+   MonsieurDPE, dont les six Products portent déjà `metadata.application`. C'est
+   le seul chemin disponible au lot 1, avant que la vue des sites n'existe ;
+3. rapprochement par `stripe_payment_intent_id` avec la vue de chaque site
+   (lot 2) — c'est la vue qui dit à quel site appartient la vente.
 
 Le chemin 2 fonctionne dès aujourd'hui et reste le filet de sécurité ensuite.
 Un encaissement qu'aucun site ne réclame est archivé en `app_id = 'inconnu'`
