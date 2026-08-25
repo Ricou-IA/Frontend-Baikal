@@ -16,6 +16,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ErreurAcces, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 import { captureJour, capturePeriode } from "./capture.ts";
+import { enrichirSite } from "./enrichissement.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -80,9 +81,11 @@ function agregerVentes(ventes: any[]) {
 
 async function fenetre(admin: any, appId: string, debut: Date, fin: Date, charges: any[]) {
   const [{ data: ventes }, { data: jours }] = await Promise.all([
-    admin.schema("admin").from("ventes")
-      .select("montant_ttc, montant_ht, frais_stripe_eur, montant_rembourse")
-      .eq("app_id", appId).gte("paid_at", debut.toISOString()).lte("paid_at", fin.toISOString()),
+    admin.schema("admin").from("ventes_enrichies")
+      .select("montant_ttc, montant_ht, frais_stripe_eur, montant_rembourse, canal, perimetre")
+      // Les ventes que la vue du site ignore sont des tests : hors agregats.
+      .eq("app_id", appId).eq("exclue", false)
+      .gte("paid_at", debut.toISOString()).lte("paid_at", fin.toISOString()),
     admin.schema("admin").from("finance_jours")
       .select("jour, cout_ia_eur, ads_eur, complet")
       .eq("app_id", appId)
@@ -91,6 +94,14 @@ async function fenetre(admin: any, appId: string, debut: Date, fin: Date, charge
   ]);
 
   const t = agregerVentes(ventes ?? []);
+  const parCanal: Record<string, { ventes: number; ca_ttc: number }> = {};
+  for (const v of ventes ?? []) {
+    const c = String(v.canal ?? "unattributed");
+    const cur = parCanal[c] ?? { ventes: 0, ca_ttc: 0 };
+    cur.ventes += 1;
+    cur.ca_ttc = arrondi(cur.ca_ttc + Number(v.montant_ttc));
+    parCanal[c] = cur;
+  }
   let coutIa = 0;
   let ads: number | null = null;
   const incomplets: string[] = [];
@@ -111,6 +122,7 @@ async function fenetre(admin: any, appId: string, debut: Date, fin: Date, charge
     ),
     complet: incomplets.length === 0,
     jours_incomplets: incomplets,
+    par_canal: parCanal,
   };
 }
 
@@ -154,6 +166,22 @@ serve(async (req) => {
         resultats.push({ jour: jour.toISOString().slice(0, 10), ...(await captureJour(admin, jour)) });
       }
       return json({ data: { jours: resultats }, error: null });
+    }
+
+    // Enrichissement par la vue du site : meme porte que la capture (cron).
+    if (action === "enrichir") {
+      const attendu = Deno.env.get("ADMIN_FINANCE_CRON_SECRET") ??
+        Deno.env.get("ADMIN_SEO_CRON_SECRET");
+      if (!attendu || req.headers.get("x-cron-secret") !== attendu) {
+        return json({ data: null, error: "Secret de cron invalide" }, 401);
+      }
+      const r = await enrichirSite(
+        admin,
+        String(body.appId ?? ""),
+        new Date(`${body.debut ?? "2026-01-01"}T00:00:00Z`),
+        new Date(`${body.fin ?? "2030-01-01"}T23:59:59Z`),
+      );
+      return json({ data: r, error: null });
     }
 
     // --- Chemin utilisateur : droits par site.
@@ -211,8 +239,8 @@ serve(async (req) => {
     if (action === "ventes") {
       const debut = new Date(String(body.debut));
       const fin = new Date(String(body.fin));
-      const { data, error } = await admin.schema("admin").from("ventes")
-        .select("*").eq("app_id", appId)
+      const { data, error } = await admin.schema("admin").from("ventes_enrichies")
+        .select("*").eq("app_id", appId).eq("exclue", false)
         .gte("paid_at", debut.toISOString()).lte("paid_at", fin.toISOString())
         .order("paid_at", { ascending: false }).limit(500);
       if (error) throw new Error(error.message);

@@ -45,6 +45,15 @@ const POSTES = [
   ['resultat', 'Résultat', 'eur'],
 ];
 
+const CANAUX = {
+  paid: ['Publicité', 'text-amber-400'],
+  campaign: ['Campagne', 'text-violet-400'],
+  organic: ['Organique', 'text-emerald-400'],
+  referral: ['Référent', 'text-blue-400'],
+  unattributed: ['Sans origine', 'text-baikal-text'],
+  indetermine: ['Origine perdue', 'text-red-400/80'],
+};
+
 function fmtEur(n) {
   if (n === null || n === undefined) return '—';
   return `${new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)} €`;
@@ -336,6 +345,18 @@ function Ventes({ appId }) {
 
   const lignes = donnees?.lignes ?? [];
 
+  const parCanal = useMemo(() => {
+    const m = new Map();
+    for (const v of lignes) {
+      const cle = v.canal || 'unattributed';
+      const cur = m.get(cle) || { canal: cle, ventes: 0, ca: 0 };
+      cur.ventes += 1;
+      cur.ca += Number(v.montant_ttc);
+      m.set(cle, cur);
+    }
+    return [...m.values()].sort((a, b) => b.ventes - a.ventes);
+  }, [lignes]);
+
   const parOffre = useMemo(() => {
     const m = new Map();
     for (const v of lignes) {
@@ -365,6 +386,28 @@ function Ventes({ appId }) {
               ))}
             </div>
           )}
+
+          {parCanal.length > 0 && (
+            <>
+              <div className="flex gap-2 flex-wrap">
+                {parCanal.map((c) => {
+                  const [libelle, classe] = CANAUX[c.canal] || [c.canal, 'text-baikal-text'];
+                  return (
+                    <span key={c.canal} className="px-3 py-1.5 rounded-md border border-baikal-border text-sm text-baikal-text">
+                      <span className={classe}>{libelle}</span> · <span className="text-white">{c.ventes}</span> · {fmtEur(c.ca)}
+                    </span>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] text-baikal-text opacity-50 leading-relaxed">
+                <strong className="opacity-100">Lecture</strong> · « Sans origine » est une catégorie
+                à part entière, jamais un reste à répartir : ces visiteurs sont arrivés sans que le
+                navigateur transmette d'où. « Origine perdue » est différent — la vente <em>avait</em>
+                une origine, effacée depuis par la purge RGPD du site. Les confondre ferait croire à
+                une baisse de l'organique là où il n'y a qu'un oubli de mesure.
+              </p>
+            </>
+          )}
           <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
             <div className="max-h-[420px] overflow-y-auto">
               <table className="w-full text-sm text-baikal-text">
@@ -372,6 +415,7 @@ function Ventes({ appId }) {
                   <tr className="text-left text-xs opacity-70">
                     <th className="px-4 py-2">Payée le</th>
                     <th className="px-2 py-2">Offre</th>
+                    <th className="px-2 py-2">Origine</th>
                     <th className="text-right px-2 py-2">TTC</th>
                     <th className="text-right px-2 py-2">HT</th>
                     <th className="text-right px-2 py-2">Frais</th>
@@ -380,12 +424,20 @@ function Ventes({ appId }) {
                 </thead>
                 <tbody>
                   {lignes.length === 0 && (
-                    <LigneVide colonnes={6} message="Aucune vente archivée sur les trois derniers mois." />
+                    <LigneVide colonnes={7} message="Aucune vente archivée sur les trois derniers mois." />
                   )}
                   {lignes.map((v) => (
                     <tr key={v.id} className="border-t border-baikal-border/50">
                       <td className="px-4 py-1.5 font-mono text-xs">{v.paid_at?.slice(0, 10)}</td>
                       <td className="px-2 py-1.5">{v.offre}</td>
+                      <td className="px-2 py-1.5">
+                        <span className={(CANAUX[v.canal] || ['', 'text-baikal-text'])[1]}>
+                          {(CANAUX[v.canal] || [v.canal])[0]}
+                        </span>
+                        {v.domaine && (
+                          <span className="ml-1.5 text-xs font-mono opacity-60">{v.domaine}</span>
+                        )}
+                      </td>
                       <td className="text-right px-2 py-1.5 tabular-nums">{fmtEur(Number(v.montant_ttc))}</td>
                       <td className="text-right px-2 py-1.5 tabular-nums opacity-70">{fmtEur(Number(v.montant_ht))}</td>
                       <td className="text-right px-2 py-1.5 tabular-nums opacity-70">{fmtEur(Number(v.frais_stripe_eur))}</td>
