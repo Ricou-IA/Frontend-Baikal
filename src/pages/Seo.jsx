@@ -19,9 +19,7 @@ import {
   TrendingDown,
   Minus,
   X,
-  AlertTriangle,
   Loader2,
-  Database,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -33,6 +31,15 @@ import {
   Tooltip,
 } from 'recharts';
 import { useApp } from '../contexts/AppContext';
+import { useDonneesCachees } from '../hooks/useDonneesCachees';
+import {
+  Chargement,
+  ContenuEstompe,
+  Erreur,
+  LigneVide,
+  Section,
+  Vide,
+} from '../components/console/etats';
 import ConsoleLayout from '../components/console/ConsoleLayout';
 import KpiCarte from '../components/console/KpiCarte';
 import { seoService } from '../services/seo.service';
@@ -115,22 +122,6 @@ function DeltaRangs({ actuel, precedent }) {
   );
 }
 
-function Section({ titre, sousTitre, action, children }) {
-  return (
-    <section className="space-y-4">
-      <div className="flex items-end justify-between gap-4 flex-wrap">
-        <div>
-          <h2 className="text-xl font-semibold text-baikal-text">{titre}</h2>
-          {sousTitre && (
-            <p className="text-xs text-baikal-text opacity-60 mt-1">{sousTitre}</p>
-          )}
-        </div>
-        {action}
-      </div>
-      {children}
-    </section>
-  );
-}
 
 function ChoixFenetre({ valeur, onChange, options = FENETRES, occupe = false }) {
   return (
@@ -148,104 +139,6 @@ function ChoixFenetre({ valeur, onChange, options = FENETRES, occupe = false }) 
           {f} j
         </button>
       ))}
-    </div>
-  );
-}
-
-// Chargement de donnees avec cache par cle : re-basculer sur une fenetre deja
-// vue est instantane, et pendant un fetch les donnees precedentes restent
-// affichees (estompees) — pas de saut de mise en page.
-// `scope` (le site) borne cet effet de persistance : changer de site vide
-// l'affichage immediatement, sinon on lirait les chiffres du site precedent
-// sous le nom du nouveau. Une erreur vide egalement l'affichage.
-function useDonneesCachees(cle, chargeur, scope = null) {
-  const cache = useRef(new Map());
-  const [donnees, setDonnees] = useState(null);
-  const [erreur, setErreur] = useState(null);
-  const [enCours, setEnCours] = useState(true);
-  const [scopeRendu, setScopeRendu] = useState(scope);
-
-  // Vidage PENDANT le rendu (et non dans un effet) : React reexecute le
-  // composant avant de peindre, donc aucune image, meme fugace, ne montre
-  // les chiffres du site precedent sous le nom du nouveau.
-  if (scope !== scopeRendu) {
-    setScopeRendu(scope);
-    setDonnees(null);
-    setErreur(null);
-    setEnCours(true);
-  }
-
-  useEffect(() => {
-    if (cache.current.has(cle)) {
-      setDonnees(cache.current.get(cle));
-      setErreur(null);
-      setEnCours(false);
-      return;
-    }
-    let actif = true;
-    setEnCours(true);
-    setErreur(null);
-    chargeur().then(({ data, error }) => {
-      if (!actif) return;
-      if (error) {
-        setErreur(error.message);
-        setDonnees(null);
-      } else {
-        cache.current.set(cle, data);
-        setDonnees(data);
-      }
-      setEnCours(false);
-    });
-    return () => { actif = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cle, scope]);
-
-  return { donnees, erreur, enCours };
-}
-
-function ContenuEstompe({ enCours, children }) {
-  return (
-    <div className={enCours ? 'opacity-50 pointer-events-none transition-opacity space-y-4' : 'space-y-4'}>
-      {children}
-    </div>
-  );
-}
-
-function Erreur({ message }) {
-  return (
-    <div className="p-4 bg-red-900/20 border border-red-500/50 rounded-md flex items-center gap-3 text-red-300">
-      <AlertTriangle className="w-5 h-5 flex-shrink-0" />
-      <p className="font-mono text-sm">{message}</p>
-    </div>
-  );
-}
-
-// Distinct de <Erreur> : la requete a abouti, il n'y a simplement rien a
-// montrer. Rouge = quelque chose a echoue, neutre = le site n'a pas (encore)
-// de donnees sur cette periode.
-function Vide({ message }) {
-  return (
-    <div className="p-4 bg-baikal-surface border border-baikal-border rounded-md flex items-start gap-3 text-baikal-text">
-      <Database className="w-5 h-5 flex-shrink-0 opacity-60 mt-0.5" />
-      <p className="text-sm">{message}</p>
-    </div>
-  );
-}
-
-function LigneVide({ colonnes, message }) {
-  return (
-    <tr className="border-t border-baikal-border/50">
-      <td colSpan={colonnes} className="px-4 py-6 text-center text-sm text-baikal-text opacity-60">
-        {message}
-      </td>
-    </tr>
-  );
-}
-
-function Chargement() {
-  return (
-    <div className="flex items-center justify-center py-10 text-baikal-text">
-      <Loader2 className="w-6 h-6 text-baikal-cyan animate-spin" />
     </div>
   );
 }

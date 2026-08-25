@@ -39,6 +39,7 @@ import UsersPage from './pages/admin/Users';
 import Projects from './pages/admin/Projects';
 import Ingestion from './pages/admin/Ingestion';
 import Seo from './pages/Seo';
+import Finances from './pages/Finances';
 import Partenariats from './pages/Partenariats';
 import Sites from './pages/Sites';
 
@@ -216,6 +217,16 @@ function App() {
             element={
               <AdminRoute>
                 <Ingestion />
+              </AdminRoute>
+            }
+          />
+
+          {/* Admin - Financier multi-sites */}
+          <Route
+            path="/finances"
+            element={
+              <AdminRoute>
+                <Finances />
               </AdminRoute>
             }
           />
