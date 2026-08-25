@@ -129,7 +129,11 @@ serve(async (req) => {
 
     // --- Chemin cron : jamais un JWT utilisateur, uniquement le secret partage.
     if (action === "capture") {
-      const attendu = Deno.env.get("ADMIN_FINANCE_CRON_SECRET");
+      // Un seul secret de cron pour toute la console : celui du SEO existe deja
+      // des deux cotes (Vault + secrets EF). ADMIN_FINANCE_CRON_SECRET reste
+      // accepte si on veut un jour separer les deux.
+      const attendu = Deno.env.get("ADMIN_FINANCE_CRON_SECRET") ??
+        Deno.env.get("ADMIN_SEO_CRON_SECRET");
       if (!attendu || req.headers.get("x-cron-secret") !== attendu) {
         return json({ data: null, error: "Secret de cron invalide" }, 401);
       }
