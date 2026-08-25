@@ -15,7 +15,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ErreurAcces, exigerSite, sitesAutorises } from "../_shared/droits.ts";
-import { captureJour } from "./capture.ts";
+import { captureJour, capturePeriode } from "./capture.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -136,6 +136,15 @@ serve(async (req) => {
         Deno.env.get("ADMIN_SEO_CRON_SECRET");
       if (!attendu || req.headers.get("x-cron-secret") !== attendu) {
         return json({ data: null, error: "Secret de cron invalide" }, 401);
+      }
+      // Reprise d'historique : une periode d'un coup plutot que jour par jour.
+      if (body.debut && body.fin) {
+        const r = await capturePeriode(
+          admin,
+          new Date(`${body.debut}T00:00:00Z`),
+          new Date(`${body.fin}T23:59:59Z`),
+        );
+        return json({ data: r, error: null });
       }
       const rattrapage = Number(body.rattrapage ?? 0);
       const base = body.jour ? new Date(`${body.jour}T00:00:00Z`) : new Date();

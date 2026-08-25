@@ -16,8 +16,11 @@ const TYPES_REMBOURSEMENT = new Set(["refund", "payment_refund"]);
 
 // Ou lire le cout IA de chaque site. Un site absent d'ici n'a pas de cout IA
 // suivi : sa journee reste complete, elle n'est pas approximee.
+// On vise les TABLES, pas les vues publiques : le GRANT de baikal_reader et les
+// policies baikal_read couvrent les tables, tandis qu'une vue creee ensuite
+// demande un GRANT explicite (constate : permission denied for view pv_ai_logs).
 const TABLE_IA: Record<string, string> = {
-  "pack-vendeur": "public.pv_ai_logs",
+  "pack-vendeur": "pack_vendeur.ai_logs",
   "voirie": "voirie.ai_logs",
 };
 
@@ -41,6 +44,16 @@ function iso(epoch: number): string {
 
 function arrondi(n: number): number {
   return Number(n.toFixed(2));
+}
+
+/** Une vente dont le site n'est pas resolu ne peut pas etre archivee : app_id
+ *  porte une cle etrangere vers config.apps. On la signale plutot que de creer
+ *  une pseudo-app ; le mapping complete, un rejeu de la periode la recupere.
+ *  Rien n'est perdu : Stripe reste la source. */
+function trierParSiteConnu(ventes: VenteArchivee[]) {
+  const connues = ventes.filter((v) => v.app_id !== "inconnu");
+  const nonResolues = ventes.filter((v) => v.app_id === "inconnu");
+  return { connues, nonResolues };
 }
 
 /** Une ligne par payment_intent encaisse sur la periode. */
@@ -118,8 +131,13 @@ export async function captureJour(
   admin: SupabaseClient,
   jour: Date,
 ): Promise<{ ventes: number; sites: string[]; manques: string[] }> {
-  const cle = Deno.env.get("ADMIN_STRIPE_KEY");
-  if (!cle) throw new Error("ADMIN_STRIPE_KEY absent des Edge Function Secrets");
+  // ADMIN_STRIPE_KEY d'abord (cle restreinte en LECTURE, a preferer), sinon la
+  // cle secrete deja posee dans le projet. Le module ne fait que lire : le jour
+  // ou une cle restreinte est posee, elle prend le dessus sans toucher au code.
+  const cle = Deno.env.get("ADMIN_STRIPE_KEY") ?? Deno.env.get("STRIPE_SECRET_KEY");
+  if (!cle) {
+    throw new Error("Aucune cle Stripe : posez ADMIN_STRIPE_KEY ou STRIPE_SECRET_KEY");
+  }
 
   const debut = new Date(Date.UTC(jour.getUTCFullYear(), jour.getUTCMonth(), jour.getUTCDate()));
   const fin = new Date(debut.getTime() + 86_400_000 - 1000);
@@ -136,12 +154,16 @@ export async function captureJour(
   const sessions = await listerSessions(cle, debut, fin);
   const ventes = construireVentes(transactions, sessions, (mapping ?? []) as LigneMapping[], tvaParSite);
 
-  if (ventes.length > 0) {
+  const { connues, nonResolues } = trierParSiteConnu(ventes);
+  if (connues.length > 0) {
     const { error } = await admin.schema("admin").from("ventes")
-      .upsert(ventes.map((v) => ({ ...v, maj_le: new Date().toISOString() })), {
+      .upsert(connues.map((v) => ({ ...v, maj_le: new Date().toISOString() })), {
         onConflict: "stripe_payment_intent_id",
       });
     if (error) throw new Error(`upsert ventes: ${error.message}`);
+  }
+  for (const v of nonResolues) {
+    manques.push(`site_inconnu:${v.stripe_payment_intent_id}`);
   }
 
   for (const o of remboursementsOrphelins(transactions, ventes)) {
@@ -193,4 +215,95 @@ export async function captureJour(
   }
 
   return { ventes: ventes.length, sites, manques };
+}
+
+/** Reprise d'historique : une seule requete Stripe pour toute la periode et un
+ *  groupement par jour pour les couts, au lieu d'un aller-retour par journee.
+ *  Les journees sans cout IA n'ont pas de ligne finance_jours : l'agregation
+ *  traite leur absence comme un cout nul. */
+export async function capturePeriode(
+  admin: SupabaseClient,
+  debut: Date,
+  fin: Date,
+): Promise<{ ventes: number; sites: string[]; jours_couts: number; manques: string[] }> {
+  const cle = Deno.env.get("ADMIN_STRIPE_KEY") ?? Deno.env.get("STRIPE_SECRET_KEY");
+  if (!cle) throw new Error("Aucune cle Stripe : posez ADMIN_STRIPE_KEY ou STRIPE_SECRET_KEY");
+
+  const manques: string[] = [];
+  const { data: mapping } = await admin.schema("admin").from("stripe_mapping")
+    .select("cle_type, cle, app_id, offre");
+  const { data: apps } = await admin.schema("config").from("apps").select("id, tva_taux");
+  const tvaParSite: Record<string, number> = {};
+  for (const a of apps ?? []) tvaParSite[a.id] = Number(a.tva_taux ?? TVA_DEFAUT);
+
+  const transactions = await listerTransactions(cle, debut, fin);
+  const sessions = await listerSessions(cle, debut, fin);
+  const ventes = construireVentes(transactions, sessions, (mapping ?? []) as LigneMapping[], tvaParSite);
+
+  const { connues, nonResolues } = trierParSiteConnu(ventes);
+  if (connues.length > 0) {
+    const { error } = await admin.schema("admin").from("ventes")
+      .upsert(connues.map((v) => ({ ...v, maj_le: new Date().toISOString() })), {
+        onConflict: "stripe_payment_intent_id",
+      });
+    if (error) throw new Error(`upsert ventes: ${error.message}`);
+  }
+  for (const v of nonResolues) {
+    manques.push(`site_inconnu:${v.stripe_payment_intent_id}`);
+  }
+
+  for (const o of remboursementsOrphelins(transactions, ventes)) {
+    const { error } = await admin.schema("admin").from("ventes")
+      .update({ montant_rembourse: o.montant, rembourse_le: o.date, maj_le: new Date().toISOString() })
+      .eq("stripe_payment_intent_id", o.payment_intent);
+    if (error) manques.push(`remboursement:${o.payment_intent}`);
+  }
+
+  const taux = Number(Deno.env.get("ADMIN_TAUX_USD_EUR") ?? "0.92");
+  let joursCouts = 0;
+  for (const [appId, table] of Object.entries(TABLE_IA)) {
+    try {
+      const site = await chargerSite(admin, appId);
+      const sql = lecteurSite(site);
+      try {
+        const rows = await sql`
+          SELECT created_at::date AS jour, coalesce(sum(cost_usd), 0)::float AS cout
+          FROM ${sql.unsafe(table)}
+          WHERE created_at >= ${debut.toISOString()} AND created_at <= ${fin.toISOString()}
+          GROUP BY 1 ORDER BY 1`;
+        if (rows.length > 0) {
+          const { error } = await admin.schema("admin").from("finance_jours").upsert(
+            rows.map((r: any) => ({
+              app_id: appId,
+              // postgres-js rend un objet Date pour une colonne date :
+              // String() donnerait « Thu Jul 30 2026 … », pas une date ISO.
+              jour: new Date(r.jour).toISOString().slice(0, 10),
+              cout_ia_usd: Number(r.cout),
+              cout_ia_eur: arrondi(Number(r.cout) * taux),
+              taux_usd: taux,
+              ads_eur: null,
+              complet: true,
+              manques: [],
+              calcule_le: new Date().toISOString(),
+            })),
+            { onConflict: "app_id,jour" },
+          );
+          if (error) manques.push(`finance_jours:${appId}`);
+          else joursCouts += rows.length;
+        }
+      } finally {
+        await sql.end();
+      }
+    } catch (e) {
+      manques.push(`ai_logs:${appId}`);
+      console.warn(`[admin-finance] couts IA ${appId}: ${(e as Error).message}`);
+    }
+  }
+
+  return {
+    ventes: ventes.length,
+    sites: [...new Set(ventes.map((v) => v.app_id))],
+    jours_couts: joursCouts,
+    manques,
+  };
 }

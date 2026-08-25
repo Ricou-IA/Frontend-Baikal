@@ -99,6 +99,10 @@ export async function listerSessions(
 ): Promise<SessionStripe[]> {
   const params = bornes(debut, fin);
   params.append("expand[]", "data.line_items");
+  // Seules les sessions abouties nous interessent : les sessions ouvertes ou
+  // expirees n'ont pas de payment_intent encaisse, et elles sont dix fois plus
+  // nombreuses — les ramener rendrait toute reprise d'historique interminable.
+  params.set("status", "complete");
   const lignes = await lister(cle, "/checkout/sessions", params);
 
   return lignes.map((s) => ({
