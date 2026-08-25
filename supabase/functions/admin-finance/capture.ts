@@ -74,7 +74,7 @@ export function construireVentes(
     if (!t.payment_intent || !TYPES_ENCAISSEMENT.has(t.type)) continue;
     const session = parPi.get(t.payment_intent) ??
       { payment_intent: t.payment_intent, metadata: {}, produits: [] };
-    const { app_id, offre } = resoudreSite(session, mapping);
+    const { app_id, offre, perimetre } = resoudreSite(session, mapping);
     const tva = tvaParSite[app_id] ?? TVA_DEFAUT;
 
     ventes.set(t.payment_intent, {
@@ -90,7 +90,7 @@ export function construireVentes(
       rembourse_le: null,
       montant_rembourse: 0,
       offre,
-      perimetre: "b2c",
+      perimetre,
     });
   }
 
@@ -145,7 +145,7 @@ export async function captureJour(
   const manques: string[] = [];
 
   const { data: mapping } = await admin.schema("admin").from("stripe_mapping")
-    .select("cle_type, cle, app_id, offre");
+    .select("cle_type, cle, app_id, offre, perimetre");
   const { data: apps } = await admin.schema("config").from("apps").select("id, tva_taux");
   const tvaParSite: Record<string, number> = {};
   for (const a of apps ?? []) tvaParSite[a.id] = Number(a.tva_taux ?? TVA_DEFAUT);
@@ -231,7 +231,7 @@ export async function capturePeriode(
 
   const manques: string[] = [];
   const { data: mapping } = await admin.schema("admin").from("stripe_mapping")
-    .select("cle_type, cle, app_id, offre");
+    .select("cle_type, cle, app_id, offre, perimetre");
   const { data: apps } = await admin.schema("config").from("apps").select("id, tva_taux");
   const tvaParSite: Record<string, number> = {};
   for (const a of apps ?? []) tvaParSite[a.id] = Number(a.tva_taux ?? TVA_DEFAUT);

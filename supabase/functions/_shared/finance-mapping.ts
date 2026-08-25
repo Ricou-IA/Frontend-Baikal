@@ -18,14 +18,16 @@ export interface LigneMapping {
   cle: string;
   app_id: string;
   offre: string;
+  perimetre?: string;
 }
 
 export interface Resolution {
   app_id: string;
   offre: string;
+  perimetre: string;
 }
 
-const INCONNU: Resolution = { app_id: "inconnu", offre: "inconnu" };
+const INCONNU: Resolution = { app_id: "inconnu", offre: "inconnu", perimetre: "b2c" };
 
 function chercher(
   mapping: LigneMapping[],
@@ -34,7 +36,7 @@ function chercher(
 ): Resolution | null {
   if (!cle) return null;
   const l = mapping.find((m) => m.cle_type === type && m.cle === cle);
-  return l ? { app_id: l.app_id, offre: l.offre } : null;
+  return l ? { app_id: l.app_id, offre: l.offre, perimetre: l.perimetre ?? "b2c" } : null;
 }
 
 export function resoudreSite(
@@ -43,7 +45,13 @@ export function resoudreSite(
 ): Resolution {
   const app = session.metadata?.application;
   if (app) {
-    return { app_id: app, offre: session.metadata?.cle || "inconnu" };
+    // Une metadata de checkout ne dit pas le perimetre : B2C par defaut, a
+    // affiner par le mapping le jour ou un site vend aux deux publics.
+    return {
+      app_id: app,
+      offre: session.metadata?.cle || "inconnu",
+      perimetre: session.metadata?.perimetre === "b2b" ? "b2b" : "b2c",
+    };
   }
 
   for (const ligne of session.produits ?? []) {
