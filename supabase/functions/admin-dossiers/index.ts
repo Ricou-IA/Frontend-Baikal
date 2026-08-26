@@ -10,6 +10,7 @@ import { chargerSite, ErreurSite, lecteurSite } from "../_shared/sites.ts";
 import { ErreurAcces, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 import { normaliserCriteres } from "./filtres.ts";
 import { canalVente } from "./canal.ts";
+import { ErreurRelais, preparerRelais, relaisConfigure } from "./relais.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -61,6 +62,58 @@ serve(async (req) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
     const site = await chargerSite(admin, appId);
+
+    // Chemin relais : actions et fiche etendue via l'EF d'administration du
+    // site (spec §7). Pas de connexion SQL ici — tout part en HTTP.
+    if (action === "site-detail" || action === "site-action") {
+      const dossierId = typeof body.dossierId === "string" ? body.dossierId : "";
+      if (!dossierId) return json({ data: null, error: "dossierId requis" }, 400);
+      const ACTIONS_SITE: Record<string, { superAdminSeul: boolean }> = {
+        "detail": { superAdminSeul: false },
+        "re-extract": { superAdminSeul: false },
+        "resend-email": { superAdminSeul: false },
+        "purge-documents": { superAdminSeul: true },
+      };
+      const actionSite = action === "site-detail" ? "detail" : String(body.actionSite ?? "");
+      const def = ACTIONS_SITE[actionSite];
+      if (!def || (action === "site-action" && actionSite === "detail")) {
+        return json({ data: null, error: `Action site inconnue: ${actionSite}` }, 400);
+      }
+      if (def.superAdminSeul) {
+        const { data: profil } = await caller
+          .from("profiles").select("app_role").eq("id", user.id).single();
+        if (profil?.app_role !== "super_admin") {
+          return json({ data: null, error: "Action reservee au super_admin" }, 403);
+        }
+      }
+      const cible = preparerRelais(site);
+      if (!cible) {
+        return json({ data: null, error: "Site sans canal d'administration configure" }, 400);
+      }
+      const corps: Record<string, unknown> = { action: actionSite, dossier_id: dossierId };
+      if (actionSite === "resend-email") {
+        corps.email_action = typeof body.emailAction === "string" ? body.emailAction : "";
+      }
+      const reponse = await fetch(cible.url, {
+        method: "POST",
+        headers: cible.headers,
+        body: JSON.stringify(corps),
+      });
+      const texte = await reponse.text();
+      let charge: unknown;
+      try {
+        charge = JSON.parse(texte);
+      } catch {
+        charge = { brut: texte.slice(0, 500) };
+      }
+      if (!reponse.ok) {
+        return json(
+          { data: null, error: `Site ${site.id}: HTTP ${reponse.status}`, detail: charge },
+          502,
+        );
+      }
+      return json({ data: charge, error: null });
+    }
 
     // Etapes du funnel : donnee du registre. NULL = site sans funnel.
     const { data: appConfig } = await admin.schema("config").from("apps")
@@ -140,7 +193,15 @@ serve(async (req) => {
           canal: canalVente(d.attribution as Record<string, unknown> | null),
         }));
         return json({
-          data: { disponible: true, dossiers, total, page: c.page, parPage: c.parPage, funnel },
+          data: {
+            disponible: true,
+            dossiers,
+            total,
+            page: c.page,
+            parPage: c.parPage,
+            funnel,
+            actions: relaisConfigure(site),
+          },
           error: null,
         });
       }
@@ -171,6 +232,7 @@ serve(async (req) => {
             emails,
             events,
             funnel,
+            actions: relaisConfigure(site),
           },
           error: null,
         });
@@ -184,6 +246,7 @@ serve(async (req) => {
     console.error("[admin-dossiers]", e);
     if (e instanceof ErreurAcces) return json({ data: null, error: e.message }, 403);
     if (e instanceof ErreurSite) return json({ data: null, error: e.message }, 400);
+    if (e instanceof ErreurRelais) return json({ data: null, error: e.message }, 500);
     const message = e instanceof Error ? e.message : String(e);
     return json({ data: null, error: message }, 500);
   }
