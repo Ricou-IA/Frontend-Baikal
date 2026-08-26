@@ -64,7 +64,7 @@ serve(async (req) => {
     const site = await chargerSite(admin, appId);
 
     // Chemin relais : actions et fiche etendue via l'EF d'administration du
-    // site (spec §7). Pas de connexion SQL ici — tout part en HTTP.
+    // site (spec, section 7). Pas de connexion SQL ici : tout part en HTTP.
     if (action === "site-detail" || action === "site-action") {
       const dossierId = typeof body.dossierId === "string" ? body.dossierId : "";
       if (!dossierId) return json({ data: null, error: "dossierId requis" }, 400);
