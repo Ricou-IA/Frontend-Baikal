@@ -781,6 +781,8 @@ function Comparatif({ appId }) {
                 <th className="px-2 py-2">Statut</th>
                 <th className="text-right px-2 py-2">Clics</th>
                 <th className="text-right px-2 py-2">Δ Clics</th>
+                <th className="text-right px-2 py-2">Impr.</th>
+                <th className="text-right px-2 py-2">Δ Impr.</th>
                 <th className="text-right px-2 py-2">Position</th>
                 <th className="text-right px-4 py-2">Δ Pos.</th>
               </tr>
@@ -788,7 +790,7 @@ function Comparatif({ appId }) {
             <tbody>
               {lignes.length === 0 && (
                 <LigneVide
-                  colonnes={6}
+                  colonnes={8}
                   message={filtre === 'all'
                     ? 'Aucune requete comparable entre les deux periodes.'
                     : 'Aucune requete dans ce filtre.'}
@@ -817,6 +819,12 @@ function Comparatif({ appId }) {
                     </td>
                     <td className={`text-right px-2 py-1.5 tabular-nums ${q.clicksDelta > 0 ? 'text-emerald-400' : q.clicksDelta < 0 ? 'text-red-400' : 'opacity-60'}`}>
                       {fmtSigne(q.clicksDelta)}
+                    </td>
+                    <td className="text-right px-2 py-1.5 tabular-nums whitespace-nowrap opacity-70">
+                      {fmtInt(q.imprPrev)} → {fmtInt(q.imprCur)}
+                    </td>
+                    <td className={`text-right px-2 py-1.5 tabular-nums ${(q.imprCur - q.imprPrev) > 0 ? 'text-emerald-400' : (q.imprCur - q.imprPrev) < 0 ? 'text-red-400' : 'opacity-60'}`}>
+                      {fmtSigne(q.imprCur - q.imprPrev)}
                     </td>
                     <td className="text-right px-2 py-1.5 tabular-nums whitespace-nowrap">
                       {fmtPos(q.posPrev)} → {fmtPos(q.posCur)}
