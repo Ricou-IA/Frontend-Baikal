@@ -221,6 +221,44 @@ table). Spec et plan dans `docs/superpowers/specs/` et `docs/superpowers/plans/`
   lien de desinscription HMAC (EF `admin-desinscription`, verify_jwt off, GET
   affiche / POST execute). Tables `admin.prospects|campagnes|campagne_envois`,
   RLS forcee sans policy, acces service_role uniquement.
+- **Clients** : page `/clients` (`src/pages/Clients.jsx`) + EF `admin-dossiers` —
+  liste et fiche des clients d'un site, lues EN DIRECT (jamais d'archive : aucune
+  donnee nominative n'entre dans `admin`) dans les vues contractuelles du site :
+  `baikal_dossiers` (obligatoire), `baikal_dossier_emails`, `baikal_dossier_events`
+  (optionnelles). L'EF cherche `<db_schema>.baikal_dossiers` puis `public` en repli
+  (les projets dedies exposent dans `public`, les schemas de la base partagee chez
+  eux). **La capacite d'un site se lit a la PRESENCE des vues et des colonnes** :
+  pas de vue -> pas de module (`disponible:false`, jamais une erreur) ; pas de
+  colonnes `abo_*` -> pas d'abonnement affiche. Branche a ce jour : pack-vendeur
+  (complet), monsieurdpe, voirie. Ajouter un site = publier sa vue + poser son
+  funnel, aucun code Baikal.
+  - **Funnel** : `config.apps.funnel_etapes` (jsonb, NULL = pas de funnel, la vue
+    derive alors Paye/— de `paye_le`). Forme :
+    `[{slug, libelle, couleur, masquee_par_defaut, apres_paiement}]`. `couleur` ∈
+    slate|blue|amber|emerald|red|violet. `apres_paiement: true` marque un etat
+    d'APRES-VENTE (voirie `envoye`/`a_traiter`, dpe `abonne`) : la liste affiche
+    alors `Paye` + l'etat, sinon un client payant se lit comme non converti.
+  - **Client payant = `paye_le` renseigne, JAMAIS un slug d'etape** (filtre
+    « Ont paye » de la liste). Meme regle pour les KPI : `admin-site-stats` se
+    joint a `baikal_dossiers` pour exclure tests et supprimes au lieu de
+    redefinir ses filtres — c'est ce qui evite que deux ecrans annoncent deux
+    nombres (voirie affichait 5 payees pour 2 reelles, sessions `TEST_SKIP_`).
+  - **Actions et onglets par site** (lot 2/3, actif pour pack-vendeur) : canal
+    relais vers l'EF d'administration du site (`config.apps.env_dossiers_fn` =
+    nom de l'EF, NULL = interrupteur ouvert, ni boutons ni onglets). Auth :
+    `env_anon_key` (cle PUBLIQUE en clair, pour passer `verify_jwt` du site) +
+    en-tete `X-Baikal-Key` = secret nomme par `env_secret_ref`. Actions :
+    resend-email, re-extract, reset-extractions, add-pro-credits et
+    purge-documents (ces deux dernieres super_admin, verifie cote EF).
+    Extensions de fiche : `src/components/console/extensions/<site>.jsx`
+    branchees par `EXTENSIONS_FICHE` ; elles consomment le `detail` du site,
+    charge une fois par fiche.
+  - « Supprimer » n'existe pas : c'est **purge documentaire** (documents et
+    donnees extraites detruits ; email, emails envoyes et transaction conserves
+    au titre de l'obligation comptable).
+  - Cascade d'attribution portee en TS dans `admin-dossiers/canal.ts` — a
+    maintenir en parite avec la fonction SQL `admin.canal_vente`.
+  - Spec : `docs/superpowers/specs/2026-08-26-baikal-clients-design.md`.
 - **Parametrage** : page `/sites` (super_admin) — edite les champs propres a
   chaque site dans `config.apps` (domaine, GSC, env, expediteur des campagnes).
   Regle de partage : les credentials mutualises de l'outil vivent dans les
@@ -228,7 +266,9 @@ table). Spec et plan dans `docs/superpowers/specs/` et `docs/superpowers/plans/`
   et une cle d'environnement de site reste un secret dont la table ne porte que
   le nom (`env_secret_ref`). La creation d'une app reste une migration.
 - Secrets attendus : `GOOGLE_GSC_OAUTH_CLIENT_ID|CLIENT_SECRET|REFRESH_TOKEN`,
-  `ADMIN_RESEND_API_KEY`, `ADMIN_UNSUBSCRIBE_SECRET`, `ADMIN_ENV_MONSIEURDPE_KEY`.
+  `ADMIN_RESEND_API_KEY`, `ADMIN_UNSUBSCRIBE_SECRET`, `ADMIN_ENV_MONSIEURDPE_KEY`,
+  `ADMIN_ENV_PACKVENDEUR_KEY` (meme valeur que `BAIKAL_ADMIN_KEY` cote projet
+  Pre-etat-date : c'est le secret partage du canal d'administration).
 - Gotcha : le trigger `tr_create_documents_cles_on_app_insert` casse toute
   insertion d'app avec `is_active=true` (slug de concept constant deja pris) —
   inserer inactif puis activer par UPDATE, ou corriger le trigger.
