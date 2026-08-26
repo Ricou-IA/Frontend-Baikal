@@ -68,12 +68,19 @@ export interface GscRow {
   position: number;
 }
 
+export interface GscDimensionFilter {
+  dimension: GscDimension;
+  operator?: "equals" | "contains" | "notContains" | "includingRegex" | "excludingRegex";
+  expression: string;
+}
+
 export async function searchAnalytics(
   siteUrl: string,
   startDate: string,
   endDate: string,
   dimensions: GscDimension[] = [],
   rowLimit = 1000,
+  filters: GscDimensionFilter[] = [],
 ): Promise<GscRow[]> {
   const accessToken = await fetchAccessToken();
   const url =
@@ -86,6 +93,9 @@ export async function searchAnalytics(
   };
   // dimensions=[] : on OMET la cle, Google rend alors une ligne agregee.
   if (dimensions.length > 0) body.dimensions = dimensions;
+  if (filters.length > 0) {
+    body.dimensionFilterGroups = [{ groupType: "and", filters }];
+  }
 
   const res = await fetch(url, {
     method: "POST",

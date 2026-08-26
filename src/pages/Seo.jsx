@@ -169,21 +169,17 @@ function InfoBulle({ active, payload, label }) {
   );
 }
 
-function Performances({ appId }) {
-  const [moisPeriode, setMoisPeriode] = useState(16);
-  const [actives, setActives] = useState({
+// Graphique multi-series normalise 0-100 (toggles + infobulle a valeurs
+// reelles). Partage entre la section Performances (site entier) et la modale
+// d'historique d'une requete.
+function SeriesQuotidiennes({ jours, defautActives }) {
+  const [actives, setActives] = useState(defautActives ?? {
     clicks: true, impressions: true, ctr_pct: true, position: true,
   });
-  const { donnees, erreur, enCours } = useDonneesCachees(
-    `serie:${appId}:${moisPeriode}`,
-    () => seoService.getSerie(appId, moisPeriode),
-    appId,
-  );
 
   // Normalisation 0-100 par serie, comme Search Console : chaque metrique a
   // sa propre echelle, l'infobulle montre les valeurs reelles.
   const points = useMemo(() => {
-    const jours = donnees?.jours ?? [];
     const maxi = {};
     for (const serie of SERIES_PERF) {
       maxi[serie.cle] = Math.max(1, ...jours.map((j) => j[serie.cle] ?? 0));
@@ -197,7 +193,69 @@ function Performances({ appId }) {
       }
       return point;
     });
-  }, [donnees]);
+  }, [jours]);
+
+  return (
+    <>
+      <div className="flex gap-2 flex-wrap mb-3">
+        {SERIES_PERF.map((serie) => (
+          <button
+            key={serie.cle}
+            onClick={() => setActives((a) => ({ ...a, [serie.cle]: !a[serie.cle] }))}
+            className={`px-3 py-1 rounded border text-sm transition-opacity ${actives[serie.cle] ? '' : 'opacity-40'}`}
+            style={{ borderColor: serie.couleur, color: serie.couleur }}
+          >
+            {serie.libelle}
+          </button>
+        ))}
+      </div>
+      <div className="bg-baikal-surface border border-baikal-border rounded-lg p-4">
+        <ResponsiveContainer width="100%" height={300}>
+          <LineChart data={points} margin={{ top: 8, right: 12, bottom: 0, left: 12 }}>
+            <CartesianGrid stroke="#1f2937" strokeDasharray="3 3" vertical={false} />
+            <XAxis
+              dataKey="date"
+              stroke="#6b7280"
+              fontSize={11}
+              tickLine={false}
+              axisLine={false}
+              minTickGap={40}
+              tickFormatter={(d) =>
+                new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}
+            />
+            <YAxis hide domain={[0, 100]} />
+            <Tooltip content={<InfoBulle />} />
+            {SERIES_PERF.filter((serie) => actives[serie.cle]).map((serie) => (
+              <Line
+                key={serie.cle}
+                type="monotone"
+                dataKey={serie.cle}
+                stroke={serie.couleur}
+                dot={false}
+                strokeWidth={1.5}
+                isAnimationActive={false}
+                connectNulls
+              />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+        <p className="text-[10px] text-baikal-text opacity-40 mt-2">
+          Chaque serie est tracee sur sa propre echelle (normalisee), comme dans
+          Search Console — survole pour lire les valeurs reelles.
+        </p>
+      </div>
+    </>
+  );
+}
+
+function Performances({ appId }) {
+  const [moisPeriode, setMoisPeriode] = useState(16);
+  const { donnees, erreur, enCours } = useDonneesCachees(
+    `serie:${appId}:${moisPeriode}`,
+    () => seoService.getSerie(appId, moisPeriode),
+    appId,
+  );
+  const jours = donnees?.jours ?? [];
 
   return (
     <Section
@@ -223,61 +281,100 @@ function Performances({ appId }) {
     >
       {erreur && <Erreur message={erreur} />}
       {!donnees && !erreur && <Chargement />}
-      {donnees && points.length === 0 && (
+      {donnees && jours.length === 0 && (
         <Vide message={`Aucune journee archivee pour ce site sur les ${moisPeriode} derniers mois. L'archive se remplit au fil des releves quotidiens, et uniquement pour un site dote d'une propriete Search Console.`} />
       )}
-      {donnees && points.length > 0 && (
+      {donnees && jours.length > 0 && (
         <div className={enCours ? 'opacity-50' : ''}>
-          <div className="flex gap-2 flex-wrap mb-3">
-            {SERIES_PERF.map((serie) => (
-              <button
-                key={serie.cle}
-                onClick={() => setActives((a) => ({ ...a, [serie.cle]: !a[serie.cle] }))}
-                className={`px-3 py-1 rounded border text-sm transition-opacity ${actives[serie.cle] ? '' : 'opacity-40'}`}
-                style={{ borderColor: serie.couleur, color: serie.couleur }}
-              >
-                {serie.libelle}
-              </button>
-            ))}
-          </div>
-          <div className="bg-baikal-surface border border-baikal-border rounded-lg p-4">
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={points} margin={{ top: 8, right: 12, bottom: 0, left: 12 }}>
-                <CartesianGrid stroke="#1f2937" strokeDasharray="3 3" vertical={false} />
-                <XAxis
-                  dataKey="date"
-                  stroke="#6b7280"
-                  fontSize={11}
-                  tickLine={false}
-                  axisLine={false}
-                  minTickGap={40}
-                  tickFormatter={(d) =>
-                    new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}
-                />
-                <YAxis hide domain={[0, 100]} />
-                <Tooltip content={<InfoBulle />} />
-                {SERIES_PERF.filter((serie) => actives[serie.cle]).map((serie) => (
-                  <Line
-                    key={serie.cle}
-                    type="monotone"
-                    dataKey={serie.cle}
-                    stroke={serie.couleur}
-                    dot={false}
-                    strokeWidth={1.5}
-                    isAnimationActive={false}
-                    connectNulls
-                  />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-            <p className="text-[10px] text-baikal-text opacity-40 mt-2">
-              Chaque serie est tracee sur sa propre echelle (normalisee), comme dans
-              Search Console — survole pour lire les valeurs reelles.
-            </p>
-          </div>
+          <SeriesQuotidiennes jours={jours} />
         </div>
       )}
     </Section>
+  );
+}
+
+// ============================================================================
+// MODALE — historique quotidien d'une requete (API GSC en direct)
+// ============================================================================
+
+function ModaleRequete({ appId, requete, onFermer }) {
+  const [mois, setMois] = useState(16);
+  const { donnees, erreur, enCours } = useDonneesCachees(
+    `serie-requete:${appId}:${requete}:${mois}`,
+    () => seoService.getSerieRequete(appId, requete, mois),
+    appId,
+  );
+
+  useEffect(() => {
+    const onTouche = (e) => { if (e.key === 'Escape') onFermer(); };
+    window.addEventListener('keydown', onTouche);
+    return () => window.removeEventListener('keydown', onTouche);
+  }, [onFermer]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60"
+      onClick={onFermer}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Historique de la requete ${requete}`}
+        className="bg-baikal-surface border border-baikal-border rounded-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto p-5 space-y-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-xs font-mono text-baikal-text uppercase">Historique requete</p>
+            <p className="text-white text-sm mt-1 break-words">{requete}</p>
+          </div>
+          <button
+            onClick={onFermer}
+            className="text-baikal-text hover:text-white shrink-0"
+            aria-label="Fermer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="flex gap-2 items-center flex-wrap">
+          {enCours && <Loader2 className="w-4 h-4 text-baikal-cyan animate-spin" />}
+          {[3, 6, 12, 16].map((m) => (
+            <button
+              key={m}
+              onClick={() => setMois(m)}
+              disabled={enCours}
+              className={`px-3 py-1 rounded border disabled:opacity-50 ${mois === m
+                ? 'border-baikal-cyan text-baikal-cyan'
+                : 'border-baikal-border text-baikal-text'}`}
+            >
+              {m} mois
+            </button>
+          ))}
+        </div>
+
+        {erreur && <Erreur message={erreur} />}
+        {!donnees && !erreur && <Chargement />}
+        {donnees && donnees.jours.length === 0 && (
+          <Vide message={`Search Console n'a aucune impression pour cette requete sur les ${mois} derniers mois.`} />
+        )}
+        {donnees && donnees.jours.length > 0 && (
+          <div className={enCours ? 'opacity-50' : ''}>
+            <SeriesQuotidiennes
+              jours={donnees.jours}
+              defautActives={{ clicks: true, impressions: true, ctr_pct: false, position: true }}
+            />
+          </div>
+        )}
+
+        <p className="text-[11px] text-baikal-text opacity-50 leading-relaxed">
+          Serie quotidienne interrogee en direct aupres de Search Console (l'archive
+          interne par requete est mensuelle). Fenetre ancree a J-3. La courbe demarre
+          a la premiere impression observee ; un jour sans impression vaut 0, et la
+          position n'existe que les jours avec impression (pas de mesure ≠ zero).
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -302,6 +399,7 @@ function VueEnsemble({ appId }) {
   const [jours, setJours] = useState(28);
   const [filtreBucket, setFiltreBucket] = useState('all');
   const [metriqueTop, setMetriqueTop] = useState('clicks');
+  const [requeteModale, setRequeteModale] = useState(null);
   const { donnees, erreur, enCours } = useDonneesCachees(
     `overview:${appId}:${jours}`,
     () => seoService.getOverview(appId, jours),
@@ -309,6 +407,7 @@ function VueEnsemble({ appId }) {
   );
 
   useEffect(() => { setFiltreBucket('all'); }, [appId, jours]);
+  useEffect(() => { setRequeteModale(null); }, [appId]);
 
   const requetesFiltrees = useMemo(() => {
     const parClics = donnees?.topRequetes ?? [];
@@ -489,7 +588,15 @@ function VueEnsemble({ appId }) {
                 )}
                 {requetesFiltrees.map((q, i) => (
                   <tr key={`${q.cle}-${i}`} className="border-t border-baikal-border/50">
-                    <td className="px-4 py-1.5">{q.cle}</td>
+                    <td className="px-4 py-1.5">
+                      <button
+                        onClick={() => setRequeteModale(q.cle)}
+                        className="text-left hover:text-baikal-cyan hover:underline"
+                        title="Voir l'historique quotidien de cette requete"
+                      >
+                        {q.cle}
+                      </button>
+                    </td>
                     <td className={`text-right px-2 py-1.5 tabular-nums ${metriqueTop === 'impressions' ? 'opacity-70' : ''}`}>{fmtInt(q.clicks)}</td>
                     <td className={`text-right px-2 py-1.5 tabular-nums ${metriqueTop === 'clicks' ? 'opacity-70' : ''}`}>{fmtInt(q.impressions)}</td>
                     <td className={`text-right px-2 py-1.5 tabular-nums ${classeCtr(q.ctr_pct)}`}>
@@ -553,6 +660,13 @@ function VueEnsemble({ appId }) {
       </p>
       </ContenuEstompe>
       )}
+      {requeteModale && (
+        <ModaleRequete
+          appId={appId}
+          requete={requeteModale}
+          onFermer={() => setRequeteModale(null)}
+        />
+      )}
     </Section>
   );
 }
@@ -580,6 +694,7 @@ const BADGE_STATUT = {
 function Comparatif({ appId }) {
   const [jours, setJours] = useState(28);
   const [filtre, setFiltre] = useState('all');
+  const [requeteModale, setRequeteModale] = useState(null);
   const { donnees, erreur, enCours } = useDonneesCachees(
     `compare:${appId}:${jours}`,
     () => seoService.getCompare(appId, jours),
@@ -587,6 +702,7 @@ function Comparatif({ appId }) {
   );
 
   useEffect(() => { setFiltre('all'); }, [appId, jours]);
+  useEffect(() => { setRequeteModale(null); }, [appId]);
 
   const lignes = useMemo(() => {
     const toutes = donnees?.requetes ?? [];
@@ -682,7 +798,15 @@ function Comparatif({ appId }) {
                 const [libelle, classes] = BADGE_STATUT[q.statut] ?? BADGE_STATUT.stable;
                 return (
                   <tr key={`${q.requete}-${i}`} className="border-t border-baikal-border/50">
-                    <td className="px-4 py-1.5">{q.requete}</td>
+                    <td className="px-4 py-1.5">
+                      <button
+                        onClick={() => setRequeteModale(q.requete)}
+                        className="text-left hover:text-baikal-cyan hover:underline"
+                        title="Voir l'historique quotidien de cette requete"
+                      >
+                        {q.requete}
+                      </button>
+                    </td>
                     <td className="px-2 py-1.5">
                       <span className={`px-1.5 py-0.5 rounded border text-[11px] ${classes}`}>
                         {libelle}
@@ -712,6 +836,13 @@ function Comparatif({ appId }) {
         rang qui se degrade. Tri : pires regressions en tete.
       </p>
       </ContenuEstompe>
+      )}
+      {requeteModale && (
+        <ModaleRequete
+          appId={appId}
+          requete={requeteModale}
+          onFermer={() => setRequeteModale(null)}
+        />
       )}
     </Section>
   );

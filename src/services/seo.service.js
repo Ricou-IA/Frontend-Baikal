@@ -40,6 +40,9 @@ export const seoService = {
   getSerie(appId, mois = 16) {
     return appelerEdge('admin-seo', { action: 'serie', appId, mois });
   },
+  getSerieRequete(appId, requete, mois = 16) {
+    return appelerEdge('admin-seo', { action: 'serie-requete', appId, requete, mois });
+  },
   getAllSites(days = 28) {
     return appelerEdge('admin-seo', { action: 'all-sites', days });
   },

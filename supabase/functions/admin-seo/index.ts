@@ -7,6 +7,8 @@
 //   compare         { appId, days }   → periode vs periode par requete, statuts
 //                                       regression/lost/new/progress/stable (logique PV)
 //   bing-vs-google  { appId }         → serie mensuelle Google/Bing + ecarts de position
+//   serie-requete   { appId, requete, mois } → historique quotidien d'UNE requete,
+//                                       en direct de l'API GSC (filtre query equals)
 //   all-sites       { days }          → totaux par site autorise
 // Droits par site appliques partout (exigerSite / liste sites).
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -307,6 +309,52 @@ serve(async (req) => {
               position: r.position !== null ? Number(r.position) : null,
             })),
           },
+          error: null,
+        });
+      }
+
+      case "serie-requete": {
+        // Historique quotidien d'UNE requete, interroge en direct aupres de
+        // l'API GSC (dimension date + filtre query equals) : l'archive par
+        // requete est mensuelle, seule l'API fournit le quotidien (16 mois max).
+        exigerSite(sites, appId);
+        const requete = typeof body.requete === "string" ? body.requete.trim() : "";
+        if (!requete) return json({ data: null, error: "Parametre requete manquant" }, 400);
+        const moisDemandes = [3, 6, 12, 16].includes(body.mois) ? body.mois : 16;
+        const site = await proprieteDe(appId);
+        const { endDate } = windowAnchored(1);
+        const debut = new Date(`${endDate}T00:00:00Z`);
+        debut.setUTCMonth(debut.getUTCMonth() - moisDemandes);
+        debut.setUTCDate(debut.getUTCDate() + 1);
+        const startDate = debut.toISOString().slice(0, 10);
+        const rows = await searchAnalytics(site, startDate, endDate, ["date"], 5000, [
+          { dimension: "query", operator: "equals", expression: requete },
+        ]);
+        // Google ne rend que les jours AVEC impression. Zero-fill des trous a
+        // partir de la premiere observation (pas avant : un long plat de zeros
+        // en tete serait trompeur). Position null ces jours-la : pas de mesure,
+        // pas zero.
+        const parDate = new Map(
+          rows.filter((r) => r.keys?.[0]).map((r) => [r.keys![0], r]),
+        );
+        const dates = [...parDate.keys()].sort();
+        const jours: Array<Record<string, unknown>> = [];
+        if (dates.length > 0) {
+          for (const d = new Date(`${dates[0]}T00:00:00Z`); ; d.setUTCDate(d.getUTCDate() + 1)) {
+            const iso = d.toISOString().slice(0, 10);
+            if (iso > endDate) break;
+            const r = parDate.get(iso);
+            jours.push({
+              date: iso,
+              clicks: r?.clicks ?? 0,
+              impressions: r?.impressions ?? 0,
+              ctr_pct: r ? Number((r.ctr * 100).toFixed(2)) : null,
+              position: r?.position != null ? Number(r.position.toFixed(1)) : null,
+            });
+          }
+        }
+        return json({
+          data: { requete, fenetre: { startDate, endDate }, jours },
           error: null,
         });
       }
