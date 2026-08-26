@@ -3,7 +3,8 @@
 //
 // Actions :
 //   overview        { appId, days }   → totaux, precedents, buckets de position,
-//                                       top 50 requetes, top 25 pages, parJour
+//                                       top 50 requetes (par clics et par
+//                                       impressions), top 25 pages
 //   compare         { appId, days }   → periode vs periode par requete, statuts
 //                                       regression/lost/new/progress/stable (logique PV)
 //   bing-vs-google  { appId }         → serie mensuelle Google/Bing + ecarts de position
@@ -111,13 +112,12 @@ serve(async (req) => {
         const site = await proprieteDe(appId);
         const cur = windowAnchored(nbJours);
         const prev = previousWindow(nbJours);
-        const [agregat, agregatPrev, requetes, requetesPrev, pages, daily] = await Promise.all([
+        const [agregat, agregatPrev, requetes, requetesPrev, pages] = await Promise.all([
           searchAnalytics(site, cur.startDate, cur.endDate),
           searchAnalytics(site, prev.startDate, prev.endDate),
           searchAnalytics(site, cur.startDate, cur.endDate, ["query"], 5000),
           searchAnalytics(site, prev.startDate, prev.endDate, ["query"], 5000),
           searchAnalytics(site, cur.startDate, cur.endDate, ["page"], 25),
-          searchAnalytics(site, cur.startDate, cur.endDate, ["date"], 100),
         ]);
 
         // Bruit "phrase exacte" ecarte des tops et des buckets (regle PV).
@@ -183,11 +183,6 @@ serve(async (req) => {
               .slice(0, 50)
               .map(versLigne),
             topPages: pages.map(versLigne),
-            parJour: daily.map((r) => ({
-              date: r.keys?.[0],
-              clicks: r.clicks,
-              impressions: r.impressions,
-            })),
           },
           error: null,
         });
