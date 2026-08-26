@@ -131,6 +131,19 @@ L'annuaire dit **qui est joignable**, l'état dit **où on en est**. Le cron ne
 touche que le premier. C'est déjà exactement le pattern de `dpe.diag_optout` et
 `dpe.envoi_campagne`.
 
+### La règle ne vaut que pour les annuaires réimportés
+
+Elle s'applique à MonsieurDPE, dont les populations viennent de fichiers
+externes. **Elle ne s'applique pas à Pack Vendeur** : `pack_vendeur.leads` est
+une table propriétaire, que rien ne réécrit dans le dos. Elle porte déjà
+`status`, `notes`, `contacted_at`, `email_step` et `last_email_sent_at`, et
+`pack_vendeur.lead_interactions` (`lead_id, type, content, metadata,
+created_by`) tient l'historique des échanges.
+
+**Pack Vendeur n'a donc pas de table d'état à créer** — sa vue se construit sur
+l'existant. Créer une table parallèle y dupliquerait un état déjà tenu, ce qui
+est précisément le défaut qu'on corrige.
+
 **La clé est l'email normalisé** (`lower(trim(...))`) : c'est ce qui a un sens
 de bout en bout — une personne, une boîte — et c'est déjà la clé de
 `dpe.diag_optout`. Un cabinet multi-sites ne doit pas pouvoir se faire
@@ -157,6 +170,13 @@ pour un projet dédié — même repli que `baikal_dossiers`).
 | `statut` | text | funnel partagé (section 5) |
 | `dernier_contact_le` | timestamptz | null si jamais contacté |
 | `cree_le` | timestamptz | entrée dans la base |
+| `est_test` | boolean | adresse interne, exclue par défaut |
+
+`est_test` reprend la colonne que `public.baikal_dossiers` porte déjà chez Pack
+Vendeur (`is_test`, ou adresse matchant `pudebat|confer-sas|test|demo|
+example\.com`). Sans elle, tes propres adresses gonflent les compteurs de
+prospects — c'est la règle déjà posée pour les KPI par site, appliquée ici.
+Baikal les exclut par défaut et offre une case pour les revoir.
 
 ### Colonnes optionnelles
 
@@ -182,11 +202,11 @@ Un prospect converti n'a pas de statut à lui : **il devient un client**, et
 c'est `/clients` qui le suit à partir de là. `client_depuis` est donc le seul
 marqueur de conversion, et il est renseigné par le site :
 
-| Site | D'où vient `client_depuis` |
-|---|---|
-| MonsieurDPE, diagnostiqueurs | fiche revendiquée — `dpe.diag_fiche_edito.profil_id` non nul (exactement le critère d'exclusion de `dpe.campagne_a_envoyer`) |
-| MonsieurDPE, RGE | `dpe.entreprise_rge.abonne_jusqu_a` renseigné |
-| Pack Vendeur | la conversion déjà suivie sur `pv_leads` |
+| Site | D'où vient `client_depuis` | Aujourd'hui |
+|---|---|---|
+| MonsieurDPE, diagnostiqueurs | fiche revendiquée — `dpe.diag_fiche_edito.profil_id` non nul (exactement le critère d'exclusion de `dpe.campagne_a_envoyer`) | 1 |
+| MonsieurDPE, RGE | `dpe.abonnement` par `siret`, et `dpe.entreprise_rge.abonne_jusqu_a` | 1 abonnement, 0 `abonne_jusqu_a` |
+| Pack Vendeur | adresse présente dans `pack_vendeur.pro_accounts`, ou portant un dossier payé (`dossiers.paid_at`) | 5 comptes pro, 665 dossiers |
 
 Deux conséquences, et elles ne sont pas cosmétiques :
 
@@ -227,10 +247,20 @@ Identique au module Clients, et non négociable : **la capacité d'un site se li
 - Dédoublonnage par email entre les deux : un diagnostiqueur peut aussi être
   RGE. En cas de collision, la ligne diagnostiqueur l'emporte (c'est la
   population travaillée aujourd'hui).
+- `dpe.lead` (4 lignes : `email, funnel, source, consenti_le`) → métier
+  `autre`, provenance `acquisition_propre`. Population marginale aujourd'hui,
+  mais c'est le seul endroit où un consentement explicite est horodaté : elle
+  a plus de valeur juridique que les 57 000 autres, qui reposent sur
+  l'intérêt légitime B2B.
 - `statut` : joint sur `dpe.prospect_etat`, `desinscrit` forcé si l'adresse est
   dans `dpe.diag_optout`.
-- `dernier_contact_le` : `max(envoye_le)` dans `dpe.envoi_campagne`, et
-  `nb_contacts` le compte correspondant.
+- `dernier_contact_le` : `max(envoye_le)` dans `dpe.envoi_campagne` pour les
+  diagnostiqueurs, dans `dpe.envoi_recap` pour les RGE, et `nb_contacts` le
+  compte correspondant.
+
+**Les 57 244 entreprises RGE n'ont jamais été contactées** : `dpe.envoi_recap`
+est vide. C'est le plus gros gisement adressable du parc, entièrement intact —
+et donc celui où une erreur de cadence coûterait le plus cher.
 
 **Pack Vendeur** — vue sur `pv_leads` (26 068 lignes, 25 531 adressables) :
 
@@ -254,7 +284,14 @@ Identique au module Clients, et non négociable : **la capacité d'un site se li
   deux colonnes qui existent déjà sur `pv_leads` : inutile de joindre
   `pv_email_logs`, qui mêle par ailleurs prospection (`lead_id`) et
   transactionnel client (`dossier_id`).
+- `note` : `pv_leads.notes`, et l'historique dans
+  `pack_vendeur.lead_interactions`.
 - `siret` : `siret_siege`, présent sur 334 lignes seulement.
+- `est_test` : même expression que `public.baikal_dossiers`.
+
+La vue va dans `public`, à côté de `baikal_dossiers` qui y est déjà : chez Pack
+Vendeur les tables vivent dans le schéma `pack_vendeur` et `public` ne porte
+que des vues d'exposition.
 
 **Les autres sites** (voirie, duerp, cosette) ne publient rien : ils
 apparaissent indisponibles, pas en erreur.
@@ -466,8 +503,8 @@ vérifiée en conditions réelles, et jamais avant.
 
 | Objet | Travail |
 |---|---|
-| vue `baikal_prospects` | sur `pv_leads`, jointe à `pv_email_unsubscribes` |
-| `pv-admin-dossiers` | les six actions ajoutées au canal existant |
+| vue `public.baikal_prospects` | sur `pack_vendeur.leads`, jointe à `email_unsubscribes`, `pro_accounts` et `dossiers` |
+| `pv-admin-dossiers` | les six actions ajoutées au canal existant — elles écrivent dans `leads` et `lead_interactions`, **aucune table nouvelle** |
 
 Rien ne change pour `/admin/prospect` et `/admin/mailing` de Pack Vendeur dans
 ce lot : ils continuent de tourner. Leur sort se décidera au lot 2.
