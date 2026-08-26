@@ -3,6 +3,14 @@
 // scopee au bon projet par lecteurSite) et la fenetre en jours, et rend
 // { kpis, dernieres }. Un site absent d'ici recoit le fallback generique
 // (tables + volumes) construit dans index.ts.
+//
+// Qu'est-ce qu'un dossier de TEST : la definition appartient au site et vit
+// dans sa vue contractuelle baikal_dossiers (colonne est_test), jamais
+// redefinie ici. Les KPI s'y joignent donc pour exclure tests et supprimes :
+// c'est ce qui garantit que la Vue du site et la page Clients affichent le
+// meme nombre. Redefinir le filtre en local est exactement ce qui faisait
+// compter 4 demandes payees a voirie la ou il n'y en avait que 2.
+// Consequence assumee : un site liste ici doit publier sa vue contractuelle.
 
 // deno-lint-ignore-file no-explicit-any
 type Sql = any;
@@ -23,14 +31,16 @@ async function statsPackVendeur(sql: Sql, jours: number): Promise<StatsSite> {
       count(*) FILTER (WHERE paid_at >= now() - make_interval(days => ${jours}))::int AS payes,
       coalesce(sum(amount_paid) FILTER (WHERE paid_at >= now() - make_interval(days => ${jours})), 0)::float AS ca_periode,
       coalesce(sum(amount_paid) FILTER (WHERE paid_at IS NOT NULL), 0)::float AS ca_total
-    FROM pack_vendeur.dossiers
-    WHERE is_test IS NOT TRUE AND deleted_at IS NULL`;
+    FROM pack_vendeur.dossiers d
+    JOIN public.baikal_dossiers v ON v.dossier_id = d.id::text
+    WHERE v.est_test IS NOT TRUE AND v.supprime_le IS NULL`;
   const lignes = await sql`
-    SELECT paid_at::date AS date, property_city AS ville, amount_paid::float AS montant,
-           coalesce(acquisition_channel, utm_source, 'direct') AS canal
-    FROM pack_vendeur.dossiers
-    WHERE paid_at IS NOT NULL AND is_test IS NOT TRUE AND deleted_at IS NULL
-    ORDER BY paid_at DESC LIMIT 10`;
+    SELECT d.paid_at::date AS date, d.property_city AS ville, d.amount_paid::float AS montant,
+           coalesce(d.acquisition_channel, d.utm_source, 'direct') AS canal
+    FROM pack_vendeur.dossiers d
+    JOIN public.baikal_dossiers v ON v.dossier_id = d.id::text
+    WHERE d.paid_at IS NOT NULL AND v.est_test IS NOT TRUE AND v.supprime_le IS NULL
+    ORDER BY d.paid_at DESC LIMIT 10`;
   return {
     kpis: [
       { cle: "crees", libelle: `Dossiers crees (${jours} j)`, valeur: k.crees },
@@ -52,20 +62,24 @@ async function statsPackVendeur(sql: Sql, jours: number): Promise<StatsSite> {
 }
 
 async function statsVoirie(sql: Sql, jours: number): Promise<StatsSite> {
-  // Payee = tout statut post-paiement (PAID, SENT_TO_MAIRIE, MANUAL_FALLBACK).
+  // Payee = paye_le renseigne dans la vue contractuelle, jamais le statut :
+  // la vue n'y pose une date que pour un encaissement Stripe reel, ce qui
+  // ecarte les sessions TEST_ que les statuts PAID laissaient passer.
+  // La periode se compte sur la date de paiement (comme Pack Vendeur), pas
+  // sur la date de creation.
   const [k] = await sql`
     SELECT
-      count(*) FILTER (WHERE created_at >= now() - make_interval(days => ${jours}))::int AS demandes_periode,
-      count(*) FILTER (WHERE status IN ('PAID','SENT_TO_MAIRIE','MANUAL_FALLBACK')
-                       AND created_at >= now() - make_interval(days => ${jours}))::int AS payees_periode,
-      count(*) FILTER (WHERE status IN ('PAID','SENT_TO_MAIRIE','MANUAL_FALLBACK'))::int AS payees_total
-    FROM voirie.demandes
-    WHERE deleted_at IS NULL`;
+      count(*) FILTER (WHERE v.cree_le >= now() - make_interval(days => ${jours}))::int AS demandes_periode,
+      count(*) FILTER (WHERE v.paye_le >= now() - make_interval(days => ${jours}))::int AS payees_periode,
+      count(*) FILTER (WHERE v.paye_le IS NOT NULL)::int AS payees_total
+    FROM voirie.baikal_dossiers v
+    WHERE v.est_test IS NOT TRUE AND v.supprime_le IS NULL`;
   const lignes = await sql`
-    SELECT created_at::date AS date, type_occupation, status AS statut
-    FROM voirie.demandes
-    WHERE deleted_at IS NULL
-    ORDER BY created_at DESC LIMIT 10`;
+    SELECT d.created_at::date AS date, d.type_occupation, d.status AS statut
+    FROM voirie.demandes d
+    JOIN voirie.baikal_dossiers v ON v.dossier_id = d.id::text
+    WHERE v.est_test IS NOT TRUE AND v.supprime_le IS NULL
+    ORDER BY d.created_at DESC LIMIT 10`;
   return {
     kpis: [
       { cle: "demandes", libelle: `Demandes (${jours} j)`, valeur: k.demandes_periode },
