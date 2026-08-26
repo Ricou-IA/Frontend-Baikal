@@ -1,0 +1,435 @@
+# Baikal /prospect — la base adressable fédérée (lot 1)
+
+- **Date** : 2026-08-27
+- **Statut** : validé en brainstorming, prêt pour le plan d'implémentation
+- **Auteur** : Eric Pudebat + Claude (session brainstorming superpowers)
+- **Suite** : lot 2 `/mailing`, lot 3 copie inter-sites — chacun sa spec
+
+---
+
+## 1. Contexte et problème
+
+### Le déclencheur
+
+Une campagne d'emailing vers les diagnostiqueurs certifiés tourne depuis le
+27/08 sur MonsieurDPE (`dpe-campagne-revendication`, 07h00, bras A/B, paliers
+20 puis 100 puis 200). Elle est pilotée en SQL, sans aucun écran. On prospecte
+à l'aveugle.
+
+### Trois systèmes de prospection coexistent déjà
+
+| Où | Ce qui existe | Tables |
+|---|---|---|
+| **Pack Vendeur** | `/admin/prospect` (onglets ICP, scrape Apify, SIRENE, couverture par département) et `/admin/mailing` (Envoi / Stats / Campagnes / Segments) | `pv_leads`, `pv_mail_campaigns`, `pv_mail_segments`, `pv_mail_events`, `pv_email_unsubscribes` |
+| **Baikal** | `/partenariats` (prospects + campagnes Resend par lots de 50) | `admin.prospects`, `admin.campagnes`, `admin.campagne_envois` |
+| **MonsieurDPE** | la campagne diagnostiqueurs | `dpe.diag_optout`, `dpe.envoi_campagne`, `dpe.campagne_a_envoyer()` |
+
+### Le trou
+
+`admin.sync_diagnostiqueurs` recopie `dpe.diag_certifie` vers `admin.prospects`
+**chaque nuit à 03h30**. Les mêmes diagnostiqueurs vivent donc des deux côtés,
+avec deux listes d'exclusion qui s'ignorent (`dpe.diag_optout` d'un côté, le
+statut `desinscrit` de `admin.prospects` de l'autre). Un diagnostiqueur qui
+répond STOP à la campagne DPE reste adressable depuis Baikal.
+
+C'est le symptôme « deux écrans, deux nombres » déjà corrigé sur les KPI de
+voirie, appliqué cette fois à des personnes réelles.
+
+### Ce que ce lot construit
+
+Une base adressable unique **par site**, visible et administrable depuis la
+console. Pas de recopie, pas de seconde vérité.
+
+---
+
+## 2. Le modèle : fédéré, pas centralisé
+
+**Baikal ne possède aucun prospect.** Chaque site reste maître de sa base ;
+Baikal la lit dans une vue contractuelle et lui donne des ordres par son Edge
+Function d'administration. C'est le décalque exact du module Clients
+(`baikal_dossiers` + `env_dossiers_fn`), déjà en production et testé.
+
+Conséquence, et c'est la règle d'or du hub : **ajouter un site à `/prospect` =
+publier une vue + déclarer une EF. Aucun code Baikal.**
+
+### Ce que Baikal possède quand même
+
+Une seule chose : la **taxonomie** (`admin.metier`). Ce n'est pas de la donnée
+de prospection, c'est le vocabulaire commun sans lequel deux sites ne sont pas
+comparables. Aucune adresse, aucun nom.
+
+### Opt-out : par marque, et c'est un choix vérifié
+
+Un STOP chez MonsieurDPE n'engage pas Pack Vendeur. Ce choix ne tient que
+parce que les domaines expéditeurs sont distincts — `eric@monsieurdpe.fr` et
+`noreply@pre-etat-date.ai`, paramétrés dans `config.apps.expediteur_email` —
+donc les réputations DKIM/DMARC le sont aussi.
+
+**Corollaire pour le lot 3** : toute copie inter-sites devra être filtrée sur
+les opt-out de la source. Recopier une adresse grillée dans un outil propre
+annulerait le bénéfice de la séparation.
+
+---
+
+## 3. Annuaire n'est pas état de prospection
+
+C'est la décision structurante de ce lot.
+
+Les populations de MonsieurDPE sont des **annuaires publics réimportés chaque
+nuit** :
+
+| Cron | Quand | Alimente |
+|---|---|---|
+| `dpe-annuaire-diag-sync` | 02h30 | `dpe.diag_certifie` / `dpe.diag_site` (CSV du ministère) |
+| `dpe-annuaire-diag-geocode` | 02h50 | géocodage des fiches |
+| `dpe-annuaire-rge-sync` | 03h10/25/40/55 | `dpe.entreprise_rge` (~57 000 lignes) |
+| `dpe-annuaire-rge-recap` | 08h10 le 3 du mois | récapitulatif mensuel |
+
+Ces crons **restent tous actifs** : ce sont eux la source de vérité, et c'est
+justement parce que Baikal lira en direct qu'on peut couper la recopie de
+03h30.
+
+Y stocker un statut de prospection le ferait écraser au prochain passage.
+Chaque site tient donc une **table d'état séparée**, jointe à son annuaire dans
+la vue :
+
+```sql
+dpe.prospect_etat (cle, statut, note, maj_le, maj_par)
+```
+
+`maj_par` porte l'identifiant de l'utilisateur Baikal qui a agi, transmis par
+le canal : sans lui, on ne peut pas dire qui a passé un prospect en `refus`.
+
+L'annuaire dit **qui est joignable**, l'état dit **où on en est**. Le cron ne
+touche que le premier. C'est déjà exactement le pattern de `dpe.diag_optout` et
+`dpe.envoi_campagne`.
+
+**La clé est l'email normalisé** (`lower(trim(...))`) : c'est ce qui a un sens
+de bout en bout — une personne, une boîte — et c'est déjà la clé de
+`dpe.diag_optout`. Un cabinet multi-sites ne doit pas pouvoir se faire
+réécrire par une porte de derrière.
+
+---
+
+## 4. Le contrat de la vue
+
+Chaque site publie `<db_schema>.baikal_prospects` (ou `public.baikal_prospects`
+pour un projet dédié — même repli que `baikal_dossiers`).
+
+### Colonnes obligatoires
+
+| Colonne | Type | Rôle |
+|---|---|---|
+| `prospect_id` | text | identifiant stable chez le site (slug, siret, uuid) |
+| `email` | text | l'adresse, normalisée en minuscules — **jamais nulle** |
+| `metier` | text | slug de la taxonomie partagée (section 5) |
+| `provenance` | text | `annuaire_public` / `acquisition_propre` / `import` / `scrape` |
+| `nom_affiche` | text | raison sociale, ou nom de la personne |
+| `commune` | text | |
+| `code_postal` | text | le département s'en dérive |
+| `statut` | text | funnel partagé (section 5) |
+| `dernier_contact_le` | timestamptz | null si jamais contacté |
+| `cree_le` | timestamptz | entrée dans la base |
+
+### Colonnes optionnelles
+
+`specialite` (text[]) · `siret` (char(14)) · `telephone` · `site_web` ·
+`nb_contacts` (int) · `note` · `client_depuis` (date)
+
+### La vue n'expose que l'adressable
+
+`email` est obligatoire et non nulle : **la vue filtre sur les lignes qui ont
+une adresse valide**. Une entreprise RGE sans email existe dans l'annuaire mais
+n'entre pas dans `/prospect` — elle n'est pas adressable, et la faire figurer
+dans une base dont le seul usage est d'écrire fausserait tous les compteurs.
+
+Le jour où l'enrichissement des lignes sans adresse deviendra un sujet, ce sera
+un écran distinct, chez le site qui tient l'annuaire.
+
+### Règle de capacité
+
+Identique au module Clients, et non négociable : **la capacité d'un site se lit
+à la présence de la vue et des colonnes.**
+
+- Pas de vue → pas de module pour ce site (`disponible: false`, **jamais** une
+  erreur).
+- Pas de colonne `telephone` → pas de colonne téléphone affichée.
+- Pas de colonne `siret` → pas de SIRET, et le lot 3 dédoublonnera à l'email.
+
+### Ce que les vues exposent concrètement
+
+**MonsieurDPE** — une seule vue qui unifie deux annuaires :
+
+- `dpe.diag_certifie` + `dpe.diag_site` → métier `diagnostiqueur`, provenance
+  `annuaire_public`. Email = `min(email)` des certifiés de la fiche, **la même
+  règle que `dpe.revendication_ouvrir` et `dpe.campagne_a_envoyer`** : les
+  trois doivent rester d'accord, sinon la console montre une adresse et la
+  campagne en sert une autre.
+- `dpe.entreprise_rge` → métier `entreprise_rge`, provenance `annuaire_public`,
+  `specialite` = la colonne `domaines`, `siret` = la clé primaire.
+- Dédoublonnage par email entre les deux : un diagnostiqueur peut aussi être
+  RGE. En cas de collision, la ligne diagnostiqueur l'emporte (c'est la
+  population travaillée aujourd'hui).
+- `statut` : joint sur `dpe.prospect_etat`, `desinscrit` forcé si l'adresse est
+  dans `dpe.diag_optout`.
+- `dernier_contact_le` : `max(envoye_le)` dans `dpe.envoi_campagne`, et
+  `nb_contacts` le compte correspondant.
+
+**Pack Vendeur** — vue sur `pv_leads` :
+
+- `metier` dérivé de `category` (`notaire`, `agence_immo` et `mandataire_immo`
+  vers `agent_immo`, `syndic`, le reste vers `autre`).
+- `specialite` : `agence` / `mandataire` / `independant` pour les agents immo.
+- `provenance` : `acquisition_propre` pour les lead magnets (`source NOT LIKE
+  'apify-%'`), `scrape` pour le reste.
+- `statut` : les statuts de `pv_leads` mappés vers le funnel partagé — le
+  mapping exact est à établir au moment du plan, en lisant les valeurs
+  réellement présentes en base, pas les valeurs supposées. `desinscrit` forcé
+  si l'adresse est dans `pv_email_unsubscribes`.
+
+**Les autres sites** (voirie, duerp, cosette) ne publient rien : ils
+apparaissent indisponibles, pas en erreur.
+
+### Ce que ça donne dès le lot 1
+
+Comme `dernier_contact_le` se lit dans `dpe.envoi_campagne`, la console montre
+**dès ce lot** qui a reçu la campagne diagnostiqueurs et quand — sans attendre
+le lot 2. C'est le besoin qui a déclenché le chantier.
+
+---
+
+## 5. Taxonomie : métier, spécialité, provenance, statut
+
+### `admin.metier` — fermée, partagée, mais en base
+
+```sql
+admin.metier (slug text primary key, libelle text, couleur text, ordre int)
+```
+
+Fermée et partagée pour que deux sites soient comparables (et copiables au lot
+3). **En base et non en dur** pour qu'ajouter « courtier » soit une ligne, pas
+un déploiement — administrable depuis `/sites`, comme le reste du paramétrage
+par site.
+
+| slug | libellé |
+|---|---|
+| `notaire` | Notaires |
+| `agent_immo` | Agent immobilier |
+| `syndic` | Syndic |
+| `diagnostiqueur` | Diagnostiqueur immobilier |
+| `entreprise_rge` | Entreprise RGE |
+| `autre` | Autre |
+
+`syndic` est un métier à part et non une spécialité d'agent immobilier : Pack
+Vendeur travaille déjà ce segment sous son propre onglet ICP, et un syndic de
+copropriété n'exerce pas le métier d'agent immobilier.
+
+Un slug remonté par une vue et absent de la table s'affiche **en gris avec sa
+valeur brute** plutôt que de casser la page, et `/sites` signale l'écart.
+
+### `specialite` — libre, propre au métier, multiple
+
+Un tableau, parce qu'une entreprise RGE cumule réellement plusieurs domaines
+(isolation **et** pompe à chaleur). Affichage « Isolation +2 », filtre
+« contient ».
+
+| métier | spécialités |
+|---|---|
+| `agent_immo` | `independant`, `mandataire`, `agence` |
+| `entreprise_rge` | les `domaines` de `dpe.entreprise_rge` |
+
+### `provenance` — d'où vient la ligne
+
+`annuaire_public` · `acquisition_propre` · `import` · `scrape`
+
+**« Acquisition propre » est une provenance, pas un métier.** Quelqu'un qui
+laisse son adresse sur un de nos outils *est* peut-être notaire ; le classer en
+« acquisition propre » le ferait disparaître d'un ciblage « tous les notaires ».
+Le chip « Acquisition propre » existe quand même dans la barre de filtres, à
+côté des chips métier — visuellement identique, sémantiquement juste. Un lead
+inbound qualifié notaire apparaît alors dans les deux filtres, ce qui est la
+vérité.
+
+### `statut` — le funnel partagé
+
+Vocabulaire repris tel quel d'`admin.prospects`, déjà éprouvé à l'usage et qui
+rend la migration triviale :
+
+`nouveau` · `contacte` · `relance` · `repondu` · `partenaire` · `refus` ·
+`desinscrit`
+
+`partenaire` se lit « relation établie » (converti). `desinscrit` est un état
+**terminal** : la vue le force dès que l'adresse figure dans la table d'opt-out
+du site, quel que soit l'état stocké.
+
+---
+
+## 6. La page `/prospect`
+
+### Structure
+
+**Une seule liste, pas d'onglets.** Le fouillis de `/admin/prospect` sur Pack
+Vendeur vient d'avoir empilé des découpages (ICP, inbound/outbound, scrape,
+couverture) là où un filtre suffisait. Ici :
+
+1. **KPI** : adressables (le total) · `nouveau` · contactés (tout ce qui a un
+   `dernier_contact_le`) · `desinscrit`
+2. **Chips métier** avec compteurs — c'est l'axe de classement de premier ordre
+3. **Filtres** : statut, provenance, spécialité, département, « a un
+   téléphone », recherche plein texte
+4. **Table** : Nom · Métier · Spécialité · Commune · Statut · Dernier contact
+5. **Fiche latérale** au clic : coordonnées, historique de contact, note,
+   actions
+
+La page hérite du `ConsoleLayout` et du sélecteur de site global (`useApp`),
+comme Clients et Partenariats.
+
+### Volume
+
+`dpe.entreprise_rge` compte à lui seul ~57 000 lignes. **Pagination et
+compteurs côté serveur, sans exception** : pas de chargement complet, pas de
+compteur calculé côté client, pas de tri en mémoire. Les chips métier lisent
+des agrégats renvoyés par l'EF, pas la page courante.
+
+### Ce qui n'est PAS sur cette page
+
+Les outils d'acquisition — scrape Apify, recherche SIRENE, historique des runs,
+matrice de couverture. Ils restent chez le site qui les opère. C'est la moitié
+de ce qui rendait la page de Pack Vendeur illisible : elle était à la fois le
+référentiel et l'usine.
+
+---
+
+## 7. Les actions — écriture complète par le canal du site
+
+Toutes les écritures passent par l'EF d'administration du site
+(`env_url` + `env_prospects_fn` + `env_anon_key` publique pour franchir
+`verify_jwt` + en-tête `X-Baikal-Key` porté par `env_secret_ref`). **Jamais
+d'écriture directe de Baikal dans le schéma d'un site.**
+
+| Action | Effet chez le site |
+|---|---|
+| `statut` | met à jour `prospect_etat.statut` |
+| `note` | met à jour `prospect_etat.note` |
+| `desinscrire` | insère dans la table d'opt-out du site |
+| `creer` | insère un prospect saisi à la main |
+| `importer` | import CSV par lots |
+| `supprimer` | retire un prospect créé à la main |
+
+`env_prospects_fn` vaut NULL par défaut : **pas d'EF déclarée, pas de boutons,
+pas d'actions**, interrupteur ouvert, comme `env_dossiers_fn` pour les Clients.
+
+### Deux règles qui ne sont pas négociables
+
+**Un import n'écrase jamais un état existant.** Clé = email normalisé,
+`insert ... on conflict do nothing` sur l'état — c'est déjà ce que fait
+`admin.sync_diagnostiqueurs`. Une ligne déjà connue est comptée en doublon et
+rapportée comme telle, pas réécrite. Sans cette règle, un CSV importé par
+mégarde efface des statuts et des refus durement gagnés.
+
+**`supprimer` ne vaut que pour un prospect créé à la main.** On ne supprime pas
+une ligne d'annuaire public : elle reviendrait au prochain cron, et le geste
+donnerait une fausse impression d'effacement. Pour ne plus adresser quelqu'un,
+c'est `desinscrire` — qui, lui, est définitif et respecté par la campagne.
+
+---
+
+## 8. Ce qui bouge, repo par repo
+
+### Frontend-Baikal
+
+| Objet | Travail |
+|---|---|
+| `admin.metier` | table + amorce des six métiers + édition depuis `/sites` |
+| `config.apps.env_prospects_fn` | nouvelle colonne (NULL = pas d'actions) |
+| EF `admin-prospects` | liste paginée, agrégats, fiche, relais des actions — décalque de `admin-dossiers` (`_shared/sites.ts` en lecture, `relais.ts` en écriture) |
+| `src/pages/Prospects.jsx` | la page |
+| `src/pages/Partenariats.jsx` | **supprimée** |
+| `admin.sync_diagnostiqueurs` | **supprimée**, avec le cron `admin-sync-diag-prospects` (03h30) |
+| migration de données | `admin.prospects` vers `dpe.prospect_etat` : statuts et désinscrits uniquement, pas les coordonnées (l'annuaire les a déjà, en plus frais) |
+
+`admin.campagnes` et `admin.campagne_envois` **ne sont pas touchées** : elles
+portent l'historique « qui a déjà reçu quoi » de campagnes réellement parties,
+qu'on ne peut pas se permettre de perdre, et elles servent au lot 2. La page
+disparaît, les tables dorment.
+
+### DPE
+
+| Objet | Travail |
+|---|---|
+| `dpe.prospect_etat` | la table d'état |
+| `dpe.baikal_prospects` | la vue (diagnostiqueurs + RGE, jointe à l'état et à `diag_optout`) |
+| EF d'administration | les six actions, protégées par `X-Baikal-Key` |
+
+### Pack Vendeur
+
+| Objet | Travail |
+|---|---|
+| vue `baikal_prospects` | sur `pv_leads`, jointe à `pv_email_unsubscribes` |
+| `pv-admin-dossiers` | les six actions ajoutées au canal existant |
+
+Rien ne change pour `/admin/prospect` et `/admin/mailing` de Pack Vendeur dans
+ce lot : ils continuent de tourner. Leur sort se décidera au lot 2.
+
+---
+
+## 9. Vérification
+
+Pas de suite de tests frontend sur Baikal ; les EF ont des tests Deno
+(`canal.test.ts`, `filtres.test.ts`, `relais.test.ts` pour `admin-dossiers`) —
+`admin-prospects` suit le même standard pour ses filtres et son relais.
+
+Vérifications manuelles à faire passer :
+
+1. **Capacité** : sélectionner voirie, le module est indisponible, message
+   clair, aucune erreur en console.
+2. **Volume** : MonsieurDPE, la liste s'ouvre en moins de 2 s, les compteurs
+   des chips sont cohérents avec le total, la pagination ne recharge pas tout.
+3. **Parité avec la campagne** : un diagnostiqueur déjà servi par
+   `dpe-campagne-revendication` affiche `dernier_contact_le` égal à son
+   `envoye_le` dans `dpe.envoi_campagne`. Chiffre à chiffre.
+4. **Opt-out** : une adresse dans `dpe.diag_optout` ressort `desinscrit` dans
+   la console, même si `prospect_etat` dit autre chose.
+5. **Import non destructif** : importer un CSV contenant une adresse déjà en
+   `refus`, elle est rapportée en doublon, statut inchangé.
+6. **Migration** : après reprise, le nombre de désinscrits dans
+   `dpe.prospect_etat` égale celui d'`admin.prospects` filtré sur
+   `app_id = 'monsieurdpe'`. Aucun perdu.
+7. **Colonne absente** : retirer `telephone` de la vue Pack Vendeur, la colonne
+   disparaît de la table sans casser la page.
+
+---
+
+## 10. Hors périmètre
+
+- **Le mailing** (lot 2) : envoi, segments, modèles, statistiques d'ouverture
+  et de clic, suivi des paliers et des bras A/B de la campagne DPE.
+- **La copie inter-sites** (lot 3) : c'est la valeur stratégique du chantier,
+  mais elle suppose un réceptacle chez chaque site cible et une règle de
+  dédoublonnage inter-bases (SIRET prioritaire, email en repli).
+- **Les campagnes clients** de Pre-etat-date (transactionnel) : hors sujet, ce
+  module ne traite que la prospection.
+- **La refonte de `/admin/prospect` et `/admin/mailing` de Pack Vendeur** : ils
+  restent en place.
+- **Les outils d'acquisition** (scrape, SIRENE, couverture) : ils restent chez
+  les sites.
+- **La qualification en masse** des leads inbound (leur attribuer un métier).
+
+---
+
+## 11. Récapitulatif des décisions
+
+| # | Question | Décision |
+|---|---|---|
+| 1 | Rôle de Baikal | Fédéré : chaque site maître de sa base, Baikal lit et administre à distance |
+| 2 | Opt-out | Par marque — domaines expéditeurs distincts, vérifié |
+| 3 | `admin.prospects` | Rendue au site DPE ; cron 03h30 et `/partenariats` supprimés |
+| 4 | Découpage | Lot 1 socle `/prospect`, lot 2 `/mailing`, lot 3 copie inter-sites |
+| 5 | Périmètre de la page | Tout le vivier adressable, une seule liste, état de contact en colonne et filtre |
+| 6 | Métiers | Taxonomie fermée partagée, stockée en base (`admin.metier`) |
+| 7 | Spécialité | Colonne supplémentaire, tableau, libre par métier |
+| 8 | « Acquisition propre » | Provenance et non métier, avec un chip dédié |
+| 9 | Syndic | Métier à part entière |
+| 10 | Écriture | Complète (statut, note, désinscription, création, import, suppression) par le canal du site |
+| 11 | SIRET | Non imposé, pris s'il existe ; clé prioritaire de dédoublonnage au lot 3 |
+| 12 | `admin.campagnes` | Non touchée, dort jusqu'au lot 2 |
