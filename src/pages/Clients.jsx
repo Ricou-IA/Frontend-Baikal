@@ -55,6 +55,7 @@ function ClientsContent() {
   const [periodeJours, setPeriodeJours] = useState(null);
   const [perimetre, setPerimetre] = useState(null);
   const [statuts, setStatuts] = useState([]);
+  const [payesSeuls, setPayesSeuls] = useState(false);
   const [inclureMasquees, setInclureMasquees] = useState(false);
   const [exclureTests, setExclureTests] = useState(true);
   const [inclureSupprimes, setInclureSupprimes] = useState(false);
@@ -74,6 +75,7 @@ function ClientsContent() {
   // (les slugs d'un funnel n'ont pas de sens sur un autre site).
   useEffect(() => {
     setStatuts([]);
+    setPayesSeuls(false);
     setPage(1);
     setFicheId(null);
   }, [currentApp]);
@@ -83,12 +85,13 @@ function ClientsContent() {
     periodeJours,
     perimetre,
     statuts,
+    payesSeuls,
     inclureMasquees,
     exclureTests,
     inclureSupprimes,
     page,
     parPage: PAR_PAGE,
-  }), [recherche, periodeJours, perimetre, statuts, inclureMasquees,
+  }), [recherche, periodeJours, perimetre, statuts, payesSeuls, inclureMasquees,
     exclureTests, inclureSupprimes, page]);
 
   const { donnees, erreur, enCours } = useDonneesCachees(
@@ -165,6 +168,12 @@ function ClientsContent() {
                   {e.libelle}
                 </Chip>
               ))}
+              {/* Derive de paye_le, pas d'une etape : un client payant peut
+                  etre dans une etape d'apres-vente (envoye, a traiter…). */}
+              <Chip actif={payesSeuls}
+                onClick={() => { setPayesSeuls((v) => !v); setPage(1); }}>
+                Ont payé
+              </Chip>
             </div>
           )}
           {masquees.length > 0 && (

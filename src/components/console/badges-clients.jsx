@@ -30,11 +30,27 @@ export const CANAUX = {
 export function BadgeEtape({ statut, payeLe, funnel }) {
   const etape = (funnel || []).find((e) => e.slug === statut) || null;
   if (etape) {
-    return (
+    const badge = (
       <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border ${COULEURS_ETAPES[etape.couleur] || COULEUR_DEFAUT}`}>
         {etape.libelle}
       </span>
     );
+    // Une etape post-paiement (envoye, a traiter, abonne...) decrit l'apres-vente :
+    // sans ce rappel, un client payant se lit comme un dossier non converti.
+    if (etape.apres_paiement && payeLe) {
+      return (
+        <span className="inline-flex items-center gap-1">
+          {badge}
+          <span
+            title="Client payant"
+            className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-xs font-medium border ${COULEURS_ETAPES.emerald}`}
+          >
+            payé
+          </span>
+        </span>
+      );
+    }
+    return badge;
   }
   // Site sans funnel (statut null) ou slug hors registre : repli.
   if (statut) {

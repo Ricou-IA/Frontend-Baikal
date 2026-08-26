@@ -8,6 +8,10 @@ export interface Criteres {
   inclureMasquees: boolean;
   exclureTests: boolean;
   inclureSupprimes: boolean;
+  // Client payant : derive de paye_le, jamais du slug d'etape. Un dossier
+  // peut avoir paye et etre dans une etape post-paiement (envoye, a traiter,
+  // abonne) — filtrer sur l'etape ferait disparaitre ces clients.
+  payesSeuls: boolean;
   tri: "cree_le" | "paye_le";
   ordre: "asc" | "desc";
   page: number;
@@ -33,6 +37,7 @@ export function normaliserCriteres(body: Record<string, unknown>): Criteres {
     inclureMasquees: body.inclureMasquees === true,
     exclureTests: body.exclureTests !== false,
     inclureSupprimes: body.inclureSupprimes === true,
+    payesSeuls: body.payesSeuls === true,
     tri: body.tri === "paye_le" ? "paye_le" : "cree_le",
     ordre: body.ordre === "asc" ? "asc" : "desc",
     page: Number.isInteger(body.page) && (body.page as number) > 0 ? body.page as number : 1,

@@ -165,6 +165,7 @@ serve(async (req) => {
           WHERE true
             ${c.exclureTests ? sql`AND est_test IS NOT TRUE` : sql``}
             ${c.inclureSupprimes ? sql`` : sql`AND supprime_le IS NULL`}
+            ${c.payesSeuls ? sql`AND paye_le IS NOT NULL` : sql``}
             ${c.perimetre ? sql`AND perimetre = ${c.perimetre}` : sql``}
             ${c.periodeJours
               ? sql`AND cree_le >= now() - make_interval(days => ${c.periodeJours})`

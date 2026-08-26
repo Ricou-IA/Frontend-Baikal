@@ -11,6 +11,7 @@ Deno.test("body vide -> valeurs par defaut", () => {
     inclureMasquees: false,
     exclureTests: true,
     inclureSupprimes: false,
+    payesSeuls: false,
     tri: "cree_le",
     ordre: "desc",
     page: 1,
@@ -48,4 +49,8 @@ Deno.test("recherche tronquee et nettoyee", () => {
 });
 Deno.test("exclureTests false explicite respecte", () => {
   assertEquals(normaliserCriteres({ exclureTests: false }).exclureTests, false);
+});
+Deno.test("payesSeuls vrai seulement sur true explicite", () => {
+  assertEquals(normaliserCriteres({ payesSeuls: true }).payesSeuls, true);
+  assertEquals(normaliserCriteres({ payesSeuls: "oui" }).payesSeuls, false);
 });
