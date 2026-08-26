@@ -69,17 +69,30 @@ serve(async (req) => {
 
     const sql = lecteurSite(site);
     try {
-      const [vues] = await sql`
-        SELECT to_regclass('public.baikal_dossiers')::text        AS dossiers,
-               to_regclass('public.baikal_dossier_emails')::text  AS emails,
-               to_regclass('public.baikal_dossier_events')::text  AS events`;
-      if (!vues.dossiers) {
+      // La vue contractuelle vit dans le schema du site (bases partagees :
+      // un schema par produit, sinon collision de noms dans public) ou dans
+      // public (projets dedies, modele Pre-etat-date). Premier trouve gagne.
+      const candidats = [site.db_schema, "public"]
+        .filter((s): s is string => Boolean(s));
+      let schemaVues: string | null = null;
+      for (const s of candidats) {
+        const [r] = await sql`
+          SELECT to_regclass(${s + ".baikal_dossiers"}) IS NOT NULL AS ok`;
+        if (r.ok) {
+          schemaVues = s;
+          break;
+        }
+      }
+      if (!schemaVues) {
         return json({ data: { disponible: false }, error: null });
       }
+      const [vues] = await sql`
+        SELECT to_regclass(${schemaVues + ".baikal_dossier_emails"})::text  AS emails,
+               to_regclass(${schemaVues + ".baikal_dossier_events"})::text  AS events`;
       const colonnes = new Set(
         (await sql`
           SELECT column_name FROM information_schema.columns
-          WHERE table_schema = 'public' AND table_name = 'baikal_dossiers'`)
+          WHERE table_schema = ${schemaVues} AND table_name = 'baikal_dossiers'`)
           .map((c) => c.column_name as string),
       );
 
@@ -109,7 +122,7 @@ serve(async (req) => {
               : sql``}`;
         const rows = await sql`
           SELECT *, count(*) OVER() AS total_lignes
-          FROM public.baikal_dossiers
+          FROM ${sql(schemaVues)}.baikal_dossiers
           ${filtresSql}
           ORDER BY ${c.tri === "paye_le" ? sql`paye_le` : sql`cree_le`}
             ${c.ordre === "asc" ? sql`ASC NULLS LAST` : sql`DESC NULLS LAST`}
@@ -119,7 +132,7 @@ serve(async (req) => {
           // count(*) OVER() n'existe que sur les lignes renvoyees : une page
           // au-dela du dernier resultat perdrait le total reel sans ce repli.
           const [compte] = await sql`
-            SELECT count(*) AS total FROM public.baikal_dossiers ${filtresSql}`;
+            SELECT count(*) AS total FROM ${sql(schemaVues)}.baikal_dossiers ${filtresSql}`;
           total = Number(compte.total);
         }
         const dossiers = rows.map(({ total_lignes: _t, ...d }) => ({
@@ -136,16 +149,16 @@ serve(async (req) => {
         const dossierId = typeof body.dossierId === "string" ? body.dossierId : "";
         if (!dossierId) return json({ data: null, error: "dossierId requis" }, 400);
         const [dossier] = await sql`
-          SELECT * FROM public.baikal_dossiers WHERE dossier_id = ${dossierId}`;
+          SELECT * FROM ${sql(schemaVues)}.baikal_dossiers WHERE dossier_id = ${dossierId}`;
         if (!dossier) return json({ data: null, error: "Dossier introuvable" }, 404);
         const emails = vues.emails
           ? await sql`
-            SELECT * FROM public.baikal_dossier_emails
+            SELECT * FROM ${sql(schemaVues)}.baikal_dossier_emails
             WHERE dossier_id = ${dossierId} ORDER BY envoye_le DESC LIMIT 200`
           : null;
         const events = vues.events
           ? await sql`
-            SELECT * FROM public.baikal_dossier_events
+            SELECT * FROM ${sql(schemaVues)}.baikal_dossier_events
             WHERE dossier_id = ${dossierId} ORDER BY survenu_le DESC LIMIT 100`
           : null;
         return json({
