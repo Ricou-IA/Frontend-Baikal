@@ -42,6 +42,7 @@ import Seo from './pages/Seo';
 import Finances from './pages/Finances';
 import Partenariats from './pages/Partenariats';
 import Sites from './pages/Sites';
+import Clients from './pages/Clients';
 
 function App() {
   return (
@@ -227,6 +228,16 @@ function App() {
             element={
               <AdminRoute>
                 <Finances />
+              </AdminRoute>
+            }
+          />
+
+          {/* Admin - Clients multi-sites */}
+          <Route
+            path="/clients"
+            element={
+              <AdminRoute>
+                <Clients />
               </AdminRoute>
             }
           />
