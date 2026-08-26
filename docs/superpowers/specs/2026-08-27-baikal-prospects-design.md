@@ -121,11 +121,16 @@ Chaque site tient donc une **table d'état séparée**, jointe à son annuaire d
 la vue :
 
 ```sql
-dpe.prospect_etat (cle, statut, note, maj_le, maj_par)
+dpe.prospect_etat (email, statut, note, maj_le, maj_par)
 ```
 
+La clé primaire est l'email normalisé — pas un identifiant d'annuaire — parce
+que l'état doit valoir pour un prospect quelle que soit son origine : projeté
+d'un annuaire, importé d'un CSV ou reçu d'un autre site.
+
 `maj_par` porte l'identifiant de l'utilisateur Baikal qui a agi, transmis par
-le canal : sans lui, on ne peut pas dire qui a passé un prospect en `refus`.
+l'interface d'écriture : sans lui, on ne peut pas dire qui a passé un prospect
+en `refus`.
 
 L'annuaire dit **qui est joignable**, l'état dit **où on en est**. Le cron ne
 touche que le premier. C'est déjà exactement le pattern de `dpe.diag_optout` et
@@ -232,6 +237,38 @@ Identique au module Clients, et non négociable : **la capacité d'un site se li
   erreur).
 - Pas de colonne `telephone` → pas de colonne téléphone affichée.
 - Pas de colonne `siret` → pas de SIRET, et le lot 3 dédoublonnera à l'email.
+
+### Le module : un DDL installé tel quel chez chaque site
+
+Le contrat n'est pas seulement une forme de vue, c'est un **module
+duplicable** : un fichier de référence versionné dans Baikal,
+`docs/contrats/prospects-v1.sql`, contenant quatre objets **identiques chez
+tous les sites** :
+
+| Objet | Rôle |
+|---|---|
+| `<schema>.prospect` | le réceptacle standard : les prospects sans annuaire source — import CSV, saisie manuelle, copie reçue d'un autre site (lot 3) |
+| `<schema>.prospect_etat` | l'état de prospection, clé email normalisé, pour **tous** les prospects du site quelle que soit leur origine |
+| `<schema>.prospect_action(...)` | l'interface d'écriture : les six actions |
+| `public.baikal_prospect_action(...)` | le wrapper `security definer` appelé par Baikal (sites de la base partagée) |
+
+Plus un **squelette** de `baikal_prospects` dont un seul bloc change d'un site
+à l'autre : la projection de l'annuaire local. Chez MonsieurDPE ce bloc projette
+`diag_site`, `entreprise_rge` et `lead` ; chez un site sans annuaire il est
+vide, et la vue ne montre que `prospect`.
+
+Installer le module sur un nouveau site : exécuter le fichier en substituant le
+nom du schéma, puis écrire sa projection — une vingtaine de lignes. Rien à
+demander à Baikal, rien à déployer côté console.
+
+**Ce qui n'est jamais dupliqué, c'est la donnée d'annuaire.** Les 57 244
+entreprises RGE restent dans `entreprise_rge` et la vue les projette ; les
+matérialiser dans `prospect` recréerait la recopie de 03h30 et sa dérive de
++29 %. Le module est duplicable, la donnée ne l'est pas.
+
+C'est aussi ce qui rendra la copie inter-sites du lot 3 simple : la table
+`prospect` étant identique des deux côtés, transférer un segment est un
+`insert ... select`, sans transcodage.
 
 ### Ce que les vues exposent concrètement
 
@@ -449,14 +486,14 @@ Dans les deux cas la propriété qui compte est la même : **c'est le site qui
 définit ce qui est écrivable chez lui**, et l'absence d'interface vaut absence
 d'actions.
 
-| Action | Effet chez le site |
+| Action | Cible exacte |
 |---|---|
-| `statut` | met à jour `prospect_etat.statut` |
-| `note` | met à jour `prospect_etat.note` |
-| `desinscrire` | insère dans la table d'opt-out du site |
-| `creer` | insère un prospect saisi à la main |
-| `importer` | import CSV par lots |
-| `supprimer` | retire un prospect créé à la main |
+| `statut` | `prospect_etat.statut`, quelle que soit l'origine du prospect |
+| `note` | `prospect_etat.note` |
+| `desinscrire` | la table d'opt-out du site (`dpe.diag_optout`, `pv_email_unsubscribes`) |
+| `creer` | `prospect` — **jamais** l'annuaire |
+| `importer` | `prospect`, par lots |
+| `supprimer` | `prospect` uniquement, et seulement une ligne sans annuaire derrière |
 
 **Pas d'interface, pas de boutons** : ni RPC `baikal_prospect_action` chez un
 site de la base partagée, ni `env_prospects_fn` chez un site dédié, et la page
@@ -490,6 +527,7 @@ fait qu'il apparaît simplement indisponible d'ici là — rien à désactiver.
 
 | Objet | Travail |
 |---|---|
+| `docs/contrats/prospects-v1.sql` | le DDL de référence du module, à installer tel quel chez chaque site |
 | `admin.metier` | table + amorce des six métiers + édition depuis `/sites` |
 | `config.apps.env_prospects_fn` | nouvelle colonne (NULL = pas d'actions) |
 | EF `admin-prospects` | liste paginée, agrégats, fiche, relais des actions — décalque de `admin-dossiers` (`_shared/sites.ts` en lecture, `relais.ts` en écriture) |
@@ -520,7 +558,7 @@ vérifiée en conditions réelles, et jamais avant.
 
 | Objet | Travail |
 |---|---|
-| `dpe.prospect_etat` | la table d'état |
+| module `prospects-v1` | `dpe.prospect`, `dpe.prospect_etat`, `dpe.prospect_action`, wrapper public — installés depuis le DDL de référence |
 | `dpe.baikal_prospects` | la vue (diagnostiqueurs + RGE + `dpe.lead`, jointe à l'état et à `diag_optout`) |
 | `dpe.prospect_action` + wrapper `public.baikal_prospect_action` | les six actions en `security definer` — pas d'Edge Function, DPE est sur la base partagée |
 
@@ -598,3 +636,5 @@ Vérifications manuelles à faire passer :
 | 11 | SIRET | Non imposé, pris s'il existe ; clé prioritaire de dédoublonnage au lot 3 |
 | 12 | `admin.campagnes` | Supprimée : vide, aucune campagne n'est jamais partie de Baikal |
 | 13 | Conversion | Pas d'état « partenaire » : un prospect converti devient un client. `client_depuis` est le seul marqueur, il exclut du ciblage et badge la ligne |
+| 14 | Duplicable | Le **module** l'est (DDL de référence identique partout), la **donnée d'annuaire** ne l'est jamais |
+| 15 | Réceptacle | Table standard `prospect` : imports, saisie manuelle, et copies reçues au lot 3 |
