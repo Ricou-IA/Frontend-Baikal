@@ -210,7 +210,11 @@ table). Spec et plan dans `docs/superpowers/specs/` et `docs/superpowers/plans/`
 
 - **SEO** : page `/seo` (`src/pages/Seo.jsx`) + EF `admin-seo` — proxy Search
   Console multi-proprietes, OAuth refresh token (secrets `GOOGLE_GSC_OAUTH_*`),
-  fenetres ancrees a J-3. Actions : overview, top, all-sites.
+  fenetres ancrees a J-3. Actions : overview (top 50 requetes par clics ET par
+  impressions, top pages, buckets), compare (periode vs periode), serie (serie
+  quotidienne site depuis l'archive), serie-requete (historique quotidien d'UNE
+  requete en direct de l'API GSC, filtre query equals — l'archive par requete
+  est mensuelle), bing-vs-google (archive admin.seo_snapshots).
 - **Partenariats** : page `/partenariats` + EF `admin-partenariats` — prospects,
   import CSV, import diagnostiqueurs (via `env_url` + secret nomme par
   `env_secret_ref`), campagnes Resend par lots de 50 avec reprise (`restants`),

@@ -10,7 +10,6 @@
 //   bing-vs-google  { appId }         → serie mensuelle Google/Bing + ecarts de position
 //   serie-requete   { appId, requete, mois } → historique quotidien d'UNE requete,
 //                                       en direct de l'API GSC (filtre query equals)
-//   all-sites       { days }          → totaux par site autorise
 // Droits par site appliques partout (exigerSite / liste sites).
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -455,34 +454,6 @@ serve(async (req) => {
           data: { disponible, mensuel, ecarts, dernierReleve },
           error: null,
         });
-      }
-
-      case "all-sites": {
-        // Restreint aux sites autorises (super_admin = toutes les apps actives).
-        const { data: apps, error } = await admin
-          .schema("config").from("apps")
-          .select("id, name, gsc_propriete")
-          .not("gsc_propriete", "is", null)
-          .in("id", sites);
-        if (error) throw error;
-        const w = windowAnchored(nbJours);
-        const resultats = await Promise.all((apps ?? []).map(async (a) => {
-          try {
-            const rows = await searchAnalytics(a.gsc_propriete, w.startDate, w.endDate);
-            return { appId: a.id, nom: a.name, ...totals(rows), erreur: null };
-          } catch (e) {
-            return {
-              appId: a.id,
-              nom: a.name,
-              clicks: 0,
-              impressions: 0,
-              ctr: 0,
-              position: 0,
-              erreur: String(e).slice(0, 200),
-            };
-          }
-        }));
-        return json({ data: { fenetre: w, sites: resultats }, error: null });
       }
 
       default:

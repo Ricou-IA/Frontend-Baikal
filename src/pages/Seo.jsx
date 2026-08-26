@@ -8,7 +8,6 @@
  *   2. Comparatif periode vs periode : statuts Regression / Disparue /
  *      Nouvelle / Progression / Stable (logique PV, ±1 rang).
  *   3. Bing vs Google : archive mensuelle admin.seo_snapshots + ecarts.
- *   4. Tous les sites : vue croisee propre a Baikal.
  * Enrobage et selecteur de site fournis par ConsoleLayout (useApp).
  * ============================================================================
  */
