@@ -173,6 +173,13 @@ serve(async (req) => {
             totauxPrecedents,
             buckets,
             topRequetes: reelles.slice(0, 50).map(versLigne),
+            // Meme socle de 5000 lignes, retriees par impressions : le front
+            // ne pourrait pas le deriver du top 50 par clics (les requetes a
+            // fortes impressions mais sans clic n'y figurent pas).
+            topRequetesImpressions: [...reelles]
+              .sort((a, b) => b.impressions - a.impressions)
+              .slice(0, 50)
+              .map(versLigne),
             topPages: pages.map(versLigne),
             parJour: daily.map((r) => ({
               date: r.keys?.[0],

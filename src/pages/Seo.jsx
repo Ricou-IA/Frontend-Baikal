@@ -293,9 +293,15 @@ const BUCKETS_UI = [
   { cle: 'hidden', libelle: 'Recherches masquees par Google', couleur: 'bg-baikal-border/60', cliquable: false },
 ];
 
+const METRIQUES_TOP = [
+  { cle: 'clicks', libelle: 'Clics' },
+  { cle: 'impressions', libelle: 'Impressions' },
+];
+
 function VueEnsemble({ appId }) {
   const [jours, setJours] = useState(28);
   const [filtreBucket, setFiltreBucket] = useState('all');
+  const [metriqueTop, setMetriqueTop] = useState('clicks');
   const { donnees, erreur, enCours } = useDonneesCachees(
     `overview:${appId}:${jours}`,
     () => seoService.getOverview(appId, jours),
@@ -305,10 +311,17 @@ function VueEnsemble({ appId }) {
   useEffect(() => { setFiltreBucket('all'); }, [appId, jours]);
 
   const requetesFiltrees = useMemo(() => {
-    const toutes = donnees?.topRequetes ?? [];
+    const parClics = donnees?.topRequetes ?? [];
+    // Le tri par impressions vient du backend (socle de 5000 lignes) ; le
+    // retri local du top 50 par clics n'est qu'un secours si l'EF deployee
+    // ne renvoie pas encore topRequetesImpressions.
+    const toutes = metriqueTop === 'impressions'
+      ? (donnees?.topRequetesImpressions
+        ?? [...parClics].sort((a, b) => b.impressions - a.impressions))
+      : parClics;
     if (filtreBucket === 'all') return toutes;
     return toutes.filter((q) => bucketDe(q.position) === filtreBucket);
-  }, [donnees, filtreBucket]);
+  }, [donnees, filtreBucket, metriqueTop]);
 
   const { totaux, totauxPrecedents, buckets, topPages } = donnees ?? {};
   const totalBuckets = BUCKETS_UI.reduce((s, b) => s + (buckets?.[b.cle] || 0), 0);
@@ -424,20 +437,35 @@ function VueEnsemble({ appId }) {
       <div className="grid lg:grid-cols-2 gap-6 items-start">
         {/* Top requetes */}
         <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
-          <div className="px-4 py-3 border-b border-baikal-border flex items-center justify-between">
+          <div className="px-4 py-3 border-b border-baikal-border flex items-center justify-between gap-2">
             <p className="text-xs font-mono text-baikal-text uppercase">
               {filtreBucket === 'all'
-                ? `Top ${requetesFiltrees.length} requetes par clics`
+                ? `Top ${requetesFiltrees.length} requetes par ${metriqueTop === 'impressions' ? 'impressions' : 'clics'}`
                 : `${requetesFiltrees.length} requete(s) dans le filtre`}
             </p>
-            {filtreBucket !== 'all' && (
-              <button
-                onClick={() => setFiltreBucket('all')}
-                className="flex items-center gap-1 text-[11px] text-baikal-text hover:text-white"
-              >
-                <X className="w-3 h-3" /> Effacer le filtre
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              {filtreBucket !== 'all' && (
+                <button
+                  onClick={() => setFiltreBucket('all')}
+                  className="flex items-center gap-1 text-[11px] text-baikal-text hover:text-white"
+                >
+                  <X className="w-3 h-3" /> Effacer le filtre
+                </button>
+              )}
+              <div className="flex gap-1">
+                {METRIQUES_TOP.map((m) => (
+                  <button
+                    key={m.cle}
+                    onClick={() => setMetriqueTop(m.cle)}
+                    className={`px-2 py-0.5 rounded border text-[11px] ${metriqueTop === m.cle
+                      ? 'border-baikal-cyan text-baikal-cyan'
+                      : 'border-baikal-border text-baikal-text hover:text-white'}`}
+                  >
+                    {m.libelle}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
           <div className="max-h-[420px] overflow-y-auto">
             <table className="w-full text-sm text-baikal-text">
@@ -462,8 +490,8 @@ function VueEnsemble({ appId }) {
                 {requetesFiltrees.map((q, i) => (
                   <tr key={`${q.cle}-${i}`} className="border-t border-baikal-border/50">
                     <td className="px-4 py-1.5">{q.cle}</td>
-                    <td className="text-right px-2 py-1.5 tabular-nums">{fmtInt(q.clicks)}</td>
-                    <td className="text-right px-2 py-1.5 tabular-nums opacity-70">{fmtInt(q.impressions)}</td>
+                    <td className={`text-right px-2 py-1.5 tabular-nums ${metriqueTop === 'impressions' ? 'opacity-70' : ''}`}>{fmtInt(q.clicks)}</td>
+                    <td className={`text-right px-2 py-1.5 tabular-nums ${metriqueTop === 'clicks' ? 'opacity-70' : ''}`}>{fmtInt(q.impressions)}</td>
                     <td className={`text-right px-2 py-1.5 tabular-nums ${classeCtr(q.ctr_pct)}`}>
                       {q.ctr_pct.toFixed(1)} %
                     </td>
