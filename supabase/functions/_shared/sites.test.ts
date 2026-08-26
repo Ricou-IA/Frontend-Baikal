@@ -28,6 +28,8 @@ const siteLocal: Site = {
   db_ro_secret_ref: null,
   env_url: null,
   env_secret_ref: null,
+  env_anon_key: null,
+  env_dossiers_fn: null,
 };
 const siteDedie: Site = {
   ...siteLocal,
