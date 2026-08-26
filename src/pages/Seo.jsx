@@ -599,7 +599,7 @@ function VueEnsemble({ appId }) {
                     </td>
                     <td className={`text-right px-2 py-1.5 tabular-nums ${metriqueTop === 'impressions' ? 'opacity-70' : ''}`}>{fmtInt(q.clicks)}</td>
                     <td className={`text-right px-2 py-1.5 tabular-nums ${metriqueTop === 'clicks' ? 'opacity-70' : ''}`}>{fmtInt(q.impressions)}</td>
-                    <td className={`text-right px-2 py-1.5 tabular-nums ${classeCtr(q.ctr_pct)}`}>
+                    <td className={`text-right px-2 py-1.5 tabular-nums whitespace-nowrap ${classeCtr(q.ctr_pct)}`}>
                       {q.ctr_pct.toFixed(1)} %
                     </td>
                     <td className={`text-right px-4 py-1.5 tabular-nums font-medium ${classePosition(q.position)}`}>
@@ -812,13 +812,13 @@ function Comparatif({ appId }) {
                         {libelle}
                       </span>
                     </td>
-                    <td className="text-right px-2 py-1.5 tabular-nums">
+                    <td className="text-right px-2 py-1.5 tabular-nums whitespace-nowrap">
                       {fmtInt(q.clicksPrev)} → {fmtInt(q.clicksCur)}
                     </td>
                     <td className={`text-right px-2 py-1.5 tabular-nums ${q.clicksDelta > 0 ? 'text-emerald-400' : q.clicksDelta < 0 ? 'text-red-400' : 'opacity-60'}`}>
                       {fmtSigne(q.clicksDelta)}
                     </td>
-                    <td className="text-right px-2 py-1.5 tabular-nums">
+                    <td className="text-right px-2 py-1.5 tabular-nums whitespace-nowrap">
                       {fmtPos(q.posPrev)} → {fmtPos(q.posCur)}
                     </td>
                     <td className={`text-right px-4 py-1.5 tabular-nums font-medium ${q.posDelta === null ? 'opacity-50' : q.posDelta < 0 ? 'text-emerald-400' : q.posDelta > 0 ? 'text-red-400' : 'opacity-60'}`}>
