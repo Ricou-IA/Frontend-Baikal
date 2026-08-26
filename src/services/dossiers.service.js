@@ -43,4 +43,10 @@ export const dossiersService = {
   getFiche(appId, dossierId) {
     return appelerEdge('admin-dossiers', { action: 'fiche', appId, dossierId });
   },
+  getDetailSite(appId, dossierId) {
+    return appelerEdge('admin-dossiers', { action: 'site-detail', appId, dossierId });
+  },
+  executerActionSite(appId, dossierId, actionSite, params = {}) {
+    return appelerEdge('admin-dossiers', { action: 'site-action', appId, dossierId, actionSite, ...params });
+  },
 };

@@ -1,23 +1,36 @@
 /**
  * FicheDossier.jsx - Baikal Console
  * ============================================================================
- * Fiche detail d'un dossier client : socle generique (Vue / Emails / Events)
- * + registre d'extensions par site (principe VueSite). Les onglets Events et
- * le bloc abonnement n'apparaissent que si le site expose la vue / les
- * colonnes correspondantes — la capacite se lit dans la reponse, jamais en
- * dur par site.
+ * Fiche detail d'un dossier client : socle generique (Vue / Emails / Events),
+ * actions d'administration relayees vers l'EF du site (renvoyer un email,
+ * re-extraire, purger les documents — super_admin seul), et onglets
+ * d'extension par site (EXTENSIONS_FICHE). Le detail etendu du site est
+ * charge UNE fois et partage entre tous les onglets d'extension.
  * ============================================================================
  */
 import { useState } from 'react';
-import { X } from 'lucide-react';
+import { RefreshCw, Send, Trash2, X } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 import { useDonneesCachees } from '../../hooks/useDonneesCachees';
 import { Chargement, Erreur } from './etats';
 import { dossiersService } from '../../services/dossiers.service';
 import { BadgeEtape, BadgeCanal, fmtDate, fmtDateHeure, fmtEur } from './badges-clients';
+import { ONGLETS_PED } from './extensions/ped';
 
-// Onglets specifiques par site, branches au lot 3 (PED : Documents, Resultat,
-// Chat, Logs IA). Chaque Composant recoit { appId, dossierId, dossier }.
-export const EXTENSIONS_FICHE = {};
+// Onglets specifiques par site. Chaque Composant recoit
+// { appId, dossierId, dossier, detail } — detail est la reponse site-detail
+// du site (null pendant le chargement).
+export const EXTENSIONS_FICHE = {
+  'pack-vendeur': ONGLETS_PED,
+};
+
+const TYPES_EMAIL = [
+  ['magic-link-initial', 'Lien magique initial'],
+  ['post-purchase', 'Post-achat'],
+  ['review-request', "Demande d'avis"],
+  ['cart-abandonment', 'Panier abandonné'],
+  ['expiration-reminder', "Rappel d'expiration"],
+];
 
 function Ligne({ libelle, children }) {
   return (
@@ -122,21 +135,107 @@ function OngletEvents({ events }) {
   );
 }
 
+function BarreActions({ appId, dossierId, isSuperAdmin, onFait }) {
+  const [typeEmail, setTypeEmail] = useState(TYPES_EMAIL[0][0]);
+  const [enCours, setEnCours] = useState(null);
+  const [message, setMessage] = useState(null);
+
+  const executer = async (actionSite, params = {}, confirmation = null) => {
+    if (confirmation && !window.confirm(confirmation)) return;
+    setEnCours(actionSite);
+    setMessage(null);
+    const { data, error } = await dossiersService.executerActionSite(
+      appId, dossierId, actionSite, params,
+    );
+    setEnCours(null);
+    if (error) {
+      setMessage({ ok: false, texte: error.message });
+    } else {
+      setMessage({ ok: true, texte: data?.message || 'Action exécutée.' });
+      onFait();
+    }
+  };
+
+  return (
+    <div className="px-4 py-3 border-b border-baikal-border space-y-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <select
+          value={typeEmail}
+          onChange={(e) => setTypeEmail(e.target.value)}
+          className="px-2 py-1.5 bg-baikal-bg border border-baikal-border rounded-md text-xs text-baikal-text focus:outline-none focus:border-baikal-cyan"
+        >
+          {TYPES_EMAIL.map(([val, libelle]) => (
+            <option key={val} value={val}>{libelle}</option>
+          ))}
+        </select>
+        <button
+          onClick={() => executer('resend-email', { emailAction: typeEmail })}
+          disabled={enCours !== null}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-baikal-border text-xs text-baikal-text hover:text-baikal-cyan hover:border-baikal-cyan disabled:opacity-50"
+        >
+          <Send className="w-3.5 h-3.5" />
+          {enCours === 'resend-email' ? 'Envoi…' : "Renvoyer l'email"}
+        </button>
+        <button
+          onClick={() => executer('re-extract', {},
+            'Relancer l’extraction de ce dossier ? Le statut repasse en cours d’analyse.')}
+          disabled={enCours !== null}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-baikal-border text-xs text-baikal-text hover:text-baikal-cyan hover:border-baikal-cyan disabled:opacity-50"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${enCours === 're-extract' ? 'animate-spin' : ''}`} />
+          {enCours === 're-extract' ? 'Relance…' : 'Re-extraire'}
+        </button>
+        {isSuperAdmin && (
+          <button
+            onClick={() => executer('purge-documents', {},
+              'Purger les documents de ce dossier ? Les fichiers et les données extraites seront '
+              + 'supprimés DÉFINITIVEMENT. Le dossier, les emails et la transaction sont conservés.')}
+            disabled={enCours !== null}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-red-500/50 text-xs text-red-300 hover:bg-red-900/20 disabled:opacity-50 ml-auto"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            {enCours === 'purge-documents' ? 'Purge…' : 'Purger les documents'}
+          </button>
+        )}
+      </div>
+      {message && (
+        <p className={`text-xs ${message.ok ? 'text-emerald-300' : 'text-red-300'}`}>
+          {message.texte}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function FicheDossier({ appId, dossierId, onClose }) {
   const [onglet, setOnglet] = useState('vue');
+  const [version, setVersion] = useState(0);
+  const { isSuperAdmin } = useAuth();
   const { donnees, erreur } = useDonneesCachees(
-    `fiche:${appId}:${dossierId}`,
+    `fiche:${appId}:${dossierId}:${version}`,
     () => dossiersService.getFiche(appId, dossierId),
     appId,
   );
   const d = donnees?.dossier;
   const extensions = EXTENSIONS_FICHE[appId] || [];
+  const actionsActives = donnees?.actions === true;
+
+  // Detail etendu du site : charge une fois, partage entre les onglets
+  // d'extension. Le chargeur est neutre tant que le canal n'est pas actif.
+  const { donnees: detail } = useDonneesCachees(
+    `detail-site:${appId}:${dossierId}:${actionsActives}:${version}`,
+    () => (actionsActives && extensions.length > 0
+      ? dossiersService.getDetailSite(appId, dossierId)
+      : Promise.resolve({ data: null, error: null })),
+    appId,
+  );
+
   const onglets = d
     ? [
       ['vue', 'Vue'],
       ['emails', `Emails (${(donnees.emails || []).length})`],
       ...(donnees.events ? [['events', `Events (${donnees.events.length})`]] : []),
-      ...extensions.map((e) => [e.id, e.label]),
+      ...(actionsActives ? extensions.map((e) => [e.id, e.label]) : []),
     ]
     : [];
   const extensionActive = extensions.find((e) => e.id === onglet) || null;
@@ -165,6 +264,14 @@ export default function FicheDossier({ appId, dossierId, onClose }) {
             <X className="w-5 h-5" />
           </button>
         </div>
+        {d && actionsActives && (
+          <BarreActions
+            appId={appId}
+            dossierId={dossierId}
+            isSuperAdmin={isSuperAdmin}
+            onFait={() => setVersion((v) => v + 1)}
+          />
+        )}
         {onglets.length > 0 && (
           <nav className="flex gap-1 px-4 border-b border-baikal-border overflow-x-auto">
             {onglets.map(([id, label]) => (
@@ -188,7 +295,12 @@ export default function FicheDossier({ appId, dossierId, onClose }) {
           {d && onglet === 'emails' && <OngletEmails emails={donnees.emails} />}
           {d && onglet === 'events' && <OngletEvents events={donnees.events} />}
           {d && extensionActive && (
-            <extensionActive.Composant appId={appId} dossierId={dossierId} dossier={d} />
+            <extensionActive.Composant
+              appId={appId}
+              dossierId={dossierId}
+              dossier={d}
+              detail={detail}
+            />
           )}
         </div>
       </div>
