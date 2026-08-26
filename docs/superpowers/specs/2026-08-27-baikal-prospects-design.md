@@ -427,10 +427,27 @@ référentiel et l'usine.
 
 ## 7. Les actions — écriture complète par le canal du site
 
-Toutes les écritures passent par l'EF d'administration du site
-(`env_url` + `env_prospects_fn` + `env_anon_key` publique pour franchir
-`verify_jwt` + en-tête `X-Baikal-Key` porté par `env_secret_ref`). **Jamais
-d'écriture directe de Baikal dans le schéma d'un site.**
+**Jamais d'écriture directe de Baikal dans les tables d'un site.** Le site
+expose une interface d'écriture, et Baikal ne connaît qu'elle. Cette interface
+a deux formes selon l'hébergement du site, parce que le canal disponible n'est
+pas le même :
+
+| Hébergement | Interface d'écriture | Sites |
+|---|---|---|
+| **Base partagée** | RPC `public.baikal_prospect_action(...)`, wrapper `security definer` appelant `<schema>.prospect_action(...)`, invoquée par Baikal avec sa `service_role` | MonsieurDPE, voirie, duerp… |
+| **Projet dédié** | relais HTTP vers `env_prospects_fn` (`env_url` + `env_anon_key` publique pour franchir `verify_jwt` + en-tête `X-Baikal-Key` porté par `env_secret_ref`) | Pack Vendeur, Majord'home |
+
+Le relevé du registre impose cette distinction : `monsieurdpe` n'a ni
+`env_anon_key`, ni `env_dossiers_fn`, ni `db_ro_secret_ref`, et son `env_url`
+pointe vers le projet de Baikal lui-même — il n'existe aucune Edge Function
+DPE connaissant `X-Baikal-Key`. Faire relayer Baikal vers lui-même en HTTP
+serait un détour sans gain. Le wrapper `security definer` est par ailleurs la
+convention déjà posée du projet, et `admin.sync_diagnostiqueurs` en est
+l'exemple vivant.
+
+Dans les deux cas la propriété qui compte est la même : **c'est le site qui
+définit ce qui est écrivable chez lui**, et l'absence d'interface vaut absence
+d'actions.
 
 | Action | Effet chez le site |
 |---|---|
@@ -441,8 +458,10 @@ d'écriture directe de Baikal dans le schéma d'un site.**
 | `importer` | import CSV par lots |
 | `supprimer` | retire un prospect créé à la main |
 
-`env_prospects_fn` vaut NULL par défaut : **pas d'EF déclarée, pas de boutons,
-pas d'actions**, interrupteur ouvert, comme `env_dossiers_fn` pour les Clients.
+**Pas d'interface, pas de boutons** : ni RPC `baikal_prospect_action` chez un
+site de la base partagée, ni `env_prospects_fn` chez un site dédié, et la page
+s'affiche en lecture seule. Interrupteur ouvert, comme `env_dossiers_fn` pour
+les Clients.
 
 ### Deux règles qui ne sont pas négociables
 
@@ -502,8 +521,8 @@ vérifiée en conditions réelles, et jamais avant.
 | Objet | Travail |
 |---|---|
 | `dpe.prospect_etat` | la table d'état |
-| `dpe.baikal_prospects` | la vue (diagnostiqueurs + RGE, jointe à l'état et à `diag_optout`) |
-| EF d'administration | les six actions, protégées par `X-Baikal-Key` |
+| `dpe.baikal_prospects` | la vue (diagnostiqueurs + RGE + `dpe.lead`, jointe à l'état et à `diag_optout`) |
+| `dpe.prospect_action` + wrapper `public.baikal_prospect_action` | les six actions en `security definer` — pas d'Edge Function, DPE est sur la base partagée |
 
 ### Pack Vendeur
 
