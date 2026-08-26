@@ -146,6 +146,33 @@ dans une base dont le seul usage est d'écrire fausserait tous les compteurs.
 Le jour où l'enrichissement des lignes sans adresse deviendra un sujet, ce sera
 un écran distinct, chez le site qui tient l'annuaire.
 
+### `client_depuis` — le pont vers `/clients`
+
+Un prospect converti n'a pas de statut à lui : **il devient un client**, et
+c'est `/clients` qui le suit à partir de là. `client_depuis` est donc le seul
+marqueur de conversion, et il est renseigné par le site :
+
+| Site | D'où vient `client_depuis` |
+|---|---|
+| MonsieurDPE, diagnostiqueurs | fiche revendiquée — `dpe.diag_fiche_edito.profil_id` non nul (exactement le critère d'exclusion de `dpe.campagne_a_envoyer`) |
+| MonsieurDPE, RGE | `dpe.entreprise_rge.abonne_jusqu_a` renseigné |
+| Pack Vendeur | la conversion déjà suivie sur `pv_leads` |
+
+Deux conséquences, et elles ne sont pas cosmétiques :
+
+- **On ne prospecte pas un client.** Le ciblage exclut par défaut les lignes
+  qui portent un `client_depuis`. Écrire « reprenez votre fiche » à quelqu'un
+  qui l'a déjà reprise est la façon la plus rapide de perdre sa crédibilité —
+  et c'est déjà pour cette raison que `dpe.campagne_a_envoyer` écarte les
+  fiches revendiquées.
+- **Le client reste visible, avec un badge.** Il ne disparaît pas de la liste :
+  c'est la même règle que le badge `Payé` devant l'état d'après-vente sur
+  `/clients`. Un converti qu'on efface, c'est un taux de conversion qu'on ne
+  peut plus lire.
+
+Un site qui n'expose pas la colonne n'a simplement pas de marqueur de
+conversion : rien n'est exclu, rien n'est badgé.
+
 ### Règle de capacité
 
 Identique au module Clients, et non négociable : **la capacité d'un site se lit
@@ -255,12 +282,16 @@ vérité.
 Vocabulaire repris tel quel d'`admin.prospects`, déjà éprouvé à l'usage et qui
 rend la migration triviale :
 
-`nouveau` · `contacte` · `relance` · `repondu` · `partenaire` · `refus` ·
-`desinscrit`
+`nouveau` · `contacte` · `relance` · `repondu` · `refus` · `desinscrit`
 
-`partenaire` se lit « relation établie » (converti). `desinscrit` est un état
-**terminal** : la vue le force dès que l'adresse figure dans la table d'opt-out
-du site, quel que soit l'état stocké.
+**Le funnel s'arrête avant la conversion : un prospect converti devient un
+client.** Il n'y a donc pas d'état « partenaire » ou « converti » — cet état-là
+vit dans `/clients`, qui a déjà son propre funnel par site
+(`config.apps.funnel_etapes`). Deux funnels qui se recouvrent, ce sont deux
+écrans qui annoncent deux nombres.
+
+`desinscrit` est un état **terminal** : la vue le force dès que l'adresse
+figure dans la table d'opt-out du site, quel que soit l'état stocké.
 
 ---
 
@@ -273,7 +304,8 @@ Vendeur vient d'avoir empilé des découpages (ICP, inbound/outbound, scrape,
 couverture) là où un filtre suffisait. Ici :
 
 1. **KPI** : adressables (le total) · `nouveau` · contactés (tout ce qui a un
-   `dernier_contact_le`) · `desinscrit`
+   `dernier_contact_le`) · convertis (`client_depuis` renseigné) ·
+   `desinscrit`
 2. **Chips métier** avec compteurs — c'est l'axe de classement de premier ordre
 3. **Filtres** : statut, provenance, spécialité, département, « a un
    téléphone », recherche plein texte
@@ -347,6 +379,11 @@ c'est `desinscrire` — qui, lui, est définitif et respecté par la campagne.
 | `src/pages/Partenariats.jsx` | **supprimée** |
 | `admin.sync_diagnostiqueurs` | **supprimée**, avec le cron `admin-sync-diag-prospects` (03h30) |
 | migration de données | `admin.prospects` vers `dpe.prospect_etat` : statuts et désinscrits uniquement, pas les coordonnées (l'annuaire les a déjà, en plus frais) |
+
+Le statut `partenaire` d'`admin.prospects` n'a pas d'équivalent dans le nouveau
+funnel : il se reprend en `repondu`, ce qui conserve le fait qu'un échange a
+eu lieu. Sa qualité de client, elle, ne se migre pas — elle se relit à chaque
+affichage dans `client_depuis`, donc elle ne peut pas se désynchroniser.
 
 `admin.campagnes` et `admin.campagne_envois` **ne sont pas touchées** : elles
 portent l'historique « qui a déjà reçu quoi » de campagnes réellement parties,
@@ -433,3 +470,4 @@ Vérifications manuelles à faire passer :
 | 10 | Écriture | Complète (statut, note, désinscription, création, import, suppression) par le canal du site |
 | 11 | SIRET | Non imposé, pris s'il existe ; clé prioritaire de dédoublonnage au lot 3 |
 | 12 | `admin.campagnes` | Non touchée, dort jusqu'au lot 2 |
+| 13 | Conversion | Pas d'état « partenaire » : un prospect converti devient un client. `client_depuis` est le seul marqueur, il exclut du ciblage et badge la ligne |
