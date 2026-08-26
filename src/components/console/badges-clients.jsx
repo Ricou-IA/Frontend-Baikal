@@ -17,7 +17,7 @@ const COULEURS_ETAPES = {
 };
 const COULEUR_DEFAUT = 'bg-baikal-bg text-baikal-text border-baikal-border';
 
-// Meme vocabulaire de canaux que /finances (cascade admin.canal_vente).
+// Memes buckets que la cascade admin.canal_vente ; libelles adaptes a la liste (organic affiche 'SEO', unattributed masque — choix assume, different de /finances).
 export const CANAUX = {
   paid: ['Publicité', 'text-amber-400'],
   campaign: ['Campagne', 'text-violet-400'],
