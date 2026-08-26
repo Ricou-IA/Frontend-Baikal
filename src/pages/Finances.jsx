@@ -18,7 +18,7 @@ import { useMemo, useState } from 'react';
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from 'recharts';
-import { Plus, Trash2, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, AlertTriangle, RefreshCw } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import ConsoleLayout from '../components/console/ConsoleLayout';
 import { useDonneesCachees } from '../hooks/useDonneesCachees';
@@ -81,11 +81,23 @@ function BandeauIncomplet({ fenetres }) {
 }
 
 function Synthese({ appId }) {
+  const [version, setVersion] = useState(0);
+  const [rafraichissement, setRafraichissement] = useState(false);
+
   const { donnees, erreur, enCours } = useDonneesCachees(
-    `synthese:${appId}`,
+    `synthese:${appId}:${version}`,
     () => financeService.getSynthese(appId),
     appId,
   );
+
+  // La capture tourne toutes les 4 h : ce bouton evite d'attendre le passage
+  // suivant pour voir une vente qui vient d'etre encaissee.
+  const rafraichir = async () => {
+    setRafraichissement(true);
+    await financeService.rafraichir(appId);
+    setRafraichissement(false);
+    setVersion((v) => v + 1);
+  };
 
   const fenetres = donnees?.fenetres;
   const rienEncore = Boolean(donnees) && FENETRES.every(([cle]) => (fenetres?.[cle]?.ventes ?? 0) === 0);
@@ -93,7 +105,17 @@ function Synthese({ appId }) {
   return (
     <Section
       titre="Synthèse"
-      sousTitre="Archive quotidienne — le montant fait foi côté Stripe, la TVA vient du registre des sites"
+      sousTitre="Archive alimentée toutes les 4 h — le montant fait foi côté Stripe, la TVA vient du registre des sites"
+      action={(
+        <button
+          onClick={rafraichir}
+          disabled={rafraichissement || enCours}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-baikal-border text-baikal-text hover:text-baikal-cyan hover:border-baikal-cyan transition-colors disabled:opacity-50 text-sm"
+        >
+          <RefreshCw className={`w-4 h-4 ${rafraichissement ? 'animate-spin' : ''}`} />
+          {rafraichissement ? 'Relevé en cours…' : 'Rafraîchir'}
+        </button>
+      )}
     >
       {erreur && <Erreur message={erreur} />}
       {!donnees && !erreur && <Chargement />}

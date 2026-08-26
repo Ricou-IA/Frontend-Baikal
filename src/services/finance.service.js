@@ -35,6 +35,9 @@ async function appelerEdge(fonction, corps) {
 }
 
 export const financeService = {
+  rafraichir(appId) {
+    return appelerEdge('admin-finance', { action: 'rafraichir', appId });
+  },
   getSynthese(appId) {
     return appelerEdge('admin-finance', { action: 'synthese', appId });
   },

@@ -210,6 +210,26 @@ serve(async (req) => {
     const appId = String(body.appId ?? "");
     if (action !== "charge-supprimer") exigerSite(autorises, appId);
 
+    // Rafraichissement a la demande : meme travail que le cron, mais sur une
+    // fenetre courte et declenche par un humain qui a les droits sur le site.
+    // Sans lui, une vente du soir n'apparait qu'au passage du lendemain.
+    if (action === "rafraichir") {
+      const maintenant = new Date();
+      const capture = await capturePeriode(
+        admin,
+        new Date(maintenant.getTime() - 2 * 86_400_000),
+        maintenant,
+      );
+      const attribution = [];
+      for (const site of sitesAvecVue()) {
+        attribution.push({
+          appId: site,
+          ...(await enrichirSite(admin, site, new Date(maintenant.getTime() - 2 * 86_400_000), maintenant)),
+        });
+      }
+      return json({ data: { capture, attribution }, error: null });
+    }
+
     if (action === "synthese") {
       const maintenant = new Date();
       const { data: charges } = await admin.schema("admin").from("charges_recurrentes")
