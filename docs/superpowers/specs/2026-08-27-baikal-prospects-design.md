@@ -33,7 +33,34 @@ statut `desinscrit` de `admin.prospects` de l'autre). Un diagnostiqueur qui
 répond STOP à la campagne DPE reste adressable depuis Baikal.
 
 C'est le symptôme « deux écrans, deux nombres » déjà corrigé sur les KPI de
-voirie, appliqué cette fois à des personnes réelles.
+voirie, appliqué cette fois à des personnes réelles. Et il est mesuré, pas
+supposé (relevé du 27/08/2026) :
+
+| Ce que compte | Nombre |
+|---|---|
+| `admin.prospects` — ce que la console annonce | **11 077** |
+| Adresses réellement adressables par la campagne | **8 594** |
+
+**Écart : +29 %.** La cause est une divergence de règle, pas un bug : la sync
+dédoublonne par adresse de *certifié* (12 824 certifiés, 11 077 adresses
+distinctes), alors que la campagne sert une seule adresse par *fiche*
+(`min(email)` par slug, 8 595 adresses, dont 8 594 non revendiquées). Deux
+règles de choix, deux vérités.
+
+### Ce que l'état des données autorise
+
+Relevé le 27/08/2026 sur les deux projets :
+
+| Table | Constat |
+|---|---|
+| `admin.prospects` | 11 077 lignes, **toutes au statut `nouveau`**, toutes de source `diag_certifie` |
+| `admin.campagnes` / `campagne_envois` | **0 et 0** — aucune campagne n'est jamais partie depuis Baikal |
+| `dpe.diag_optout` | 0 |
+
+**Il n'y a donc aucun état de prospection à préserver côté Baikal.** La reprise
+de données que je redoutais n'existe pas : `admin.prospects` est une pure
+recopie sans valeur ajoutée, et les deux tables de campagne sont vides. Ce lot
+supprime, il ne migre pas.
 
 ### Ce que ce lot construit
 
@@ -143,8 +170,11 @@ une adresse valide**. Une entreprise RGE sans email existe dans l'annuaire mais
 n'entre pas dans `/prospect` — elle n'est pas adressable, et la faire figurer
 dans une base dont le seul usage est d'écrire fausserait tous les compteurs.
 
-Le jour où l'enrichissement des lignes sans adresse deviendra un sujet, ce sera
-un écran distinct, chez le site qui tient l'annuaire.
+Le coût de cette règle est mesuré et négligeable : sur 57 258 entreprises RGE,
+**57 244 ont une adresse valide — 14 sont écartées**. Côté diagnostiqueurs,
+les 8 744 fiches sont toutes joignables. L'enrichissement des lignes sans
+adresse n'est donc pas un sujet ; s'il le devenait, ce serait un écran
+distinct, chez le site qui tient l'annuaire.
 
 ### `client_depuis` — le pont vers `/clients`
 
@@ -202,17 +232,29 @@ Identique au module Clients, et non négociable : **la capacité d'un site se li
 - `dernier_contact_le` : `max(envoye_le)` dans `dpe.envoi_campagne`, et
   `nb_contacts` le compte correspondant.
 
-**Pack Vendeur** — vue sur `pv_leads` :
+**Pack Vendeur** — vue sur `pv_leads` (26 068 lignes, 25 531 adressables) :
 
-- `metier` dérivé de `category` (`notaire`, `agence_immo` et `mandataire_immo`
-  vers `agent_immo`, `syndic`, le reste vers `autre`).
-- `specialite` : `agence` / `mandataire` / `independant` pour les agents immo.
-- `provenance` : `acquisition_propre` pour les lead magnets (`source NOT LIKE
-  'apify-%'`), `scrape` pour le reste.
-- `statut` : les statuts de `pv_leads` mappés vers le funnel partagé — le
-  mapping exact est à établir au moment du plan, en lisant les valeurs
-  réellement présentes en base, pas les valeurs supposées. `desinscrit` forcé
-  si l'adresse est dans `pv_email_unsubscribes`.
+- `metier` dérivé de `category` : `notaire` (300), `agence_immo` (454) et
+  `mandataire_immo` (25 187) vers `agent_immo`, `diy` (127) vers `autre`.
+  **La base ne contient aucun syndic** — l'onglet ICP existe côté Pack Vendeur
+  mais le segment n'a jamais été scrapé.
+- `specialite` : `agence` ou `mandataire` selon `category`.
+- `provenance` : `scrape` pour `apify-%` (837) **et `franchise-%`** (25 104 :
+  iad, safti, capifrance, optimhome, efficity), `acquisition_propre` pour
+  `chatbot`, `modele-pdf-guide` et `pre-etat-date-gratuit` (127), `import`
+  pour tout le reste. La règle naïve « tout ce qui n'est pas `apify-%` est de
+  l'inbound » classerait 25 104 leads scrapés en acquisition propre : elle est
+  fausse.
+- `statut` : `new` (13 846) vers `nouveau`, `contacted` (12 222) vers
+  `contacte`, et `relance` quand `email_step > 1` (122 lignes). Ce sont les
+  deux seules valeurs présentes en base ; `responded_at` n'est alimenté sur
+  aucune ligne, donc `repondu` et `refus` restent inutilisés côté PV.
+  `desinscrit` forcé si l'adresse est dans `pv_email_unsubscribes` (39).
+- `dernier_contact_le` = `last_email_sent_at` et `nb_contacts` = `email_step`,
+  deux colonnes qui existent déjà sur `pv_leads` : inutile de joindre
+  `pv_email_logs`, qui mêle par ailleurs prospection (`lead_id`) et
+  transactionnel client (`dossier_id`).
+- `siret` : `siret_siege`, présent sur 334 lignes seulement.
 
 **Les autres sites** (voirie, duerp, cosette) ne publient rien : ils
 apparaissent indisponibles, pas en erreur.
@@ -247,9 +289,10 @@ par site.
 | `entreprise_rge` | Entreprise RGE |
 | `autre` | Autre |
 
-`syndic` est un métier à part et non une spécialité d'agent immobilier : Pack
-Vendeur travaille déjà ce segment sous son propre onglet ICP, et un syndic de
-copropriété n'exerce pas le métier d'agent immobilier.
+`syndic` est un métier à part et non une spécialité d'agent immobilier : un
+syndic de copropriété n'exerce pas le métier d'agent immobilier, et le segment
+est prévu côté Pack Vendeur (l'onglet ICP existe) même si aucun syndic n'a
+encore été scrapé. Le slug existe donc sans population — c'est voulu.
 
 Un slug remonté par une vue et absent de la table s'affiche **en gris avec sa
 valeur brute** plutôt que de casser la page, et `/sites` signale l'écart.
@@ -318,10 +361,23 @@ comme Clients et Partenariats.
 
 ### Volume
 
-`dpe.entreprise_rge` compte à lui seul ~57 000 lignes. **Pagination et
-compteurs côté serveur, sans exception** : pas de chargement complet, pas de
-compteur calculé côté client, pas de tri en mémoire. Les chips métier lisent
-des agrégats renvoyés par l'EF, pas la page courante.
+Volumes adressables réels au 27/08/2026 :
+
+| Site | Population | Lignes |
+|---|---|---|
+| MonsieurDPE | entreprises RGE | 57 244 |
+| MonsieurDPE | diagnostiqueurs (adresses distinctes) | 8 594 |
+| Pack Vendeur | leads | 25 531 |
+| | **total** | **~91 000** |
+
+**Pagination et compteurs côté serveur, sans exception** : pas de chargement
+complet, pas de compteur calculé côté client, pas de tri en mémoire. Les chips
+métier lisent des agrégats renvoyés par l'EF, pas la page courante.
+
+La contrainte est plus dure pour Pack Vendeur que pour MonsieurDPE : DPE
+partage le projet Supabase de Baikal (`odspcxgafcqxjzrarsqf`), donc sa vue se
+lit en SQL local, tandis que Pack Vendeur est un projet dédié
+(`ycmavnmtyvodqawvwrrd`) lu à distance par le canal `_shared/sites.ts`.
 
 ### Ce qui n'est PAS sur cette page
 
@@ -378,17 +434,25 @@ c'est `desinscrire` — qui, lui, est définitif et respecté par la campagne.
 | `src/pages/Prospects.jsx` | la page |
 | `src/pages/Partenariats.jsx` | **supprimée** |
 | `admin.sync_diagnostiqueurs` | **supprimée**, avec le cron `admin-sync-diag-prospects` (03h30) |
-| migration de données | `admin.prospects` vers `dpe.prospect_etat` : statuts et désinscrits uniquement, pas les coordonnées (l'annuaire les a déjà, en plus frais) |
+| `admin.prospects` | **supprimée sans reprise** |
+| `admin.campagnes`, `admin.campagne_envois` | **supprimées** (vides) |
 
-Le statut `partenaire` d'`admin.prospects` n'a pas d'équivalent dans le nouveau
-funnel : il se reprend en `repondu`, ce qui conserve le fait qu'un échange a
-eu lieu. Sa qualité de client, elle, ne se migre pas — elle se relit à chaque
-affichage dans `client_depuis`, donc elle ne peut pas se désynchroniser.
+### Pas de migration de données : il n'y a rien à reprendre
 
-`admin.campagnes` et `admin.campagne_envois` **ne sont pas touchées** : elles
-portent l'historique « qui a déjà reçu quoi » de campagnes réellement parties,
-qu'on ne peut pas se permettre de perdre, et elles servent au lot 2. La page
-disparaît, les tables dorment.
+Le relevé du 27/08 le tranche : les 11 077 lignes d'`admin.prospects` sont
+toutes au statut `nouveau` et toutes de source `diag_certifie`. Aucun statut
+travaillé, aucun désinscrit, aucune note. La table est une recopie intégrale
+de `dpe.diag_certifie`, que `dpe.baikal_prospects` relira en direct et mieux
+(8 594 adresses réellement adressables au lieu de 11 077 gonflées).
+
+`admin.campagnes` et `admin.campagne_envois` sont vides : aucune campagne
+n'est jamais partie depuis Baikal. Rien à préserver pour le lot 2, qui
+repartira d'un schéma dessiné pour l'usage réel plutôt que d'hériter de tables
+mortes.
+
+**La suppression est donc un `drop`, pas un transfert.** C'est une opération
+destructive : elle est isolée en fin de plan, après que `/prospect` ait été
+vérifiée en conditions réelles, et jamais avant.
 
 ### DPE
 
@@ -429,9 +493,10 @@ Vérifications manuelles à faire passer :
    la console, même si `prospect_etat` dit autre chose.
 5. **Import non destructif** : importer un CSV contenant une adresse déjà en
    `refus`, elle est rapportée en doublon, statut inchangé.
-6. **Migration** : après reprise, le nombre de désinscrits dans
-   `dpe.prospect_etat` égale celui d'`admin.prospects` filtré sur
-   `app_id = 'monsieurdpe'`. Aucun perdu.
+6. **Avant suppression** : re-vérifier que `admin.prospects` ne contient
+   toujours aucun statut autre que `nouveau` et que les deux tables de
+   campagne sont toujours vides. Le relevé date du 27/08 ; un `drop` ne se
+   fait pas sur une mesure périmée.
 7. **Colonne absente** : retirer `telephone` de la vue Pack Vendeur, la colonne
    disparaît de la table sans casser la page.
 
@@ -460,7 +525,7 @@ Vérifications manuelles à faire passer :
 |---|---|---|
 | 1 | Rôle de Baikal | Fédéré : chaque site maître de sa base, Baikal lit et administre à distance |
 | 2 | Opt-out | Par marque — domaines expéditeurs distincts, vérifié |
-| 3 | `admin.prospects` | Rendue au site DPE ; cron 03h30 et `/partenariats` supprimés |
+| 3 | `admin.prospects` | Supprimée sans reprise (11 077 lignes, toutes `nouveau`) ; cron 03h30 et `/partenariats` supprimés |
 | 4 | Découpage | Lot 1 socle `/prospect`, lot 2 `/mailing`, lot 3 copie inter-sites |
 | 5 | Périmètre de la page | Tout le vivier adressable, une seule liste, état de contact en colonne et filtre |
 | 6 | Métiers | Taxonomie fermée partagée, stockée en base (`admin.metier`) |
@@ -469,5 +534,5 @@ Vérifications manuelles à faire passer :
 | 9 | Syndic | Métier à part entière |
 | 10 | Écriture | Complète (statut, note, désinscription, création, import, suppression) par le canal du site |
 | 11 | SIRET | Non imposé, pris s'il existe ; clé prioritaire de dédoublonnage au lot 3 |
-| 12 | `admin.campagnes` | Non touchée, dort jusqu'au lot 2 |
+| 12 | `admin.campagnes` | Supprimée : vide, aucune campagne n'est jamais partie de Baikal |
 | 13 | Conversion | Pas d'état « partenaire » : un prospect converti devient un client. `client_depuis` est le seul marqueur, il exclut du ciblage et badge la ligne |
