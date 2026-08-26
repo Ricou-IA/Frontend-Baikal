@@ -14,6 +14,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useDonneesCachees } from '../../hooks/useDonneesCachees';
 import { Chargement, Erreur } from './etats';
 import { dossiersService } from '../../services/dossiers.service';
+import ConfirmModal from '../ui/ConfirmModal';
 import { BadgeEtape, BadgeCanal, fmtDate, fmtDateHeure, fmtEur } from './badges-clients';
 import { ONGLETS_PED } from './extensions/ped';
 
@@ -140,9 +141,11 @@ function BarreActions({ appId, dossierId, dossier, isSuperAdmin, onFait }) {
   const [creditsPro, setCreditsPro] = useState(1);
   const [enCours, setEnCours] = useState(null);
   const [message, setMessage] = useState(null);
+  // Confirmation via la ConfirmModal maison (jamais window.confirm) :
+  // { actionSite, params, titre, message, variant, confirmLabel, icon }
+  const [confirmation, setConfirmation] = useState(null);
 
-  const executer = async (actionSite, params = {}, confirmation = null) => {
-    if (confirmation && !window.confirm(confirmation)) return;
+  const lancer = async (actionSite, params = {}) => {
     setEnCours(actionSite);
     setMessage(null);
     const { data, error } = await dossiersService.executerActionSite(
@@ -155,6 +158,14 @@ function BarreActions({ appId, dossierId, dossier, isSuperAdmin, onFait }) {
       setMessage({ ok: true, texte: data?.message || 'Action exécutée.' });
       onFait();
     }
+  };
+
+  const executer = (actionSite, params = {}, demande = null) => {
+    if (demande) {
+      setConfirmation({ actionSite, params, ...demande });
+      return;
+    }
+    lancer(actionSite, params);
   };
 
   return (
@@ -178,8 +189,14 @@ function BarreActions({ appId, dossierId, dossier, isSuperAdmin, onFait }) {
           {enCours === 'resend-email' ? 'Envoi…' : "Renvoyer l'email"}
         </button>
         <button
-          onClick={() => executer('re-extract', {},
-            'Relancer l’extraction de ce dossier ? Le statut repasse en cours d’analyse.')}
+          onClick={() => executer('re-extract', {}, {
+            titre: 'RE-EXTRACTION',
+            message: 'Relancer l’analyse de ce dossier sur la base des documents déjà déposés ? '
+              + 'Le statut repasse en cours d’analyse et le pré-état-daté sera régénéré.',
+            variant: 'warning',
+            confirmLabel: 'RELANCER',
+            icon: RefreshCw,
+          })}
           disabled={enCours !== null}
           className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-baikal-border text-xs text-baikal-text hover:text-baikal-cyan hover:border-baikal-cyan disabled:opacity-50"
         >
@@ -187,8 +204,13 @@ function BarreActions({ appId, dossierId, dossier, isSuperAdmin, onFait }) {
           {enCours === 're-extract' ? 'Relance…' : 'Re-extraire'}
         </button>
         <button
-          onClick={() => executer('reset-extractions', {},
-            'Redonner ses 3 extractions au client ? Il pourra relancer l’analyse lui-même depuis son interface.')}
+          onClick={() => executer('reset-extractions', {}, {
+            titre: 'REDONNER_EXTRACTIONS',
+            message: 'Redonner ses 3 extractions au client ? Il pourra relancer l’analyse lui-même depuis son interface.',
+            variant: 'info',
+            confirmLabel: 'REDONNER',
+            icon: Coins,
+          })}
           disabled={enCours !== null}
           className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-baikal-border text-xs text-baikal-text hover:text-baikal-cyan hover:border-baikal-cyan disabled:opacity-50"
         >
@@ -206,8 +228,13 @@ function BarreActions({ appId, dossierId, dossier, isSuperAdmin, onFait }) {
               className="w-14 px-2 py-1.5 bg-baikal-bg border border-baikal-border rounded-md text-xs text-baikal-text focus:outline-none focus:border-baikal-cyan"
             />
             <button
-              onClick={() => executer('add-pro-credits', { credits: creditsPro },
-                `Ajouter ${creditsPro} crédit${creditsPro > 1 ? 's' : ''} au compte pro de ce dossier ?`)}
+              onClick={() => executer('add-pro-credits', { credits: creditsPro }, {
+                titre: 'CREDITS_PRO',
+                message: `Ajouter ${creditsPro} crédit${creditsPro > 1 ? 's' : ''} au compte pro de ce dossier ?`,
+                variant: 'info',
+                confirmLabel: 'AJOUTER',
+                icon: Coins,
+              })}
               disabled={enCours !== null}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-baikal-border text-xs text-baikal-text hover:text-baikal-cyan hover:border-baikal-cyan disabled:opacity-50"
             >
@@ -218,9 +245,14 @@ function BarreActions({ appId, dossierId, dossier, isSuperAdmin, onFait }) {
         )}
         {isSuperAdmin && (
           <button
-            onClick={() => executer('purge-documents', {},
-              'Purger les documents de ce dossier ? Les fichiers et les données extraites seront '
-              + 'supprimés DÉFINITIVEMENT. Le dossier, les emails et la transaction sont conservés.')}
+            onClick={() => executer('purge-documents', {}, {
+              titre: 'PURGER_DOCUMENTS',
+              message: 'Les fichiers et les données extraites seront supprimés DÉFINITIVEMENT. '
+                + 'Le dossier, les emails et la transaction sont conservés.',
+              variant: 'danger',
+              confirmLabel: 'PURGER',
+              icon: Trash2,
+            })}
             disabled={enCours !== null}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-red-500/50 text-xs text-red-300 hover:bg-red-900/20 disabled:opacity-50 ml-auto"
           >
@@ -233,6 +265,22 @@ function BarreActions({ appId, dossierId, dossier, isSuperAdmin, onFait }) {
         <p className={`text-xs ${message.ok ? 'text-emerald-300' : 'text-red-300'}`}>
           {message.texte}
         </p>
+      )}
+      {confirmation && (
+        <ConfirmModal
+          isOpen
+          onClose={() => setConfirmation(null)}
+          onConfirm={() => {
+            const c = confirmation;
+            setConfirmation(null);
+            lancer(c.actionSite, c.params);
+          }}
+          title={confirmation.titre}
+          message={confirmation.message}
+          confirmLabel={confirmation.confirmLabel}
+          variant={confirmation.variant}
+          icon={confirmation.icon}
+        />
       )}
     </div>
   );
