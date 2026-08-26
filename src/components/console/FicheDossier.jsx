@@ -9,7 +9,7 @@
  * ============================================================================
  */
 import { useState } from 'react';
-import { RefreshCw, Send, Trash2, X } from 'lucide-react';
+import { Coins, RefreshCw, Send, Trash2, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDonneesCachees } from '../../hooks/useDonneesCachees';
 import { Chargement, Erreur } from './etats';
@@ -135,8 +135,9 @@ function OngletEvents({ events }) {
   );
 }
 
-function BarreActions({ appId, dossierId, isSuperAdmin, onFait }) {
+function BarreActions({ appId, dossierId, dossier, isSuperAdmin, onFait }) {
   const [typeEmail, setTypeEmail] = useState(TYPES_EMAIL[0][0]);
+  const [creditsPro, setCreditsPro] = useState(1);
   const [enCours, setEnCours] = useState(null);
   const [message, setMessage] = useState(null);
 
@@ -185,6 +186,36 @@ function BarreActions({ appId, dossierId, isSuperAdmin, onFait }) {
           <RefreshCw className={`w-3.5 h-3.5 ${enCours === 're-extract' ? 'animate-spin' : ''}`} />
           {enCours === 're-extract' ? 'Relance…' : 'Re-extraire'}
         </button>
+        <button
+          onClick={() => executer('reset-extractions', {},
+            'Redonner ses 3 extractions au client ? Il pourra relancer l’analyse lui-même depuis son interface.')}
+          disabled={enCours !== null}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-baikal-border text-xs text-baikal-text hover:text-baikal-cyan hover:border-baikal-cyan disabled:opacity-50"
+        >
+          <Coins className="w-3.5 h-3.5" />
+          {enCours === 'reset-extractions' ? 'Remise…' : 'Redonner 3 extractions'}
+        </button>
+        {isSuperAdmin && dossier?.perimetre === 'b2b' && (
+          <span className="flex items-center gap-1.5">
+            <input
+              type="number"
+              min="1"
+              max="100"
+              value={creditsPro}
+              onChange={(e) => setCreditsPro(Math.max(1, Math.min(100, Number(e.target.value) || 1)))}
+              className="w-14 px-2 py-1.5 bg-baikal-bg border border-baikal-border rounded-md text-xs text-baikal-text focus:outline-none focus:border-baikal-cyan"
+            />
+            <button
+              onClick={() => executer('add-pro-credits', { credits: creditsPro },
+                `Ajouter ${creditsPro} crédit${creditsPro > 1 ? 's' : ''} au compte pro de ce dossier ?`)}
+              disabled={enCours !== null}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-baikal-border text-xs text-baikal-text hover:text-baikal-cyan hover:border-baikal-cyan disabled:opacity-50"
+            >
+              <Coins className="w-3.5 h-3.5" />
+              {enCours === 'add-pro-credits' ? 'Ajout…' : 'Crédits pro'}
+            </button>
+          </span>
+        )}
         {isSuperAdmin && (
           <button
             onClick={() => executer('purge-documents', {},
@@ -246,7 +277,7 @@ export default function FicheDossier({ appId, dossierId, onClose }) {
       onClick={onClose}
     >
       <div
-        className="bg-baikal-surface border border-baikal-border rounded-lg w-full max-w-2xl my-8"
+        className="bg-baikal-surface border border-baikal-border rounded-lg w-full max-w-4xl my-8"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4 p-4 border-b border-baikal-border">
@@ -268,6 +299,7 @@ export default function FicheDossier({ appId, dossierId, onClose }) {
           <BarreActions
             appId={appId}
             dossierId={dossierId}
+            dossier={d}
             isSuperAdmin={isSuperAdmin}
             onFait={() => setVersion((v) => v + 1)}
           />

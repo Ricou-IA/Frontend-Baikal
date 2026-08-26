@@ -72,6 +72,8 @@ serve(async (req) => {
         "detail": { superAdminSeul: false },
         "re-extract": { superAdminSeul: false },
         "resend-email": { superAdminSeul: false },
+        "reset-extractions": { superAdminSeul: false },
+        "add-pro-credits": { superAdminSeul: true },
         "purge-documents": { superAdminSeul: true },
       };
       const actionSite = action === "site-detail" ? "detail" : String(body.actionSite ?? "");
@@ -93,6 +95,10 @@ serve(async (req) => {
       const corps: Record<string, unknown> = { action: actionSite, dossier_id: dossierId };
       if (actionSite === "resend-email") {
         corps.email_action = typeof body.emailAction === "string" ? body.emailAction : "";
+      }
+      if (actionSite === "add-pro-credits") {
+        const brut = Number(body.credits);
+        corps.credits = Number.isFinite(brut) && brut > 0 ? Math.min(100, Math.floor(brut)) : 1;
       }
       const reponse = await fetch(cible.url, {
         method: "POST",
