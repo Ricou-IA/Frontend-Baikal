@@ -36,17 +36,16 @@ export function BadgeEtape({ statut, payeLe, funnel }) {
       </span>
     );
     // Une etape post-paiement (envoye, a traiter, abonne...) decrit l'apres-vente :
-    // sans ce rappel, un client payant se lit comme un dossier non converti.
+    // le badge Paye passe devant, identique a celui des autres lignes, et
+    // l'etat d'apres-vente le suit. Sans lui, un client payant se lirait
+    // comme un dossier non converti.
     if (etape.apres_paiement && payeLe) {
       return (
         <span className="inline-flex items-center gap-1">
-          {badge}
-          <span
-            title="Client payant"
-            className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-xs font-medium border ${COULEURS_ETAPES.emerald}`}
-          >
-            payé
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border ${COULEURS_ETAPES.emerald}`}>
+            Payé
           </span>
+          {badge}
         </span>
       );
     }
