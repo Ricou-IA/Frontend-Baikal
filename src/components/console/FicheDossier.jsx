@@ -3,7 +3,7 @@
  * ============================================================================
  * Fiche detail d'un dossier client : socle generique (Vue / Emails / Events),
  * actions d'administration relayees vers l'EF du site (renvoyer un email,
- * re-extraire, purger les documents — super_admin seul), et onglets
+ * re-extraire, purger les documents -- super_admin seul), et onglets
  * d'extension par site (EXTENSIONS_FICHE). Le detail etendu du site est
  * charge UNE fois et partage entre tous les onglets d'extension.
  * ============================================================================
@@ -18,7 +18,7 @@ import { BadgeEtape, BadgeCanal, fmtDate, fmtDateHeure, fmtEur } from './badges-
 import { ONGLETS_PED } from './extensions/ped';
 
 // Onglets specifiques par site. Chaque Composant recoit
-// { appId, dossierId, dossier, detail } — detail est la reponse site-detail
+// { appId, dossierId, dossier, detail } -- detail est la reponse site-detail
 // du site (null pendant le chargement).
 export const EXTENSIONS_FICHE = {
   'pack-vendeur': ONGLETS_PED,
@@ -222,7 +222,7 @@ export default function FicheDossier({ appId, dossierId, onClose }) {
 
   // Detail etendu du site : charge une fois, partage entre les onglets
   // d'extension. Le chargeur est neutre tant que le canal n'est pas actif.
-  const { donnees: detail } = useDonneesCachees(
+  const { donnees: detail, erreur: erreurDetail } = useDonneesCachees(
     `detail-site:${appId}:${dossierId}:${actionsActives}:${version}`,
     () => (actionsActives && extensions.length > 0
       ? dossiersService.getDetailSite(appId, dossierId)
@@ -294,14 +294,17 @@ export default function FicheDossier({ appId, dossierId, onClose }) {
           {d && onglet === 'vue' && <OngletVue d={d} />}
           {d && onglet === 'emails' && <OngletEmails emails={donnees.emails} />}
           {d && onglet === 'events' && <OngletEvents events={donnees.events} />}
-          {d && extensionActive && (
-            <extensionActive.Composant
-              appId={appId}
-              dossierId={dossierId}
-              dossier={d}
-              detail={detail}
-            />
-          )}
+          {d && extensionActive && (erreurDetail
+            ? <Erreur message={erreurDetail} />
+            : (
+              <extensionActive.Composant
+                appId={appId}
+                dossierId={dossierId}
+                dossier={d}
+                detail={detail}
+              />
+            ))}
+
         </div>
       </div>
     </div>

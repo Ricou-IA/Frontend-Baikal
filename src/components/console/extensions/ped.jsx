@@ -3,7 +3,7 @@
  * ============================================================================
  * Onglets d'extension Pre-etat-date de la fiche client : Documents, Resultat,
  * Chat, Logs IA, Donnees. Tous consomment la reponse `detail` de
- * pv-admin-dossiers (relayee par admin-dossiers, action site-detail) — les
+ * pv-admin-dossiers (relayee par admin-dossiers, action site-detail) -- les
  * URLs signees du storage n'existent que la (TTL 1 h), jamais recomposees ici.
  * ============================================================================
  */
@@ -52,8 +52,8 @@ function OngletDocuments({ detail, dossier }) {
             </tr>
           </thead>
           <tbody>
-            {detail.documents.map((doc) => (
-              <tr key={doc.id} className="border-t border-baikal-border/50">
+            {detail.documents.map((doc, i) => (
+              <tr key={doc.id ?? i} className="border-t border-baikal-border/50">
                 <td className="py-2 pr-4 max-w-[220px] truncate" title={doc.original_filename}>
                   {doc.normalized_filename || doc.original_filename}
                 </td>
@@ -140,8 +140,8 @@ function OngletChat({ detail }) {
         <Vide message="Aucun échange de chat sur ce dossier." />
       ) : (
         <ul className="space-y-3">
-          {detail.chat_logs.map((c) => (
-            <li key={c.id} className="text-sm">
+          {detail.chat_logs.map((c, i) => (
+            <li key={c.id ?? i} className="text-sm">
               <div className="text-xs text-baikal-text opacity-60">
                 {fmtDateHeure(c.created_at)} · {c.page_path || '—'}
               </div>
@@ -178,8 +178,8 @@ function OngletLogsIa({ detail }) {
                 </tr>
               </thead>
               <tbody>
-                {detail.ai_logs.map((l) => (
-                  <tr key={l.id} className={`border-t border-baikal-border/50 ${l.error ? 'text-red-300' : ''}`}>
+                {detail.ai_logs.map((l, i) => (
+                  <tr key={l.id ?? i} className={`border-t border-baikal-border/50 ${l.error ? 'text-red-300' : ''}`}>
                     <td className="py-2 pr-4 whitespace-nowrap text-xs">{fmtDateHeure(l.created_at)}</td>
                     <td className="py-2 pr-4 font-mono text-xs">{l.model_used || l.model || '—'}</td>
                     <td className="py-2 pr-4 text-xs">{l.prompt_type || '—'}</td>
