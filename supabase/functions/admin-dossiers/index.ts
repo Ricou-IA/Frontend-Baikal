@@ -89,9 +89,7 @@ serve(async (req) => {
           .filter((e) => e.masquee_par_defaut === true)
           .map((e) => e.slug);
         const motif = `%${c.recherche}%`;
-        const rows = await sql`
-          SELECT *, count(*) OVER() AS total_lignes
-          FROM public.baikal_dossiers
+        const filtresSql = sql`
           WHERE true
             ${c.exclureTests ? sql`AND est_test IS NOT TRUE` : sql``}
             ${c.inclureSupprimes ? sql`` : sql`AND supprime_le IS NULL`}
@@ -108,11 +106,22 @@ serve(async (req) => {
               ? sql`AND (email ILIKE ${motif}
                     OR contact_nom ILIKE ${motif}
                     ${colonnes.has("libelle") ? sql`OR libelle ILIKE ${motif}` : sql``})`
-              : sql``}
+              : sql``}`;
+        const rows = await sql`
+          SELECT *, count(*) OVER() AS total_lignes
+          FROM public.baikal_dossiers
+          ${filtresSql}
           ORDER BY ${c.tri === "paye_le" ? sql`paye_le` : sql`cree_le`}
             ${c.ordre === "asc" ? sql`ASC NULLS LAST` : sql`DESC NULLS LAST`}
           LIMIT ${c.parPage} OFFSET ${(c.page - 1) * c.parPage}`;
-        const total = rows.length > 0 ? Number(rows[0].total_lignes) : 0;
+        let total = rows.length > 0 ? Number(rows[0].total_lignes) : 0;
+        if (rows.length === 0 && c.page > 1) {
+          // count(*) OVER() n'existe que sur les lignes renvoyees : une page
+          // au-dela du dernier resultat perdrait le total reel sans ce repli.
+          const [compte] = await sql`
+            SELECT count(*) AS total FROM public.baikal_dossiers ${filtresSql}`;
+          total = Number(compte.total);
+        }
         const dossiers = rows.map(({ total_lignes: _t, ...d }) => ({
           ...d,
           canal: canalVente(d.attribution as Record<string, unknown> | null),
