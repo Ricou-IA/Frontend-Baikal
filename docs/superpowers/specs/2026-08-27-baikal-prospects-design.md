@@ -461,6 +461,12 @@ c'est `desinscrire` — qui, lui, est définitif et respecté par la campagne.
 
 ## 8. Ce qui bouge, repo par repo
 
+**Ordre : MonsieurDPE d'abord, Pack Vendeur ensuite.** DPE partage le projet
+Supabase de Baikal, donc sa vue se lit en SQL local et le canal distant n'a pas
+à être éprouvé en même temps que le reste ; c'est aussi là que tourne la
+campagne à suivre. Pack Vendeur suit, et la règle « pas de vue, pas de module »
+fait qu'il apparaît simplement indisponible d'ici là — rien à désactiver.
+
 ### Frontend-Baikal
 
 | Objet | Travail |
