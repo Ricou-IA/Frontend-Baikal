@@ -133,13 +133,33 @@ serve(async (req) => {
         if (!/^[a-z][a-z0-9_]{1,30}$/.test(slug)) {
           return json({ data: null, error: "Slug invalide (a-z, 0-9, _)" }, 400);
         }
-        const { error } = await admin.schema("admin").from("metier").upsert({
+        const valeurs = {
           slug,
           libelle: String(m.libelle ?? slug),
           couleur: String(m.couleur ?? "slate"),
           ordre: Number.isInteger(m.ordre) ? m.ordre : 100,
-        });
-        if (error) return json({ data: null, error: error.message }, 400);
+        };
+        // La ligne "Ajouter" et la ligne d'un metier existant postent le
+        // meme payload mais n'ont pas la meme garantie a tenir : la premiere
+        // ne doit JAMAIS ecraser un metier deja present (la taxonomie est
+        // partagee par tous les sites, un ecrasement silencieux efface son
+        // libelle/couleur/ordre sans avertissement) ; la seconde doit
+        // toujours pouvoir mettre a jour la sienne. `creer` (poste
+        // uniquement par la ligne d'ajout) bascule vers un insert qui
+        // echoue proprement sur doublon plutot qu'un upsert qui l'ecrase.
+        const creer = body.creer === true;
+        const { error } = creer
+          ? await admin.schema("admin").from("metier").insert(valeurs)
+          : await admin.schema("admin").from("metier").upsert(valeurs);
+        if (error) {
+          if (creer && error.code === "23505") {
+            return json({
+              data: null,
+              error: `Le métier « ${slug} » existe déjà — modifiez-le depuis sa ligne au lieu de l'ajouter à nouveau.`,
+            }, 409);
+          }
+          return json({ data: null, error: error.message }, 400);
+        }
         return json({ data: { ok: true }, error: null });
       }
 

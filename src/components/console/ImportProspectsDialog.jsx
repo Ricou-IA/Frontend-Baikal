@@ -158,9 +158,18 @@ export default function ImportProspectsDialog({
     // cours de route n'a jamais droit a la phrase de succes complet, meme
     // couleur, meme mot -- c'est exactement ce qui pouvait faire croire a
     // un operateur qu'un import stoppe a mi-fichier etait termine.
+    //
+    // Tous les lots ont reussi (complet) mais le serveur n'a retenu AUCUNE
+    // ligne alors que le fichier en contenait : ce n'est pas un fichier vide,
+    // c'est la signature d'un mappage de colonnes rate (en-tete "E-mail" ou
+    // "Mail", que ALIAS_COLONNES ne reconnait pas -- voir son commentaire).
+    // Le gabarit vert de succes mentirait ici ("0 insere" a l'air d'un
+    // fichier deja tout importe, pas d'un fichier jamais lu).
+    const mappageSuspect = !messageEchec && cumul.recus === 0 && analyse.lignes.length > 0;
     setResultat({
       ...cumul,
       complet: !messageEchec,
+      mappageSuspect,
       lignesRestantes: analyse.lignes.length - lignesConfirmees,
     });
     // Le rafraichissement de la liste, lui, reste conditionne a une
@@ -340,7 +349,7 @@ export default function ImportProspectsDialog({
 
           {erreur && <Erreur message={erreur} />}
 
-          {resultat && resultat.complet && (
+          {resultat && resultat.complet && !resultat.mappageSuspect && (
             <p className="text-sm text-emerald-300">
               Import :{' '}
               <span className="tabular-nums">{fmtNombre(resultat.inseres)}</span>
@@ -350,6 +359,26 @@ export default function ImportProspectsDialog({
               (<span className="tabular-nums">{fmtNombre(resultat.recus)}</span>
               {' '}lignes lues).
             </p>
+          )}
+
+          {/* Zero ligne retenue alors que le fichier en avait : jamais la
+              phrase de succes ("0 inséré" ressemble a "déjà tout importé",
+              pas a "jamais lu"). Ambre, comme l'arret en cours de route
+              ci-dessous, pour la meme raison -- un souci reel, pas un succes
+              silencieux. */}
+          {resultat && resultat.complet && resultat.mappageSuspect && (
+            <div className="space-y-1.5 p-3 rounded-lg border bg-amber-900/20 border-amber-500/30">
+              <p className="text-sm text-amber-300">
+                Import : 0 ligne retenue sur{' '}
+                <span className="tabular-nums">{fmtNombre(analyse.lignes.length)}</span>
+                {' '}lue(s).
+              </p>
+              <p className="text-xs text-amber-200/80">
+                Le mappage des colonnes a probablement échoué : vérifiez que le fichier
+                comporte bien une colonne intitulée « email » (les intitulés « E-mail »
+                ou « Mail » ne sont pas reconnus).
+              </p>
+            </div>
           )}
 
           {/* Arret en cours de route : jamais la phrase de succes complet

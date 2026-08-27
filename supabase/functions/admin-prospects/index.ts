@@ -78,57 +78,108 @@ serve(async (req) => {
         .map((c) => c.column_name as string),
     );
 
-    // Ecriture possible ? Fonction SQL du module (base partagee) ou Edge
-    // Function declaree (projet dedie). Ni l'un ni l'autre : lecture seule.
-    const [ecriture] = await sql`
-      SELECT to_regprocedure(${schemaVues + ".prospect_action(text,text,text,text)"})
-             IS NOT NULL AS rpc`;
-    const actionsDispo = Boolean(ecriture.rpc) || Boolean(site.env_prospects_fn);
+    // Ecriture possible ? UNIQUEMENT quand lecture et ecriture tombent sur
+    // LA MEME base. Le dispatch reel (action "action" plus bas) appelle
+    // admin.rpc(...) sur la base BAIKAL -- jamais sur `sql`, qui est la base
+    // DU SITE (lecteurSite ci-dessus). Pour un site sur base dediee
+    // (db_ro_secret_ref non nul : pack-vendeur, majordhome), `sql` peut tres
+    // bien y voir une fonction prospect_action -- mais admin.rpc ne peut pas
+    // l'atteindre, puisqu'il ne parle qu'a la base Baikal. Sans cette garde,
+    // actionsDispo mentirait des la publication de la vue du site : des
+    // boutons visibles qui echouent tous, pas juste un module absent.
+    //
+    // TODO(relais HTTP) : `env_prospects_fn` (relais vers l'Edge Function du
+    // site, decrit dans la spec) n'est PAS implemente dans cette branche --
+    // l'action "action" plus bas n'appelle que admin.rpc. Ne PAS l'ajouter
+    // seul a la condition ci-dessous tant que ce relais n'existe pas
+    // reellement : ce serait rouvrir le meme mensonge pour les sites qui le
+    // renseignent. C'est ici qu'ouvrir l'interrupteur une fois le relais
+    // ecrit (et l'action "action" plus bas mise a jour pour l'appeler).
+    const partageBaseBaikal = !site.db_ro_secret_ref;
+    let actionsDispo = false;
+    if (partageBaseBaikal) {
+      const [ecriture] = await sql`
+        SELECT to_regprocedure(${schemaVues + ".prospect_action(text,text,text,text)"})
+               IS NOT NULL AS rpc`;
+      actionsDispo = Boolean(ecriture.rpc);
+    }
 
     if (action === "liste") {
       const c = normaliserCriteres(body);
       const motif = `%${c.recherche}%`;
-      const filtres = sql`
-        WHERE true
-          ${c.exclureTests && colonnes.has("est_test") ? sql`AND est_test IS NOT TRUE` : sql``}
-          ${c.exclureClients && colonnes.has("client_depuis") ? sql`AND client_depuis IS NULL` : sql``}
-          ${c.metiers.length > 0 ? sql`AND metier = ANY(${c.metiers})` : sql``}
-          ${c.statuts.length > 0 ? sql`AND statut = ANY(${c.statuts})` : sql``}
-          ${c.provenances.length > 0 ? sql`AND provenance = ANY(${c.provenances})` : sql``}
-          ${c.departement
-            ? sql`AND left(code_postal, ${c.departement.length}) = ${c.departement}`
-            : sql``}
-          ${c.avecTelephone && colonnes.has("telephone")
-            ? sql`AND telephone IS NOT NULL AND telephone <> ''`
-            : sql``}
-          ${c.recherche
-            ? sql`AND (email ILIKE ${motif} OR nom_affiche ILIKE ${motif}
-                       OR commune ILIKE ${motif})`
-            : sql``}`;
+      // Corse : aucun code postal ne commence par "2A"/"2B" (l'INSEE encode
+      // le departement sur "20" pour les deux) -- filtrer sur la valeur
+      // saisie renverrait toujours zero ligne. On accepte 2A/2B en entree
+      // (un operateur les tape naturellement, voir filtres.ts) mais on
+      // filtre sur "20" ; scinder correctement demanderait la table de
+      // decoupage complete (2A = Corse-du-Sud, 2B = Haute-Corse), hors
+      // perimetre ici. Toute la Corse plutot qu'aucun resultat.
+      const departementFiltre = /^2[AB]$/.test(c.departement) ? "20" : c.departement;
 
-      const rows = await sql`
+      // Figee en const : `sql` reste `ReturnType<...> | null` pour le
+      // compilateur, qui perd le narrowing "non nul" des lors qu'on entre
+      // dans la fermeture ci-dessous. `requete` capture la valeur (non
+      // nulle a ce point du flux) une fois pour toutes.
+      const requete = sql;
+
+      // Fragment de filtres, compose deux fois : avec le metier (liste et
+      // total affiches) et sans (compteurs des chips, voir plus bas). Une
+      // seule fonction pour ne jamais laisser les deux usages diverger.
+      const fragmentFiltres = (avecMetier: boolean) => requete`
+        WHERE true
+          ${c.exclureTests && colonnes.has("est_test") ? requete`AND est_test IS NOT TRUE` : requete``}
+          ${c.exclureClients && colonnes.has("client_depuis") ? requete`AND client_depuis IS NULL` : requete``}
+          ${avecMetier && c.metiers.length > 0 ? requete`AND metier = ANY(${c.metiers})` : requete``}
+          ${c.statuts.length > 0 ? requete`AND statut = ANY(${c.statuts})` : requete``}
+          ${c.provenances.length > 0 ? requete`AND provenance = ANY(${c.provenances})` : requete``}
+          ${departementFiltre
+            ? requete`AND left(code_postal, ${departementFiltre.length}) = ${departementFiltre}`
+            : requete``}
+          ${c.avecTelephone && colonnes.has("telephone")
+            ? requete`AND telephone IS NOT NULL AND telephone <> ''`
+            : requete``}
+          ${c.recherche
+            ? requete`AND (email ILIKE ${motif} OR nom_affiche ILIKE ${motif}
+                       OR commune ILIKE ${motif})`
+            : requete``}`;
+      const filtres = fragmentFiltres(true);
+
+      // Tri : cree_le/dernier_contact_le seuls ne departagent pas les
+      // egalites -- mesure sur ce site, 64 913 lignes tiennent sur ~118
+      // valeurs distinctes de cree_le, jusqu'a 2093 lignes sur la meme.
+      // Postgres ne garantit alors aucun ordre stable entre deux executions
+      // du LIMIT/OFFSET, et deux pages consecutives se recouvrent ou
+      // sautent des lignes. `email` est unique dans la vue : il tranche.
+      const colonneTri = c.tri === "dernier_contact_le" ? requete`dernier_contact_le` : requete`cree_le`;
+      const directionTri = c.ordre === "asc" ? requete`ASC` : requete`DESC`;
+
+      const rows = await requete`
         SELECT *, count(*) OVER() AS total_lignes
-        FROM ${sql(schemaVues)}.baikal_prospects
+        FROM ${requete(schemaVues)}.baikal_prospects
         ${filtres}
-        ORDER BY ${c.tri === "dernier_contact_le" ? sql`dernier_contact_le` : sql`cree_le`}
-          ${c.ordre === "asc" ? sql`ASC NULLS LAST` : sql`DESC NULLS LAST`}
+        ORDER BY ${colonneTri} ${directionTri} NULLS LAST, email ${directionTri}
         LIMIT ${c.parPage} OFFSET ${(c.page - 1) * c.parPage}`;
 
       let total = rows.length > 0 ? Number(rows[0].total_lignes) : 0;
       if (rows.length === 0 && c.page > 1) {
         // count(*) OVER() n'existe que sur les lignes renvoyees : une page
         // au-dela du dernier resultat perdrait le total sans ce repli.
-        const [compte] = await sql`
-          SELECT count(*) AS total FROM ${sql(schemaVues)}.baikal_prospects ${filtres}`;
+        const [compte] = await requete`
+          SELECT count(*) AS total FROM ${requete(schemaVues)}.baikal_prospects ${filtres}`;
         total = Number(compte.total);
       }
 
-      // Compteurs des chips metier et KPI : agreges EN BASE. La page ne
-      // porte que 25 lignes sur 65 000, tout compte cote client serait faux.
-      const compteurs = await sql`
+      // Compteurs des chips metier : semantique de facette -- chaque chip
+      // affiche combien de lignes il ramenerait compte tenu des AUTRES
+      // filtres actifs (statut, provenance, departement...), jamais du
+      // metier lui-meme. Avec le predicat metier applique, cliquer un chip
+      // ecrase tous les autres a zero (ils ne matchent plus le seul metier
+      // alors filtre) : exactement le "deux ecrans, deux nombres" que ce
+      // lot existe pour supprimer, reproduit des le premier clic.
+      const compteurs = await requete`
         SELECT metier, count(*)::int AS n
-        FROM ${sql(schemaVues)}.baikal_prospects
-        ${filtres}
+        FROM ${requete(schemaVues)}.baikal_prospects
+        ${fragmentFiltres(false)}
         GROUP BY metier`;
 
       const [kpi] = await sql`

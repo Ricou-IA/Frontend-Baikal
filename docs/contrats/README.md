@@ -10,6 +10,10 @@ migrations.
 2. Remplacer `@SCHEMA@` par le schema du produit (`dpe`, `pack_vendeur`...).
 3. Ecrire la partie propre au site : pour `prospects-v1`, la projection de
    l'annuaire local dans la vue `baikal_prospects`.
+4. Adapter la table d'opt-out du cas `desinscrire` dans `prospect_action` :
+   le fichier code en dur `@SCHEMA@.diag_optout`, qui est le nom de la table
+   de DPE, pas un nom generique — sans cette adaptation, "Desinscrire" echoue
+   a chaque clic chez tout site dont la table d'opt-out porte un autre nom.
 
 ## Regle
 

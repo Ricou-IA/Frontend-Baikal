@@ -19,8 +19,11 @@ export const sitesService = {
   listMetiers() {
     return appelerEdge('admin-sites', { action: 'list-metiers' });
   },
-  saveMetier(metier) {
-    return appelerEdge('admin-sites', { action: 'save-metier', metier });
+  // `creer` distingue la ligne "Ajouter" (refus serveur si le slug existe
+  // deja) de l'edition d'un metier existant (upsert normal) — meme payload
+  // `metier` sinon, voir admin-sites/index.ts.
+  saveMetier(metier, creer = false) {
+    return appelerEdge('admin-sites', { action: 'save-metier', metier, creer });
   },
   deleteMetier(slug) {
     return appelerEdge('admin-sites', { action: 'delete-metier', slug });

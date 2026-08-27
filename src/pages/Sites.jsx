@@ -269,7 +269,13 @@ function AjoutMetier({ onAdded }) {
   const ajouter = async () => {
     setEnregistrement(true);
     setErreur(null);
-    const { error } = await sitesService.saveMetier({ slug: slug.trim().toLowerCase(), libelle });
+    // creer=true : le serveur refuse un slug deja pris au lieu de l'ecraser
+    // (voir admin-sites/index.ts) — seule cette ligne le passe, jamais
+    // LigneMetier ci-dessus, dont l'edition doit toujours pouvoir aboutir.
+    const { error } = await sitesService.saveMetier(
+      { slug: slug.trim().toLowerCase(), libelle },
+      true,
+    );
     setEnregistrement(false);
     if (error) {
       setErreur(error.message || String(error));
