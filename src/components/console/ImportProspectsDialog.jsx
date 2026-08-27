@@ -78,7 +78,10 @@ export default function ImportProspectsDialog({
   const [analyse, setAnalyse] = useState(null); // { lignes: [...mappees], valides }
   const [enCours, setEnCours] = useState(false);
   const [progression, setProgression] = useState(null); // { fait, total } en lots
-  const [resultat, setResultat] = useState(null); // { recus, inseres, doublons } cumules
+  // { recus, inseres, doublons } cumules sur les lots reussis, `complet`
+  // (tous les lots sont passes) et `lignesRestantes` (non confirmees si
+  // l'envoi s'est arrete en cours de route) -- voir lancerImport.
+  const [resultat, setResultat] = useState(null);
   const [erreur, setErreur] = useState(null);
 
   async function choisirFichier(event) {
@@ -111,6 +114,18 @@ export default function ImportProspectsDialog({
 
     const cumul = { recus: 0, inseres: 0, doublons: 0 };
     let lotsReussis = 0;
+    // Lignes BRUTES (pas `recus`, qui exclut deja les adresses invalides
+    // cote serveur) des lots confirmes par une reponse serveur reussie.
+    // Sert a chiffrer honnetement ce qui n'a PAS ete confirme sur un arret
+    // en cours de route (voir setResultat plus bas) : le lot en echec et
+    // tous ceux qui suivent, jamais confirmes, pas seulement "jamais
+    // envoyes" -- une reponse perdue en route est aussi peu confirmee
+    // qu'un lot jamais tente.
+    let lignesConfirmees = 0;
+    // Message d'echec du lot qui a arrete l'envoi ; reste null si tous les
+    // lots sont passes. Sert deux fois plus bas (bandeau d'erreur ET flag
+    // `complet` du resultat) : capture ici plutot que deux fois recalcule.
+    let messageEchec = null;
     // Sequentiel et non parallele : la progression affichee doit refleter
     // des lots realises, pas simplement lances, et un echec doit arreter
     // l'envoi plutot que de continuer a cote d'un lot en erreur.
@@ -121,21 +136,32 @@ export default function ImportProspectsDialog({
       const lignes = lot.map((l) => ({ ...l, metier }));
       const { data, error } = await prospectsService.importer(appId, lignes);
       if (error) {
-        setErreur(`Lot ${lotsReussis + 1} sur ${lots.length} : ${error.message}`);
+        messageEchec = `Import interrompu au lot ${lotsReussis + 1} sur ${lots.length} : ${error.message}`;
         break;
       }
       cumul.recus += data.recus;
       cumul.inseres += data.inseres;
       cumul.doublons += data.doublons;
+      lignesConfirmees += lot.length;
       lotsReussis += 1;
       setProgression({ fait: lotsReussis, total: lots.length });
     }
 
     setEnCours(false);
+    if (messageEchec) setErreur(messageEchec);
     // Au moins un lot a ecrit en base : la liste derriere ce dialogue doit
     // refleter ce changement meme si un lot suivant a ensuite echoue.
+    // `complet` distingue les deux gabarits d'affichage du resultat (voir
+    // le rendu) : un arret en cours de route n'a pas droit a la phrase de
+    // succes complet, meme couleur, meme mot -- c'est exactement ce qui
+    // pouvait faire croire a un operateur qu'un import stoppe a mi-fichier
+    // etait termine.
     if (lotsReussis > 0) {
-      setResultat(cumul);
+      setResultat({
+        ...cumul,
+        complet: !messageEchec,
+        lignesRestantes: analyse.lignes.length - lignesConfirmees,
+      });
       onImporte();
     }
   }
@@ -268,10 +294,34 @@ export default function ImportProspectsDialog({
           {progression && (
             <div className="space-y-1.5">
               <p className="text-xs text-baikal-text opacity-70">
-                {enCours ? 'Envoi en cours' : 'Terminé'} — lot{' '}
-                <span className="tabular-nums">{fmtNombre(progression.fait)}</span>
-                {' '}sur{' '}
-                <span className="tabular-nums">{fmtNombre(progression.total)}</span>
+                {/* "Termine" ne doit JAMAIS s'afficher sur un arret en
+                    cours de route (voir erreur ci-dessous) : ce mot a lui
+                    seul suffit a faire croire qu'un import stoppe a
+                    mi-fichier est complet. Trois libelles mutuellement
+                    exclusifs plutot qu'un ternaire enCours/Termine. */}
+                {enCours && (
+                  <>
+                    Envoi en cours — lot{' '}
+                    <span className="tabular-nums">{fmtNombre(progression.fait)}</span>
+                    {' '}sur{' '}
+                    <span className="tabular-nums">{fmtNombre(progression.total)}</span>
+                  </>
+                )}
+                {!enCours && erreur && (
+                  <>
+                    Interrompu après{' '}
+                    <span className="tabular-nums">{fmtNombre(progression.fait)}</span>
+                    {' '}lot(s) sur{' '}
+                    <span className="tabular-nums">{fmtNombre(progression.total)}</span>
+                  </>
+                )}
+                {!enCours && !erreur && (
+                  <>
+                    Terminé —{' '}
+                    <span className="tabular-nums">{fmtNombre(progression.total)}</span>
+                    {' '}lot(s)
+                  </>
+                )}
               </p>
               <div className="h-2 bg-baikal-bg border border-baikal-border rounded-full overflow-hidden">
                 <div
@@ -284,7 +334,7 @@ export default function ImportProspectsDialog({
 
           {erreur && <Erreur message={erreur} />}
 
-          {resultat && (
+          {resultat && resultat.complet && (
             <p className="text-sm text-emerald-300">
               Import :{' '}
               <span className="tabular-nums">{fmtNombre(resultat.inseres)}</span>
@@ -294,6 +344,34 @@ export default function ImportProspectsDialog({
               (<span className="tabular-nums">{fmtNombre(resultat.recus)}</span>
               {' '}lignes lues).
             </p>
+          )}
+
+          {/* Arret en cours de route : jamais la phrase de succes complet
+              (meme couleur, meme mot) -- c'est ce qui laissait croire a un
+              import termine alors que des lots entiers n'avaient jamais ete
+              tentes. Ambre (alerte), pas vert (succes) ni rouge (deja pris
+              par le bandeau d'erreur technique ci-dessus) : un etat a part,
+              ni l'un ni l'autre. */}
+          {resultat && !resultat.complet && (
+            <div className="space-y-1.5 p-3 rounded-lg border bg-amber-900/20 border-amber-500/30">
+              <p className="text-sm text-amber-300">
+                Import interrompu :{' '}
+                <span className="tabular-nums">{fmtNombre(resultat.inseres)}</span>
+                {' '}insérés,{' '}
+                <span className="tabular-nums">{fmtNombre(resultat.doublons)}</span>
+                {' '}doublons ignorés avant l&apos;arrêt —{' '}
+                <span className="tabular-nums">{fmtNombre(resultat.lignesRestantes)}</span>
+                {' '}ligne(s) du fichier n&apos;ont pas été traitées.
+              </p>
+              {/* La garantie du bloc bleu au-dessus s'applique deja, mais
+                  ici c'est ce qui rend un arret actionnable plutot
+                  qu'alarmant : dire explicitement, au moment ou l'operateur
+                  se demande quoi faire, que reprendre est sans risque. */}
+              <p className="text-xs text-amber-200/80">
+                Vous pouvez réimporter le même fichier sans risque : les adresses déjà
+                connues seront comptées en doublons, aucun statut existant ne sera modifié.
+              </p>
+            </div>
           )}
         </div>
 
