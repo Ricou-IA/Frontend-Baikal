@@ -20,6 +20,7 @@ export interface Site {
   env_secret_ref: string | null;
   env_anon_key: string | null;
   env_dossiers_fn: string | null;
+  env_prospects_fn: string | null;
 }
 
 export class ErreurSite extends Error {}
@@ -30,7 +31,7 @@ export async function chargerSite(
 ): Promise<Site> {
   const { data, error } = await admin.schema("config").from("apps")
     .select(
-      "id, name, is_active, domaine, db_schema, db_ro_secret_ref, env_url, env_secret_ref, env_anon_key, env_dossiers_fn",
+      "id, name, is_active, domaine, db_schema, db_ro_secret_ref, env_url, env_secret_ref, env_anon_key, env_dossiers_fn, env_prospects_fn",
     )
     .eq("id", appId).maybeSingle();
   if (error) throw new ErreurSite(`Lecture du registre impossible: ${error.message}`);
