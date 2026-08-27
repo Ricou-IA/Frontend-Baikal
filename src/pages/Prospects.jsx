@@ -15,6 +15,7 @@ import {
   Chargement, ContenuEstompe, Erreur, LigneVide, Section, Vide,
 } from '../components/console/etats';
 import KpiCarte from '../components/console/KpiCarte';
+import FicheProspect from '../components/console/FicheProspect';
 import { prospectsService } from '../services/prospects.service';
 import {
   BadgeClient, BadgeMetier, BadgeStatut, fmtDate, fmtNombre,
@@ -66,13 +67,18 @@ function ProspectsContent() {
   const [exclureTests, setExclureTests] = useState(true);
   const [exclureClients, setExclureClients] = useState(true);
   const [page, setPage] = useState(1);
-  // Stocke seulement pour l'instant : le panneau qui le lit (FicheProspect)
-  // arrive tache 9.
-  // eslint-disable-next-line no-unused-vars
+  // Email du prospect dont la fiche laterale est ouverte, null si aucune.
   const [emailOuvert, setEmailOuvert] = useState(null);
   const [donnees, setDonnees] = useState(null);
   const [erreur, setErreur] = useState(null);
   const [chargement, setChargement] = useState(true);
+  // Incremente par FicheProspect apres une ecriture reussie (statut, note,
+  // desinscrire, supprimer). Une simple valeur dans le tableau de
+  // dependances de l'effet de chargement ci-dessous : elle herite
+  // gratuitement de sa garde de peremption `actif`, contrairement a un
+  // charger() imperatif qui devrait re-implementer sa propre protection
+  // contre une reponse perimee arrivant apres une plus recente.
+  const [versionListe, setVersionListe] = useState(0);
 
   // Changement de site : vidage PENDANT le rendu, pas dans un effet — meme
   // principe que scopeRendu dans useDonneesCachees (utilise par Clients.jsx) :
@@ -131,7 +137,7 @@ function ProspectsContent() {
     });
     return () => { actif = false; };
   }, [currentApp, recherche, metiers, statuts, provenances, departement,
-      avecTelephone, exclureTests, exclureClients, page]);
+      avecTelephone, exclureTests, exclureClients, page, versionListe]);
 
   function basculer(liste, setListe, valeur) {
     setListe(liste.includes(valeur) ? liste.filter((v) => v !== valeur) : [...liste, valeur]);
@@ -342,6 +348,17 @@ function ProspectsContent() {
           </div>
         </div>
       </ContenuEstompe>
+
+      {emailOuvert && (
+        <FicheProspect
+          appId={currentApp}
+          email={emailOuvert}
+          actions={donnees.actions}
+          metiers={donnees.metiers}
+          onFerme={() => setEmailOuvert(null)}
+          onChange={() => setVersionListe((v) => v + 1)}
+        />
+      )}
     </Section>
   );
 }
