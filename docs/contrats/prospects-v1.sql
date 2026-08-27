@@ -161,7 +161,11 @@ begin
 end;
 $$;
 
-revoke all on function @SCHEMA@.prospect_action(text,text,text,text) from anon, authenticated;
+-- `revoke ... from public` : Postgres accorde EXECUTE a PUBLIC sur toute
+-- fonction creee ; revoquer aupres d'anon et authenticated seuls ne retire
+-- pas ce droit herite d'office.
+revoke all on function @SCHEMA@.prospect_action(text,text,text,text) from public;
+grant execute on function @SCHEMA@.prospect_action(text,text,text,text) to service_role;
 
 -- ------ 5. L'import par lots ------
 --
@@ -218,4 +222,8 @@ begin
 end;
 $$;
 
-revoke all on function @SCHEMA@.prospect_importer(jsonb,text) from anon, authenticated;
+-- `revoke ... from public` : Postgres accorde EXECUTE a PUBLIC sur toute
+-- fonction creee ; revoquer aupres d'anon et authenticated seuls ne retire
+-- pas ce droit herite d'office.
+revoke all on function @SCHEMA@.prospect_importer(jsonb,text) from public;
+grant execute on function @SCHEMA@.prospect_importer(jsonb,text) to service_role;
