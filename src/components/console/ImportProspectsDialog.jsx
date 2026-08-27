@@ -149,19 +149,25 @@ export default function ImportProspectsDialog({
 
     setEnCours(false);
     if (messageEchec) setErreur(messageEchec);
-    // Au moins un lot a ecrit en base : la liste derriere ce dialogue doit
-    // refleter ce changement meme si un lot suivant a ensuite echoue.
-    // `complet` distingue les deux gabarits d'affichage du resultat (voir
-    // le rendu) : un arret en cours de route n'a pas droit a la phrase de
-    // succes complet, meme couleur, meme mot -- c'est exactement ce qui
-    // pouvait faire croire a un operateur qu'un import stoppe a mi-fichier
-    // etait termine.
+    // Le compte-rendu s'affiche des que l'envoi s'est arrete, MEME a zero
+    // lot reussi (echec sur le tout premier lot) : le pilote est "l'envoi
+    // est termine", pas "au moins un lot est passe". "0 insere, 0 doublon"
+    // est une information (rien n'est entre) -- le silence se lirait comme
+    // "peut-etre entre, personne ne le dit", ce qui est pire. `complet`
+    // distingue les deux gabarits d'affichage (voir le rendu) : un arret en
+    // cours de route n'a jamais droit a la phrase de succes complet, meme
+    // couleur, meme mot -- c'est exactement ce qui pouvait faire croire a
+    // un operateur qu'un import stoppe a mi-fichier etait termine.
+    setResultat({
+      ...cumul,
+      complet: !messageEchec,
+      lignesRestantes: analyse.lignes.length - lignesConfirmees,
+    });
+    // Le rafraichissement de la liste, lui, reste conditionne a une
+    // ecriture reelle : recharger une liste qui n'a pas bouge n'apporte
+    // rien (contrairement au compte-rendu ci-dessus, toujours du, ceci
+    // reste un pur gain de reseau evite).
     if (lotsReussis > 0) {
-      setResultat({
-        ...cumul,
-        complet: !messageEchec,
-        lignesRestantes: analyse.lignes.length - lignesConfirmees,
-      });
       onImporte();
     }
   }
