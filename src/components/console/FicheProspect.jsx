@@ -263,7 +263,14 @@ export default function FicheProspect({
               )}
               {pro.specialite !== undefined && (
                 <Ligne libelle="Spécialités">
-                  {pro.specialite.length > 0 ? (
+                  {/* Colonne presente (teste ci-dessus) n'implique pas valeur
+                      non nulle : le contrat autorise une colonne absente OU
+                      une valeur nulle, ce sont deux choses differentes. DPE
+                      ne renvoie jamais null ici, mais un futur site pourrait
+                      publier la colonne nullable sans violer le contrat --
+                      (pro.specialite || []) evite un .length sur null qui
+                      ferait planter toute la fiche, pas seulement la ligne. */}
+                  {(pro.specialite || []).length > 0 ? (
                     <ul className="list-disc list-inside space-y-0.5">
                       {pro.specialite.map((s, i) => <li key={i}>{s}</li>)}
                     </ul>
