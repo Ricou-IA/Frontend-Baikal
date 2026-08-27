@@ -5,7 +5,7 @@
 // module sera demonte.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { ErreurAcces, sitesAutorises } from "../_shared/droits.ts";
+import { ErreurAcces, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -62,7 +62,11 @@ serve(async (req) => {
     });
 
     const body = await req.json();
-    const { action } = body;
+    const { action, appId } = body;
+    // Aucune action de ce fichier ne prend d'appId aujourd'hui. La garde est
+    // posee pour la suivante : une action par site ajoutee ici sans elle
+    // laisserait un admin delegue agir sur un site qui n'est pas le sien.
+    if (appId) exigerSite(sites, appId);
 
     switch (action) {
       case "list-sites": {
