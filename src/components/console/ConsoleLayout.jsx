@@ -14,7 +14,7 @@ import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     LayoutDashboard, BookOpen, MessageSquareCode, Database, FolderOpen,
-    TrendingUp, Mail, Users, Globe, Shield, Settings, LogOut, Euro,
+    TrendingUp, Mail, Users, Globe, Shield, Settings, LogOut, Euro, Target,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { AppProvider, useApp } from '../../contexts/AppContext';
@@ -35,7 +35,7 @@ const MODULES_SITE = {
 // Modules transverses, quel que soit le site.
 const MODULES_TRANSVERSES = [
     { id: 'clients', label: 'Clients', icon: FolderOpen, route: '/clients' },
-    { id: 'prospects', label: 'Prospects', icon: Users, route: '/prospect' },
+    { id: 'prospects', label: 'Prospects', icon: Target, route: '/prospect' },
     { id: 'finances', label: 'Finances', icon: Euro, route: '/finances' },
     { id: 'seo', label: 'SEO', icon: TrendingUp, route: '/seo' },
     { id: 'partenariats', label: 'Partenariats', icon: Mail, route: '/partenariats' },

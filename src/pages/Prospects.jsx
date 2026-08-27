@@ -73,6 +73,27 @@ function ProspectsContent() {
   const [erreur, setErreur] = useState(null);
   const [chargement, setChargement] = useState(true);
 
+  // Changement de site : vidage PENDANT le rendu, pas dans un effet — meme
+  // principe que scopeRendu dans useDonneesCachees (utilise par Clients.jsx) :
+  // React reexecute le composant avant de peindre, donc aucune image, meme
+  // fugace, ne montre les prospects de l'ancien site sous le nom du nouveau.
+  // Sur cette page les lignes sont cliquables : une action prise dans cette
+  // fenetre marquerait le mauvais prospect (site errone), pas juste un
+  // chiffre faux. metiers/statuts/provenances ne sont PAS remis a zero :
+  // contrairement au funnel de /clients (config.apps.funnel_etapes, propre a
+  // chaque site), ce sont des taxonomies PARTAGEES (admin.metier, funnel de
+  // statut fixe cote backend) qui gardent le meme sens d'un site a l'autre —
+  // seuls la page et le panneau ouvert n'en gardent pas.
+  const [appRendu, setAppRendu] = useState(currentApp);
+  if (currentApp !== appRendu) {
+    setAppRendu(currentApp);
+    setData(null);
+    setErreur(null);
+    setChargement(true);
+    setPage(1);
+    setEmailOuvert(null);
+  }
+
   // Debounce : sans lui, chaque frappe declenche trois agregats sur
   // 65 000 lignes.
   useEffect(() => {
