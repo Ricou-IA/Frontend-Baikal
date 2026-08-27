@@ -166,6 +166,83 @@ serve(async (req) => {
       });
     }
 
+    if (action === "fiche") {
+      const email = typeof body.email === "string" ? body.email.toLowerCase().trim() : "";
+      if (!email) return json({ data: null, error: "email requis" }, 400);
+      const [prospect] = await sql`
+        SELECT * FROM ${sql(schemaVues)}.baikal_prospects WHERE email = ${email}`;
+      if (!prospect) return json({ data: null, error: "Prospect introuvable" }, 404);
+      return json({
+        data: { disponible: true, prospect, actions: actionsDispo },
+        error: null,
+      });
+    }
+
+    if (action === "action") {
+      const ACTIONS = new Set(["statut", "note", "desinscrire", "creer", "supprimer"]);
+      const actionSite = typeof body.actionSite === "string" ? body.actionSite : "";
+      if (!ACTIONS.has(actionSite)) {
+        return json({ data: null, error: `Action inconnue: ${actionSite}` }, 400);
+      }
+      if (!actionsDispo) {
+        return json({ data: null, error: "Site sans interface d'ecriture des prospects" }, 400);
+      }
+      const email = typeof body.email === "string" ? body.email : "";
+      if (!email) return json({ data: null, error: "email requis" }, 400);
+
+      // "creer" est un import d'une seule ligne : meme fonction, donc meme
+      // regle de non-ecrasement. Deux chemins d'ecriture pour un meme geste
+      // finiraient par diverger.
+      if (actionSite === "creer") {
+        const { data, error } = await admin.rpc("baikal_prospect_importer", {
+          p_app_id: appId,
+          p_lignes: [{
+            email,
+            metier: typeof body.metier === "string" ? body.metier : "autre",
+            provenance: "import",
+            nom_affiche: typeof body.nomAffiche === "string" ? body.nomAffiche : email,
+            commune: body.commune ?? null,
+            code_postal: body.codePostal ?? null,
+            telephone: body.telephone ?? null,
+            site_web: body.siteWeb ?? null,
+          }],
+          p_acteur: user.email ?? user.id,
+        });
+        if (error) return json({ data: null, error: error.message }, 400);
+        return json({ data, error: null });
+      }
+
+      const { data, error } = await admin.rpc("baikal_prospect_action", {
+        p_app_id: appId,
+        p_action: actionSite,
+        p_email: email,
+        p_valeur: typeof body.valeur === "string" ? body.valeur : null,
+        p_acteur: user.email ?? user.id,
+      });
+      if (error) return json({ data: null, error: error.message }, 400);
+      return json({ data, error: null });
+    }
+
+    if (action === "importer") {
+      if (!actionsDispo) {
+        return json({ data: null, error: "Site sans interface d'ecriture des prospects" }, 400);
+      }
+      const lignes = Array.isArray(body.lignes) ? body.lignes : [];
+      if (lignes.length === 0) return json({ data: null, error: "Aucune ligne" }, 400);
+      // Borne dure : au-dela, le client decoupe. Un import de 50 000 lignes
+      // en un appel depasserait le temps d'execution de la fonction.
+      if (lignes.length > 2000) {
+        return json({ data: null, error: "2000 lignes maximum par lot" }, 400);
+      }
+      const { data, error } = await admin.rpc("baikal_prospect_importer", {
+        p_app_id: appId,
+        p_lignes: lignes,
+        p_acteur: user.email ?? user.id,
+      });
+      if (error) return json({ data: null, error: error.message }, 400);
+      return json({ data, error: null });
+    }
+
     return json({ data: null, error: `Action inconnue: ${action}` }, 400);
   } catch (e) {
     if (e instanceof ErreurAcces) return json({ data: null, error: e.message }, 403);
