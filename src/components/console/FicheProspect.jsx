@@ -30,9 +30,11 @@ import {
   BadgeClient, BadgeMetier, BadgeStatut, fmtDate, fmtNombre,
 } from './badges-prospects';
 
+// "desinscrit" est volontairement absent de cette liste : voir le
+// commentaire au-dessus du select dans BarreActions.
 const STATUTS = [
   ['nouveau', 'Nouveau'], ['contacte', 'Contacté'], ['relance', 'Relancé'],
-  ['repondu', 'A répondu'], ['refus', 'Refus'], ['desinscrit', 'Désinscrit'],
+  ['repondu', 'A répondu'], ['refus', 'Refus'],
 ];
 
 const PROVENANCES = {
@@ -54,7 +56,6 @@ function Ligne({ libelle, children }) {
 function BarreActions({
   appId, email, prospect, onFait,
 }) {
-  const [statut, setStatut] = useState(prospect.statut);
   const [note, setNote] = useState(prospect.note ?? '');
   const [enCours, setEnCours] = useState(null);
   const [message, setMessage] = useState(null);
@@ -67,6 +68,7 @@ function BarreActions({
   // refuserait de toute facon. Meme regle cote client, pour ne jamais
   // proposer un bouton voue a l'echec.
   const peutSupprimer = prospect.provenance === 'import' || prospect.provenance === 'scrape';
+  const estDesinscrit = prospect.statut === 'desinscrit';
 
   const lancer = async (actionSite, params = {}) => {
     setEnCours(actionSite);
@@ -81,22 +83,28 @@ function BarreActions({
     }
   };
 
-  const changerStatut = (valeur) => {
-    setStatut(valeur);
-    lancer('statut', { valeur });
-  };
-
   return (
     <div className="px-4 py-3 border-b border-baikal-border space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
         <label className="text-xs text-baikal-text opacity-60">Statut</label>
+        {/* "desinscrit" n'est jamais une option choisissable ici : c'est un
+            geste a part (bouton "Desinscrire" ci-dessous), qui ecrit EN PLUS
+            dans la table d'opt-out du site -- la seule que la campagne
+            consulte pour decider qui adresser. Si ce select pouvait ecrire
+            "desinscrit" tout seul, l'ecran afficherait "Desinscrit" sans que
+            l'opt-out existe, et le prochain envoi partirait quand meme :
+            l'ecran mentirait. Une fois desinscrit (opt-out pose), le select
+            est desactive et n'affiche que cet etat : on ne peut pas
+            re-inscrire quelqu'un depuis cette fiche, seul le site le peut. */}
         <select
-          value={statut}
-          onChange={(e) => changerStatut(e.target.value)}
-          disabled={enCours !== null}
+          value={prospect.statut}
+          onChange={(e) => lancer('statut', { valeur: e.target.value })}
+          disabled={enCours !== null || estDesinscrit}
           className="px-2 py-1.5 bg-baikal-bg border border-baikal-border rounded-md text-xs text-baikal-text focus:outline-none focus:border-baikal-cyan disabled:opacity-50"
         >
-          {STATUTS.map(([slug, libelle]) => (
+          {estDesinscrit ? (
+            <option value="desinscrit">Désinscrit</option>
+          ) : STATUTS.map(([slug, libelle]) => (
             <option key={slug} value={slug}>{libelle}</option>
           ))}
         </select>
