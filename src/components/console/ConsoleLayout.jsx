@@ -6,7 +6,7 @@
  * fois), navigation contextuelle (modules du site + modules transverses).
  *
  * Usage : <ConsoleLayout actif="seo">…contenu…</ConsoleLayout>
- * `actif` ∈ dashboard|knowledge|prompts|indexation|clients|finances|seo|partenariats|users|sites
+ * `actif` ∈ dashboard|knowledge|prompts|indexation|clients|prospects|finances|seo|partenariats|users|sites
  * `badges` optionnel : { knowledge: 3 } affiche un badge sur l'onglet.
  * ============================================================================
  */
@@ -35,6 +35,7 @@ const MODULES_SITE = {
 // Modules transverses, quel que soit le site.
 const MODULES_TRANSVERSES = [
     { id: 'clients', label: 'Clients', icon: FolderOpen, route: '/clients' },
+    { id: 'prospects', label: 'Prospects', icon: Users, route: '/prospect' },
     { id: 'finances', label: 'Finances', icon: Euro, route: '/finances' },
     { id: 'seo', label: 'SEO', icon: TrendingUp, route: '/seo' },
     { id: 'partenariats', label: 'Partenariats', icon: Mail, route: '/partenariats' },

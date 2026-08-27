@@ -43,6 +43,7 @@ import Finances from './pages/Finances';
 import Partenariats from './pages/Partenariats';
 import Sites from './pages/Sites';
 import Clients from './pages/Clients';
+import Prospects from './pages/Prospects';
 
 function App() {
   return (
@@ -238,6 +239,16 @@ function App() {
             element={
               <AdminRoute>
                 <Clients />
+              </AdminRoute>
+            }
+          />
+
+          {/* Admin - Prospects multi-sites */}
+          <Route
+            path="/prospect"
+            element={
+              <AdminRoute>
+                <Prospects />
               </AdminRoute>
             }
           />
