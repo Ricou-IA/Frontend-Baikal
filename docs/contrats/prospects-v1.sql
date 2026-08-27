@@ -68,6 +68,14 @@ comment on table @SCHEMA@.prospect_etat is
   'conversion : un prospect converti devient un client, et c''est /clients '
   'qui le suit.';
 
+-- La contrainte est ce qui rend la cle fiable quand une ecriture passe par
+-- le service_role en dehors de prospect_action : sans elle, deux graphies
+-- d'une meme adresse deviendraient deux prospects.
+alter table @SCHEMA@.prospect
+  add constraint prospect_email_normalise check (email = lower(trim(email)));
+alter table @SCHEMA@.prospect_etat
+  add constraint prospect_etat_email_normalise check (email = lower(trim(email)));
+
 -- ------ 3. Droits : service_role seul ------
 
 alter table @SCHEMA@.prospect       enable row level security;
@@ -82,3 +90,132 @@ grant select, insert, update, delete on @SCHEMA@.prospect      to service_role;
 grant select, insert, update, delete on @SCHEMA@.prospect_etat to service_role;
 
 create index if not exists prospect_metier on @SCHEMA@.prospect (metier);
+
+-- ------ 4. L'interface d'ecriture ------
+--
+-- Baikal n'ecrit JAMAIS dans les tables du site : il appelle ces fonctions,
+-- et elles seules. C'est le site qui decide ce qui est ecrivable chez lui.
+--
+-- La table d'opt-out differe d'un site a l'autre (dpe.diag_optout,
+-- pv_email_unsubscribes) : chaque installation adapte le corps du cas
+-- 'desinscrire', et rien d'autre.
+
+create or replace function @SCHEMA@.prospect_action(
+  p_action text,
+  p_email  text,
+  p_valeur text default null,
+  p_acteur text default null
+) returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_email text := lower(trim(p_email));
+begin
+  if v_email !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' then
+    raise exception 'Adresse invalide: %', p_email;
+  end if;
+
+  case p_action
+    when 'statut' then
+      if p_valeur not in ('nouveau','contacte','relance','repondu','refus','desinscrit') then
+        raise exception 'Statut inconnu: %', p_valeur;
+      end if;
+      insert into @SCHEMA@.prospect_etat (email, statut, maj_par)
+      values (v_email, p_valeur, p_acteur)
+      on conflict (email) do update
+        set statut = excluded.statut, maj_le = now(), maj_par = excluded.maj_par;
+
+    when 'note' then
+      insert into @SCHEMA@.prospect_etat (email, note, maj_par)
+      values (v_email, p_valeur, p_acteur)
+      on conflict (email) do update
+        set note = excluded.note, maj_le = now(), maj_par = excluded.maj_par;
+
+    when 'desinscrire' then
+      -- ADAPTER PAR SITE : la table d'opt-out locale.
+      insert into @SCHEMA@.diag_optout (email, motif)
+      values (v_email, 'demande')
+      on conflict (email) do nothing;
+      insert into @SCHEMA@.prospect_etat (email, statut, maj_par)
+      values (v_email, 'desinscrit', p_acteur)
+      on conflict (email) do update
+        set statut = 'desinscrit', maj_le = now(), maj_par = excluded.maj_par;
+
+    when 'supprimer' then
+      -- Uniquement une ligne du receptacle. Une ligne d'annuaire reviendrait
+      -- au prochain cron : la supprimer donnerait une fausse impression
+      -- d'effacement. Pour ne plus l'adresser, c'est 'desinscrire'.
+      if not exists (select 1 from @SCHEMA@.prospect where email = v_email) then
+        raise exception 'Seul un prospect saisi ou importe peut etre supprime';
+      end if;
+      delete from @SCHEMA@.prospect      where email = v_email;
+      delete from @SCHEMA@.prospect_etat where email = v_email;
+
+    else
+      raise exception 'Action inconnue: %', p_action;
+  end case;
+
+  return jsonb_build_object('ok', true, 'email', v_email, 'action', p_action);
+end;
+$$;
+
+revoke all on function @SCHEMA@.prospect_action(text,text,text,text) from anon, authenticated;
+
+-- ------ 5. L'import par lots ------
+--
+-- Un import n'ecrase JAMAIS un etat existant : la cle est l'adresse et le
+-- conflit ne fait rien. Une ligne deja connue est comptee en doublon et
+-- rapportee comme telle. Sans cette regle, un CSV importe par megarde efface
+-- des statuts et des refus durement gagnes.
+
+create or replace function @SCHEMA@.prospect_importer(
+  p_lignes jsonb,
+  p_acteur text default null
+) returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_recus   int;
+  v_inseres int;
+begin
+  create temporary table lignes_import on commit drop as
+  select
+    lower(trim(l->>'email'))                      as email,
+    coalesce(l->>'metier', 'autre')               as metier,
+    coalesce(l->>'provenance', 'import')          as provenance,
+    coalesce(nullif(trim(l->>'nom_affiche'), ''),
+             lower(trim(l->>'email')))            as nom_affiche,
+    nullif(trim(l->>'commune'), '')               as commune,
+    nullif(trim(l->>'code_postal'), '')           as code_postal,
+    nullif(trim(l->>'telephone'), '')             as telephone,
+    nullif(trim(l->>'site_web'), '')              as site_web,
+    nullif(trim(l->>'siret'), '')                 as siret,
+    nullif(trim(l->>'origine_site'), '')          as origine_site
+  from jsonb_array_elements(p_lignes) l
+  where lower(trim(l->>'email')) ~ '^[^@\s]+@[^@\s]+\.[^@\s]+$';
+
+  select count(*) into v_recus from lignes_import;
+
+  with insere as (
+    insert into @SCHEMA@.prospect
+      (email, metier, provenance, nom_affiche, commune, code_postal,
+       telephone, site_web, siret, origine_site)
+    select email, metier, provenance, nom_affiche, commune, code_postal,
+           telephone, site_web, siret::char(14), origine_site
+    from lignes_import
+    on conflict (email) do nothing
+    returning 1
+  )
+  select count(*) into v_inseres from insere;
+
+  return jsonb_build_object(
+    'ok', true, 'recus', v_recus, 'inseres', v_inseres,
+    'doublons', v_recus - v_inseres, 'acteur', p_acteur);
+end;
+$$;
+
+revoke all on function @SCHEMA@.prospect_importer(jsonb,text) from anon, authenticated;
