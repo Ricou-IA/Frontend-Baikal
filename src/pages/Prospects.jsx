@@ -8,7 +8,9 @@
  * ============================================================================
  */
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import {
+  ChevronLeft, ChevronRight, Search, Upload,
+} from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import ConsoleLayout from '../components/console/ConsoleLayout';
 import {
@@ -16,6 +18,7 @@ import {
 } from '../components/console/etats';
 import KpiCarte from '../components/console/KpiCarte';
 import FicheProspect from '../components/console/FicheProspect';
+import ImportProspectsDialog from '../components/console/ImportProspectsDialog';
 import { prospectsService } from '../services/prospects.service';
 import {
   BadgeClient, BadgeMetier, BadgeStatut, fmtDate, fmtNombre,
@@ -69,6 +72,8 @@ function ProspectsContent() {
   const [page, setPage] = useState(1);
   // Email du prospect dont la fiche laterale est ouverte, null si aucune.
   const [emailOuvert, setEmailOuvert] = useState(null);
+  // Dialogue d'import CSV ouvert ou non — un seul a la fois, comme emailOuvert.
+  const [importOuvert, setImportOuvert] = useState(false);
   const [donnees, setDonnees] = useState(null);
   const [erreur, setErreur] = useState(null);
   const [chargement, setChargement] = useState(true);
@@ -99,6 +104,10 @@ function ProspectsContent() {
     setChargement(true);
     setPage(1);
     setEmailOuvert(null);
+    // Meme risque que la fiche ci-dessus : appId est une prop reactive du
+    // dialogue d'import, un envoi lance apres bascule partirait sur le
+    // site nouvellement selectionne sans que rien ne le signale.
+    setImportOuvert(false);
   }
 
   // Debounce commun aux deux champs texte : sans lui, chaque frappe (dans
@@ -161,6 +170,19 @@ function ProspectsContent() {
     <Section
       titre="Prospects"
       sousTitre="Lecture directe dans la base du site — le métier est un filtre, pas un onglet"
+      // Meme garde que la barre d'actions de la fiche : proposer un import
+      // qui echouerait a coup sur (site sans interface d'ecriture) est pire
+      // que ne rien proposer.
+      action={donnees.actions === true && (
+        <button
+          onClick={() => setImportOuvert(true)}
+          className="flex items-center gap-2 px-3 py-2 text-sm rounded-md border border-baikal-border
+            text-baikal-text hover:text-baikal-cyan hover:border-baikal-cyan"
+        >
+          <Upload className="w-4 h-4" />
+          Importer un CSV
+        </button>
+      )}
     >
       {/* KPI : le parc ENTIER du site (tests exclus), pas la selection filtree
           ci-dessous (qui exclut aussi les clients par defaut). Les deux
@@ -357,6 +379,17 @@ function ProspectsContent() {
           metiers={donnees.metiers}
           onFerme={() => setEmailOuvert(null)}
           onChange={() => setVersionListe((v) => v + 1)}
+        />
+      )}
+
+      {importOuvert && (
+        <ImportProspectsDialog
+          appId={currentApp}
+          metiers={donnees.metiers}
+          onFerme={() => setImportOuvert(false)}
+          // Meme mecanisme de rafraichissement que la fiche ci-dessus : un
+          // seul chemin de rafraichissement pour toute la page.
+          onImporte={() => setVersionListe((v) => v + 1)}
         />
       )}
     </Section>
