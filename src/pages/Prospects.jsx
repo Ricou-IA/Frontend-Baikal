@@ -7,7 +7,7 @@
  * Un site sans vue n'a pas le module (etat explicite, pas une erreur).
  * ============================================================================
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import ConsoleLayout from '../components/console/ConsoleLayout';
@@ -55,12 +55,13 @@ function Case({ coche, onChange, children }) {
 
 function ProspectsContent() {
   const { currentApp } = useApp();
-  const [saisie, setSaisie] = useState('');
+  const [saisieRecherche, setSaisieRecherche] = useState('');
   const [recherche, setRecherche] = useState('');
+  const [saisieDepartement, setSaisieDepartement] = useState('');
+  const [departement, setDepartement] = useState('');
   const [metiers, setMetiers] = useState([]);
   const [statuts, setStatuts] = useState([]);
   const [provenances, setProvenances] = useState([]);
-  const [departement, setDepartement] = useState('');
   const [avecTelephone, setAvecTelephone] = useState(false);
   const [exclureTests, setExclureTests] = useState(true);
   const [exclureClients, setExclureClients] = useState(true);
@@ -69,7 +70,7 @@ function ProspectsContent() {
   // arrive tache 9.
   // eslint-disable-next-line no-unused-vars
   const [emailOuvert, setEmailOuvert] = useState(null);
-  const [data, setData] = useState(null);
+  const [donnees, setDonnees] = useState(null);
   const [erreur, setErreur] = useState(null);
   const [chargement, setChargement] = useState(true);
 
@@ -87,33 +88,50 @@ function ProspectsContent() {
   const [appRendu, setAppRendu] = useState(currentApp);
   if (currentApp !== appRendu) {
     setAppRendu(currentApp);
-    setData(null);
+    setDonnees(null);
     setErreur(null);
     setChargement(true);
     setPage(1);
     setEmailOuvert(null);
   }
 
-  // Debounce : sans lui, chaque frappe declenche trois agregats sur
-  // 65 000 lignes.
+  // Debounce commun aux deux champs texte : sans lui, chaque frappe (dans
+  // l'un OU l'autre champ) declenche trois agregats sur 65 000 lignes. Un
+  // seul minuteur pour les deux plutot qu'un par champ, pour que les deux
+  // aient le meme comportement — ils commettent ensemble 300 ms apres la
+  // derniere frappe, quel que soit le champ qui l'a recue.
   useEffect(() => {
-    const t = setTimeout(() => { setRecherche(saisie); setPage(1); }, 300);
+    const t = setTimeout(() => {
+      setRecherche(saisieRecherche);
+      setDepartement(saisieDepartement);
+      setPage(1);
+    }, 300);
     return () => clearTimeout(t);
-  }, [saisie]);
+  }, [saisieRecherche, saisieDepartement]);
 
-  const charger = useCallback(async () => {
+  // Chargement, avec garde de peremption : meme principe que l'`actif` de
+  // useDonneesCachees (transpose ici sans le hook, cette page n'a pas de cle
+  // de cache) — sans lui, taper "31" peut faire arriver APRES coup la
+  // reponse de "3" (rejetee par normaliserCriteres, donc non filtree,
+  // ~64 850 lignes) et ecraser celle de "31" (~1 487) : l'ordre d'arrivee
+  // reseau n'est jamais garanti. Fusionne avec l'ancien `charger` (qui
+  // n'avait pas d'autre appelant que cet effet) : plus simple qu'un
+  // useCallback qui n'apportait rien.
+  useEffect(() => {
+    let actif = true;
     setChargement(true);
-    const { data: d, error } = await prospectsService.getListe(currentApp, {
+    prospectsService.getListe(currentApp, {
       recherche, metiers, statuts, provenances, departement,
       avecTelephone, exclureTests, exclureClients, page, parPage: PAR_PAGE,
+    }).then(({ data, error }) => {
+      if (!actif) return;
+      if (error) { setErreur(error.message); setDonnees(null); }
+      else { setDonnees(data); setErreur(null); }
+      setChargement(false);
     });
-    if (error) { setErreur(error.message); setData(null); }
-    else { setData(d); setErreur(null); }
-    setChargement(false);
+    return () => { actif = false; };
   }, [currentApp, recherche, metiers, statuts, provenances, departement,
       avecTelephone, exclureTests, exclureClients, page]);
-
-  useEffect(() => { charger(); }, [charger]);
 
   function basculer(liste, setListe, valeur) {
     setListe(liste.includes(valeur) ? liste.filter((v) => v !== valeur) : [...liste, valeur]);
@@ -121,17 +139,17 @@ function ProspectsContent() {
   }
 
   const pages = useMemo(
-    () => Math.max(1, Math.ceil((data?.total ?? 0) / PAR_PAGE)),
-    [data?.total],
+    () => Math.max(1, Math.ceil((donnees?.total ?? 0) / PAR_PAGE)),
+    [donnees?.total],
   );
 
   if (erreur) return <Erreur message={erreur} />;
-  if (chargement && !data) return <Chargement />;
-  if (data && data.disponible === false) {
+  if (chargement && !donnees) return <Chargement />;
+  if (donnees && donnees.disponible === false) {
     return <Vide message="Ce site n'expose pas de base de prospects." />;
   }
 
-  const aTelephone = (data.colonnes || []).includes('telephone');
+  const aTelephone = (donnees.colonnes || []).includes('telephone');
 
   return (
     <Section
@@ -152,28 +170,28 @@ function ProspectsContent() {
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
           <KpiCarte label="Adressables"
-            valeur={<span className="tabular-nums">{fmtNombre(data.kpi?.adressables)}</span>} />
+            valeur={<span className="tabular-nums">{fmtNombre(donnees.kpi?.adressables)}</span>} />
           <KpiCarte label="Nouveaux"
-            valeur={<span className="tabular-nums">{fmtNombre(data.kpi?.nouveaux)}</span>} accent="info" />
+            valeur={<span className="tabular-nums">{fmtNombre(donnees.kpi?.nouveaux)}</span>} accent="info" />
           <KpiCarte label="Contactés"
-            valeur={<span className="tabular-nums">{fmtNombre(data.kpi?.contactes)}</span>} />
+            valeur={<span className="tabular-nums">{fmtNombre(donnees.kpi?.contactes)}</span>} />
           <KpiCarte label="Convertis"
-            valeur={<span className="tabular-nums">{fmtNombre(data.kpi?.convertis)}</span>} accent="success" />
+            valeur={<span className="tabular-nums">{fmtNombre(donnees.kpi?.convertis)}</span>} accent="success" />
           <KpiCarte label="Désinscrits"
-            valeur={<span className="tabular-nums">{fmtNombre(data.kpi?.desinscrits)}</span>} accent="danger" />
+            valeur={<span className="tabular-nums">{fmtNombre(donnees.kpi?.desinscrits)}</span>} accent="danger" />
         </div>
       </div>
 
-      {/* Chips metier : construits depuis data.metiers (donnee serveur, table
-          admin.metier), jamais une liste figee ici — voir BadgeMetier pour le
-          repli gris d'un slug hors table. */}
+      {/* Chips metier : construits depuis donnees.metiers (donnee serveur,
+          table admin.metier), jamais une liste figee ici — voir BadgeMetier
+          pour le repli gris d'un slug hors table. */}
       <div className="bg-baikal-surface border border-baikal-border rounded-lg p-4">
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-xs text-baikal-text opacity-60 mr-1">Métier</span>
-          {(data.metiers || []).map((m) => (
+          {(donnees.metiers || []).map((m) => (
             <Chip key={m.slug} actif={metiers.includes(m.slug)}
               onClick={() => basculer(metiers, setMetiers, m.slug)}>
-              {m.libelle} · <span className="tabular-nums">{fmtNombre(data.compteurs?.[m.slug] ?? 0)}</span>
+              {m.libelle} · <span className="tabular-nums">{fmtNombre(donnees.compteurs?.[m.slug] ?? 0)}</span>
             </Chip>
           ))}
         </div>
@@ -185,15 +203,15 @@ function ProspectsContent() {
           <div className="relative flex-1 min-w-[220px]">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-baikal-text opacity-60" />
             <input
-              value={saisie}
-              onChange={(e) => setSaisie(e.target.value)}
+              value={saisieRecherche}
+              onChange={(e) => setSaisieRecherche(e.target.value)}
               placeholder="Email, nom, commune…"
               className="w-full pl-9 pr-3 py-2 bg-baikal-bg border border-baikal-border rounded-md text-sm text-white placeholder:text-baikal-text/50 focus:outline-none focus:border-baikal-cyan"
             />
           </div>
           <input
-            value={departement}
-            onChange={(e) => { setDepartement(e.target.value); setPage(1); }}
+            value={saisieDepartement}
+            onChange={(e) => setSaisieDepartement(e.target.value)}
             placeholder="Dépt"
             maxLength={3}
             className="w-20 px-3 py-2 bg-baikal-bg border border-baikal-border rounded-md text-sm text-white uppercase placeholder:text-baikal-text/50 placeholder:normal-case focus:outline-none focus:border-baikal-cyan"
@@ -245,7 +263,7 @@ function ProspectsContent() {
       </div>
 
       <p className="text-sm text-baikal-text">
-        <span className="text-baikal-cyan font-semibold tabular-nums">{fmtNombre(data.total)}</span> prospects correspondent à ces filtres
+        <span className="text-baikal-cyan font-semibold tabular-nums">{fmtNombre(donnees.total)}</span> prospects correspondent à ces filtres
       </p>
 
       <ContenuEstompe enCours={chargement}>
@@ -262,10 +280,10 @@ function ProspectsContent() {
               </tr>
             </thead>
             <tbody>
-              {(data.prospects || []).length === 0 && (
+              {(donnees.prospects || []).length === 0 && (
                 <LigneVide colonnes={6} message="Aucun prospect ne correspond aux filtres." />
               )}
-              {(data.prospects || []).map((p) => (
+              {(donnees.prospects || []).map((p) => (
                 <tr
                   key={p.prospect_id ?? p.email}
                   onClick={() => setEmailOuvert(p.email)}
@@ -276,7 +294,7 @@ function ProspectsContent() {
                     <div className="text-xs opacity-60 truncate max-w-[240px]">{p.email}</div>
                   </td>
                   <td className="px-4 py-3">
-                    <BadgeMetier slug={p.metier} metiers={data.metiers} />
+                    <BadgeMetier slug={p.metier} metiers={donnees.metiers} />
                   </td>
                   <td className="px-4 py-3 text-xs">
                     {Array.isArray(p.specialite) && p.specialite.length > 0 ? (
