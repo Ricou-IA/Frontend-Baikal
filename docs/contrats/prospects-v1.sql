@@ -71,10 +71,31 @@ comment on table @SCHEMA@.prospect_etat is
 -- La contrainte est ce qui rend la cle fiable quand une ecriture passe par
 -- le service_role en dehors de prospect_action : sans elle, deux graphies
 -- d'une meme adresse deviendraient deux prospects.
-alter table @SCHEMA@.prospect
-  add constraint prospect_email_normalise check (email = lower(trim(email)));
-alter table @SCHEMA@.prospect_etat
-  add constraint prospect_etat_email_normalise check (email = lower(trim(email)));
+--
+-- Guardee par un bloc do $$ : ADD CONSTRAINT n'a pas de forme IF NOT EXISTS
+-- en PostgreSQL stable, et ce module est repose site apres site puis rejoue
+-- quand un site est repare ou reprovisionne ; une seconde execution ne doit
+-- pas echouer sur une contrainte deja posee.
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'prospect_email_normalise'
+      and conrelid = '@SCHEMA@.prospect'::regclass
+  ) then
+    alter table @SCHEMA@.prospect
+      add constraint prospect_email_normalise check (email = lower(trim(email)));
+  end if;
+
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'prospect_etat_email_normalise'
+      and conrelid = '@SCHEMA@.prospect_etat'::regclass
+  ) then
+    alter table @SCHEMA@.prospect_etat
+      add constraint prospect_etat_email_normalise check (email = lower(trim(email)));
+  end if;
+end $$;
 
 -- ------ 3. Droits : service_role seul ------
 
@@ -165,6 +186,7 @@ $$;
 -- fonction creee ; revoquer aupres d'anon et authenticated seuls ne retire
 -- pas ce droit herite d'office.
 revoke all on function @SCHEMA@.prospect_action(text,text,text,text) from public;
+revoke all on function @SCHEMA@.prospect_action(text,text,text,text) from anon, authenticated;
 grant execute on function @SCHEMA@.prospect_action(text,text,text,text) to service_role;
 
 -- ------ 5. L'import par lots ------
@@ -226,4 +248,5 @@ $$;
 -- fonction creee ; revoquer aupres d'anon et authenticated seuls ne retire
 -- pas ce droit herite d'office.
 revoke all on function @SCHEMA@.prospect_importer(jsonb,text) from public;
+revoke all on function @SCHEMA@.prospect_importer(jsonb,text) from anon, authenticated;
 grant execute on function @SCHEMA@.prospect_importer(jsonb,text) to service_role;
