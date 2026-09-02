@@ -82,7 +82,10 @@ Colonnes : `dossier_id text`, `survenu_le timestamptz`, `operation text`,
 `details jsonb`.
 
 - `operation` = `prompt_type`, `modele` = `COALESCE(model_used, model)`.
-- `statut` = `'erreur'` si la colonne d'erreur est renseignée, sinon `'ok'`.
+- `erreur` = le message d'erreur de l'appel. C'est le champ que
+  l'ancienne réponse `detail` exposait sous la clé `error` dans
+  `ai_logs` — retrouve la colonne correspondante dans ta table de logs.
+- `statut` = `'erreur'` quand ce champ est renseigné, sinon `'ok'`.
 - Ne fournis PAS de total : Baikal somme `cout_usd` lui-même.
 
 ## 6. `public.baikal_dossier_donnees`
@@ -126,11 +129,19 @@ Entrée : `{ action: "manifeste", dossier_id }`. Sortie :
 que si le dossier est B2B. C'est ce qui évite d'écrire des règles métier
 dans Baikal.
 
-Actions à déclarer : `resend-email` (paramètre `choix` `emailAction` avec les
-cinq types d'email), `re-extract`, `reset-extractions`, `add-pro-credits`
-(paramètre `nombre` `credits`, min 1, max 100, `super_admin: true`),
-`purge-documents` (`variante: danger`, `super_admin: true`, confirmation
-renseignée).
+Actions à déclarer : `resend-email`, `re-extract`, `reset-extractions`,
+`add-pro-credits` (paramètre `nombre` `credits`, min 1, max 100,
+`super_admin: true`), `purge-documents` (`variante: danger`,
+`super_admin: true`, confirmation renseignée).
+
+`resend-email` porte un paramètre `choix` `emailAction` avec ces cinq
+options :
+
+- `magic-link-initial` (« Lien magique initial »)
+- `post-purchase` (« Post-achat »)
+- `review-request` (« Demande d'avis »)
+- `cart-abandonment` (« Panier abandonné »)
+- `expiration-reminder` (« Rappel d'expiration »)
 
 ### `fichier`
 
