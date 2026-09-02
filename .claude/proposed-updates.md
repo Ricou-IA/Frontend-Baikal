@@ -74,3 +74,12 @@ dpe.diag_certifie, synchronisée à 02h30 par le projet DPE) ».
 **Contexte** : CLAUDE.md décrit « Brain (intent detection + query rewriting, integrated) ». Dans le code déployé, baikal-retrieval/routing/analyzer.ts:16 (analyzeQuery, analyse LLM) n'est jamais importé ; seul buildFallbackAnalysis (heuristiques regex) tourne, donc rewritten_query === query dans 100 % des cas (confirmé par rag.query_logs). La réécriture de requête et la résolution d'anaphores documentées n'existent pas en pratique.
 **Proposition** : Soit corriger la doc (« l'analyse est heuristique, analyzeQuery LLM existe mais est débranché »), soit décider de rebrancher analyzeQuery (en parallèle de l'embedding) et le noter comme tâche. Question ouverte : quel comportement est voulu ?
 ---
+
+## [2026-09-02 12:00] Clients : catégorie de client par site et grain « événement commercial »
+**Statut** : PENDING
+**Commit** : (feat(clients): catégorie de client par site)
+**Contexte** : La colonne « Type » (B2C/B2B) de /clients est remplacée par une « Catégorie » propre au site, et la vue MonsieurDPE est passée au grain de l'événement commercial. Le CLAUDE.md décrit le funnel mais pas les catégories ni la règle de grain.
+**Proposition** : Dans « Modules admin multi-sites › Clients », après le paragraphe Funnel, ajouter :
+« **Catégorie de client** : `config.apps.categories_client` (jsonb, `[{slug, libelle, couleur}]`, même mécanique que le funnel) ; la vue du site porte le slug dans la colonne optionnelle `categorie`. Registre rempli mais colonne absente -> la console retombe sur B2C/B2B. `perimetre` reste au contrat (Financier). Branché : monsieurdpe (particulier, agent_immo, diagnostiqueur, entreprise_rge), pack-vendeur (particulier, pro), voirie (particulier, entreprise).
+**Grain de la liste = l'événement commercial**, pas la personne : un compte qui évolue (inscrit -> abonné), un achat (toujours un acte, même chez un abonné), un lead absorbé par le premier compte ou achat de la même adresse. La catégorie est celle de la PERSONNE, identique sur toutes ses lignes ; `libelle` porte le produit de la ligne. Côté MonsieurDPE, un achat à 0 € est un testeur (code TESTEURDPE) et sort en `est_test`. »
+---
