@@ -101,7 +101,7 @@ est simplement non rendue.
 | `libelle` | text | ex. `Surface` |
 | `ordre` | int, null | ordre dans le bloc |
 | `valeur` | text, null | valeur brute, non formatée |
-| `format` | text, null | `texte` (défaut) `euro` `date` `datetime` `pourcent` `nombre` `booleen` `lien` `mono` |
+| `format` | text, null | `texte` (défaut) `euro` `date` `datetime` `pourcent` `nombre` `octets` `booleen` `lien` `mono` |
 | `niveau` | text, null | `attention` / `danger` — surligne le champ |
 
 Le site fournit la valeur brute, **Baikal applique son propre formatage** :
@@ -246,7 +246,7 @@ Tolérance : si la colonne de tri n'existe pas chez un site, la lecture se fait
 sans `ORDER BY` plutôt que d'échouer. Le `SELECT *` reste la règle — l'EF
 porte l'adaptation, le front affiche ce qu'il reçoit.
 
-Compteurs : un `count(*)` par vue existante, en une seule requête, pour
+Compteurs : un `count(*)` par vue existante (requête indexée sur `dossier_id`), pour
 alimenter les libellés d'onglets (« Documents (3) ») et griser les onglets
 vides.
 
