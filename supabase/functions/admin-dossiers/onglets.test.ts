@@ -15,10 +15,16 @@ Deno.test("resoudreOnglet: nom inconnu ou hostile -> null", () => {
   assertEquals(resoudreOnglet("constructor"), null);
 });
 
-Deno.test("ONGLETS: toutes les vues sont prefixees baikal_dossier_", () => {
-  for (const def of Object.values(ONGLETS)) {
-    assertEquals(def.vue.startsWith("baikal_dossier_"), true);
-  }
+Deno.test("ONGLETS: la table de correspondance est verrouillee", () => {
+  assertEquals(ONGLETS, {
+    documents: { vue: "baikal_dossier_documents", tri: "depose_le", ordre: "DESC" },
+    resultats: { vue: "baikal_dossier_resultats", tri: "produit_le", ordre: "DESC" },
+    emails: { vue: "baikal_dossier_emails", tri: "envoye_le", ordre: "DESC" },
+    chat: { vue: "baikal_dossier_messages", tri: "survenu_le", ordre: "ASC" },
+    ia: { vue: "baikal_dossier_ia", tri: "survenu_le", ordre: "DESC" },
+    donnees: { vue: "baikal_dossier_donnees", tri: "ordre", ordre: "ASC" },
+    events: { vue: "baikal_dossier_events", tri: "survenu_le", ordre: "DESC" },
+  });
 });
 
 Deno.test("triEffectif: colonne de tri presente -> clause", () => {
