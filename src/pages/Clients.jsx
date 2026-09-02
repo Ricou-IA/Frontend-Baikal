@@ -19,7 +19,7 @@ import {
 } from '../components/console/etats';
 import { dossiersService } from '../services/dossiers.service';
 import FicheDossier from '../components/console/FicheDossier';
-import { BadgeCanal, BadgeEtape, fmtDate } from '../components/console/badges-clients';
+import { BadgeCanal, BadgeCategorie, BadgeEtape, fmtDate } from '../components/console/badges-clients';
 
 const PERIODES = [[null, 'Tout'], [7, '7 jours'], [30, '30 jours'], [90, '90 jours']];
 const PERIMETRES = [[null, 'Tous'], ['b2c', 'B2C'], ['b2b', 'B2B']];
@@ -54,6 +54,9 @@ function ClientsContent() {
   const [recherche, setRecherche] = useState('');
   const [periodeJours, setPeriodeJours] = useState(null);
   const [perimetre, setPerimetre] = useState(null);
+  // Categories de client (registre du site) ; le filtre B2C/B2B ne sert que
+  // lorsque le site n'en expose pas.
+  const [categories, setCategories] = useState([]);
   const [statuts, setStatuts] = useState([]);
   const [payesSeuls, setPayesSeuls] = useState(false);
   const [inclureMasquees, setInclureMasquees] = useState(false);
@@ -75,6 +78,8 @@ function ClientsContent() {
   // (les slugs d'un funnel n'ont pas de sens sur un autre site).
   useEffect(() => {
     setStatuts([]);
+    setCategories([]);
+    setPerimetre(null);
     setPayesSeuls(false);
     setPage(1);
     setFicheId(null);
@@ -84,6 +89,7 @@ function ClientsContent() {
     recherche,
     periodeJours,
     perimetre,
+    categories,
     statuts,
     payesSeuls,
     inclureMasquees,
@@ -91,7 +97,7 @@ function ClientsContent() {
     inclureSupprimes,
     page,
     parPage: PAR_PAGE,
-  }), [recherche, periodeJours, perimetre, statuts, payesSeuls, inclureMasquees,
+  }), [recherche, periodeJours, perimetre, categories, statuts, payesSeuls, inclureMasquees,
     exclureTests, inclureSupprimes, page]);
 
   const { donnees, erreur, enCours } = useDonneesCachees(
@@ -101,6 +107,8 @@ function ClientsContent() {
   );
 
   const funnel = donnees?.funnel || null;
+  // null = le site n'expose pas de categorie : la console retombe sur B2C/B2B.
+  const categoriesSite = donnees?.categories || null;
   const masquees = (funnel || []).filter((e) => e.masquee_par_defaut === true);
   const dossiers = donnees?.dossiers || [];
   const total = donnees?.total || 0;
@@ -108,6 +116,10 @@ function ClientsContent() {
   const aAbonnement = dossiers.some((d) => 'abo_statut' in d);
   const basculerStatut = (slug) => {
     setStatuts((s) => (s.includes(slug) ? s.filter((x) => x !== slug) : [...s, slug]));
+    setPage(1);
+  };
+  const basculerCategorie = (slug) => {
+    setCategories((s) => (s.includes(slug) ? s.filter((x) => x !== slug) : [...s, slug]));
     setPage(1);
   };
 
@@ -145,15 +157,27 @@ function ClientsContent() {
               </Chip>
             ))}
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-baikal-text opacity-60 mr-1">Type</span>
-            {PERIMETRES.map(([val, libelle]) => (
-              <Chip key={libelle} actif={perimetre === val}
-                onClick={() => { setPerimetre(val); setPage(1); }}>
-                {libelle}
-              </Chip>
-            ))}
-          </div>
+          {categoriesSite && categoriesSite.length > 0 ? (
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-baikal-text opacity-60 mr-1">Catégorie</span>
+              {categoriesSite.map((c) => (
+                <Chip key={c.slug} actif={categories.includes(c.slug)}
+                  onClick={() => basculerCategorie(c.slug)}>
+                  {c.libelle}
+                </Chip>
+              ))}
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-baikal-text opacity-60 mr-1">Type</span>
+              {PERIMETRES.map(([val, libelle]) => (
+                <Chip key={libelle} actif={perimetre === val}
+                  onClick={() => { setPerimetre(val); setPage(1); }}>
+                  {libelle}
+                </Chip>
+              ))}
+            </div>
+          )}
           <span className="ml-auto text-sm text-baikal-text">
             <span className="text-baikal-cyan font-semibold">{total}</span> dossiers
           </span>
@@ -207,7 +231,7 @@ function ClientsContent() {
                   {aAbonnement && <th className="px-4 py-2">Abonnement</th>}
                   <th className="px-4 py-2 whitespace-nowrap">Créé</th>
                   <th className="px-4 py-2 whitespace-nowrap">Payé le</th>
-                  <th className="px-4 py-2">Type</th>
+                  <th className="px-4 py-2">Catégorie</th>
                 </tr>
               </thead>
               <tbody>
@@ -233,6 +257,13 @@ function ClientsContent() {
                         {d.contact_nom && (
                           <span className="text-xs opacity-60 truncate max-w-[140px]">{d.contact_nom}</span>
                         )}
+                        {/* Le produit de la ligne (ou le bien) : c'est lui qui
+                            donne son sens a l'evenement commercial. */}
+                        {d.libelle && (
+                          <span className="text-xs opacity-60 truncate max-w-[200px]" title={d.libelle}>
+                            {d.libelle}
+                          </span>
+                        )}
                         <span className="inline-flex items-center gap-1 text-xs opacity-70">
                           <Mail className="w-3 h-3" />
                           {d.emails_envoyes} / {d.emails_ouverts}
@@ -255,8 +286,9 @@ function ClientsContent() {
                     )}
                     <td className="px-4 py-3 whitespace-nowrap">{fmtDate(d.cree_le)}</td>
                     <td className="px-4 py-3 whitespace-nowrap">{fmtDate(d.paye_le)}</td>
-                    <td className="px-4 py-3 text-xs opacity-70">
-                      {d.perimetre === 'b2b' ? 'B2B' : 'B2C'}
+                    <td className="px-4 py-3">
+                      <BadgeCategorie categorie={d.categorie} perimetre={d.perimetre}
+                        categories={categoriesSite} />
                     </td>
                   </tr>
                 ))}

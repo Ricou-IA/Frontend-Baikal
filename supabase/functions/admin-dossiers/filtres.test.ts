@@ -8,6 +8,7 @@ Deno.test("body vide -> valeurs par defaut", () => {
     periodeJours: null,
     statuts: [],
     perimetre: null,
+    categories: [],
     inclureMasquees: false,
     exclureTests: true,
     inclureSupprimes: false,
@@ -17,6 +18,17 @@ Deno.test("body vide -> valeurs par defaut", () => {
     page: 1,
     parPage: 25,
   });
+});
+Deno.test("categories : chaines non vides seulement, 20 max", () => {
+  assertEquals(
+    normaliserCriteres({ categories: ["pro", "", 3, null, "particulier"] }).categories,
+    ["pro", "particulier"],
+  );
+  assertEquals(normaliserCriteres({ categories: "pro" }).categories, []);
+  assertEquals(
+    normaliserCriteres({ categories: Array.from({ length: 30 }, (_, i) => `c${i}`) }).categories.length,
+    20,
+  );
 });
 Deno.test("periode hors liste blanche -> null", () => {
   assertEquals(normaliserCriteres({ periodeJours: 15 }).periodeJours, null);

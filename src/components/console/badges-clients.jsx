@@ -68,6 +68,28 @@ export function BadgeEtape({ statut, payeLe, funnel }) {
   );
 }
 
+// Categorie de client : slug porte par la vue du site, libelle et couleur par
+// config.apps.categories_client. Sans categories (site sans la colonne), on
+// retombe sur B2C/B2B derive de perimetre.
+export function BadgeCategorie({ categorie, perimetre, categories }) {
+  const cat = categorie && (categories || []).find((c) => c.slug === categorie);
+  if (cat) {
+    return (
+      <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border ${COULEURS_ETAPES[cat.couleur] || COULEUR_DEFAUT}`}>
+        {cat.libelle}
+      </span>
+    );
+  }
+  if (categorie) {
+    return (
+      <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border ${COULEUR_DEFAUT}`}>
+        {categorie}
+      </span>
+    );
+  }
+  return <span className="text-xs opacity-70">{perimetre === 'b2b' ? 'B2B' : 'B2C'}</span>;
+}
+
 export function BadgeCanal({ canal, attribution }) {
   const [libelle, classe] = CANAUX[canal] || [canal, 'text-baikal-text'];
   if (!libelle) return null;

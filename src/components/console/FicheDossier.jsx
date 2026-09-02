@@ -15,7 +15,7 @@ import { useDonneesCachees } from '../../hooks/useDonneesCachees';
 import { Chargement, Erreur } from './etats';
 import { dossiersService } from '../../services/dossiers.service';
 import ConfirmModal from '../ui/ConfirmModal';
-import { BadgeEtape, BadgeCanal, fmtDate, fmtDateHeure, fmtEur } from './badges-clients';
+import { BadgeCategorie, BadgeEtape, BadgeCanal, fmtDate, fmtDateHeure, fmtEur } from './badges-clients';
 import { ONGLETS_PED } from './extensions/ped';
 
 // Onglets specifiques par site. Chaque Composant recoit
@@ -42,12 +42,15 @@ function Ligne({ libelle, children }) {
   );
 }
 
-function OngletVue({ d }) {
+function OngletVue({ d, categories }) {
   const aAbonnement = d && 'abo_statut' in d;
   return (
     <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <Ligne libelle="Email">{d.email || '—'}</Ligne>
       <Ligne libelle="Contact">{d.contact_nom || '—'}</Ligne>
+      <Ligne libelle="Catégorie">
+        <BadgeCategorie categorie={d.categorie} perimetre={d.perimetre} categories={categories} />
+      </Ligne>
       {'libelle' in d && <Ligne libelle="Libellé">{d.libelle || '—'}</Ligne>}
       {'apporteur' in d && d.apporteur && <Ligne libelle="Apporteur">via {d.apporteur}</Ligne>}
       <Ligne libelle="Créé le">{fmtDateHeure(d.cree_le)}</Ligne>
@@ -333,6 +336,7 @@ export default function FicheDossier({ appId, dossierId, onClose }) {
             <div className="flex items-center gap-2 flex-wrap">
               {d && <BadgeEtape statut={d.statut} payeLe={d.paye_le} funnel={donnees?.funnel} />}
               <h3 className="text-white font-semibold truncate">{d?.email || d?.contact_nom || dossierId}</h3>
+              {d?.libelle && <span className="text-xs text-baikal-text opacity-70 truncate">{d.libelle}</span>}
             </div>
             <p className="font-mono text-xs text-baikal-text opacity-60 mt-1">{dossierId}</p>
           </div>
@@ -371,7 +375,7 @@ export default function FicheDossier({ appId, dossierId, onClose }) {
         <div className="p-4">
           {erreur && <Erreur message={erreur} />}
           {!donnees && !erreur && <Chargement />}
-          {d && onglet === 'vue' && <OngletVue d={d} />}
+          {d && onglet === 'vue' && <OngletVue d={d} categories={donnees?.categories} />}
           {d && onglet === 'emails' && <OngletEmails emails={donnees.emails} />}
           {d && onglet === 'events' && <OngletEvents events={donnees.events} />}
           {d && extensionActive && (erreurDetail
