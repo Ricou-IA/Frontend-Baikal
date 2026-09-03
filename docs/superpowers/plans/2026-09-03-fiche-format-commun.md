@@ -1158,7 +1158,7 @@ git commit -m "feat(fiche): action fiche enrichie (sections, compteurs, capacite
 
 **Interfaces:**
 - Consumes: `resoudreOnglet`, `triEffectif`, `paginationOnglet` (task 2).
-- Produces: réponse de `onglet` = `{ disponible: boolean, lignes: Record<string, unknown>[], total: number, page: number, parPage: number }`.
+- Produces: réponse de `onglet` = `{ disponible: boolean, lignes: Record<string, unknown>[], total: number, page: number, parPage: number, agregats: Record<string, number> }`. `agregats.cout_usd` n'est renseigné que si la vue porte la colonne — c'est la présence de la colonne qui déclenche, jamais la clé d'onglet.
 
 - [ ] **Step 1: Compléter les imports**
 
@@ -1181,16 +1181,14 @@ import { ONGLETS, paginationOnglet, resoudreOnglet, triEffectif } from "./onglet
           SELECT to_regclass(${schemaVues + "." + def.vue}) IS NOT NULL AS ok`;
         if (!presente.ok) return json({ data: { disponible: false }, error: null });
 
-        const colonnesOnglet = new Set(
-          (await sql`
-            SELECT column_name FROM information_schema.columns
-            WHERE table_schema = ${schemaVues} AND table_name = ${def.vue}`)
-            .map((c) => c.column_name as string),
-        );
+        const colsOnglet: { column_name: string }[] = await sql`
+          SELECT column_name FROM information_schema.columns
+          WHERE table_schema = ${schemaVues} AND table_name = ${def.vue}`;
+        const colonnesOnglet = new Set(colsOnglet.map((c) => c.column_name));
         const tri = triEffectif(def, colonnesOnglet);
         const { page, parPage } = paginationOnglet(body);
 
-        const lignes = await sql`
+        const lignes: Record<string, unknown>[] = await sql`
           SELECT *, count(*) OVER() AS total_lignes
           FROM ${sql(schemaVues)}.${sql(def.vue)}
           WHERE dossier_id = ${dossierId}
@@ -1208,6 +1206,21 @@ import { ONGLETS, paginationOnglet, resoudreOnglet, triEffectif } from "./onglet
           total = Number(compte.total);
         }
 
+        // Agregats sur TOUT le dossier, pas sur la page : un dossier depasse
+        // couramment cinquante appels IA, et depuis que l'onglet est pagine
+        // une somme cote front ne parlerait que des lignes affichees. Le
+        // declencheur est la PRESENCE de la colonne, jamais une cle d'onglet
+        // ni un nom de produit : n'importe quel site qui publie cout_usd en
+        // beneficie.
+        const agregats: Record<string, number> = {};
+        if (colonnesOnglet.has("cout_usd")) {
+          const [somme] = await sql`
+            SELECT coalesce(sum(cout_usd), 0) AS total
+            FROM ${sql(schemaVues)}.${sql(def.vue)}
+            WHERE dossier_id = ${dossierId}`;
+          agregats.cout_usd = Number(somme.total);
+        }
+
         return json({
           data: {
             disponible: true,
@@ -1215,6 +1228,7 @@ import { ONGLETS, paginationOnglet, resoudreOnglet, triEffectif } from "./onglet
             total,
             page,
             parPage,
+            agregats,
           },
           error: null,
         });
@@ -1436,6 +1450,14 @@ export function formaterValeur(valeur, format = 'texte') {
   switch (format) {
     case 'euro':
       return fmtEur(valeur);
+    case 'dollar': {
+      // Quatre decimales, comme l'ecran remplace : un cout d'appel IA se
+      // compte au dix-millieme de dollar. La conversion est indispensable --
+      // la bibliotheque d'acces a la base ne convertit pas les numeric en
+      // nombres JS, la valeur arrive telle que "0.00310000".
+      const v = Number(valeur);
+      return Number.isFinite(v) ? `${v.toFixed(4)} $` : '—';
+    }
     case 'date':
       return fmtDate(valeur);
     case 'datetime':
@@ -1535,9 +1557,10 @@ export const COLONNES = {
     { cle: 'modele', libelle: 'Modèle', format: 'mono' },
     { cle: 'operation', libelle: 'Opération' },
     { cle: 'tokens_total', libelle: 'Tokens', format: 'nombre' },
-    { cle: 'cout_usd', libelle: 'Coût' },
+    { cle: 'cout_usd', libelle: 'Coût', format: 'dollar' },
     { cle: 'latence_ms', libelle: 'Latence', format: 'nombre' },
     { cle: 'statut', libelle: 'Statut' },
+    { cle: 'erreur', libelle: 'Erreur' },
   ],
 };
 
@@ -1754,6 +1777,25 @@ import { Vide } from '../etats';
 import { formaterValeur } from './formats';
 import Pagination from './Pagination';
 
+// Regle generique, portee par le statut et non par l'onglet : le contrat
+// definit `statut = 'erreur'` pour les logs IA, mais rien n'empeche un autre
+// onglet de s'en servir -- une ligne en echec doit se voir partout.
+function enErreur(ligne) {
+  return String(ligne.statut ?? '').toLowerCase() === 'erreur';
+}
+
+// Repli de la spec 3.4 : `ouvrable` absent se deduit de `nature = 'fichier'`
+// et de la presence du relais -- laquelle est deja portee par le fait qu'une
+// fonction d'ouverture nous soit fournie (voir aOuvrir). Sans ce repli, un
+// site qui suivrait la seule spec publierait des documents non ouvrables sans
+// comprendre pourquoi.
+function estOuvrable(ligne) {
+  if (ligne.ouvrable === undefined || ligne.ouvrable === null) {
+    return ligne.nature === 'fichier';
+  }
+  return Boolean(ligne.ouvrable);
+}
+
 function LigneDetails({ details, colonnes }) {
   return (
     <tr className="border-t border-baikal-border/30 bg-baikal-bg/40">
@@ -1788,7 +1830,7 @@ export default function OngletListe({
   // Une colonne n'est affichee que si au moins une ligne la porte.
   const visibles = colonnes.filter((c) => lignes.some((l) => l[c.cle] !== undefined && l[c.cle] !== null));
   const aDetails = lignes.some((l) => l.details && Object.keys(l.details).length > 0);
-  const aOuvrir = Boolean(onOuvrir) && lignes.some((l) => l.ouvrable);
+  const aOuvrir = Boolean(onOuvrir) && lignes.some(estOuvrable);
   const nbColonnes = visibles.length + (aDetails ? 1 : 0) + (aOuvrir ? 1 : 0);
 
   return (
@@ -1808,7 +1850,11 @@ export default function OngletListe({
               const porteDetails = l.details && Object.keys(l.details).length > 0;
               return (
                 <Fragment key={id}>
-                  <tr className="border-t border-baikal-border/50">
+                  <tr
+                    className={`border-t border-baikal-border/50 ${
+                      enErreur(l) ? 'text-red-300' : ''
+                    }`}
+                  >
                     {aDetails && (
                       <td className="py-2">
                         {porteDetails && (
@@ -1831,7 +1877,7 @@ export default function OngletListe({
                     ))}
                     {aOuvrir && (
                       <td className="py-2">
-                        {l.ouvrable && (
+                        {estOuvrable(l) && (
                           <button
                             onClick={() => onOuvrir(l)}
                             className="inline-flex items-center gap-1 text-baikal-cyan hover:underline text-xs"
@@ -1867,6 +1913,8 @@ Même distinction des deux vides que `OngletListe` : le serveur pagine les sept 
  * ============================================================================
  * Onglet Events : le parcours client. Le libelle du site prime, le type brut
  * sert de repli -- un produit qui ne nomme pas ses evenements reste lisible.
+ * Le `detail` est rendu en paires cle/valeur telles qu'elles viennent : le
+ * contrat n'en definit aucune, donc aucune n'est privilegiee.
  *
  * Deux vides distincts : total nul (<Vide> seul) et page hors bornes
  * (message distinct suivi du pied de pagination pour permettre de revenir) --
@@ -1883,6 +1931,24 @@ const COULEUR_ACTEUR = {
   systeme: 'text-baikal-text',
 };
 
+// JSON.stringify et pas String() : une valeur imbriquee s'ecrirait sinon
+// "[object Object]".
+function lisible(valeur) {
+  if (valeur === null || valeur === undefined) return '—';
+  if (typeof valeur === 'object') return JSON.stringify(valeur);
+  return String(valeur);
+}
+
+// Le contrat ne definit AUCUNE cle de `detail` : n'en privilegier aucune est
+// la seule facon d'etre juste pour tous les produits. L'ancien rendu lisait
+// `detail.page` -- un produit dont les evenements portent {montant: 120}
+// n'affichait rien, un produit qui nommait sa cle `page` etait servi.
+function pairesDetail(detail) {
+  if (detail === null || detail === undefined || detail === '') return [];
+  if (typeof detail !== 'object') return [[null, String(detail)]];
+  return Object.entries(detail).map(([cle, valeur]) => [cle, lisible(valeur)]);
+}
+
 export default function OngletTimeline({
   lignes, total, page, parPage, onPage, vide,
 }) {
@@ -1898,26 +1964,33 @@ export default function OngletTimeline({
   return (
     <div className="space-y-3">
       <ul className="space-y-2">
-        {lignes.map((ev, i) => (
-          <li key={i} className="text-sm text-baikal-text flex items-start gap-3">
-            <span className="whitespace-nowrap text-xs opacity-60 mt-0.5">
-              {fmtDateHeure(ev.survenu_le)}
-            </span>
-            <div className="min-w-0">
-              <span className={`text-xs ${ev.libelle ? 'text-white' : 'font-mono text-white'}`}>
-                {ev.libelle || ev.type}
+        {lignes.map((ev, i) => {
+          const details = pairesDetail(ev.detail);
+          return (
+            <li key={i} className="text-sm text-baikal-text flex items-start gap-3">
+              <span className="whitespace-nowrap text-xs opacity-60 mt-0.5">
+                {fmtDateHeure(ev.survenu_le)}
               </span>
-              {ev.acteur && (
-                <span className={`ml-2 text-[11px] ${COULEUR_ACTEUR[ev.acteur] || 'opacity-60'}`}>
-                  {ev.acteur}
+              <div className="min-w-0">
+                <span className={`text-xs ${ev.libelle ? 'text-white' : 'font-mono text-white'}`}>
+                  {ev.libelle || ev.type}
                 </span>
-              )}
-              {ev.detail?.page && (
-                <span className="ml-2 text-xs opacity-60 break-all">{ev.detail.page}</span>
-              )}
-            </div>
-          </li>
-        ))}
+                {ev.acteur && (
+                  <span className={`ml-2 text-[11px] ${COULEUR_ACTEUR[ev.acteur] || 'opacity-60'}`}>
+                    {ev.acteur}
+                  </span>
+                )}
+                {details.length > 0 && (
+                  <span className="ml-2 text-xs opacity-60 break-all">
+                    {details
+                      .map(([cle, valeur]) => (cle ? `${cle} : ${valeur}` : valeur))
+                      .join(' · ')}
+                  </span>
+                )}
+              </div>
+            </li>
+          );
+        })}
       </ul>
       <Pagination total={total} page={page} parPage={parPage} onPage={onPage} />
     </div>
@@ -2108,6 +2181,18 @@ const ICONES = {
   alert: AlertTriangle,
 };
 
+// Un champ de formulaire HTML ne rend que du texte : sans cette conversion, un
+// parametre `nombre` partirait au site comme la chaine "5" la ou il attend 5 --
+// meme defaut que le booleen envoye comme la chaine "false", mais silencieux,
+// donc plus dangereux. La chaine brute n'est conservee que pour l'etat non
+// numerique du champ (vide, saisie en cours) : un NaN rendrait l'input non
+// controle et bloquerait la frappe.
+function nombreSaisi(brut) {
+  if (brut === '') return brut;
+  const n = Number(brut);
+  return Number.isFinite(n) ? n : brut;
+}
+
 function ChampParametre({ parametre, valeur, onChange }) {
   const classe = 'px-2 py-1.5 bg-baikal-bg border border-baikal-border rounded-md text-xs '
     + 'text-baikal-text focus:outline-none focus:border-baikal-cyan';
@@ -2132,7 +2217,7 @@ function ChampParametre({ parametre, valeur, onChange }) {
         min={parametre.min}
         max={parametre.max}
         value={valeur}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => onChange(nombreSaisi(e.target.value))}
         className={`${classe} w-16`}
         aria-label={parametre.libelle}
       />
@@ -2171,11 +2256,16 @@ function valeurInitiale(parametre) {
   // site serait cette chaine truthy : une case a cocher decochee partirait
   // comme "vraie" dans le payload, sans la moindre erreur a l'ecran.
   if (parametre.type === 'booleen') return parametre.defaut === 'true';
+  // Le nombre passe avant le repli generique pour la meme raison : `defaut`
+  // arrive lui aussi en chaine, et le laisser filer tel quel enverrait "5"
+  // au site. min/max sont garantis numeriques par le manifeste valide : 0 est
+  // une borne legitime qu'un `|| 1` ecraserait a tort (0 est falsy en JS).
+  if (parametre.type === 'nombre') {
+    const n = Number(parametre.defaut ?? parametre.min);
+    return Number.isFinite(n) ? n : parametre.min;
+  }
   if (parametre.defaut !== null) return parametre.defaut;
   if (parametre.type === 'choix') return parametre.options[0].valeur;
-  // min/max sont garantis numeriques par le manifeste valide : 0 est une
-  // borne legitime qu'un `|| 1` ecraserait a tort (0 est falsy en JS).
-  if (parametre.type === 'nombre') return String(parametre.min);
   return '';
 }
 
@@ -2192,7 +2282,12 @@ function valeurPour(valeurs, actionId, parametre) {
 }
 
 export default function BarreActions({ appId, dossierId, actions, isSuperAdmin, onFait }) {
-  const visibles = (actions || []).filter((a) => !a.superAdmin || isSuperAdmin);
+  // Array.isArray et pas `actions || []` : l'ancienne Edge Function renvoie
+  // encore `actions` sous forme de BOOLEEN (relais configure ou non). Si le
+  // front est deploye avant elle, `true.filter` leverait en plein rendu et la
+  // page blanchirait -- ce depot n'a aucun garde-fou d'erreur.
+  const visibles = (Array.isArray(actions) ? actions : [])
+    .filter((a) => !a.superAdmin || isSuperAdmin);
   const [valeurs, setValeurs] = useState(() => {
     const initial = {};
     for (const a of visibles) {
@@ -2361,6 +2456,7 @@ import { dossiersService } from '../../../services/dossiers.service';
 import { Chargement, Erreur } from '../etats';
 import { BadgeEtape } from '../badges-clients';
 import { COLONNES, ONGLETS_FICHE } from './colonnes';
+import { formaterValeur } from './formats';
 import BarreActions from './BarreActions';
 import OngletBlocs from './OngletBlocs';
 import OngletConversation from './OngletConversation';
@@ -2419,17 +2515,29 @@ function ContenuOnglet({ appId, dossierId, onglet, version, onOuvrir }) {
   if (onglet.rendu === 'timeline') return <OngletTimeline {...commun} />;
   if (onglet.rendu === 'blocs') return <OngletBlocs {...commun} />;
 
-  // Pas de total serveur pour ce dossier : cette somme ne porte que sur la
-  // page recue, d'ou le libelle explicite plutot qu'un "Cout total" qui
-  // mentirait des que l'onglet est pagine.
-  const total = onglet.cle === 'ia'
+  // Le total vient du serveur, somme sur TOUT le dossier : la recette de
+  // parite ne tolere aucun ecart sur ce chiffre, et une somme locale ne
+  // parlerait que de la page affichee. Il n'apparait que si le site publie la
+  // colonne -- aucune cle d'onglet n'est testee ici.
+  const coutDossier = donnees.agregats?.cout_usd;
+  // La part de page n'a de sens qu'a plus d'une page : sinon elle repeterait
+  // le total mot pour mot.
+  const coutPage = commun.total > commun.parPage
     ? (donnees.lignes || []).reduce((s, l) => s + (Number(l.cout_usd) || 0), 0)
     : null;
   return (
     <div className="space-y-3">
-      {total !== null && total > 0 && (
+      {Number.isFinite(coutDossier) && commun.total > 0 && (
         <p className="text-sm text-baikal-text">
-          Coût de cette page : <span className="text-white font-semibold">{total.toFixed(4)} $</span>
+          Coût total :{' '}
+          <span className="text-white font-semibold">
+            {formaterValeur(coutDossier, 'dollar')}
+          </span>
+          {coutPage !== null && (
+            <span className="opacity-60">
+              {' '}· dont cette page : {formaterValeur(coutPage, 'dollar')}
+            </span>
+          )}
         </p>
       )}
       <OngletListe
@@ -2465,8 +2573,15 @@ export default function Fiche({ appId, dossierId, onClose }) {
       setErreurFichier(error.message);
       return;
     }
-    if (data?.url) {
-      window.open(data.url, '_blank', 'noreferrer');
+    // L'URL vient telle quelle d'un autre projet : meme garde que le format
+    // `lien` de formats.jsx, seuls http(s) sont ouverts. C'est le seul retour
+    // de relais qui atteint le navigateur sans passer par la normalisation du
+    // manifeste -- un javascript: ou un data: y arriverait sinon intact.
+    const url = typeof data?.url === 'string' ? data.url.trim() : '';
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      window.open(url, '_blank', 'noreferrer');
+    } else if (url) {
+      setErreurFichier('Le site a renvoyé un lien de fichier non ouvrable (schéma refusé).');
     } else {
       // Reponse du site sans erreur HTTP mais sans URL non plus (200 avec un
       // corps inattendu) : silence cote reseau, mais pas cote ecran.
