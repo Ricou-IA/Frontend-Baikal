@@ -24,7 +24,11 @@ function motifDuSite(detail) {
   // Les noms courants d'un motif d'erreur, plus `brut` : le repli que pose
   // l'Edge Function quand la reponse du site n'etait pas du JSON.
   const motif = corps.error ?? corps.message ?? corps.erreur ?? corps.brut;
-  return typeof motif === 'string' ? motif.trim() : '';
+  if (typeof motif !== 'string') return '';
+  // `brut` est le repli de l'EF quand la reponse du site n'etait pas du JSON :
+  // il peut porter 500 caracteres de HTML. Le message doit rester lisible.
+  const propre = motif.trim();
+  return propre.length > 200 ? `${propre.slice(0, 200)}…` : propre;
 }
 
 async function appelerEdge(fonction, corps) {
