@@ -63,7 +63,11 @@ async function appelerRelais(
     charge = { brut: texte.slice(0, 500) };
   }
   if (!reponse.ok) {
-    throw new ErreurRelais(`Site ${site.id}: HTTP ${reponse.status}`);
+    throw new ErreurRelais(
+      `Site ${site.id}: HTTP ${reponse.status}`,
+      reponse.status,
+      charge,
+    );
   }
   return charge;
 }
@@ -399,7 +403,12 @@ serve(async (req) => {
     console.error("[admin-dossiers]", e);
     if (e instanceof ErreurAcces) return json({ data: null, error: e.message }, 403);
     if (e instanceof ErreurSite) return json({ data: null, error: e.message }, 400);
-    if (e instanceof ErreurRelais) return json({ data: null, error: e.message }, 500);
+    if (e instanceof ErreurRelais) {
+      return json(
+        { data: null, error: e.message, detail: e.detail ?? null },
+        e.statut ? 502 : 500,
+      );
+    }
     const message = e instanceof Error ? e.message : String(e);
     return json({ data: null, error: message }, 500);
   }

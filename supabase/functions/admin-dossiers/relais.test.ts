@@ -41,3 +41,18 @@ Deno.test("preparerRelais: cible complete, slash final rogne", () => {
   assertEquals(cible.headers["X-Baikal-Key"], "s3cret");
   Deno.env.delete("RELAIS_TEST_CLE");
 });
+
+// Fix round 1 : le catch general de serve() distingue une reponse du site
+// (statut + detail, remonte en 502) d'une erreur de configuration du canal
+// (secret absent, remonte en 500) -- ce test verifie que la classe transporte
+// bien les deux champs quand ils sont fournis, et les laisse a undefined sinon.
+Deno.test("ErreurRelais: porte statut et detail quand fournis, undefined sinon", () => {
+  const avecDetail = new ErreurRelais("Site x: HTTP 403", 403, { motif: "credits insuffisants" });
+  assertEquals(avecDetail.statut, 403);
+  assertEquals(avecDetail.detail, { motif: "credits insuffisants" });
+
+  const sansDetail = new ErreurRelais("Site sans canal d'administration configure");
+  assertEquals(sansDetail.statut, undefined);
+  assertEquals(sansDetail.detail, undefined);
+});
+

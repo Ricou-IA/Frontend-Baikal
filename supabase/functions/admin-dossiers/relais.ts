@@ -4,7 +4,15 @@
 // reelle est le secret partage X-Baikal-Key, verifie cote site.
 import type { Site } from "../_shared/sites.ts";
 
-export class ErreurRelais extends Error {}
+export class ErreurRelais extends Error {
+  constructor(
+    message: string,
+    readonly statut?: number,
+    readonly detail?: unknown,
+  ) {
+    super(message);
+  }
+}
 
 export interface CibleRelais {
   url: string;
