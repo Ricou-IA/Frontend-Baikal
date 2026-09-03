@@ -18,6 +18,13 @@ import { Vide } from '../etats';
 import { formaterValeur } from './formats';
 import Pagination from './Pagination';
 
+// Regle generique, portee par le statut et non par l'onglet : le contrat
+// definit `statut = 'erreur'` pour les logs IA, mais rien n'empeche un autre
+// onglet de s'en servir -- une ligne en echec doit se voir partout.
+function enErreur(ligne) {
+  return String(ligne.statut ?? '').toLowerCase() === 'erreur';
+}
+
 function LigneDetails({ details, colonnes }) {
   return (
     <tr className="border-t border-baikal-border/30 bg-baikal-bg/40">
@@ -72,7 +79,11 @@ export default function OngletListe({
               const porteDetails = l.details && Object.keys(l.details).length > 0;
               return (
                 <Fragment key={id}>
-                  <tr className="border-t border-baikal-border/50">
+                  <tr
+                    className={`border-t border-baikal-border/50 ${
+                      enErreur(l) ? 'text-red-300' : ''
+                    }`}
+                  >
                     {aDetails && (
                       <td className="py-2">
                         {porteDetails && (

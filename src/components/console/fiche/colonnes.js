@@ -46,6 +46,7 @@ export const COLONNES = {
     { cle: 'cout_usd', libelle: 'Coût' },
     { cle: 'latence_ms', libelle: 'Latence', format: 'nombre' },
     { cle: 'statut', libelle: 'Statut' },
+    { cle: 'erreur', libelle: 'Erreur' },
   ],
 };
 
