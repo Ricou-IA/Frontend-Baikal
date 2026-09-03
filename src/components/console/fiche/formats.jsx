@@ -10,7 +10,7 @@ import { fmtDate, fmtDateHeure, fmtEur } from '../badges-clients';
 
 export function fmtOctets(n) {
   const v = Number(n);
-  if (!Number.isFinite(v) || v <= 0) return '—';
+  if (!Number.isFinite(v) || v < 0) return '—';
   if (v < 1024 * 1024) return `${Math.round(v / 1024)} Ko`;
   return `${(v / (1024 * 1024)).toFixed(1)} Mo`;
 }
@@ -34,19 +34,30 @@ export function formaterValeur(valeur, format = 'texte') {
     }
     case 'octets':
       return fmtOctets(valeur);
-    case 'booleen':
-      return valeur === true || valeur === 'true' ? 'Oui' : 'Non';
-    case 'lien':
+    case 'booleen': {
+      // Deux origines possibles : un booleen reel (SELECT * sur une vue) ou
+      // du texte (la colonne valeur de baikal_dossier_champs est typee text).
+      // On accepte donc les encodages courants d'un vrai.
+      const vrai = valeur === true || valeur === 1
+        || (typeof valeur === 'string'
+          && ['true', 't', '1'].includes(valeur.trim().toLowerCase()));
+      return vrai ? 'Oui' : 'Non';
+    }
+    case 'lien': {
+      const url = String(valeur).trim();
+      const estSecurisee = url.startsWith('http://') || url.startsWith('https://');
+      if (!estSecurisee) return url;
       return (
         <a
-          href={String(valeur)}
+          href={url}
           target="_blank"
           rel="noreferrer"
           className="text-baikal-cyan hover:underline break-all"
         >
-          {String(valeur)}
+          {url}
         </a>
       );
+    }
     case 'mono':
       return <span className="font-mono text-xs">{String(valeur)}</span>;
     default:
