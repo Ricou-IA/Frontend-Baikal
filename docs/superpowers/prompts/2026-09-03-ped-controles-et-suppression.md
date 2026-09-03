@@ -1,3 +1,13 @@
+> **DOCUMENT ENTIÈREMENT LIVRÉ — NE PAS TRANSMETTRE.**
+>
+> Au 2026-09-03, les trois demandes sont closes et vérifiées en base par
+> Baikal, pas sur déclaration : la section `COPROPRIETE` a disparu de
+> `baikal_dossier_champs`, les contrôles de cohérence sont en place avec
+> `niveau: attention` et le compteur dans le titre de section, l'alerte
+> d'écart de charges a migré en portant désormais ses deux montants dans
+> son message, et l'action de suppression est déclarée au manifeste.
+> Le document est conservé comme trace du contrat et des décisions.
+
 # Pré-état-daté — contrôles de cohérence et suppression manuelle
 
 Baikal (le back-office unique) affiche la fiche d'un dossier avec huit
