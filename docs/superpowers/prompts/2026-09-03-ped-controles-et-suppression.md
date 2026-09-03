@@ -90,10 +90,14 @@ erronée.
 Elle se déclare dans votre manifeste (action `manifeste`), sans qu'une
 ligne de Baikal change :
 
+**L'action existe déjà de votre côté** : `hard-delete`, déployée en
+production le 2026-09-03 (commit `17400ab`). Il ne manque donc que sa
+déclaration au manifeste — le code, lui, est écrit.
+
 ```json
 {
-  "id": "supprimer",
-  "libelle": "Supprimer",
+  "id": "hard-delete",
+  "libelle": "Supprimer definitivement",
   "icone": "trash",
   "variante": "danger",
   "super_admin": true,
@@ -104,6 +108,13 @@ ligne de Baikal change :
 
 `icone: "trash"` est déjà dans la liste fermée (comme pour
 `purge-documents`) ; `message` est à votre rédaction.
+
+**L'`id` du manifeste EST le nom d'action que Baikal vous renverra.** Le
+relais poste littéralement `{ "action": <cet id>, "dossier_id": … }` : c'est
+pourquoi il doit valoir `hard-delete` et pas autre chose. Déclarer
+`supprimer` ferait échouer le premier clic, votre handler ne connaissant pas
+ce nom — le même piège que `emailAction` / `email_action`, que vous aviez
+vu.
 
 Trois points à traiter :
 
@@ -117,9 +128,13 @@ Trois points à traiter :
   Clients avait remplacé la suppression par la purge au motif que les
   données de facturation doivent être conservées. La décision de rouvrir
   cette porte pour le seul super_admin appartient à Eric, elle est prise.)
-- **Il faut aussi implémenter l'action** dans `pv-admin-dossiers`. Baikal
-  relaiera `{"action":"supprimer","dossier_id":"…"}`. Ce que « supprimer »
-  détruit exactement est votre décision.
+- **L'action n'a jamais été appelée pour de vrai.** Vous l'avez signalé
+  vous-mêmes : faute de jeton d'administration, elle n'a pu être testée que
+  sur son mur d'authentification. Le premier appel réel viendra de Baikal, et
+  il se fera sur un dossier sans valeur avant tout dossier chargé de pièces.
+  Votre garde-fou — relire le dossier après le DELETE et répondre en erreur
+  plutôt que par un faux succès — est exactement ce qu'il faut : Baikal
+  remonte votre corps d'erreur jusqu'à l'écran, avec son statut.
 - **Vous revérifiez le rôle vous-mêmes.** Le `super_admin` du manifeste
   construit l'interface, mais l'autorisation qui fait foi reste la vôtre,
   comme pour la purge et les crédits pro. Et n'exposez plus l'action sur un
