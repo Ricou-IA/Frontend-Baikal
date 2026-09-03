@@ -17,14 +17,24 @@ const COULEURS_ETAPES = {
 };
 const COULEUR_DEFAUT = 'bg-baikal-bg text-baikal-text border-baikal-border';
 
-// Memes buckets que la cascade admin.canal_vente ; libelles adaptes a la liste (organic affiche 'SEO', unattributed masque — choix assume, different de /finances).
+// Buckets de la cascade canalVente (admin-dossiers/canal.ts), meme ordre de
+// priorite que son en-tete (portail_pro > paid > geo > campaign > organic >
+// referral > direct > indetermine > unattributed). Libelles adaptes a
+// l'affichage (organic affiche 'SEO', unattributed masque — choix assume,
+// different de /finances qui garde sa propre liste CANAUX). Depuis le
+// 2026-09-03 cette cascade n'est plus un portage du SQL admin.canal_vente
+// (divergence deliberee, voir l'en-tete de canal.ts) : direct et geo n'ont
+// pas d'equivalent cote archive financiere.
 export const CANAUX = {
+  portail_pro: ['Portail-Pro', 'text-baikal-cyan'],
   paid: ['Publicité', 'text-amber-400'],
+  geo: ['GEO', 'text-fuchsia-400'],
   campaign: ['Campagne', 'text-violet-400'],
   organic: ['SEO', 'text-emerald-400'],
   referral: ['Référent', 'text-blue-400'],
-  unattributed: [null, 'text-baikal-text'],
+  direct: ['Direct', 'text-sky-400'],
   indetermine: ['Origine perdue', 'text-red-400/80'],
+  unattributed: [null, 'text-baikal-text'],
 };
 
 export function BadgeEtape({ statut, payeLe, funnel }) {
@@ -90,10 +100,19 @@ export function BadgeCategorie({ categorie, perimetre, categories }) {
   return <span className="text-xs opacity-70">{perimetre === 'b2b' ? 'B2B' : 'B2C'}</span>;
 }
 
+// Domaines de paiement a ne jamais afficher comme origine (retour du tunnel
+// du site lui-meme, jamais une visite) : meme principe que
+// DOMAINES_PAIEMENT_EXCLUS cote admin-dossiers/canal.ts, duplique ici car ce
+// fichier tourne cote navigateur (pas d'import cross-runtime Deno/Vite).
+// Sans ce filtre, un dossier classe 'direct' par exclusion afficherait quand
+// meme "Direct · checkout.stripe.com" a partir de l'attribution brute.
+const DOMAINES_PAIEMENT_MASQUES = ['checkout.stripe.com'];
+
 export function BadgeCanal({ canal, attribution }) {
   const [libelle, classe] = CANAUX[canal] || [canal, 'text-baikal-text'];
   if (!libelle) return null;
-  const domaine = attribution?.referrer_domaine || null;
+  const domaineBrut = attribution?.referrer_domaine || null;
+  const domaine = domaineBrut && !DOMAINES_PAIEMENT_MASQUES.includes(domaineBrut) ? domaineBrut : null;
   return (
     <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-baikal-border text-[11px] ${classe}`}>
       {libelle}
