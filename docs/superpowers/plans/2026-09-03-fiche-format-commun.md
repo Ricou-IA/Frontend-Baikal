@@ -18,7 +18,7 @@
 - **Règle de capacité** : pas de vue → pas d'onglet ; pas de colonne → pas de section. Une absence n'est jamais une erreur.
 - **Aucun nom de vue ne vient de la requête** : les noms de vues sont dans une table de correspondance en dur (`ONGLETS`), le paramètre client n'est qu'une clé de ce dictionnaire.
 - **Tests Edge Functions** : `Deno.test` + `assertEquals` depuis `https://deno.land/std@0.224.0/assert/mod.ts`, dans un fichier `<module>.test.ts` à côté du module. Commande : `deno test --allow-env supabase/functions/admin-dossiers/`.
-- **Pas de tests unitaires front** : le repo n'a aucun runner front (pas de vitest, pas de jest, aucun `*.test.jsx`). N'en installe pas — c'est hors périmètre. Le front se vérifie par `npm run lint` (zéro warning, `--max-warnings 0`) puis par observation réelle dans le navigateur.
+- **Pas de tests unitaires front** : le repo n'a aucun runner front (pas de vitest, pas de jest, aucun `*.test.jsx`). N'en installe pas — c'est hors périmètre. Le dépôt porte 143 problèmes ESLint préexistants (112 erreurs, 31 warnings), sans rapport avec ce chantier — corriger ces problèmes est un chantier distinct, hors périmètre. Vérification front : (1) `npx eslint <fichiers de la tâche> --ext js,jsx` doit sortir **sans aucun problème** ; (2) le total de `npm run lint` ne doit **pas augmenter** au-delà de 143 (régression détectée). Observation réelle ensuite dans le navigateur.
 - **Vérification navigateur** : la configuration `baikal-dev` de `.claude/launch.json` (npm run dev, port 5173) existe déjà — utilise-la, ne lance jamais un serveur via Bash.
 - **Commits fréquents**, un par tâche, en français sans accents, préfixe `feat(fiche):` / `test(fiche):` / `refactor(fiche):` / `docs(fiche):`.
 
@@ -1450,8 +1450,11 @@ export const ONGLETS_FICHE = [
 
 - [ ] **Step 3: Vérifier le lint**
 
+Run: `npx eslint src/components/console/fiche/ --ext js,jsx`
+Expected: zéro problème.
+
 Run: `npm run lint`
-Expected: aucun warning (le projet est en `--max-warnings 0`).
+Expected: le total ne dépasse pas 143 problèmes (régression détectée si dépassement).
 
 - [ ] **Step 4: Commit**
 
@@ -1835,8 +1838,11 @@ export default function OngletBlocs({ lignes, vide }) {
 
 - [ ] **Step 6: Vérifier le lint**
 
+Run: `npx eslint src/components/console/fiche/ --ext js,jsx`
+Expected: zéro problème.
+
 Run: `npm run lint`
-Expected: aucun warning. Si React signale une clé manquante dans `OngletListe`, applique la correction `Fragment` signalée au Step 2.
+Expected: le total ne dépasse pas 143 problèmes (régression détectée si dépassement). Si React signale une clé manquante dans `OngletListe`, applique la correction `Fragment` signalée au Step 2.
 
 - [ ] **Step 7: Commit**
 
@@ -2046,8 +2052,11 @@ export default function BarreActions({ appId, dossierId, actions, isSuperAdmin, 
 
 - [ ] **Step 2: Vérifier le lint**
 
+Run: `npx eslint src/components/console/fiche/ --ext js,jsx`
+Expected: zéro problème.
+
 Run: `npm run lint`
-Expected: aucun warning.
+Expected: le total ne dépasse pas 143 problèmes (régression détectée si dépassement).
 
 - [ ] **Step 3: Commit**
 
@@ -2305,8 +2314,11 @@ Expected: aucun résultat.
 
 - [ ] **Step 4: Lint et build**
 
+Run: `npx eslint src/components/console/fiche/ src/services/dossiers.service.js --ext js,jsx`
+Expected: zéro problème.
+
 Run: `npm run lint`
-Expected: aucun warning.
+Expected: le total ne dépasse pas 143 problèmes (régression détectée si dépassement).
 
 Run: `npm run build`
 Expected: build réussi.
@@ -2345,8 +2357,11 @@ git rm src/components/console/FicheDossier.jsx src/components/console/extensions
 
 - [ ] **Step 3: Lint et build**
 
+Run: `npx eslint src/pages/Clients.jsx src/components/console/fiche/ --ext js,jsx`
+Expected: zéro problème.
+
 Run: `npm run lint`
-Expected: aucun warning.
+Expected: le total ne dépasse pas 143 problèmes (régression détectée si dépassement).
 
 Run: `npm run build`
 Expected: build réussi.
