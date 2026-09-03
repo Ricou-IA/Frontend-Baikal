@@ -4,6 +4,7 @@
 const FORMATS = new Set([
   "texte",
   "euro",
+  "dollar",
   "date",
   "datetime",
   "pourcent",

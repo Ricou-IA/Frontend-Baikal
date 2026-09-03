@@ -16,9 +16,10 @@ Les champs métier de l'onglet Vue (le bloc « BIEN » de l'ancien /admin).
 Colonnes : `dossier_id text`, `section text`, `ordre_section int`,
 `libelle text`, `ordre int`, `valeur text`, `format text`, `niveau text`.
 
-- `format` ∈ `texte` (défaut) `euro` `date` `datetime` `pourcent` `nombre`
-  `octets` `booleen` `lien` `mono` — donne la valeur BRUTE dans `valeur`,
-  Baikal applique le formatage.
+- `format` ∈ `texte` (défaut) `euro` `dollar` `date` `datetime` `pourcent`
+  `nombre` `octets` `booleen` `lien` `mono` — donne la valeur BRUTE dans
+  `valeur`, Baikal applique le formatage (`dollar` = quatre décimales suivies
+  du symbole, pour les coûts d'appel IA).
 - `niveau` ∈ `attention` / `danger` (sinon NULL) — surligne le champ.
   L'ancien encart « écart de X % sur les tantièmes » devient un champ de
   section `COPROPRIETE` avec `niveau = 'attention'` quand

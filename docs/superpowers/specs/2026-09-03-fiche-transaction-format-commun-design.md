@@ -101,7 +101,7 @@ est simplement non rendue.
 | `libelle` | text | ex. `Surface` |
 | `ordre` | int, null | ordre dans le bloc |
 | `valeur` | text, null | valeur brute, non formatée |
-| `format` | text, null | `texte` (défaut) `euro` `date` `datetime` `pourcent` `nombre` `octets` `booleen` `lien` `mono` |
+| `format` | text, null | `texte` (défaut) `euro` `dollar` `date` `datetime` `pourcent` `nombre` `octets` `booleen` `lien` `mono` |
 | `niveau` | text, null | `attention` / `danger` — surligne le champ |
 
 Le site fournit la valeur brute, **Baikal applique son propre formatage** :

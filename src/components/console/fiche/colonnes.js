@@ -43,7 +43,7 @@ export const COLONNES = {
     { cle: 'modele', libelle: 'Modèle', format: 'mono' },
     { cle: 'operation', libelle: 'Opération' },
     { cle: 'tokens_total', libelle: 'Tokens', format: 'nombre' },
-    { cle: 'cout_usd', libelle: 'Coût' },
+    { cle: 'cout_usd', libelle: 'Coût', format: 'dollar' },
     { cle: 'latence_ms', libelle: 'Latence', format: 'nombre' },
     { cle: 'statut', libelle: 'Statut' },
     { cle: 'erreur', libelle: 'Erreur' },

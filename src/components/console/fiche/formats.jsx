@@ -20,6 +20,14 @@ export function formaterValeur(valeur, format = 'texte') {
   switch (format) {
     case 'euro':
       return fmtEur(valeur);
+    case 'dollar': {
+      // Quatre decimales, comme l'ecran remplace : un cout d'appel IA se
+      // compte au dix-millieme de dollar. La conversion est indispensable --
+      // la bibliotheque d'acces a la base ne convertit pas les numeric en
+      // nombres JS, la valeur arrive telle que "0.00310000".
+      const v = Number(valeur);
+      return Number.isFinite(v) ? `${v.toFixed(4)} $` : '—';
+    }
     case 'date':
       return fmtDate(valeur);
     case 'datetime':
