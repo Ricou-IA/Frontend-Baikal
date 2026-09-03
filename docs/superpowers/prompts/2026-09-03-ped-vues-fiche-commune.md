@@ -73,6 +73,12 @@ Colonnes : `dossier_id text`, `message_id text`, `survenu_le timestamptz`,
 - `contexte = page_path`, `survenu_le = created_at` (ajoute quelques
   millisecondes à la réponse si tu veux garantir l'ordre d'affichage).
 
+`message_id` doit être **unique par ligne de la vue**, pas par échange : les
+deux lignes dégroupées d'un même échange ne doivent jamais porter le même
+`message_id` (Baikal s'en sert comme identifiant d'affichage). Suffixe-le
+si la table source n'a qu'un seul id par échange, par exemple `id || '-q'`
+pour la question et `id || '-r'` pour la réponse.
+
 ## 5. `public.baikal_dossier_ia`
 
 Les appels IA. Source : la table des logs IA.

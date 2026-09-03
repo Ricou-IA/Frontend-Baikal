@@ -5,12 +5,18 @@
  * Logs IA). Une colonne absente de TOUTES les lignes n'est pas rendue : c'est
  * la regle "pas de colonne, pas de section" appliquee a l'affichage. La
  * colonne details, quand elle existe, se replie sous la ligne.
+ *
+ * Deux vides distincts : total nul (rien du tout, <Vide> seul) et page hors
+ * bornes (des lignes existent ailleurs -- message distinct, jamais le message
+ * "vide" du site qui dirait le contraire de la verite -- suivi du pied de
+ * pagination pour permettre de revenir).
  * ============================================================================
  */
 import { Fragment, useState } from 'react';
 import { ChevronRight, ExternalLink } from 'lucide-react';
 import { Vide } from '../etats';
 import { formaterValeur } from './formats';
+import Pagination from './Pagination';
 
 function LigneDetails({ details, colonnes }) {
   return (
@@ -33,14 +39,21 @@ export default function OngletListe({
   colonnes, lignes, total, page, parPage, onPage, onOuvrir, vide,
 }) {
   const [deplie, setDeplie] = useState(null);
-  if (!lignes || lignes.length === 0) return <Vide message={vide} />;
+  if (total === 0) return <Vide message={vide} />;
+  if (!lignes || lignes.length === 0) {
+    return (
+      <div className="space-y-3">
+        <Vide message="Aucune ligne sur cette page." />
+        <Pagination total={total} page={page} parPage={parPage} onPage={onPage} />
+      </div>
+    );
+  }
 
   // Une colonne n'est affichee que si au moins une ligne la porte.
   const visibles = colonnes.filter((c) => lignes.some((l) => l[c.cle] !== undefined && l[c.cle] !== null));
   const aDetails = lignes.some((l) => l.details && Object.keys(l.details).length > 0);
   const aOuvrir = Boolean(onOuvrir) && lignes.some((l) => l.ouvrable);
   const nbColonnes = visibles.length + (aDetails ? 1 : 0) + (aOuvrir ? 1 : 0);
-  const pages = Math.max(1, Math.ceil(total / parPage));
 
   return (
     <div className="space-y-3">
@@ -102,30 +115,7 @@ export default function OngletListe({
           </tbody>
         </table>
       </div>
-      {pages > 1 && (
-        <div className="flex items-center justify-between text-xs text-baikal-text">
-          <span>
-            Page {page} sur {pages} · {(page - 1) * parPage + 1}–
-            {Math.min(page * parPage, total)} / {total}
-          </span>
-          <div className="flex gap-2">
-            <button
-              onClick={() => onPage(page - 1)}
-              disabled={page <= 1}
-              className="px-2 py-1 rounded-md border border-baikal-border disabled:opacity-40 hover:border-baikal-cyan"
-            >
-              Précédent
-            </button>
-            <button
-              onClick={() => onPage(page + 1)}
-              disabled={page >= pages}
-              className="px-2 py-1 rounded-md border border-baikal-border disabled:opacity-40 hover:border-baikal-cyan"
-            >
-              Suivant
-            </button>
-          </div>
-        </div>
-      )}
+      <Pagination total={total} page={page} parPage={parPage} onPage={onPage} />
     </div>
   );
 }

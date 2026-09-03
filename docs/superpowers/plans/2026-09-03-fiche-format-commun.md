@@ -46,6 +46,7 @@
 | `formats.jsx` *(créer)* | `formaterValeur(valeur, format)` — un seul endroit qui décide comment s'écrit un montant, une date, une taille |
 | `colonnes.js` *(créer)* | Description des colonnes de chaque onglet de type liste |
 | `OngletFiche.jsx` *(créer)* | Noyau `baikal_dossiers` + sections déclarées |
+| `Pagination.jsx` *(créer)* | Pied de pagination partagé par les six onglets paginés |
 | `OngletListe.jsx` *(créer)* | Tableau générique + `details` repliable + pagination |
 | `OngletTimeline.jsx` *(créer)* | Events |
 | `OngletConversation.jsx` *(créer)* | Chat |
@@ -1480,14 +1481,15 @@ git commit -m "feat(fiche): formats communs et description des colonnes"
 
 **Files:**
 - Create: `src/components/console/fiche/OngletFiche.jsx`
+- Create: `src/components/console/fiche/Pagination.jsx`
 - Create: `src/components/console/fiche/OngletListe.jsx`
 - Create: `src/components/console/fiche/OngletTimeline.jsx`
 - Create: `src/components/console/fiche/OngletConversation.jsx`
 - Create: `src/components/console/fiche/OngletBlocs.jsx`
 
 **Interfaces:**
-- Consumes: `formaterValeur`, `CLASSES_NIVEAU` (task 8), `Vide`, `LigneVide` de `../etats`, `BadgeCanal`, `fmtDateHeure`, `fmtEur`, `fmtDate` de `../badges-clients`.
-- Produces: cinq composants, tous appelés avec `{ lignes, total, page, parPage, onPage }` sauf `OngletFiche` (`{ dossier, sections }`) ; `OngletListe` prend en plus `{ colonnes, onOuvrir }`.
+- Consumes: `formaterValeur`, `CLASSES_NIVEAU` (task 8), `Vide` de `../etats` (`LigneVide` n'est jamais importé : le retour anticipé sur liste vide rend la ligne vide du corps de tableau inatteignable), `BadgeCanal`, `fmtDateHeure`, `fmtEur`, `fmtDate` de `../badges-clients`.
+- Produces: `Pagination` (`{ total, page, parPage, onPage }`, ne se rend pas quand il n'y a rien à parcourir) ; les quatre rendus paginés (`OngletListe`, `OngletTimeline`, `OngletConversation`, `OngletBlocs`) prennent tous `{ lignes, total, page, parPage, onPage, vide }` et distinguent deux vides — `total === 0` (vide réel : `<Vide message={vide} />` seul) et `lignes` vide avec `total > 0` (page hors bornes : message distinct, jamais le `vide` du site qui dirait le contraire de la vérité, suivi de `<Pagination>` pour permettre de revenir) ; `OngletListe` prend en plus `{ colonnes, onOuvrir }` ; `OngletFiche` seul n'est pas paginé (`{ dossier, sections }` — la fiche n'est pas une liste).
 
 - [ ] **Step 1: Écrire `OngletFiche.jsx`**
 
@@ -1582,7 +1584,58 @@ export default function OngletFiche({ dossier: d, sections }) {
 }
 ```
 
-- [ ] **Step 2: Écrire `OngletListe.jsx`**
+- [ ] **Step 2: Écrire `Pagination.jsx`**
+
+Pied de pagination partagé par les quatre rendus paginés, extrait pour ne pas le recopier quatre fois. Le garde-fou regarde `page` autant que `total` : si une action fait fondre le total pendant que l'utilisateur est sur une page avancée, `pages` (calculé sur le total à jour) peut retomber à 1 alors que `page` vaut encore 2 — masquer le pied dans ce cas couperait justement le seul chemin de retour. C'est `admin-dossiers/index.ts` (lignes 376-385) qui rend ce cas réel : il recalcule explicitement le total quand une page au-delà de la première ne ramène aucune ligne.
+
+```jsx
+/**
+ * Pagination.jsx - Baikal Console
+ * ============================================================================
+ * Pied de pagination partage par les onglets pagines (Documents, Resultat,
+ * Emails, Logs IA, Chat, Donnees, Events -- tout sauf Vue, qui n'est pas une
+ * liste). Ne se rend pas quand il n'y a rien a parcourir.
+ *
+ * Le garde-fou regarde `page` autant que `total` : une page courante > 1
+ * garde le pied visible meme si le total a fondu jusqu'a tenir sur une seule
+ * page (une action qui reduit fortement une liste pendant que l'utilisateur
+ * est plus loin) -- sinon le seul bouton qui permettrait de revenir
+ * disparaitrait avec la donnee qui le justifiait.
+ * ============================================================================
+ */
+export default function Pagination({ total, page, parPage, onPage }) {
+  const pages = Math.max(1, Math.ceil(total / parPage));
+  if (pages <= 1 && page <= 1) return null;
+  return (
+    <div className="flex items-center justify-between text-xs text-baikal-text">
+      <span>
+        Page {page} sur {pages} · {(page - 1) * parPage + 1}–
+        {Math.min(page * parPage, total)} / {total}
+      </span>
+      <div className="flex gap-2">
+        <button
+          onClick={() => onPage(page - 1)}
+          disabled={page <= 1}
+          className="px-2 py-1 rounded-md border border-baikal-border disabled:opacity-40 hover:border-baikal-cyan"
+        >
+          Précédent
+        </button>
+        <button
+          onClick={() => onPage(page + 1)}
+          disabled={page >= pages}
+          className="px-2 py-1 rounded-md border border-baikal-border disabled:opacity-40 hover:border-baikal-cyan"
+        >
+          Suivant
+        </button>
+      </div>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 3: Écrire `OngletListe.jsx`**
+
+Deux vides distincts : `total === 0` (rien du tout, `<Vide>` seul) et `lignes` vide avec `total > 0` (page hors bornes — message distinct, jamais le `vide` du site qui dirait le contraire de la vérité, suivi du pied de pagination pour permettre de revenir). La clé de chaque ligne est portée par un `Fragment` (pas un `<>` court, qui n'accepte pas de clé) puisque chaque itération rend potentiellement deux éléments frères (`<tr>` et sa ligne de détails repliable).
 
 ```jsx
 /**
@@ -1592,12 +1645,18 @@ export default function OngletFiche({ dossier: d, sections }) {
  * Logs IA). Une colonne absente de TOUTES les lignes n'est pas rendue : c'est
  * la regle "pas de colonne, pas de section" appliquee a l'affichage. La
  * colonne details, quand elle existe, se replie sous la ligne.
+ *
+ * Deux vides distincts : total nul (rien du tout, <Vide> seul) et page hors
+ * bornes (des lignes existent ailleurs -- message distinct, jamais le message
+ * "vide" du site qui dirait le contraire de la verite -- suivi du pied de
+ * pagination pour permettre de revenir).
  * ============================================================================
  */
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { ChevronRight, ExternalLink } from 'lucide-react';
-import { LigneVide, Vide } from '../etats';
+import { Vide } from '../etats';
 import { formaterValeur } from './formats';
+import Pagination from './Pagination';
 
 function LigneDetails({ details, colonnes }) {
   return (
@@ -1607,7 +1666,7 @@ function LigneDetails({ details, colonnes }) {
           {Object.entries(details).map(([cle, valeur]) => (
             <div key={cle}>
               <dt className="text-[11px] uppercase tracking-wide text-baikal-text opacity-60">{cle}</dt>
-              <dd className="text-xs text-white">{String(valeur)}</dd>
+              <dd className="text-xs text-white break-all">{String(valeur)}</dd>
             </div>
           ))}
         </dl>
@@ -1620,14 +1679,21 @@ export default function OngletListe({
   colonnes, lignes, total, page, parPage, onPage, onOuvrir, vide,
 }) {
   const [deplie, setDeplie] = useState(null);
-  if (!lignes || lignes.length === 0) return <Vide message={vide} />;
+  if (total === 0) return <Vide message={vide} />;
+  if (!lignes || lignes.length === 0) {
+    return (
+      <div className="space-y-3">
+        <Vide message="Aucune ligne sur cette page." />
+        <Pagination total={total} page={page} parPage={parPage} onPage={onPage} />
+      </div>
+    );
+  }
 
   // Une colonne n'est affichee que si au moins une ligne la porte.
   const visibles = colonnes.filter((c) => lignes.some((l) => l[c.cle] !== undefined && l[c.cle] !== null));
   const aDetails = lignes.some((l) => l.details && Object.keys(l.details).length > 0);
   const aOuvrir = Boolean(onOuvrir) && lignes.some((l) => l.ouvrable);
   const nbColonnes = visibles.length + (aDetails ? 1 : 0) + (aOuvrir ? 1 : 0);
-  const pages = Math.max(1, Math.ceil(total / parPage));
 
   return (
     <div className="space-y-3">
@@ -1641,13 +1707,12 @@ export default function OngletListe({
             </tr>
           </thead>
           <tbody>
-            {lignes.length === 0 && <LigneVide colonnes={nbColonnes} message={vide} />}
             {lignes.map((l, i) => {
               const id = l.document_id || l.resultat_id || i;
               const porteDetails = l.details && Object.keys(l.details).length > 0;
               return (
-                <>
-                  <tr key={id} className="border-t border-baikal-border/50">
+                <Fragment key={id}>
+                  <tr className="border-t border-baikal-border/50">
                     {aDetails && (
                       <td className="py-2">
                         {porteDetails && (
@@ -1682,46 +1747,23 @@ export default function OngletListe({
                     )}
                   </tr>
                   {deplie === id && porteDetails && (
-                    <LigneDetails key={`${id}-details`} details={l.details} colonnes={nbColonnes} />
+                    <LigneDetails details={l.details} colonnes={nbColonnes} />
                   )}
-                </>
+                </Fragment>
               );
             })}
           </tbody>
         </table>
       </div>
-      {pages > 1 && (
-        <div className="flex items-center justify-between text-xs text-baikal-text">
-          <span>
-            Page {page} sur {pages} · {(page - 1) * parPage + 1}–
-            {Math.min(page * parPage, total)} / {total}
-          </span>
-          <div className="flex gap-2">
-            <button
-              onClick={() => onPage(page - 1)}
-              disabled={page <= 1}
-              className="px-2 py-1 rounded-md border border-baikal-border disabled:opacity-40 hover:border-baikal-cyan"
-            >
-              Précédent
-            </button>
-            <button
-              onClick={() => onPage(page + 1)}
-              disabled={page >= pages}
-              className="px-2 py-1 rounded-md border border-baikal-border disabled:opacity-40 hover:border-baikal-cyan"
-            >
-              Suivant
-            </button>
-          </div>
-        </div>
-      )}
+      <Pagination total={total} page={page} parPage={parPage} onPage={onPage} />
     </div>
   );
 }
 ```
 
-> Le `<>` sans clé autour de deux `<tr>` déclenche un warning React. Utilise `<Fragment key={id}>` importé de `react` à la place de `<>` dans le `map` — corrige-le avant le lint, il est en `--max-warnings 0`.
+- [ ] **Step 4: Écrire `OngletTimeline.jsx`**
 
-- [ ] **Step 3: Écrire `OngletTimeline.jsx`**
+Même distinction des deux vides que `OngletListe` : le serveur pagine les sept onglets uniformément (`parPage` par défaut 50), celui-ci y compris, donc une page hors bornes doit rester navigable ici aussi.
 
 ```jsx
 /**
@@ -1729,10 +1771,15 @@ export default function OngletListe({
  * ============================================================================
  * Onglet Events : le parcours client. Le libelle du site prime, le type brut
  * sert de repli -- un produit qui ne nomme pas ses evenements reste lisible.
+ *
+ * Deux vides distincts : total nul (<Vide> seul) et page hors bornes
+ * (message distinct suivi du pied de pagination pour permettre de revenir) --
+ * le serveur pagine les sept onglets uniformement, celui-ci y compris.
  * ============================================================================
  */
 import { Vide } from '../etats';
 import { fmtDateHeure } from '../badges-clients';
+import Pagination from './Pagination';
 
 const COULEUR_ACTEUR = {
   client: 'text-baikal-cyan',
@@ -1740,36 +1787,51 @@ const COULEUR_ACTEUR = {
   systeme: 'text-baikal-text',
 };
 
-export default function OngletTimeline({ lignes, vide }) {
-  if (!lignes || lignes.length === 0) return <Vide message={vide} />;
+export default function OngletTimeline({
+  lignes, total, page, parPage, onPage, vide,
+}) {
+  if (total === 0) return <Vide message={vide} />;
+  if (!lignes || lignes.length === 0) {
+    return (
+      <div className="space-y-3">
+        <Vide message="Aucune ligne sur cette page." />
+        <Pagination total={total} page={page} parPage={parPage} onPage={onPage} />
+      </div>
+    );
+  }
   return (
-    <ul className="space-y-2">
-      {lignes.map((ev, i) => (
-        <li key={i} className="text-sm text-baikal-text flex items-start gap-3">
-          <span className="whitespace-nowrap text-xs opacity-60 mt-0.5">
-            {fmtDateHeure(ev.survenu_le)}
-          </span>
-          <div className="min-w-0">
-            <span className={`text-xs ${ev.libelle ? 'text-white' : 'font-mono text-white'}`}>
-              {ev.libelle || ev.type}
+    <div className="space-y-3">
+      <ul className="space-y-2">
+        {lignes.map((ev, i) => (
+          <li key={i} className="text-sm text-baikal-text flex items-start gap-3">
+            <span className="whitespace-nowrap text-xs opacity-60 mt-0.5">
+              {fmtDateHeure(ev.survenu_le)}
             </span>
-            {ev.acteur && (
-              <span className={`ml-2 text-[11px] ${COULEUR_ACTEUR[ev.acteur] || 'opacity-60'}`}>
-                {ev.acteur}
+            <div className="min-w-0">
+              <span className={`text-xs ${ev.libelle ? 'text-white' : 'font-mono text-white'}`}>
+                {ev.libelle || ev.type}
               </span>
-            )}
-            {ev.detail?.page && (
-              <span className="ml-2 text-xs opacity-60 break-all">{ev.detail.page}</span>
-            )}
-          </div>
-        </li>
-      ))}
-    </ul>
+              {ev.acteur && (
+                <span className={`ml-2 text-[11px] ${COULEUR_ACTEUR[ev.acteur] || 'opacity-60'}`}>
+                  {ev.acteur}
+                </span>
+              )}
+              {ev.detail?.page && (
+                <span className="ml-2 text-xs opacity-60 break-all">{ev.detail.page}</span>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+      <Pagination total={total} page={page} parPage={parPage} onPage={onPage} />
+    </div>
   );
 }
 ```
 
-- [ ] **Step 4: Écrire `OngletConversation.jsx`**
+- [ ] **Step 5: Écrire `OngletConversation.jsx`**
+
+Même distinction des deux vides. Clé composite (`message_id` + `role`) : la vue PED dégroupe une ligne question/réponse en deux lignes par `UNION ALL`, qui peuvent partager le même `message_id` — seul le `role` les distingue alors. Repli sur l'index quand `message_id` est absent. C'est l'onglet où l'absence de retour depuis une page hors bornes ferait le plus mal : le tri est `survenu_le ASC`, donc la page 1 montre les échanges les plus anciens et au-delà de la première page ce sont les plus récents qui deviendraient inatteignables.
 
 ```jsx
 /**
@@ -1777,10 +1839,22 @@ export default function OngletTimeline({ lignes, vide }) {
  * ============================================================================
  * Onglet Chat : les echanges, dans l'ordre chronologique. Le role vient du
  * contrat (client / assistant / agent) -- aucun produit n'est nomme ici.
+ *
+ * Deux vides distincts : total nul (<Vide> seul) et page hors bornes (message
+ * distinct suivi du pied de pagination pour revenir) -- c'est ici que ca
+ * compte le plus : le tri est `survenu_le ASC`, donc la page 1 montre les
+ * echanges les plus anciens et une page hors bornes sans retour rendrait les
+ * plus recents definitivement inatteignables au-dela de la premiere page.
+ *
+ * Cle composite (identifiant + role) : la vue PED degroupe une ligne
+ * question/reponse en deux lignes par UNION ALL, qui peuvent partager le
+ * meme message_id -- le role les distingue toujours, l'index sert de repli
+ * quand le site ne fournit pas d'identifiant.
  * ============================================================================
  */
 import { Vide } from '../etats';
 import { fmtDateHeure } from '../badges-clients';
+import Pagination from './Pagination';
 
 const STYLE_ROLE = {
   client: 'bg-baikal-bg border-baikal-border',
@@ -1789,30 +1863,45 @@ const STYLE_ROLE = {
 };
 const NOM_ROLE = { client: 'Client', assistant: 'Assistant', agent: 'Équipe' };
 
-export default function OngletConversation({ lignes, vide }) {
-  if (!lignes || lignes.length === 0) return <Vide message={vide} />;
+export default function OngletConversation({
+  lignes, total, page, parPage, onPage, vide,
+}) {
+  if (total === 0) return <Vide message={vide} />;
+  if (!lignes || lignes.length === 0) {
+    return (
+      <div className="space-y-3">
+        <Vide message="Aucune ligne sur cette page." />
+        <Pagination total={total} page={page} parPage={parPage} onPage={onPage} />
+      </div>
+    );
+  }
   return (
-    <ul className="space-y-3">
-      {lignes.map((m, i) => (
-        <li
-          key={m.message_id || i}
-          className={`p-3 rounded-md border ${STYLE_ROLE[m.role] || STYLE_ROLE.client}`}
-        >
-          <div className="flex items-center gap-2 text-xs text-baikal-text opacity-60">
-            <span className="text-white">{NOM_ROLE[m.role] || m.role}</span>
-            <span>{fmtDateHeure(m.survenu_le)}</span>
-            {m.canal && <span>· {m.canal}</span>}
-            {m.contexte && <span className="break-all">· {m.contexte}</span>}
-          </div>
-          <p className="text-sm text-baikal-text mt-1 whitespace-pre-wrap">{m.contenu}</p>
-        </li>
-      ))}
-    </ul>
+    <div className="space-y-3">
+      <ul className="space-y-3">
+        {lignes.map((m, i) => (
+          <li
+            key={m.message_id ? `${m.message_id}:${m.role}` : i}
+            className={`p-3 rounded-md border ${STYLE_ROLE[m.role] || STYLE_ROLE.client}`}
+          >
+            <div className="flex items-center gap-2 text-xs text-baikal-text opacity-60">
+              <span className="text-white">{NOM_ROLE[m.role] || m.role}</span>
+              <span>{fmtDateHeure(m.survenu_le)}</span>
+              {m.canal && <span>· {m.canal}</span>}
+              {m.contexte && <span className="break-all">· {m.contexte}</span>}
+            </div>
+            <p className="text-sm text-baikal-text mt-1 whitespace-pre-wrap break-words">{m.contenu}</p>
+          </li>
+        ))}
+      </ul>
+      <Pagination total={total} page={page} parPage={parPage} onPage={onPage} />
+    </div>
   );
 }
 ```
 
-- [ ] **Step 5: Écrire `OngletBlocs.jsx`**
+- [ ] **Step 6: Écrire `OngletBlocs.jsx`**
+
+Même distinction des deux vides.
 
 ```jsx
 /**
@@ -1820,46 +1909,63 @@ export default function OngletConversation({ lignes, vide }) {
  * ============================================================================
  * Onglet Donnees : le mouchard brut, un accordeon par bloc. Aucune structure
  * n'est supposee -- c'est precisement l'interet de cet onglet.
+ *
+ * Deux vides distincts : total nul (<Vide> seul) et page hors bornes (message
+ * distinct suivi du pied de pagination pour permettre de revenir).
  * ============================================================================
  */
 import { Vide } from '../etats';
 import { fmtDateHeure } from '../badges-clients';
+import Pagination from './Pagination';
 
-export default function OngletBlocs({ lignes, vide }) {
-  if (!lignes || lignes.length === 0) return <Vide message={vide} />;
+export default function OngletBlocs({
+  lignes, total, page, parPage, onPage, vide,
+}) {
+  if (total === 0) return <Vide message={vide} />;
+  if (!lignes || lignes.length === 0) {
+    return (
+      <div className="space-y-3">
+        <Vide message="Aucune ligne sur cette page." />
+        <Pagination total={total} page={page} parPage={parPage} onPage={onPage} />
+      </div>
+    );
+  }
   return (
-    <div className="space-y-2">
-      {lignes.map((b, i) => (
-        <details key={b.bloc || i} className="border border-baikal-border rounded-md">
-          <summary className="px-3 py-2 text-sm text-baikal-text cursor-pointer select-none flex items-center gap-2">
-            <span className="text-white">{b.libelle || b.bloc}</span>
-            {b.maj_le && (
-              <span className="text-xs opacity-60">· {fmtDateHeure(b.maj_le)}</span>
-            )}
-          </summary>
-          <pre className="m-2 p-2 bg-baikal-bg border border-baikal-border rounded text-[11px] text-baikal-text overflow-x-auto max-h-96 overflow-y-auto">
-            {JSON.stringify(b.contenu, null, 2)}
-          </pre>
-        </details>
-      ))}
+    <div className="space-y-3">
+      <div className="space-y-2">
+        {lignes.map((b, i) => (
+          <details key={b.bloc || i} className="border border-baikal-border rounded-md">
+            <summary className="px-3 py-2 text-sm text-baikal-text cursor-pointer select-none flex items-center gap-2">
+              <span className="text-white">{b.libelle || b.bloc}</span>
+              {b.maj_le && (
+                <span className="text-xs opacity-60">· {fmtDateHeure(b.maj_le)}</span>
+              )}
+            </summary>
+            <pre className="m-2 p-2 bg-baikal-bg border border-baikal-border rounded text-[11px] text-baikal-text overflow-x-auto max-h-96 overflow-y-auto">
+              {JSON.stringify(b.contenu, null, 2)}
+            </pre>
+          </details>
+        ))}
+      </div>
+      <Pagination total={total} page={page} parPage={parPage} onPage={onPage} />
     </div>
   );
 }
 ```
 
-- [ ] **Step 6: Vérifier le lint**
+- [ ] **Step 7: Vérifier le lint**
 
 Run: `npx eslint src/components/console/fiche/ --ext js,jsx`
 Expected: zéro problème.
 
 Run: `npm run lint`
-Expected: le total ne dépasse pas 143 problèmes (régression détectée si dépassement). Si React signale une clé manquante dans `OngletListe`, applique la correction `Fragment` signalée au Step 2.
+Expected: le total ne dépasse pas 143 problèmes (régression détectée si dépassement).
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add src/components/console/fiche/
-git commit -m "feat(fiche): cinq rendus generiques (fiche, liste, timeline, conversation, blocs)"
+git commit -m "feat(fiche): cinq rendus generiques et pagination partagee (fiche, liste, timeline, conversation, blocs)"
 ```
 
 ---
