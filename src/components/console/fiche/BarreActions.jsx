@@ -28,6 +28,18 @@ const ICONES = {
   alert: AlertTriangle,
 };
 
+// Un champ de formulaire HTML ne rend que du texte : sans cette conversion, un
+// parametre `nombre` partirait au site comme la chaine "5" la ou il attend 5 --
+// meme defaut que le booleen envoye comme la chaine "false", mais silencieux,
+// donc plus dangereux. La chaine brute n'est conservee que pour l'etat non
+// numerique du champ (vide, saisie en cours) : un NaN rendrait l'input non
+// controle et bloquerait la frappe.
+function nombreSaisi(brut) {
+  if (brut === '') return brut;
+  const n = Number(brut);
+  return Number.isFinite(n) ? n : brut;
+}
+
 function ChampParametre({ parametre, valeur, onChange }) {
   const classe = 'px-2 py-1.5 bg-baikal-bg border border-baikal-border rounded-md text-xs '
     + 'text-baikal-text focus:outline-none focus:border-baikal-cyan';
@@ -52,7 +64,7 @@ function ChampParametre({ parametre, valeur, onChange }) {
         min={parametre.min}
         max={parametre.max}
         value={valeur}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => onChange(nombreSaisi(e.target.value))}
         className={`${classe} w-16`}
         aria-label={parametre.libelle}
       />
@@ -91,11 +103,16 @@ function valeurInitiale(parametre) {
   // site serait cette chaine truthy : une case a cocher decochee partirait
   // comme "vraie" dans le payload, sans la moindre erreur a l'ecran.
   if (parametre.type === 'booleen') return parametre.defaut === 'true';
+  // Le nombre passe avant le repli generique pour la meme raison : `defaut`
+  // arrive lui aussi en chaine, et le laisser filer tel quel enverrait "5"
+  // au site. min/max sont garantis numeriques par le manifeste valide : 0 est
+  // une borne legitime qu'un `|| 1` ecraserait a tort (0 est falsy en JS).
+  if (parametre.type === 'nombre') {
+    const n = Number(parametre.defaut ?? parametre.min);
+    return Number.isFinite(n) ? n : parametre.min;
+  }
   if (parametre.defaut !== null) return parametre.defaut;
   if (parametre.type === 'choix') return parametre.options[0].valeur;
-  // min/max sont garantis numeriques par le manifeste valide : 0 est une
-  // borne legitime qu'un `|| 1` ecraserait a tort (0 est falsy en JS).
-  if (parametre.type === 'nombre') return String(parametre.min);
   return '';
 }
 
@@ -112,7 +129,12 @@ function valeurPour(valeurs, actionId, parametre) {
 }
 
 export default function BarreActions({ appId, dossierId, actions, isSuperAdmin, onFait }) {
-  const visibles = (actions || []).filter((a) => !a.superAdmin || isSuperAdmin);
+  // Array.isArray et pas `actions || []` : l'ancienne Edge Function renvoie
+  // encore `actions` sous forme de BOOLEEN (relais configure ou non). Si le
+  // front est deploye avant elle, `true.filter` leverait en plein rendu et la
+  // page blanchirait -- ce depot n'a aucun garde-fou d'erreur.
+  const visibles = (Array.isArray(actions) ? actions : [])
+    .filter((a) => !a.superAdmin || isSuperAdmin);
   const [valeurs, setValeurs] = useState(() => {
     const initial = {};
     for (const a of visibles) {
