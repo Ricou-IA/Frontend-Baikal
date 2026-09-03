@@ -227,6 +227,7 @@ function ClientsContent() {
                 <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
                   <th className="px-4 py-2">ID</th>
                   <th className="px-4 py-2">Contact</th>
+                  <th className="px-4 py-2">Origine</th>
                   <th className="px-4 py-2">Statut</th>
                   {aAbonnement && <th className="px-4 py-2">Abonnement</th>}
                   <th className="px-4 py-2 whitespace-nowrap">Créé</th>
@@ -236,7 +237,7 @@ function ClientsContent() {
               </thead>
               <tbody>
                 {dossiers.length === 0 && (
-                  <LigneVide colonnes={aAbonnement ? 7 : 6}
+                  <LigneVide colonnes={aAbonnement ? 8 : 7}
                     message="Aucun dossier ne correspond aux filtres." />
                 )}
                 {dossiers.map((d) => (
@@ -268,11 +269,13 @@ function ClientsContent() {
                           <Mail className="w-3 h-3" />
                           {d.emails_envoyes} / {d.emails_ouverts}
                         </span>
-                        <BadgeCanal canal={d.canal} attribution={d.attribution} />
                         {d.apporteur && (
                           <span className="text-xs text-baikal-cyan">via {d.apporteur}</span>
                         )}
                       </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <BadgeCanal canal={d.canal} attribution={d.attribution} />
                     </td>
                     <td className="px-4 py-3">
                       <BadgeEtape statut={d.statut} payeLe={d.paye_le} funnel={funnel} />
