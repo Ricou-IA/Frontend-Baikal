@@ -328,7 +328,7 @@ serve(async (req) => {
         }
         const dossiers = rows.map(({ total_lignes: _t, ...d }) => ({
           ...d,
-          canal: canalVente(d.attribution as Record<string, unknown> | null),
+          canal: canalVente(d.attribution as Record<string, unknown> | null, d.apporteur),
         }));
         return json({
           data: {
@@ -393,7 +393,7 @@ serve(async (req) => {
             disponible: true,
             dossier: {
               ...dossier,
-              canal: canalVente(dossier.attribution as Record<string, unknown> | null),
+              canal: canalVente(dossier.attribution as Record<string, unknown> | null, dossier.apporteur),
             },
             sections,
             compteurs,
