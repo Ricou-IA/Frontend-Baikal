@@ -5,6 +5,10 @@ export interface Criteres {
   periodeJours: number | null;
   statuts: string[];
   perimetre: "b2c" | "b2b" | null;
+  // Categorie de client : slugs de config.apps.categories_client, portes par
+  // la colonne optionnelle `categorie` de la vue du site. Ignore par l'EF si
+  // la vue n'expose pas la colonne (regle de presence).
+  categories: string[];
   inclureMasquees: boolean;
   exclureTests: boolean;
   inclureSupprimes: boolean;
@@ -28,12 +32,16 @@ export function normaliserCriteres(body: Record<string, unknown>): Criteres {
   const statuts = Array.isArray(body.statuts)
     ? body.statuts.filter((s): s is string => typeof s === "string" && s !== "").slice(0, 20)
     : [];
+  const categories = Array.isArray(body.categories)
+    ? body.categories.filter((s): s is string => typeof s === "string" && s !== "").slice(0, 20)
+    : [];
   const parPageBrut = Number(body.parPage);
   return {
     recherche,
     periodeJours: PERIODES.has(periode) ? periode : null,
     statuts,
     perimetre: body.perimetre === "b2c" || body.perimetre === "b2b" ? body.perimetre : null,
+    categories,
     inclureMasquees: body.inclureMasquees === true,
     exclureTests: body.exclureTests !== false,
     inclureSupprimes: body.inclureSupprimes === true,

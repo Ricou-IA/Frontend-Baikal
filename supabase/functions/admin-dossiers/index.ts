@@ -106,6 +106,14 @@ interface EtapeFunnel {
   masquee_par_defaut?: boolean;
 }
 
+// Categories de client du site (config.apps.categories_client), meme
+// mecanique que le funnel : la vue porte le slug, le registre le libelle.
+interface CategorieClient {
+  slug: string;
+  libelle: string;
+  couleur: string;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ data: null, error: "POST attendu" }, 405);
@@ -198,8 +206,10 @@ serve(async (req) => {
 
     // Etapes du funnel : donnee du registre. NULL = site sans funnel.
     const { data: appConfig } = await admin.schema("config").from("apps")
-      .select("funnel_etapes").eq("id", appId).maybeSingle();
+      .select("funnel_etapes, categories_client").eq("id", appId).maybeSingle();
     const funnel = (appConfig?.funnel_etapes ?? null) as EtapeFunnel[] | null;
+    const categoriesRegistre =
+      (appConfig?.categories_client ?? null) as CategorieClient[] | null;
 
     // 5s d'execution par requete : les lectures de fiche sont courtes par
     // nature, et l'ouverture d'une fiche declenche jusqu'a sept count(*) sur
@@ -232,6 +242,9 @@ serve(async (req) => {
           WHERE table_schema = ${schemaVues} AND table_name = 'baikal_dossiers'`)
           .map((c: { column_name: string }) => c.column_name as string),
       );
+      // Les categories n'existent pour la console que si la vue expose la
+      // colonne : registre rempli mais colonne absente -> repli B2C/B2B.
+      const categories = colonnes.has("categorie") ? categoriesRegistre : null;
 
       if (action === "liste") {
         const c = normaliserCriteres(body);
@@ -245,6 +258,9 @@ serve(async (req) => {
             ${c.inclureSupprimes ? sql`` : sql`AND supprime_le IS NULL`}
             ${c.payesSeuls ? sql`AND paye_le IS NOT NULL` : sql``}
             ${c.perimetre ? sql`AND perimetre = ${c.perimetre}` : sql``}
+            ${c.categories.length > 0 && colonnes.has("categorie")
+              ? sql`AND categorie = ANY(${c.categories})`
+              : sql``}
             ${c.periodeJours
               ? sql`AND cree_le >= now() - make_interval(days => ${c.periodeJours})`
               : sql``}
@@ -285,6 +301,7 @@ serve(async (req) => {
             page: c.page,
             parPage: c.parPage,
             funnel,
+            categories,
             actions: relaisConfigure(site),
           },
           error: null,
@@ -345,6 +362,7 @@ serve(async (req) => {
             compteurs,
             vues,
             funnel,
+            categories,
             actions: manifeste.actions,
             actionsErreur: manifeste.erreur,
           },
