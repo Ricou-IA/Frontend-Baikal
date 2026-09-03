@@ -73,6 +73,17 @@ export function formaterValeur(valeur, format = 'texte') {
   }
 }
 
+// Valeur d'une cle de `details` (jsonb libre, sans `format` associe --
+// contrairement aux colonnes declarees de colonnes.js). Un objet ou un
+// tableau y passait tel quel par le passe et s'affichait "[object Object]" ;
+// ici on le serialise proprement au lieu de le laisser passer par la
+// conversion de chaine par defaut de JS.
+export function formaterDetail(valeur) {
+  if (valeur === null || valeur === undefined || valeur === '') return '—';
+  if (typeof valeur === 'object') return JSON.stringify(valeur);
+  return String(valeur);
+}
+
 // Encart pleine largeur pour un champ porteur d'un niveau : c'est ce qui
 // remplace les encarts d'alerte codes en dur (spec 3.3, colonne "niveau" de
 // baikal_dossier_champs) -- consomme par OngletFiche pour un champ dont le
