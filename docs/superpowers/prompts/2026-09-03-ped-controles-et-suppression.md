@@ -107,11 +107,16 @@ ligne de Baikal change :
 
 Trois points à traiter :
 
-- **La règle comptable se pose chez vous.** Votre manifeste est calculé pour
-  un dossier donné : n'exposez « Supprimer » que sur un dossier sans
-  transaction — jamais payé — et tenez-vous-en à la purge dès qu'un paiement
-  existe. La contrainte reste là où elle est connue ; Baikal ne porte
-  aucune règle métier.
+- **Exposez-la sur tous les dossiers, payés compris.** Eric a tranché ce
+  point explicitement : l'action est réservée au super_admin, et un dossier
+  payé peut légitimement devoir disparaître — un paiement de test, un
+  doublon facturé, une erreur de saisie. Ne la conditionnez donc pas à
+  l'absence de transaction. « Purger les documents » reste disponible à
+  côté : les deux actions coexistent, à l'administrateur de choisir.
+  (Pour mémoire, sans que cela change la consigne : la spec du module
+  Clients avait remplacé la suppression par la purge au motif que les
+  données de facturation doivent être conservées. La décision de rouvrir
+  cette porte pour le seul super_admin appartient à Eric, elle est prise.)
 - **Il faut aussi implémenter l'action** dans `pv-admin-dossiers`. Baikal
   relaiera `{"action":"supprimer","dossier_id":"…"}`. Ce que « supprimer »
   détruit exactement est votre décision.
