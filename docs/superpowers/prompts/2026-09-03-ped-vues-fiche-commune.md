@@ -151,6 +151,14 @@ manifeste tels quels, sous les identifiants que vous déclarez, à côté de
   l'ancien plafond à 100 crédits n'existe plus nulle part ailleurs que chez
   vous. Validez et bornez chaque valeur reçue côté site.
 
+Un paramètre `choix` **sans `defaut`** n'est pas présélectionné : le menu
+s'ouvre sur « — Choisir — » et le bouton reste inactif tant que
+l'administrateur n'a rien choisi. C'est le moyen de rendre un choix
+obligatoire, et c'est le comportement à viser pour une action irréversible ou
+visible du client — un `resend-email` sans `defaut` ne peut pas partir sur un
+clic distrait. Déclarez un `defaut` seulement quand la valeur de départ est
+sans conséquence.
+
 **Le manifeste est calculé pour CE dossier** : n'expose `add-pro-credits`
 que si le dossier est B2B. C'est ce qui évite d'écrire des règles métier
 dans Baikal.

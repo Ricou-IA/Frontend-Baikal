@@ -44,6 +44,11 @@ function ChampParametre({ parametre, valeur, onChange }) {
   const classe = 'px-2 py-1.5 bg-baikal-bg border border-baikal-border rounded-md text-xs '
     + 'text-baikal-text focus:outline-none focus:border-baikal-cyan';
   if (parametre.type === 'choix') {
+    // Un choix sans defaut declare n'est PAS preselectionne : le site a decide
+    // que l'administrateur doit poser le choix lui-meme, et cette decision lui
+    // appartient. Preselectionner la premiere option faisait partir un vrai
+    // email a un vrai client sur un simple clic. L'option vide est desactivee
+    // pour ne pas pouvoir etre re-choisie une fois qu'on l'a quittee.
     return (
       <select
         value={valeur}
@@ -51,6 +56,9 @@ function ChampParametre({ parametre, valeur, onChange }) {
         className={classe}
         aria-label={parametre.libelle}
       >
+        {choixObligatoire(parametre) && (
+          <option value="" disabled>— Choisir —</option>
+        )}
         {parametre.options.map((o) => (
           <option key={o.valeur} value={o.valeur}>{o.libelle}</option>
         ))}
@@ -112,8 +120,14 @@ function valeurInitiale(parametre) {
     return Number.isFinite(n) ? n : parametre.min;
   }
   if (parametre.defaut !== null) return parametre.defaut;
-  if (parametre.type === 'choix') return parametre.options[0].valeur;
+  // Un choix sans defaut part VIDE, pas sur options[0] : c'est ce qui rend le
+  // choix obligatoire cote ecran (voir choixManquant).
   return '';
+}
+
+// Le site rend un choix obligatoire en ne declarant aucun defaut.
+function choixObligatoire(parametre) {
+  return parametre.type === 'choix' && parametre.defaut === null;
 }
 
 // Lit la valeur courante d'un parametre, avec repli sur sa valeur initiale
@@ -126,6 +140,15 @@ function valeurInitiale(parametre) {
 function valeurPour(valeurs, actionId, parametre) {
   const cle = `${actionId}:${parametre.id}`;
   return valeurs[cle] !== undefined ? valeurs[cle] : valeurInitiale(parametre);
+}
+
+// Tant qu'un choix obligatoire n'est pas pose, l'action ne part pas -- et la
+// valeur vide n'entre jamais dans le payload. Ne bloque QUE ce cas : ni les
+// autres types, ni un choix pourvu d'un defaut.
+function choixManquant(valeurs, action) {
+  return action.parametres.some(
+    (p) => choixObligatoire(p) && !valeurPour(valeurs, action.id, p),
+  );
 }
 
 export default function BarreActions({ appId, dossierId, actions, isSuperAdmin, onFait }) {
@@ -149,6 +172,10 @@ export default function BarreActions({ appId, dossierId, actions, isSuperAdmin, 
   if (visibles.length === 0) return null;
 
   const lancer = async (action) => {
+    // Le bouton est deja inactif dans ce cas ; cette garde est la barriere qui
+    // compte, car c'est elle qui empeche la valeur vide d'entrer dans le
+    // payload quel que soit le chemin d'appel (bouton ou dialogue).
+    if (choixManquant(valeurs, action)) return;
     setEnCours(action.id);
     setMessage(null);
     const parametres = {};
@@ -171,6 +198,7 @@ export default function BarreActions({ appId, dossierId, actions, isSuperAdmin, 
         {visibles.map((action) => {
           const Icone = ICONES[action.icone] || null;
           const danger = action.variante === 'danger';
+          const incomplet = choixManquant(valeurs, action);
           return (
             <span key={action.id} className={`flex items-center gap-1.5 ${danger ? 'ml-auto' : ''}`}>
               {action.parametres.map((p) => (
@@ -185,7 +213,8 @@ export default function BarreActions({ appId, dossierId, actions, isSuperAdmin, 
                 onClick={() => (action.confirmation
                   ? setConfirmation(action)
                   : lancer(action))}
-                disabled={enCours !== null}
+                disabled={enCours !== null || incomplet}
+                title={incomplet ? 'Choisissez une option avant de lancer cette action.' : undefined}
                 className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs disabled:opacity-50 ${
                   danger
                     ? 'border-red-500/50 text-red-300 hover:bg-red-900/20'
