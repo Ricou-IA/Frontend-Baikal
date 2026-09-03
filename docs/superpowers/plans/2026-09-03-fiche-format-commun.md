@@ -460,6 +460,29 @@ Deno.test("format connu conserve", () => {
   assertEquals(s.champs[0].format, "euro");
 });
 
+// La liste fermee doit porter les ONZE formats que le front sait rendre : un
+// format absent d'ici est silencieusement retrograde en "texte", et la valeur
+// s'affiche brute (un cout d'appel IA lu tel que "0.00310000").
+Deno.test("les onze formats du contrat traversent la liste fermee", () => {
+  const attendus = [
+    "texte",
+    "euro",
+    "dollar",
+    "date",
+    "datetime",
+    "pourcent",
+    "nombre",
+    "octets",
+    "booleen",
+    "lien",
+    "mono",
+  ];
+  const [s] = grouperChamps(
+    attendus.map((format, i) => ({ section: "A", libelle: `c${i}`, valeur: "1", format })),
+  );
+  assertEquals(s.champs.map((c) => c.format), attendus);
+});
+
 Deno.test("niveau hors liste -> null", () => {
   const [s] = grouperChamps([
     { section: "A", libelle: "x", valeur: "1", niveau: "panique" },
@@ -532,6 +555,7 @@ Créer `supabase/functions/admin-dossiers/champs.ts` :
 const FORMATS = new Set([
   "texte",
   "euro",
+  "dollar",
   "date",
   "datetime",
   "pourcent",
@@ -631,7 +655,7 @@ export function grouperChamps(lignes: Record<string, unknown>[]): SectionChamps[
 - [ ] **Step 4: Lancer les tests pour vérifier qu'ils passent**
 
 Run: `deno test --allow-env supabase/functions/admin-dossiers/champs.test.ts`
-Expected: PASS, 12 tests.
+Expected: PASS, 13 tests.
 
 - [ ] **Step 5: Commit**
 
