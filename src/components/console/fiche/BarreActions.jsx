@@ -33,7 +33,12 @@ function ChampParametre({ parametre, valeur, onChange }) {
     + 'text-baikal-text focus:outline-none focus:border-baikal-cyan';
   if (parametre.type === 'choix') {
     return (
-      <select value={valeur} onChange={(e) => onChange(e.target.value)} className={classe}>
+      <select
+        value={valeur}
+        onChange={(e) => onChange(e.target.value)}
+        className={classe}
+        aria-label={parametre.libelle}
+      >
         {parametre.options.map((o) => (
           <option key={o.valeur} value={o.valeur}>{o.libelle}</option>
         ))}
@@ -78,12 +83,19 @@ function ChampParametre({ parametre, valeur, onChange }) {
 }
 
 function valeurInitiale(parametre) {
+  // booleen en premier, avant le repli generique sur `defaut` : le serveur
+  // normalise toujours ce champ en chaine (manifeste.ts fait String(p.defaut)),
+  // donc un defaut booleen `false` arrive comme la CHAINE "false" -- truthy
+  // en JS. Si ce repli generique la laissait passer telle quelle, l'affichage
+  // resterait correct (checked= tolere la chaine) mais la valeur envoyee au
+  // site serait cette chaine truthy : une case a cocher decochee partirait
+  // comme "vraie" dans le payload, sans la moindre erreur a l'ecran.
+  if (parametre.type === 'booleen') return parametre.defaut === 'true';
   if (parametre.defaut !== null) return parametre.defaut;
   if (parametre.type === 'choix') return parametre.options[0].valeur;
   // min/max sont garantis numeriques par le manifeste valide : 0 est une
   // borne legitime qu'un `|| 1` ecraserait a tort (0 est falsy en JS).
   if (parametre.type === 'nombre') return String(parametre.min);
-  if (parametre.type === 'booleen') return false;
   return '';
 }
 
