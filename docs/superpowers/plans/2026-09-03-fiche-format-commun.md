@@ -2017,7 +2017,12 @@ function ChampParametre({ parametre, valeur, onChange }) {
     + 'text-baikal-text focus:outline-none focus:border-baikal-cyan';
   if (parametre.type === 'choix') {
     return (
-      <select value={valeur} onChange={(e) => onChange(e.target.value)} className={classe}>
+      <select
+        value={valeur}
+        onChange={(e) => onChange(e.target.value)}
+        className={classe}
+        aria-label={parametre.libelle}
+      >
         {parametre.options.map((o) => (
           <option key={o.valeur} value={o.valeur}>{o.libelle}</option>
         ))}
@@ -2062,11 +2067,32 @@ function ChampParametre({ parametre, valeur, onChange }) {
 }
 
 function valeurInitiale(parametre) {
+  // booleen en premier, avant le repli generique sur `defaut` : le serveur
+  // normalise toujours ce champ en chaine (manifeste.ts fait String(p.defaut)),
+  // donc un defaut booleen `false` arrive comme la CHAINE "false" -- truthy
+  // en JS. Si ce repli generique la laissait passer telle quelle, l'affichage
+  // resterait correct (checked= tolere la chaine) mais la valeur envoyee au
+  // site serait cette chaine truthy : une case a cocher decochee partirait
+  // comme "vraie" dans le payload, sans la moindre erreur a l'ecran.
+  if (parametre.type === 'booleen') return parametre.defaut === 'true';
   if (parametre.defaut !== null) return parametre.defaut;
   if (parametre.type === 'choix') return parametre.options[0].valeur;
-  if (parametre.type === 'nombre') return String(parametre.min || 1);
-  if (parametre.type === 'booleen') return false;
+  // min/max sont garantis numeriques par le manifeste valide : 0 est une
+  // borne legitime qu'un `|| 1` ecraserait a tort (0 est falsy en JS).
+  if (parametre.type === 'nombre') return String(parametre.min);
   return '';
+}
+
+// Lit la valeur courante d'un parametre, avec repli sur sa valeur initiale
+// quand la cle n'existe pas encore dans l'etat. Necessaire parce que
+// `valeurs` n'est seme qu'une fois (useState paresseux) alors que le
+// manifeste peut changer de forme apres coup : `onFait` fait recharger la
+// fiche, et une action qui apparait alors (nouvelle action, nouveau
+// parametre) n'a pas encore de cle -- sans ce repli elle partirait avec une
+// valeur `undefined`.
+function valeurPour(valeurs, actionId, parametre) {
+  const cle = `${actionId}:${parametre.id}`;
+  return valeurs[cle] !== undefined ? valeurs[cle] : valeurInitiale(parametre);
 }
 
 export default function BarreActions({ appId, dossierId, actions, isSuperAdmin, onFait }) {
@@ -2088,7 +2114,7 @@ export default function BarreActions({ appId, dossierId, actions, isSuperAdmin, 
     setEnCours(action.id);
     setMessage(null);
     const parametres = {};
-    for (const p of action.parametres) parametres[p.id] = valeurs[`${action.id}:${p.id}`];
+    for (const p of action.parametres) parametres[p.id] = valeurPour(valeurs, action.id, p);
     const { data, error } = await dossiersService.executerActionSite(
       appId, dossierId, action.id, parametres,
     );
@@ -2113,7 +2139,7 @@ export default function BarreActions({ appId, dossierId, actions, isSuperAdmin, 
                 <ChampParametre
                   key={p.id}
                   parametre={p}
-                  valeur={valeurs[`${action.id}:${p.id}`]}
+                  valeur={valeurPour(valeurs, action.id, p)}
                   onChange={(v) => setValeurs((etat) => ({ ...etat, [`${action.id}:${p.id}`]: v }))}
                 />
               ))}
