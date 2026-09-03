@@ -275,37 +275,49 @@ serve(async (req) => {
                     ${colonnes.has("libelle") ? sql`OR libelle ILIKE ${motif}` : sql``})`
               : sql``}`;
 
+        // Page de dossiers filtree/triee/paginee -- inchangee par rapport a
+        // avant ce point, et reutilisee telle quelle plus bas (fragment
+        // partage, meme mecanique que filtresSql). count(*) OVER() n'a pas
+        // de PARTITION BY : son cadre est TOUTE la partition, donc Postgres
+        // doit materialiser tout l'ensemble filtre avant de pouvoir
+        // appliquer LIMIT. Une jointure de comptage ne doit donc JAMAIS se
+        // brancher a ce niveau -- elle s'executerait une fois par dossier
+        // filtre (potentiellement tout le site : l'ecran /clients s'ouvre
+        // sans aucun filtre par defaut) et non une fois par ligne affichee.
+        const dossiersPage = sql`
+          SELECT *, count(*) OVER() AS total_lignes
+          FROM ${sql(schemaVues)}.baikal_dossiers
+          ${filtresSql}
+          ORDER BY ${c.tri === "paye_le" ? sql`paye_le` : sql`cree_le`}
+            ${c.ordre === "asc" ? sql`ASC NULLS LAST` : sql`DESC NULLS LAST`}
+          LIMIT ${c.parPage} OFFSET ${(c.page - 1) * c.parPage}`;
+
         // Compte des echanges avec l'assistant par dossier : jointure cote
         // Baikal sur la vue chat du contrat (ONGLETS.chat), jamais une
         // colonne ajoutee a baikal_dossiers -- un site qui publie deja sa
         // vue de messages (onglet Chat de la fiche) en beneficie sans rien
         // publier de plus. Meme mecanique de detection que champsVue plus
         // bas. Absente, la requete de liste reste exactement celle d'avant
-        // ce comptage.
+        // ce comptage (dossiersPage executee directement, sans enveloppe).
         const [messagesVue] = await sql`
           SELECT to_regclass(${schemaVues + "." + ONGLETS.chat.vue}) IS NOT NULL AS ok`;
 
+        // La laterale se branche sur dossiersPage (deja paginee), jamais sur
+        // baikal_dossiers directement : elle ne voit ainsi que les lignes
+        // reellement affichees (parPage, borne a 100 par normaliserCriteres),
+        // au lieu de tout l'ensemble filtre. count(*) OVER() reste a
+        // l'interieur de dossiersPage, donc total_lignes garde exactement sa
+        // valeur actuelle -- non affectee par la jointure exterieure.
         const rows: Record<string, unknown>[] = messagesVue.ok
           ? await sql`
-            SELECT d.*, count(*) OVER() AS total_lignes,
-              coalesce(echanges.n, 0) AS echanges_n
-            FROM ${sql(schemaVues)}.baikal_dossiers d
+            SELECT p.*, coalesce(echanges.n, 0) AS echanges_n
+            FROM (${dossiersPage}) p
             LEFT JOIN LATERAL (
               SELECT count(*) AS n
               FROM ${sql(schemaVues)}.${sql(ONGLETS.chat.vue)} msg
-              WHERE msg.dossier_id = d.dossier_id
-            ) echanges ON true
-            ${filtresSql}
-            ORDER BY ${c.tri === "paye_le" ? sql`paye_le` : sql`cree_le`}
-              ${c.ordre === "asc" ? sql`ASC NULLS LAST` : sql`DESC NULLS LAST`}
-            LIMIT ${c.parPage} OFFSET ${(c.page - 1) * c.parPage}`
-          : await sql`
-            SELECT *, count(*) OVER() AS total_lignes
-            FROM ${sql(schemaVues)}.baikal_dossiers
-            ${filtresSql}
-            ORDER BY ${c.tri === "paye_le" ? sql`paye_le` : sql`cree_le`}
-              ${c.ordre === "asc" ? sql`ASC NULLS LAST` : sql`DESC NULLS LAST`}
-            LIMIT ${c.parPage} OFFSET ${(c.page - 1) * c.parPage}`;
+              WHERE msg.dossier_id = p.dossier_id
+            ) echanges ON true`
+          : await dossiersPage;
         let total = rows.length > 0 ? Number(rows[0].total_lignes) : 0;
         if (rows.length === 0 && c.page > 1) {
           // count(*) OVER() n'existe que sur les lignes renvoyees : une page
