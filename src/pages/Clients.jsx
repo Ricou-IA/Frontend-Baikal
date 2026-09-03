@@ -10,7 +10,9 @@
  * ============================================================================
  */
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Mail, Search } from 'lucide-react';
+import {
+  ChevronLeft, ChevronRight, Mail, MessageSquare, Search,
+} from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import ConsoleLayout from '../components/console/ConsoleLayout';
 import { useDonneesCachees } from '../hooks/useDonneesCachees';
@@ -262,6 +264,19 @@ function ClientsContent() {
                           <Mail className="w-3 h-3" />
                           {d.emails_envoyes} / {d.emails_ouverts}
                         </span>
+                        {/* echanges_n : jointure Baikal sur la vue chat du site (admin-dossiers,
+                            action liste), absente si le site ne publie pas cette vue -- alors
+                            toujours undefined, jamais affichee. */}
+                        {Number(d.echanges_n) > 0 && (
+                          <span
+                            className="inline-flex items-center opacity-70"
+                            role="img"
+                            aria-label={`${d.echanges_n} échange${Number(d.echanges_n) > 1 ? 's' : ''} avec l'assistant`}
+                            title={`${d.echanges_n} échange${Number(d.echanges_n) > 1 ? 's' : ''} avec l'assistant`}
+                          >
+                            <MessageSquare className="w-3 h-3" aria-hidden="true" />
+                          </span>
+                        )}
                         {d.apporteur && (
                           <span className="text-xs text-baikal-cyan">via {d.apporteur}</span>
                         )}

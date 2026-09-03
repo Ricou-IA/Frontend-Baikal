@@ -274,13 +274,38 @@ serve(async (req) => {
                     OR contact_nom ILIKE ${motif}
                     ${colonnes.has("libelle") ? sql`OR libelle ILIKE ${motif}` : sql``})`
               : sql``}`;
-        const rows: Record<string, unknown>[] = await sql`
-          SELECT *, count(*) OVER() AS total_lignes
-          FROM ${sql(schemaVues)}.baikal_dossiers
-          ${filtresSql}
-          ORDER BY ${c.tri === "paye_le" ? sql`paye_le` : sql`cree_le`}
-            ${c.ordre === "asc" ? sql`ASC NULLS LAST` : sql`DESC NULLS LAST`}
-          LIMIT ${c.parPage} OFFSET ${(c.page - 1) * c.parPage}`;
+
+        // Compte des echanges avec l'assistant par dossier : jointure cote
+        // Baikal sur la vue chat du contrat (ONGLETS.chat), jamais une
+        // colonne ajoutee a baikal_dossiers -- un site qui publie deja sa
+        // vue de messages (onglet Chat de la fiche) en beneficie sans rien
+        // publier de plus. Meme mecanique de detection que champsVue plus
+        // bas. Absente, la requete de liste reste exactement celle d'avant
+        // ce comptage.
+        const [messagesVue] = await sql`
+          SELECT to_regclass(${schemaVues + "." + ONGLETS.chat.vue}) IS NOT NULL AS ok`;
+
+        const rows: Record<string, unknown>[] = messagesVue.ok
+          ? await sql`
+            SELECT d.*, count(*) OVER() AS total_lignes,
+              coalesce(echanges.n, 0) AS echanges_n
+            FROM ${sql(schemaVues)}.baikal_dossiers d
+            LEFT JOIN LATERAL (
+              SELECT count(*) AS n
+              FROM ${sql(schemaVues)}.${sql(ONGLETS.chat.vue)} msg
+              WHERE msg.dossier_id = d.dossier_id
+            ) echanges ON true
+            ${filtresSql}
+            ORDER BY ${c.tri === "paye_le" ? sql`paye_le` : sql`cree_le`}
+              ${c.ordre === "asc" ? sql`ASC NULLS LAST` : sql`DESC NULLS LAST`}
+            LIMIT ${c.parPage} OFFSET ${(c.page - 1) * c.parPage}`
+          : await sql`
+            SELECT *, count(*) OVER() AS total_lignes
+            FROM ${sql(schemaVues)}.baikal_dossiers
+            ${filtresSql}
+            ORDER BY ${c.tri === "paye_le" ? sql`paye_le` : sql`cree_le`}
+              ${c.ordre === "asc" ? sql`ASC NULLS LAST` : sql`DESC NULLS LAST`}
+            LIMIT ${c.parPage} OFFSET ${(c.page - 1) * c.parPage}`;
         let total = rows.length > 0 ? Number(rows[0].total_lignes) : 0;
         if (rows.length === 0 && c.page > 1) {
           // count(*) OVER() n'existe que sur les lignes renvoyees : une page
