@@ -17,6 +17,7 @@ import { dossiersService } from '../../../services/dossiers.service';
 import { Chargement, Erreur } from '../etats';
 import { BadgeEtape } from '../badges-clients';
 import { COLONNES, ONGLETS_FICHE } from './colonnes';
+import { formaterValeur } from './formats';
 import BarreActions from './BarreActions';
 import OngletBlocs from './OngletBlocs';
 import OngletConversation from './OngletConversation';
@@ -75,17 +76,29 @@ function ContenuOnglet({ appId, dossierId, onglet, version, onOuvrir }) {
   if (onglet.rendu === 'timeline') return <OngletTimeline {...commun} />;
   if (onglet.rendu === 'blocs') return <OngletBlocs {...commun} />;
 
-  // Pas de total serveur pour ce dossier : cette somme ne porte que sur la
-  // page recue, d'ou le libelle explicite plutot qu'un "Cout total" qui
-  // mentirait des que l'onglet est pagine.
-  const total = onglet.cle === 'ia'
+  // Le total vient du serveur, somme sur TOUT le dossier : la recette de
+  // parite ne tolere aucun ecart sur ce chiffre, et une somme locale ne
+  // parlerait que de la page affichee. Il n'apparait que si le site publie la
+  // colonne -- aucune cle d'onglet n'est testee ici.
+  const coutDossier = donnees.agregats?.cout_usd;
+  // La part de page n'a de sens qu'a plus d'une page : sinon elle repeterait
+  // le total mot pour mot.
+  const coutPage = commun.total > commun.parPage
     ? (donnees.lignes || []).reduce((s, l) => s + (Number(l.cout_usd) || 0), 0)
     : null;
   return (
     <div className="space-y-3">
-      {total !== null && total > 0 && (
+      {Number.isFinite(coutDossier) && commun.total > 0 && (
         <p className="text-sm text-baikal-text">
-          Coût de cette page : <span className="text-white font-semibold">{total.toFixed(4)} $</span>
+          Coût total :{' '}
+          <span className="text-white font-semibold">
+            {formaterValeur(coutDossier, 'dollar')}
+          </span>
+          {coutPage !== null && (
+            <span className="opacity-60">
+              {' '}· dont cette page : {formaterValeur(coutPage, 'dollar')}
+            </span>
+          )}
         </p>
       )}
       <OngletListe

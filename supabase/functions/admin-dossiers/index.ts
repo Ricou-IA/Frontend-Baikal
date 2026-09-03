@@ -387,6 +387,21 @@ serve(async (req) => {
           total = Number(compte.total);
         }
 
+        // Agregats sur TOUT le dossier, pas sur la page : un dossier depasse
+        // couramment cinquante appels IA, et depuis que l'onglet est pagine
+        // une somme cote front ne parlerait que des lignes affichees. Le
+        // declencheur est la PRESENCE de la colonne, jamais une cle d'onglet
+        // ni un nom de produit : n'importe quel site qui publie cout_usd en
+        // beneficie.
+        const agregats: Record<string, number> = {};
+        if (colonnesOnglet.has("cout_usd")) {
+          const [somme] = await sql`
+            SELECT coalesce(sum(cout_usd), 0) AS total
+            FROM ${sql(schemaVues)}.${sql(def.vue)}
+            WHERE dossier_id = ${dossierId}`;
+          agregats.cout_usd = Number(somme.total);
+        }
+
         return json({
           data: {
             disponible: true,
@@ -394,6 +409,7 @@ serve(async (req) => {
             total,
             page,
             parPage,
+            agregats,
           },
           error: null,
         });
