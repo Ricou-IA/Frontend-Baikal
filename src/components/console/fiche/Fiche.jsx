@@ -121,8 +121,15 @@ export default function Fiche({ appId, dossierId, onClose }) {
       setErreurFichier(error.message);
       return;
     }
-    if (data?.url) {
-      window.open(data.url, '_blank', 'noreferrer');
+    // L'URL vient telle quelle d'un autre projet : meme garde que le format
+    // `lien` de formats.jsx, seuls http(s) sont ouverts. C'est le seul retour
+    // de relais qui atteint le navigateur sans passer par la normalisation du
+    // manifeste -- un javascript: ou un data: y arriverait sinon intact.
+    const url = typeof data?.url === 'string' ? data.url.trim() : '';
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      window.open(url, '_blank', 'noreferrer');
+    } else if (url) {
+      setErreurFichier('Le site a renvoyé un lien de fichier non ouvrable (schéma refusé).');
     } else {
       // Reponse du site sans erreur HTTP mais sans URL non plus (200 avec un
       // corps inattendu) : silence cote reseau, mais pas cote ecran.
