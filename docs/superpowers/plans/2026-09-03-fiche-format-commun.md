@@ -485,6 +485,32 @@ Deno.test("valeur nulle conservee (le front affiche un tiret)", () => {
 Deno.test("liste vide -> aucune section", () => {
   assertEquals(grouperChamps([]), []);
 });
+
+Deno.test("ordre_section null explicite est traite comme absent", () => {
+  const sections = grouperChamps([
+    { section: "NULLE", ordre_section: null, libelle: "a", valeur: "1" },
+    { section: "PREMIERE", ordre_section: 1, libelle: "b", valeur: "2" },
+  ]);
+  assertEquals(sections.map((s) => s.section), ["PREMIERE", "NULLE"]);
+});
+
+Deno.test("ordre null explicite est traite comme absent", () => {
+  const [s] = grouperChamps([
+    { section: "A", libelle: "sans ordre", ordre: null, valeur: "1" },
+    { section: "A", libelle: "avec ordre", ordre: 1, valeur: "2" },
+  ]);
+  assertEquals(s.champs.map((c) => c.libelle), ["avec ordre", "sans ordre"]);
+});
+
+Deno.test("les trois categories de section coexistent dans le bon ordre", () => {
+  const sections = grouperChamps([
+    { section: "ZZZ", libelle: "a", valeur: "1" },
+    { section: "PREMIERE", ordre_section: 1, libelle: "b", valeur: "2" },
+    { libelle: "orphelin", valeur: "3" },
+    { section: "AAA", libelle: "c", valeur: "4" },
+  ]);
+  assertEquals(sections.map((s) => s.section), ["", "PREMIERE", "AAA", "ZZZ"]);
+});
 ```
 
 - [ ] **Step 2: Lancer les tests pour vérifier qu'ils échouent**
@@ -514,6 +540,15 @@ const FORMATS = new Set([
 ]);
 const NIVEAUX = new Set(["attention", "danger"]);
 
+// Number(null) vaut 0 : sans cette garde, une colonne SQL NULL -- le cas
+// normal d'un bloc sans ordre explicite -- serait lue comme un rang 0 et
+// passerait devant les sections reellement ordonnees.
+function nombreOuNull(valeur: unknown): number | null {
+  if (valeur === null || valeur === undefined) return null;
+  const n = Number(valeur);
+  return Number.isFinite(n) ? n : null;
+}
+
 export interface Champ {
   libelle: string;
   valeur: string | null;
@@ -539,10 +574,8 @@ export function grouperChamps(lignes: Record<string, unknown>[]): SectionChamps[
     const libelle = typeof ligne.libelle === "string" ? ligne.libelle.trim() : "";
     if (!libelle) return; // une ligne sans libelle n'est pas affichable
     const section = typeof ligne.section === "string" ? ligne.section : "";
-    const ordreSection = Number.isFinite(Number(ligne.ordre_section))
-      ? Number(ligne.ordre_section)
-      : null;
-    const ordre = Number.isFinite(Number(ligne.ordre)) ? Number(ligne.ordre) : null;
+    const ordreSection = nombreOuNull(ligne.ordre_section);
+    const ordre = nombreOuNull(ligne.ordre);
     const format = typeof ligne.format === "string" && FORMATS.has(ligne.format)
       ? ligne.format
       : "texte";
@@ -594,8 +627,8 @@ export function grouperChamps(lignes: Record<string, unknown>[]): SectionChamps[
 
 - [ ] **Step 4: Lancer les tests pour vérifier qu'ils passent**
 
-Run: `deno test supabase/functions/admin-dossiers/champs.test.ts`
-Expected: PASS, 9 tests.
+Run: `deno test --allow-env supabase/functions/admin-dossiers/champs.test.ts`
+Expected: PASS, 12 tests.
 
 - [ ] **Step 5: Commit**
 
