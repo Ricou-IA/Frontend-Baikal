@@ -69,6 +69,51 @@ Deno.test("un domaine qui contient la sous-chaine google. sans etre google -> re
   assertEquals(canalVente({ referrer_domaine: "xgoogle.com" }), "referral");
 });
 
+// --- Contournement de l'ancienne heuristique estGoogle (revue) -----------
+// estGoogle verifiait qu'un LABEL du nom d'hote valait "google" sans etre le
+// dernier -- contournable : un attaquant qui controle un domaine peut nommer
+// n'importe lequel de ses sous-domaines pour y faire apparaitre "google" en
+// position non finale. DOMAINES_GOOGLE + hoteDansListe ferme cette porte par
+// construction (correspondance ancree en FIN de nom d'hote). Ces trois cas
+// doivent tomber en referral, jamais organic : le vrai domaine (celui qui
+// suit le dernier label pertinent) n'est pas google.
+
+Deno.test("google.com.evil.net -> referral, pas organic (contournement de l'ancienne heuristique)", () => {
+  assertEquals(canalVente({ referrer_domaine: "google.com.evil.net" }), "referral");
+});
+Deno.test("mail.google.com.attacker.io -> referral, pas organic (contournement)", () => {
+  assertEquals(canalVente({ referrer_domaine: "mail.google.com.attacker.io" }), "referral");
+});
+Deno.test("google.evil.com -> referral, pas organic (google en sous-domaine d'un domaine tiers)", () => {
+  assertEquals(canalVente({ referrer_domaine: "google.evil.com" }), "referral");
+});
+Deno.test("checkout.stripe.com.attacker.io n'est PAS exclu -> referral (contre-preuve : hoteDansListe ancre deja correctement)", () => {
+  // Contre-preuve demandee en revue : ce domaine ne doit PAS etre traite
+  // comme le tunnel de paiement du site -- c'est un referrer ordinaire d'un
+  // tiers, donc referral. Si ce test se met a echouer, c'est que
+  // hoteDansListe a perdu sa propriete d'ancrage en fin de nom d'hote.
+  assertEquals(canalVente({ referrer_domaine: "checkout.stripe.com.attacker.io" }), "referral");
+});
+
+// --- Point final (FQDN) : normalise une seule fois, a l'entree -----------
+// Un nom d'hote pleinement qualifie peut porter un point final. Sans
+// normalisation, il casse toute correspondance exacte ou par suffixe -- le
+// domaine se retrouve traite comme un referent ordinaire au lieu de sa
+// vraie categorie.
+
+Deno.test("point final sur un moteur conversationnel -> geo quand meme", () => {
+  assertEquals(canalVente({ referrer_domaine: "gemini.google.com." }), "geo");
+});
+Deno.test("point final sur un webmail -> campaign quand meme", () => {
+  assertEquals(canalVente({ referrer_domaine: "mail.google.com." }), "campaign");
+});
+Deno.test("point final sur un moteur general (domaine Google) -> organic quand meme", () => {
+  assertEquals(canalVente({ referrer_domaine: "google.com." }), "organic");
+});
+Deno.test("point final combine a des majuscules -> geo quand meme", () => {
+  assertEquals(canalVente({ referrer_domaine: "GEMINI.GOOGLE.COM." }), "geo");
+});
+
 // --- Domaine de paiement du site : exclu comme une absence de referrer --
 
 Deno.test("checkout.stripe.com seul -> unattributed (identique a une absence de referrer)", () => {
@@ -115,6 +160,9 @@ Deno.test("priorite : utm_medium llm gagne sur un referrer moteur (geo avant org
   // tranche avant organic (regle 5) -- meme si le domaine est un moteur
   // classique, le medium llm explicite l'emporte.
   assertEquals(canalVente({ utm_medium: "llm", referrer_domaine: "google.com" }), "geo");
+});
+Deno.test("priorite : channel direct gagne sur capture backfill_partiel (direct avant indetermine)", () => {
+  assertEquals(canalVente({ channel: "direct", capture: "backfill_partiel" }), "direct");
 });
 
 // --- Repli sur le channel du site : jamais prioritaire sur un signal precis

@@ -45,6 +45,13 @@ const MEDIUMS_PAYANTS = new Set(["cpc", "ppc", "paid", "paidsearch", "display"])
 // retours de tunnel de paiement du site lui-meme, jamais une origine de
 // visite -- sans cette exclusion ils ecrasent le vrai referent du dossier.
 // Liste extensible : un site pourrait avoir son propre domaine de paiement.
+// ATTENTION SI TU AJOUTES UNE ENTREE ICI : ajoute-la aussi a
+// DOMAINES_PAIEMENT_MASQUES dans src/components/console/badges-clients.jsx
+// (BadgeCanal) -- sans quoi le badge affichera de nouveau ce domaine comme
+// si c'etait une origine, meme si la classification l'ignore correctement.
+// Les deux listes sont dupliquees faute d'import possible entre ce fichier
+// (Deno) et le front (Vite) ; c'est le sens serveur -> front qui manquait de
+// reference croisee, d'ou cette note.
 const DOMAINES_PAIEMENT_EXCLUS: readonly string[] = [
   "checkout.stripe.com",
 ];
@@ -52,7 +59,7 @@ const DOMAINES_PAIEMENT_EXCLUS: readonly string[] = [
 // Moteurs conversationnels (chat IA). Ce sont des sous-domaines PRECIS d'un
 // fournisseur qui a par ailleurs un moteur de recherche classique : ils
 // doivent etre testes AVANT la regle generale des moteurs, sans quoi
-// gemini.google.com se ferait happer par la regle google.* generale.
+// gemini.google.com se ferait happer par la regle des domaines Google.
 const DOMAINES_GEO: readonly string[] = [
   "gemini.google.com",
   "chatgpt.com",
@@ -81,12 +88,81 @@ const DOMAINES_WEBMAIL: readonly string[] = [
   "webmail.sfr.fr",
 ];
 
-// Moteurs de recherche generalistes. Google est traite a part (voir
-// estGoogle) : le lister ici imposerait d'enumerer chaque extension
-// nationale (google.fr, google.co.uk, google.de...). search.yahoo.com
-// couvre ses prefixes regionaux (fr.search.yahoo.com...) par la
-// correspondance "sous-domaine de" appliquee ci-dessous, pas par une entree
-// par pays.
+// Domaines Google, par extension nationale. Liste FINIE et explicite,
+// passee a hoteDansListe exactement comme DOMAINES_MOTEURS -- PAS un scan de
+// labels. Une version anterieure verifiait seulement qu'un label du nom
+// d'hote valait "google" et n'etait pas le dernier ; cette heuristique se
+// contournait (google.evil.com, google.com.evil.net, mail.google.com.
+// attacker.io passaient tous pour un domaine Google, alors que leur domaine
+// reel -- celui qui suit le dernier label pertinent -- appartient a un
+// tiers). hoteDansListe ferme cette porte par construction : elle ancre la
+// correspondance en FIN de nom d'hote (egalite ou suffixe ".domaine"),
+// jamais au milieu, exactement comme les autres listes de ce fichier.
+// Non exhaustive de toutes les extensions existantes ; etendre au besoin
+// (donnee, pas logique).
+const DOMAINES_GOOGLE: readonly string[] = [
+  "google.com",
+  "google.fr",
+  "google.be",
+  "google.ch",
+  "google.lu",
+  "google.ca",
+  "google.co.uk",
+  "google.ie",
+  "google.de",
+  "google.at",
+  "google.es",
+  "google.it",
+  "google.pt",
+  "google.nl",
+  "google.dk",
+  "google.se",
+  "google.no",
+  "google.fi",
+  "google.pl",
+  "google.cz",
+  "google.sk",
+  "google.hu",
+  "google.ro",
+  "google.gr",
+  "google.bg",
+  "google.hr",
+  "google.si",
+  "google.ee",
+  "google.lv",
+  "google.lt",
+  "google.com.au",
+  "google.co.nz",
+  "google.co.jp",
+  "google.co.kr",
+  "google.co.in",
+  "google.co.za",
+  "google.com.sg",
+  "google.com.hk",
+  "google.com.tw",
+  "google.co.th",
+  "google.com.vn",
+  "google.com.my",
+  "google.com.ph",
+  "google.com.br",
+  "google.com.mx",
+  "google.com.ar",
+  "google.cl",
+  "google.com.co",
+  "google.com.pe",
+  "google.ru",
+  "google.com.tr",
+  "google.co.il",
+  "google.ae",
+  "google.co.ma",
+  "google.dz",
+  "google.tn",
+];
+
+// Moteurs de recherche generalistes (hors Google, voir DOMAINES_GOOGLE
+// ci-dessus). search.yahoo.com couvre ses prefixes regionaux
+// (fr.search.yahoo.com...) par la correspondance "sous-domaine de"
+// appliquee ci-dessous, pas par une entree par pays.
 const DOMAINES_MOTEURS: readonly string[] = [
   "bing.com",
   "qwant.com",
@@ -105,7 +181,9 @@ function texte(v: unknown): string {
 // Un hote "correspond" a un domaine s'il lui est EGAL ou s'il en est un
 // sous-domaine -- jamais s'il le contient comme sous-chaine. C'est ce qui
 // distingue "fr.search.yahoo.com" (correspond a search.yahoo.com, voulu) de
-// "monsite-google.fr" (ne correspond pas a google.fr, l'ancien bug).
+// "monsite-google.fr" (ne correspond pas a google.fr) et de
+// "google.com.evil.net" (ne correspond pas a google.com : le suffixe reel
+// est ".evil.net", pas ".google.com").
 function hoteCorrespond(hote: string, domaine: string): boolean {
   return hote === domaine || hote.endsWith("." + domaine);
 }
@@ -114,35 +192,35 @@ function hoteDansListe(hote: string, liste: readonly string[]): boolean {
   return hote !== "" && liste.some((d) => hoteCorrespond(hote, d));
 }
 
-// Google publie un sous-domaine par extension nationale (google.com,
-// google.fr, google.co.uk...) : plutot que d'enumerer, on verifie qu'un
-// LABEL du nom d'hote vaut exactement "google" et n'est pas le dernier
-// (qui serait alors l'extension elle-meme, pas google). "notgoogle.com" a
-// pour seul label "notgoogle" (different de "google") et ne correspond donc
-// jamais -- contrairement a l'ancienne regex qui matchait toute sous-chaine
-// "google." ("monsite-a-cote-de-google.fr" y passait pour organic).
-function estGoogle(hote: string): boolean {
-  if (hote === "") return false;
-  const labels = hote.split(".");
-  const i = labels.indexOf("google");
-  return i !== -1 && i < labels.length - 1;
+// Nom d'hote normalise UNE SEULE FOIS, a l'entree -- plutot que de traiter
+// la casse ou la ponctuation dans chaque comparaison en aval :
+//  - minuscules (toutes les listes ci-dessus sont en minuscules) ;
+//  - point final retire (un nom de domaine pleinement qualifie peut se
+//    terminer par un point -- "gemini.google.com." -- ce que le navigateur
+//    laisse parfois passer dans un referrer ; sans ce retrait, egalite et
+//    endsWith echouent tous les deux et le domaine se retrouve traite comme
+//    un referent ordinaire au lieu de sa vraie categorie).
+function normaliserHote(hote: string): string {
+  const minuscule = hote.toLowerCase();
+  return minuscule.endsWith(".") ? minuscule.slice(0, -1) : minuscule;
 }
 
 function estDomaineExclu(hote: string): boolean {
-  return hoteDansListe(hote.toLowerCase(), DOMAINES_PAIEMENT_EXCLUS);
+  return hoteDansListe(hote, DOMAINES_PAIEMENT_EXCLUS);
 }
 
 // Domaine "brut" de la visite : referrer_domaine en priorite, sinon
 // utm_source s'il ressemble a un domaine (contient un point) -- inchange par
-// rapport a l'ancien admin.domaine_vente. Le domaine de paiement du site est
-// ensuite retire comme s'il n'avait jamais ete pose : un dossier dont le
-// SEUL signal est ce retour de tunnel doit retomber exactement sur ce qu'il
+// rapport a l'ancien admin.domaine_vente. Normalise (voir normaliserHote)
+// puis prive de son domaine de paiement eventuel : un dossier dont le SEUL
+// signal est ce retour de tunnel doit retomber exactement sur ce qu'il
 // aurait ete sans lui.
 export function domaineVente(attribution: Record<string, unknown> | null): string {
   const a = attribution ?? {};
   const referrer = texte(a["referrer_domaine"]);
   const utm = texte(a["utm_source"]);
-  const domaine = referrer !== "" ? referrer : (utm.includes(".") ? utm : "");
+  const brut = referrer !== "" ? referrer : (utm.includes(".") ? utm : "");
+  const domaine = normaliserHote(brut);
   return estDomaineExclu(domaine) ? "" : domaine;
 }
 
@@ -172,7 +250,9 @@ export function canalVente(
   if (a["a_gclid"] === true || a["a_gclid"] === "true") return "paid";
   if (MEDIUMS_PAYANTS.has(texte(a["utm_medium"]).toLowerCase())) return "paid";
 
-  const domaine = domaineVente(attribution).toLowerCase();
+  // domaineVente normalise deja (minuscules, point final retire) : pas
+  // besoin d'y retoucher ici.
+  const domaine = domaineVente(attribution);
 
   // 3. GEO : moteur conversationnel, ou medium "llm" explicite (pose par le
   // site meme sans domaine identifiable).
@@ -184,14 +264,17 @@ export function canalVente(
   if (hoteDansListe(domaine, DOMAINES_WEBMAIL)) return "campaign";
   if (domaine === "" && texte(a["utm_source"]) !== "") return "campaign";
 
-  // 5. Organique : moteur de recherche general ; a defaut de domaine,
-  // repli sur le channel calcule cote site. Un domaine PRESENT qui n'est pas
-  // un moteur ne passe jamais par ce repli : il est plus precis que le
-  // channel du site et tranche a l'etape suivante (referral). C'est ce qui
-  // evite qu'un simple referent (leboncoin.fr...) ne se fasse recycler en
-  // organic parce que le site l'a lui-meme range dans "organic_search".
+  // 5. Organique : moteur de recherche general (Google, toutes extensions,
+  // ou un autre moteur generaliste) ; a defaut de domaine, repli sur le
+  // channel calcule cote site. Un domaine PRESENT qui n'est pas un moteur ne
+  // passe jamais par ce repli : il est plus precis que le channel du site et
+  // tranche a l'etape suivante (referral). C'est ce qui evite qu'un simple
+  // referent (leboncoin.fr...) ne se fasse recycler en organic parce que le
+  // site l'a lui-meme range dans "organic_search".
   if (domaine !== "") {
-    if (estGoogle(domaine) || hoteDansListe(domaine, DOMAINES_MOTEURS)) return "organic";
+    if (hoteDansListe(domaine, DOMAINES_GOOGLE) || hoteDansListe(domaine, DOMAINES_MOTEURS)) {
+      return "organic";
+    }
   } else if (texte(a["channel"]) === "organic_search") {
     return "organic";
   }
