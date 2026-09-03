@@ -73,16 +73,10 @@ export function formaterValeur(valeur, format = 'texte') {
   }
 }
 
-export const CLASSES_NIVEAU = {
-  attention: 'text-amber-300',
-  danger: 'text-red-300',
-};
-
 // Encart pleine largeur pour un champ porteur d'un niveau : c'est ce qui
 // remplace les encarts d'alerte codes en dur (spec 3.3, colonne "niveau" de
-// baikal_dossier_champs). Meme logique de couleur que CLASSES_NIVEAU, avec
-// le fond et la bordure en plus -- consomme par OngletFiche pour un champ
-// dont le niveau n'est pas nul.
+// baikal_dossier_champs) -- consomme par OngletFiche pour un champ dont le
+// niveau n'est pas nul.
 export const CLASSES_NIVEAU_ENCART = {
   attention: 'bg-amber-900/20 border-amber-500/50 text-amber-300',
   danger: 'bg-red-900/20 border-red-500/50 text-red-300',
