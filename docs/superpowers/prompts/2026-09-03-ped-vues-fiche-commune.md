@@ -159,6 +159,12 @@ visible du client — un `resend-email` sans `defaut` ne peut pas partir sur un
 clic distrait. Déclarez un `defaut` seulement quand la valeur de départ est
 sans conséquence.
 
+Attention : déclarer `defaut: ""` n'est **pas** la façon de rendre un choix
+obligatoire — c'est l'**absence** de `defaut` qui l'est. Baikal traite bien
+une valeur de départ vide comme une absence, vous ne risquez donc pas d'envoi
+accidentel en l'écrivant ainsi ; mais omettez le champ plutôt que de le
+renseigner à vide, c'est l'omission qui exprime l'intention.
+
 **Le manifeste est calculé pour CE dossier** : n'expose `add-pro-credits`
 que si le dossier est B2B. C'est ce qui évite d'écrire des règles métier
 dans Baikal.

@@ -2302,9 +2302,14 @@ function valeurInitiale(parametre) {
   return '';
 }
 
-// Le site rend un choix obligatoire en ne declarant aucun defaut.
+// Le site rend un choix obligatoire en ne declarant pas de defaut utilisable.
+// Toute valeur de depart VIDE compte, pas seulement null : manifeste.ts ne
+// ramene a null que `undefined` et `null`, donc un `defaut: ""` survivait tel
+// quel et retombait dans la branche "defaut declare" -- menu blanc (aucune
+// option ne vaut ""), bouton actif, chaine vide relayee au site. Une valeur de
+// depart vide n'est pas une option valide, quelle que soit son ecriture.
 function choixObligatoire(parametre) {
-  return parametre.type === 'choix' && parametre.defaut === null;
+  return parametre.type === 'choix' && !parametre.defaut;
 }
 
 // Lit la valeur courante d'un parametre, avec repli sur sa valeur initiale
