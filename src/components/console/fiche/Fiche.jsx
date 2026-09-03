@@ -141,6 +141,8 @@ export default function Fiche({ appId, dossierId, onClose }) {
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
         className="bg-baikal-surface border border-baikal-border rounded-lg w-full max-w-4xl my-8"
         onClick={(e) => e.stopPropagation()}
       >
@@ -156,6 +158,7 @@ export default function Fiche({ appId, dossierId, onClose }) {
           </div>
           <button
             onClick={onClose}
+            aria-label="Fermer"
             className="p-1.5 text-baikal-text hover:text-white rounded-md hover:bg-baikal-bg"
           >
             <X className="w-5 h-5" />
@@ -173,12 +176,17 @@ export default function Fiche({ appId, dossierId, onClose }) {
         )}
 
         {onglets.length > 0 && (
-          <nav className="flex gap-1 px-4 border-b border-baikal-border overflow-x-auto">
+          <nav
+            role="tablist"
+            className="flex gap-1 px-4 border-b border-baikal-border overflow-x-auto"
+          >
             {onglets.map((o) => {
               const n = compteurs[o.cle];
               return (
                 <button
                   key={o.cle}
+                  role="tab"
+                  aria-selected={actif?.cle === o.cle}
                   onClick={() => { setOnglet(o.cle); setErreurFichier(null); }}
                   className={`px-3 py-2.5 text-sm border-b-2 whitespace-nowrap transition-colors
                     ${actif?.cle === o.cle

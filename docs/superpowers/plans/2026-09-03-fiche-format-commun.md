@@ -2284,10 +2284,29 @@ const VIDES = {
 
 function ContenuOnglet({ appId, dossierId, onglet, version, onOuvrir }) {
   const [page, setPage] = useState(1);
+  // Un seul ContenuOnglet vit pour toute la fiche (aucun `key` par onglet
+  // cote appelant, voir plus bas) : changer d'onglet ne le demonte pas, ce
+  // qui laisse le cache de useDonneesCachees survivre aux allers-retours
+  // entre onglets au lieu d'etre jete a chaque fois. Contrepartie : la page
+  // doit etre remise a 1 nous-memes des que l'onglet change, sinon un onglet
+  // rouvert herite de la page ou on s'etait arrete sur le precedent -- page
+  // hors bornes garantie si le nouvel onglet a moins de lignes.
+  const [ongletRendu, setOngletRendu] = useState(onglet.cle);
+  if (onglet.cle !== ongletRendu) {
+    setOngletRendu(onglet.cle);
+    setPage(1);
+  }
   const { donnees, erreur } = useDonneesCachees(
     `onglet:${appId}:${dossierId}:${onglet.cle}:${page}:${version}`,
     () => dossiersService.getOnglet(appId, dossierId, onglet.cle, page),
-    appId,
+    // Le scope de useDonneesCachees vide l'affichage pendant le rendu des
+    // qu'il change (voir son propre commentaire) : detourne ici sur la cle
+    // d'onglet, en plus de appId, pour qu'un changement d'onglet efface les
+    // lignes de l'ancien avant de peindre. Sans ca, elles s'afficheraient un
+    // instant sous les colonnes du nouvel onglet, le temps que la requete
+    // reponde -- un cache-hit reste instantane, lui, car useEffect les
+    // remplace par la valeur en cache avant que le navigateur ait peint.
+    `${appId}:${onglet.cle}`,
   );
   if (erreur) return <Erreur message={erreur} />;
   if (!donnees) return <Chargement />;
@@ -2304,6 +2323,9 @@ function ContenuOnglet({ appId, dossierId, onglet, version, onOuvrir }) {
   if (onglet.rendu === 'timeline') return <OngletTimeline {...commun} />;
   if (onglet.rendu === 'blocs') return <OngletBlocs {...commun} />;
 
+  // Pas de total serveur pour ce dossier : cette somme ne porte que sur la
+  // page recue, d'ou le libelle explicite plutot qu'un "Cout total" qui
+  // mentirait des que l'onglet est pagine.
   const total = onglet.cle === 'ia'
     ? (donnees.lignes || []).reduce((s, l) => s + (Number(l.cout_usd) || 0), 0)
     : null;
@@ -2347,7 +2369,13 @@ export default function Fiche({ appId, dossierId, onClose }) {
       setErreurFichier(error.message);
       return;
     }
-    if (data?.url) window.open(data.url, '_blank', 'noreferrer');
+    if (data?.url) {
+      window.open(data.url, '_blank', 'noreferrer');
+    } else {
+      // Reponse du site sans erreur HTTP mais sans URL non plus (200 avec un
+      // corps inattendu) : silence cote reseau, mais pas cote ecran.
+      setErreurFichier('Le site n’a pas renvoyé de lien de fichier.');
+    }
   };
 
   const onglets = d
@@ -2361,6 +2389,8 @@ export default function Fiche({ appId, dossierId, onClose }) {
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
         className="bg-baikal-surface border border-baikal-border rounded-lg w-full max-w-4xl my-8"
         onClick={(e) => e.stopPropagation()}
       >
@@ -2376,6 +2406,7 @@ export default function Fiche({ appId, dossierId, onClose }) {
           </div>
           <button
             onClick={onClose}
+            aria-label="Fermer"
             className="p-1.5 text-baikal-text hover:text-white rounded-md hover:bg-baikal-bg"
           >
             <X className="w-5 h-5" />
@@ -2393,13 +2424,18 @@ export default function Fiche({ appId, dossierId, onClose }) {
         )}
 
         {onglets.length > 0 && (
-          <nav className="flex gap-1 px-4 border-b border-baikal-border overflow-x-auto">
+          <nav
+            role="tablist"
+            className="flex gap-1 px-4 border-b border-baikal-border overflow-x-auto"
+          >
             {onglets.map((o) => {
               const n = compteurs[o.cle];
               return (
                 <button
                   key={o.cle}
-                  onClick={() => setOnglet(o.cle)}
+                  role="tab"
+                  aria-selected={actif?.cle === o.cle}
+                  onClick={() => { setOnglet(o.cle); setErreurFichier(null); }}
                   className={`px-3 py-2.5 text-sm border-b-2 whitespace-nowrap transition-colors
                     ${actif?.cle === o.cle
                       ? 'border-baikal-cyan text-baikal-cyan'
@@ -2427,7 +2463,6 @@ export default function Fiche({ appId, dossierId, onClose }) {
           )}
           {d && actif && actif.cle !== 'vue' && (
             <ContenuOnglet
-              key={actif.cle}
               appId={appId}
               dossierId={dossierId}
               onglet={actif}

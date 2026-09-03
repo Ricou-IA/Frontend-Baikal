@@ -11,6 +11,11 @@
  *
  * Partage par /seo et /finances : la regle de scope doit etre la meme partout,
  * sinon le bug des chiffres d'un autre site revient par la porte de derriere.
+ *
+ * `scope` compose (site + un axe, ex: `${appId}:${onglet}`) reste accepte
+ * tant que le site en reste un prefixe strict : le cloisonnement par site
+ * n'est jamais relache, l'axe ajoute borne juste la persistance plus
+ * finement -- ne pas le reduire au site seul sans verifier cette raison.
  * ============================================================================
  */
 import { useEffect, useRef, useState } from 'react';
