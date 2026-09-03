@@ -258,13 +258,6 @@ function ClientsContent() {
                         {d.contact_nom && (
                           <span className="text-xs opacity-60 truncate max-w-[140px]">{d.contact_nom}</span>
                         )}
-                        {/* Le produit de la ligne (ou le bien) : c'est lui qui
-                            donne son sens a l'evenement commercial. */}
-                        {d.libelle && (
-                          <span className="text-xs opacity-60 truncate max-w-[200px]" title={d.libelle}>
-                            {d.libelle}
-                          </span>
-                        )}
                         <span className="inline-flex items-center gap-1 text-xs opacity-70">
                           <Mail className="w-3 h-3" />
                           {d.emails_envoyes} / {d.emails_ouverts}
