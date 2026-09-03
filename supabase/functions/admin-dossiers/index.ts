@@ -200,7 +200,7 @@ serve(async (req) => {
         (await sql`
           SELECT column_name FROM information_schema.columns
           WHERE table_schema = ${schemaVues} AND table_name = 'baikal_dossiers'`)
-          .map((c) => c.column_name as string),
+          .map((c: { column_name: string }) => c.column_name as string),
       );
 
       if (action === "liste") {
@@ -228,7 +228,7 @@ serve(async (req) => {
                     OR contact_nom ILIKE ${motif}
                     ${colonnes.has("libelle") ? sql`OR libelle ILIKE ${motif}` : sql``})`
               : sql``}`;
-        const rows = await sql`
+        const rows: Record<string, unknown>[] = await sql`
           SELECT *, count(*) OVER() AS total_lignes
           FROM ${sql(schemaVues)}.baikal_dossiers
           ${filtresSql}
