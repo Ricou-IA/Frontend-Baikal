@@ -18,7 +18,7 @@ import {
   Chargement, ContenuEstompe, Erreur, LigneVide, Section, Vide,
 } from '../components/console/etats';
 import { dossiersService } from '../services/dossiers.service';
-import FicheDossier from '../components/console/FicheDossier';
+import Fiche from '../components/console/fiche/Fiche';
 import { BadgeCanal, BadgeEtape, fmtDate } from '../components/console/badges-clients';
 
 const PERIODES = [[null, 'Tout'], [7, '7 jours'], [30, '30 jours'], [90, '90 jours']];
@@ -292,7 +292,7 @@ function ClientsContent() {
       )}
 
       {ficheId && (
-        <FicheDossier appId={currentApp} dossierId={ficheId} onClose={() => setFicheId(null)} />
+        <Fiche appId={currentApp} dossierId={ficheId} onClose={() => setFicheId(null)} />
       )}
     </Section>
   );
