@@ -173,6 +173,7 @@ export default function Fiche({ appId, dossierId, onClose }) {
               <h3 className="text-white font-semibold truncate">
                 {d?.email || d?.contact_nom || dossierId}
               </h3>
+              {d?.libelle && <span className="text-xs text-baikal-text opacity-70 truncate">{d.libelle}</span>}
             </div>
             <p className="font-mono text-xs text-baikal-text opacity-60 mt-1">{dossierId}</p>
           </div>
@@ -231,7 +232,7 @@ export default function Fiche({ appId, dossierId, onClose }) {
           {erreurFichier && <Erreur message={erreurFichier} />}
           {!donnees && !erreur && <Chargement />}
           {d && actif?.cle === 'vue' && (
-            <OngletFiche dossier={d} sections={donnees.sections} />
+            <OngletFiche dossier={d} sections={donnees.sections} categories={donnees.categories} />
           )}
           {d && actif && actif.cle !== 'vue' && (
             <ContenuOnglet

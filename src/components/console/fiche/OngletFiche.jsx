@@ -6,7 +6,7 @@
  * libelles declares : il les range et applique le format demande.
  * ============================================================================
  */
-import { BadgeCanal, fmtDate, fmtDateHeure, fmtEur } from '../badges-clients';
+import { BadgeCanal, BadgeCategorie, fmtDate, fmtDateHeure, fmtEur } from '../badges-clients';
 import { CLASSES_NIVEAU, formaterValeur } from './formats';
 
 function Ligne({ libelle, className, children }) {
@@ -18,13 +18,16 @@ function Ligne({ libelle, className, children }) {
   );
 }
 
-export default function OngletFiche({ dossier: d, sections }) {
+export default function OngletFiche({ dossier: d, sections, categories }) {
   const aAbonnement = d && 'abo_statut' in d;
   return (
     <div className="space-y-6">
       <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Ligne libelle="Email">{d.email || '—'}</Ligne>
         <Ligne libelle="Contact">{d.contact_nom || '—'}</Ligne>
+        <Ligne libelle="Catégorie">
+          <BadgeCategorie categorie={d.categorie} perimetre={d.perimetre} categories={categories} />
+        </Ligne>
         {'libelle' in d && <Ligne libelle="Libellé">{d.libelle || '—'}</Ligne>}
         {'apporteur' in d && d.apporteur && <Ligne libelle="Apporteur">via {d.apporteur}</Ligne>}
         <Ligne libelle="Créé le">{fmtDateHeure(d.cree_le)}</Ligne>
