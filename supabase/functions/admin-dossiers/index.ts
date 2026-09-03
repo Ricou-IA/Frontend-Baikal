@@ -201,7 +201,10 @@ serve(async (req) => {
       .select("funnel_etapes").eq("id", appId).maybeSingle();
     const funnel = (appConfig?.funnel_etapes ?? null) as EtapeFunnel[] | null;
 
-    const sql = lecteurSite(site);
+    // 5s d'execution par requete : les lectures de fiche sont courtes par
+    // nature, et l'ouverture d'une fiche declenche jusqu'a sept count(*) sur
+    // des vues dont la definition appartient au site.
+    const sql = lecteurSite(site, 5000);
     try {
       // La vue contractuelle vit dans le schema du site (bases partagees :
       // un schema par produit, sinon collision de noms dans public) ou dans

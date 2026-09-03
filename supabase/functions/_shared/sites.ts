@@ -39,7 +39,15 @@ export async function chargerSite(
   return data as Site;
 }
 
-export function lecteurSite(site: Site) {
+// delaiRequeteMs borne l'EXECUTION de chaque requete, la ou connect_timeout ne
+// borne que l'OUVERTURE de la connexion. Les vues lues appartiennent au site :
+// une vue couteuse ou un dossier_id non indexe tiendrait sinon la connexion
+// (max: 1) jusqu'au delai dur de l'Edge Function, sans aucune borne cote
+// Baikal. Le defaut est genereux a dessein -- il borne l'infini sans gener les
+// agregats longs de admin-prospects et admin-site-stats ; c'est a l'appelant
+// dont les lectures doivent etre rapides (admin-dossiers, jusqu'a sept count
+// par ouverture de fiche) de le resserrer.
+export function lecteurSite(site: Site, delaiRequeteMs = 30000) {
   let dsn: string;
   if (site.db_ro_secret_ref) {
     const valeur = Deno.env.get(site.db_ro_secret_ref);
@@ -61,6 +69,10 @@ export function lecteurSite(site: Site) {
     prepare: false,
     connect_timeout: 10,
     idle_timeout: 2,
-    connection: { default_transaction_read_only: "on" },
+    connection: {
+      default_transaction_read_only: "on",
+      // Meme canal de parametres de session que la lecture seule ci-dessus.
+      statement_timeout: String(delaiRequeteMs),
+    },
   });
 }

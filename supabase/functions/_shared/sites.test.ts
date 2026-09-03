@@ -30,6 +30,7 @@ const siteLocal: Site = {
   env_secret_ref: null,
   env_anon_key: null,
   env_dossiers_fn: null,
+  env_prospects_fn: null,
 };
 const siteDedie: Site = {
   ...siteLocal,
@@ -71,6 +72,27 @@ Deno.test("lecteurSite: dedie avec secret -> instance sql", async () => {
   Deno.env.set("ADMIN_RO_TEST_DSN", "postgresql://u:p@localhost:6543/postgres");
   const sql = lecteurSite(siteDedie);
   assertEquals(typeof sql, "function"); // postgres-js: l'instance est une fonction taggee
+  await sql.end({ timeout: 0 });
+  Deno.env.delete("ADMIN_RO_TEST_DSN");
+});
+
+// statement_timeout borne l'execution d'une requete, connect_timeout ne borne
+// que l'ouverture : c'est la seule protection de Baikal contre une vue lente
+// publiee par un site tiers. Le defaut doit rester genereux -- admin-prospects
+// et admin-site-stats font des agregats qu'un plafond serre casserait.
+Deno.test("lecteurSite: delai d'execution par defaut a 30s", async () => {
+  Deno.env.set("ADMIN_RO_TEST_DSN", "postgresql://u:p@localhost:6543/postgres");
+  const sql = lecteurSite(siteDedie);
+  assertEquals(sql.options.connection.statement_timeout, "30000");
+  assertEquals(sql.options.connection.default_transaction_read_only, "on");
+  await sql.end({ timeout: 0 });
+  Deno.env.delete("ADMIN_RO_TEST_DSN");
+});
+
+Deno.test("lecteurSite: delai d'execution resserre par l'appelant", async () => {
+  Deno.env.set("ADMIN_RO_TEST_DSN", "postgresql://u:p@localhost:6543/postgres");
+  const sql = lecteurSite(siteDedie, 5000);
+  assertEquals(sql.options.connection.statement_timeout, "5000");
   await sql.end({ timeout: 0 });
   Deno.env.delete("ADMIN_RO_TEST_DSN");
 });
