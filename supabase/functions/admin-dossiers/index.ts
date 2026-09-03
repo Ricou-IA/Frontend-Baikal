@@ -11,7 +11,7 @@ import { ErreurAcces, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 import { normaliserCriteres } from "./filtres.ts";
 import { canalVente } from "./canal.ts";
 import { ErreurRelais, preparerRelais, relaisConfigure } from "./relais.ts";
-import { ONGLETS } from "./onglets.ts";
+import { ONGLETS, paginationOnglet, resoudreOnglet, triEffectif } from "./onglets.ts";
 import { grouperChamps } from "./champs.ts";
 import { type ActionFiche, normaliserManifeste } from "./manifeste.ts";
 
@@ -317,6 +317,53 @@ serve(async (req) => {
             funnel,
             actions: manifeste.actions,
             actionsErreur: manifeste.erreur,
+          },
+          error: null,
+        });
+      }
+
+      if (action === "onglet") {
+        const dossierId = typeof body.dossierId === "string" ? body.dossierId : "";
+        if (!dossierId) return json({ data: null, error: "dossierId requis" }, 400);
+        const def = resoudreOnglet(body.onglet);
+        if (!def) return json({ data: null, error: `Onglet inconnu: ${body.onglet}` }, 400);
+
+        const [presente] = await sql`
+          SELECT to_regclass(${schemaVues + "." + def.vue}) IS NOT NULL AS ok`;
+        if (!presente.ok) return json({ data: { disponible: false }, error: null });
+
+        const colsOnglet: { column_name: string }[] = await sql`
+          SELECT column_name FROM information_schema.columns
+          WHERE table_schema = ${schemaVues} AND table_name = ${def.vue}`;
+        const colonnesOnglet = new Set(colsOnglet.map((c) => c.column_name));
+        const tri = triEffectif(def, colonnesOnglet);
+        const { page, parPage } = paginationOnglet(body);
+
+        const lignes: Record<string, unknown>[] = await sql`
+          SELECT *, count(*) OVER() AS total_lignes
+          FROM ${sql(schemaVues)}.${sql(def.vue)}
+          WHERE dossier_id = ${dossierId}
+          ${tri ? sql`ORDER BY ${sql.unsafe(tri)}` : sql``}
+          LIMIT ${parPage} OFFSET ${(page - 1) * parPage}`;
+
+        let total = lignes.length > 0 ? Number(lignes[0].total_lignes) : 0;
+        if (lignes.length === 0 && page > 1) {
+          // count(*) OVER() ne survit pas a une page vide : meme repli que la
+          // liste des dossiers, sinon le total disparait au-dela du dernier
+          // resultat.
+          const [compte] = await sql`
+            SELECT count(*) AS total FROM ${sql(schemaVues)}.${sql(def.vue)}
+            WHERE dossier_id = ${dossierId}`;
+          total = Number(compte.total);
+        }
+
+        return json({
+          data: {
+            disponible: true,
+            lignes: lignes.map(({ total_lignes: _t, ...l }) => l),
+            total,
+            page,
+            parPage,
           },
           error: null,
         });
