@@ -37,7 +37,9 @@
 | `manifeste.ts` *(créer)* | Normalisation défensive du manifeste d'actions renvoyé par un site |
 | `manifeste.test.ts` *(créer)* | Tests du précédent |
 | `index.ts` *(modifier)* | Câblage : actions `fiche`, `onglet`, `fichier`, `site-action` |
-| `relais.ts`, `filtres.ts`, `canal.ts` | Inchangés |
+| `relais.ts` *(modifier)* | `ErreurRelais` porte le statut de sortie (502 / 504 / 500) et le détail renvoyé par le site |
+| `relais.test.ts` *(compléter)* | Tests de cette sémantique |
+| `filtres.ts`, `canal.ts` | Inchangés |
 
 **Front `src/components/console/fiche/`** (nouveau dossier)
 
@@ -46,7 +48,7 @@
 | `formats.jsx` *(créer)* | `formaterValeur(valeur, format)` — un seul endroit qui décide comment s'écrit un montant, une date, une taille |
 | `colonnes.js` *(créer)* | Description des colonnes de chaque onglet de type liste |
 | `OngletFiche.jsx` *(créer)* | Noyau `baikal_dossiers` + sections déclarées |
-| `Pagination.jsx` *(créer)* | Pied de pagination partagé par les six onglets paginés |
+| `Pagination.jsx` *(créer)* | Pied de pagination partagé par les sept onglets paginés |
 | `OngletListe.jsx` *(créer)* | Tableau générique + `details` repliable + pagination |
 | `OngletTimeline.jsx` *(créer)* | Events |
 | `OngletConversation.jsx` *(créer)* | Chat |
@@ -947,12 +949,32 @@ git commit -m "feat(fiche): normalisation defensive du manifeste d'actions"
 
 **Files:**
 - Modify: `supabase/functions/admin-dossiers/index.ts`
+- Modify: `supabase/functions/admin-dossiers/relais.ts`
 
 **Interfaces:**
 - Consumes: `ONGLETS` (task 2), `grouperChamps` (task 3), `normaliserManifeste` (task 4), `preparerRelais` / `relaisConfigure` (existants).
-- Produces: réponse de `fiche` = `{ disponible: true, dossier, sections, compteurs, vues, funnel, actions, actionsErreur }` où `compteurs: Record<string, number>` est indexé par clé d'onglet, `vues: string[]` liste les onglets disponibles, `actions: ActionFiche[]`, `actionsErreur: string | null`.
+- Produces: réponse de `fiche` = `{ disponible: true, dossier, sections, compteurs, vues, funnel, actions, actionsErreur }` où `compteurs: Record<string, number>` est indexé par clé d'onglet, `vues: string[]` liste les onglets disponibles, `actions: ActionFiche[]`, `actionsErreur: string | null` ; `ErreurRelais` porte en plus `statutSortie` et `detail`, consommés en tâche 7.
 
-- [ ] **Step 1: Ajouter les imports et une fonction d'appel du relais**
+- [ ] **Step 1: Faire porter à `ErreurRelais` le statut de sortie et le détail**
+
+Dans `supabase/functions/admin-dossiers/relais.ts`, le constructeur gagne deux champs. `statutSortie` est le code que **Baikal** renvoie à la console, pas celui du site : les confondre relaierait un 403 du site comme un 403 de Baikal, que la console lirait comme un refus de droits.
+
+```ts
+export class ErreurRelais extends Error {
+  constructor(
+    message: string,
+    // Code que Baikal renvoie a la console : 502 quand le site a repondu en
+    // erreur, 504 quand il n'a pas repondu du tout, rien (donc 500) quand
+    // c'est le canal lui-meme qui est mal configure.
+    readonly statutSortie?: number,
+    readonly detail?: unknown,
+  ) {
+    super(message);
+  }
+}
+```
+
+- [ ] **Step 2: Ajouter les imports et une fonction d'appel du relais**
 
 Dans `supabase/functions/admin-dossiers/index.ts`, ajouter aux imports existants :
 
@@ -970,14 +992,29 @@ Puis, sous les helpers existants (`json`), ajouter :
 async function appelerRelais(
   site: Awaited<ReturnType<typeof chargerSite>>,
   corps: Record<string, unknown>,
+  timeoutMs = 30000,
 ): Promise<unknown> {
   const cible = preparerRelais(site);
   if (!cible) throw new ErreurRelais("Site sans canal d'administration configure");
-  const reponse = await fetch(cible.url, {
-    method: "POST",
-    headers: cible.headers,
-    body: JSON.stringify(corps),
-  });
+  let reponse: Response;
+  try {
+    reponse = await fetch(cible.url, {
+      method: "POST",
+      headers: cible.headers,
+      body: JSON.stringify(corps),
+      // Deno n'impose aucun delai a fetch : sans ce signal, un site injoignable
+      // ferait pendre la fiche entiere jusqu'au delai de l'Edge Function.
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "TimeoutError") {
+      throw new ErreurRelais(
+        `Site ${site.id}: pas de reponse en ${Math.round(timeoutMs / 1000)}s`,
+        504,
+      );
+    }
+    throw e;
+  }
   const texte = await reponse.text();
   let charge: unknown;
   try {
@@ -986,7 +1023,11 @@ async function appelerRelais(
     charge = { brut: texte.slice(0, 500) };
   }
   if (!reponse.ok) {
-    throw new ErreurRelais(`Site ${site.id}: HTTP ${reponse.status}`);
+    throw new ErreurRelais(
+      `Site ${site.id}: HTTP ${reponse.status}`,
+      502,
+      { statut_site: reponse.status, corps: charge },
+    );
   }
   return charge;
 }
@@ -1001,7 +1042,14 @@ async function chargerManifeste(
 ): Promise<{ actions: ActionFiche[]; erreur: string | null }> {
   if (!relaisConfigure(site)) return { actions: [], erreur: null };
   try {
-    const charge = await appelerRelais(site, { action: "manifeste", dossier_id: dossierId });
+    // Lecture courte sur le chemin de l'affichage de la fiche : budget reduit
+    // par rapport au defaut des actions (30s), une re-extraction pouvant etre
+    // synchrone cote site.
+    const charge = await appelerRelais(
+      site,
+      { action: "manifeste", dossier_id: dossierId },
+      8000,
+    );
     return { actions: normaliserManifeste(charge), erreur: null };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
@@ -1011,7 +1059,9 @@ async function chargerManifeste(
 }
 ```
 
-- [ ] **Step 2: Remplacer le corps de l'action `fiche`**
+> Le budget de 8 s du manifeste est ce qui sépare « la fiche met une seconde de plus » de « la fiche ne s'affiche pas » : `chargerManifeste` est appelé sur le chemin d'affichage, et son échec est déjà avalé en liste vide + motif. Les autres appels gardent 30 s parce qu'une re-extraction est synchrone côté site.
+
+- [ ] **Step 3: Remplacer le corps de l'action `fiche`**
 
 Remplacer le bloc `if (action === "fiche") { … }` par :
 
@@ -1078,7 +1128,7 @@ Remplacer le bloc `if (action === "fiche") { … }` par :
       }
 ```
 
-- [ ] **Step 3: Vérifier que la fonction se type et démarre**
+- [ ] **Step 4: Vérifier que la fonction se type et démarre**
 
 Run: `deno check supabase/functions/admin-dossiers/index.ts`
 Expected: aucune erreur de type.
@@ -1086,16 +1136,16 @@ Expected: aucune erreur de type.
 Run: `deno test supabase/functions/admin-dossiers/`
 Expected: PASS — les modules purs restent verts (l'index n'est pas testé unitairement, il est vérifié au déploiement).
 
-- [ ] **Step 4: Déployer et appeler l'action sur un dossier réel**
+- [ ] **Step 5: Déployer et appeler l'action sur un dossier réel**
 
 Run: `npx supabase functions deploy admin-dossiers`
 
 Puis ouvre `/clients` sur le site pack-vendeur dans le navigateur (préview `baikal-dev`), ouvre une fiche, et lis la réponse réseau de `admin-dossiers` : elle doit contenir `sections`, `compteurs`, `vues`, `actions`. Tant que Pré-état-daté n'a pas publié ses vues, `sections` est vide et `vues` ne contient que `emails` et `events` — c'est le comportement attendu, pas une panne.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add supabase/functions/admin-dossiers/index.ts
+git add supabase/functions/admin-dossiers/index.ts supabase/functions/admin-dossiers/relais.ts
 git commit -m "feat(fiche): action fiche enrichie (sections, compteurs, capacites, manifeste)"
 ```
 
@@ -1205,10 +1255,11 @@ Sortie de cette tâche : la liste d'actions en dur `ACTIONS_SITE` disparaît de 
 
 **Files:**
 - Modify: `supabase/functions/admin-dossiers/index.ts`
+- Test: `supabase/functions/admin-dossiers/relais.test.ts`
 
 **Interfaces:**
-- Consumes: `appelerRelais`, `chargerManifeste` (task 5), `trouverAction` (task 4).
-- Produces: réponse de `fichier` = la charge du site, attendue `{ url, expire_le }`.
+- Consumes: `appelerRelais`, `chargerManifeste` (task 5), `trouverAction` (task 4), `ErreurRelais.statutSortie` / `.detail` (task 5).
+- Produces: réponse de `fichier` = la charge du site, attendue `{ url, expire_le }` ; en erreur, `{ data: null, error, detail }` avec le statut HTTP de sortie 502 / 504 / 500.
 
 - [ ] **Step 1: Compléter l'import du manifeste**
 
@@ -1281,7 +1332,52 @@ Supprimer le bloc `if (action === "site-detail" || action === "site-action") { �
     }
 ```
 
-- [ ] **Step 3: Vérifier qu'aucune trace de `site-detail` ne subsiste**
+- [ ] **Step 3: Faire sortir le statut et le motif du site jusqu'à la console**
+
+C'est ici, et seulement ici, qu'une `ErreurRelais` s'échappe : sur le chemin `fiche` elle est déjà avalée par `chargerManifeste`. Dans le `catch` final de `index.ts`, remplacer la branche `ErreurRelais` par :
+
+```ts
+    if (e instanceof ErreurRelais) {
+      return json(
+        { data: null, error: e.message, detail: e.detail ?? null },
+        e.statutSortie ?? 500,
+      );
+    }
+```
+
+Sans le `detail`, le motif métier du site (« crédits insuffisants », « dossier verrouillé ») s'arrête à l'Edge Function et l'utilisateur ne lit qu'un `HTTP 403` muet. Sans `statutSortie`, un site qui ne répond pas et un site qui refuse deviennent la même panne à l'écran.
+
+- [ ] **Step 4: Couvrir la sémantique du statut de sortie**
+
+Ajouter à `supabase/functions/admin-dossiers/relais.test.ts` :
+
+```ts
+// statutSortie est le code que Baikal renvoie a la console, pas le statut du
+// site : 502 pour une reponse en erreur du site (avec son detail), 504 pour
+// une absence de reponse, rien (donc 500 au niveau du catch general) pour un
+// canal mal configure cote Baikal.
+Deno.test("ErreurRelais: reponse du site en erreur -> statutSortie 502 avec detail", () => {
+  const e = new ErreurRelais(
+    "Site x: HTTP 403",
+    502,
+    { statut_site: 403, corps: { motif: "credits insuffisants" } },
+  );
+  assertEquals(e.statutSortie, 502);
+  assertEquals(e.detail, { statut_site: 403, corps: { motif: "credits insuffisants" } });
+});
+Deno.test("ErreurRelais: timeout -> statutSortie 504 sans detail", () => {
+  const e = new ErreurRelais("Site x: pas de reponse en 8s", 504);
+  assertEquals(e.statutSortie, 504);
+  assertEquals(e.detail, undefined);
+});
+Deno.test("ErreurRelais: canal mal configure -> statutSortie et detail absents", () => {
+  const e = new ErreurRelais("Site sans canal d'administration configure");
+  assertEquals(e.statutSortie, undefined);
+  assertEquals(e.detail, undefined);
+});
+```
+
+- [ ] **Step 5: Vérifier qu'aucune trace de `site-detail` ne subsiste**
 
 Run: `grep -rn "site-detail\|ACTIONS_SITE" supabase/functions/`
 Expected: aucun résultat.
@@ -1289,15 +1385,15 @@ Expected: aucun résultat.
 Run: `deno check supabase/functions/admin-dossiers/index.ts`
 Expected: aucune erreur.
 
-- [ ] **Step 4: Vérifier que la suite complète passe toujours**
+- [ ] **Step 6: Vérifier que la suite complète passe toujours**
 
-Run: `deno test supabase/functions/admin-dossiers/`
+Run: `deno test --allow-env supabase/functions/admin-dossiers/`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add supabase/functions/admin-dossiers/index.ts
+git add supabase/functions/admin-dossiers/index.ts supabase/functions/admin-dossiers/relais.test.ts
 git commit -m "refactor(fiche): actions issues du manifeste du site, fin de la liste en dur"
 ```
 
@@ -1477,7 +1573,7 @@ git commit -m "feat(fiche): formats communs et description des colonnes"
 
 ---
 
-### Task 9: Front — les cinq composants de rendu
+### Task 9: Front — les six composants de rendu
 
 **Files:**
 - Create: `src/components/console/fiche/OngletFiche.jsx`
@@ -2492,7 +2588,7 @@ Expected: aucun résultat.
 
 - [ ] **Step 4: Lint et build**
 
-Run: `npx eslint src/components/console/fiche/ src/services/dossiers.service.js --ext js,jsx`
+Run: `npx eslint src/components/console/fiche/ src/services/dossiers.service.js src/pages/Clients.jsx --ext js,jsx`
 Expected: zéro problème.
 
 Run: `npm run lint`
