@@ -25,6 +25,18 @@ function enErreur(ligne) {
   return String(ligne.statut ?? '').toLowerCase() === 'erreur';
 }
 
+// Repli de la spec 3.4 : `ouvrable` absent se deduit de `nature = 'fichier'`
+// et de la presence du relais -- laquelle est deja portee par le fait qu'une
+// fonction d'ouverture nous soit fournie (voir aOuvrir). Sans ce repli, un
+// site qui suivrait la seule spec publierait des documents non ouvrables sans
+// comprendre pourquoi.
+function estOuvrable(ligne) {
+  if (ligne.ouvrable === undefined || ligne.ouvrable === null) {
+    return ligne.nature === 'fichier';
+  }
+  return Boolean(ligne.ouvrable);
+}
+
 function LigneDetails({ details, colonnes }) {
   return (
     <tr className="border-t border-baikal-border/30 bg-baikal-bg/40">
@@ -59,7 +71,7 @@ export default function OngletListe({
   // Une colonne n'est affichee que si au moins une ligne la porte.
   const visibles = colonnes.filter((c) => lignes.some((l) => l[c.cle] !== undefined && l[c.cle] !== null));
   const aDetails = lignes.some((l) => l.details && Object.keys(l.details).length > 0);
-  const aOuvrir = Boolean(onOuvrir) && lignes.some((l) => l.ouvrable);
+  const aOuvrir = Boolean(onOuvrir) && lignes.some(estOuvrable);
   const nbColonnes = visibles.length + (aDetails ? 1 : 0) + (aOuvrir ? 1 : 0);
 
   return (
@@ -106,7 +118,7 @@ export default function OngletListe({
                     ))}
                     {aOuvrir && (
                       <td className="py-2">
-                        {l.ouvrable && (
+                        {estOuvrable(l) && (
                           <button
                             onClick={() => onOuvrir(l)}
                             className="inline-flex items-center gap-1 text-baikal-cyan hover:underline text-xs"
