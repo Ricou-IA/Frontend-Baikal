@@ -55,13 +55,17 @@ export default function OngletListe({
 
   // Une colonne n'est affichee que si au moins une ligne la porte.
   const visibles = colonnes.filter((c) => lignes.some((l) => l[c.cle] !== undefined && l[c.cle] !== null));
-  // Union des cles de `details` sur les lignes affichees, dans leur ordre de
-  // premiere apparition : chacune devient une colonne. Une ligne qui n'a pas
-  // cette cle laisse simplement la cellule vide (formaterDetail(undefined)),
-  // comme n'importe quelle colonne declaree absente de cette ligne.
+  // Union des cles de `details` sur les lignes affichees, triees par ordre
+  // alphabetique : chacune devient une colonne. L'ordre d'apparition dans les
+  // lignes n'est pas une base fiable -- admin-dossiers/onglets.ts lit sans
+  // ORDER BY quand le site n'expose pas la colonne de tri, et la pagination
+  // ne departage pas les egalites -- deux affichages de la meme page
+  // pourraient sinon permuter les colonnes. Une ligne qui n'a pas cette cle
+  // laisse simplement la cellule vide (formaterDetail(undefined)), comme
+  // n'importe quelle colonne declaree absente de cette ligne.
   const colonnesDetails = [...new Set(
     lignes.flatMap((l) => (l.details && typeof l.details === 'object' ? Object.keys(l.details) : [])),
-  )];
+  )].sort((a, b) => a.localeCompare(b, 'fr'));
   const aOuvrir = Boolean(onOuvrir) && lignes.some(estOuvrable);
 
   return (

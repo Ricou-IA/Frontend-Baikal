@@ -85,8 +85,9 @@ n'est jamais une erreur.
 
 Toute vue de liste porte : `dossier_id` (jointure), un horodatage, un
 libellé, quelques colonnes propres à sa nature, et une colonne `details`
-jsonb optionnelle rendue en pied de ligne repliable. C'est ce motif qui
-permet à un seul composant de rendre plusieurs onglets.
+jsonb optionnelle, dont chaque clé devient sa propre colonne du tableau
+(triées par ordre alphabétique, après les colonnes déclarées). C'est ce
+motif qui permet à un seul composant de rendre plusieurs onglets.
 
 Seul `dossier_id` est obligatoire dans chaque vue. Toute autre colonne absente
 est simplement non rendue.
@@ -302,7 +303,7 @@ Nouveau module `src/components/console/fiche/` :
 - `Fiche.jsx` — coquille, onglets, barre d'actions issue du manifeste ;
 - `OngletFiche.jsx` — noyau + sections déclarées ;
 - `OngletListe.jsx` — tableau générique piloté par une description de
-  colonnes, `details` repliable, pagination ;
+  colonnes, `details` éclaté en colonnes triées alphabétiquement, pagination ;
 - `OngletTimeline.jsx`, `OngletConversation.jsx`, `OngletBlocs.jsx` ;
 - `colonnes.js` — description des colonnes par onglet (clé, libellé, format,
   largeur) ;
