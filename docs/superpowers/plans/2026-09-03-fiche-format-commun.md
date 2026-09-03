@@ -17,7 +17,7 @@
 - **Aucune donnée nominative archivée** : rien de ce qui est lu ici n'est écrit dans le schéma `admin`.
 - **Règle de capacité** : pas de vue → pas d'onglet ; pas de colonne → pas de section. Une absence n'est jamais une erreur.
 - **Aucun nom de vue ne vient de la requête** : les noms de vues sont dans une table de correspondance en dur (`ONGLETS`), le paramètre client n'est qu'une clé de ce dictionnaire.
-- **Tests Edge Functions** : `Deno.test` + `assertEquals` depuis `https://deno.land/std@0.224.0/assert/mod.ts`, dans un fichier `<module>.test.ts` à côté du module. Commande : `deno test supabase/functions/admin-dossiers/`.
+- **Tests Edge Functions** : `Deno.test` + `assertEquals` depuis `https://deno.land/std@0.224.0/assert/mod.ts`, dans un fichier `<module>.test.ts` à côté du module. Commande : `deno test --allow-env supabase/functions/admin-dossiers/`.
 - **Pas de tests unitaires front** : le repo n'a aucun runner front (pas de vitest, pas de jest, aucun `*.test.jsx`). N'en installe pas — c'est hors périmètre. Le front se vérifie par `npm run lint` (zéro warning, `--max-warnings 0`) puis par observation réelle dans le navigateur.
 - **Vérification navigateur** : la configuration `baikal-dev` de `.claude/launch.json` (npm run dev, port 5173) existe déjà — utilise-la, ne lance jamais un serveur via Bash.
 - **Commits fréquents**, un par tâche, en français sans accents, préfixe `feat(fiche):` / `test(fiche):` / `refactor(fiche):` / `docs(fiche):`.

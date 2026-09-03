@@ -13,6 +13,7 @@ const siteComplet: Site = {
   env_secret_ref: "RELAIS_TEST_CLE",
   env_anon_key: "anon-jwt",
   env_dossiers_fn: "pv-admin-dossiers",
+  env_prospects_fn: null,
 };
 
 Deno.test("relaisConfigure: vrai quand les 4 champs sont presents", () => {

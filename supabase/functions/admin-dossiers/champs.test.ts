@@ -61,3 +61,29 @@ Deno.test("valeur nulle conservee (le front affiche un tiret)", () => {
 Deno.test("liste vide -> aucune section", () => {
   assertEquals(grouperChamps([]), []);
 });
+
+Deno.test("ordre_section null explicite est traite comme absent", () => {
+  const sections = grouperChamps([
+    { section: "NULLE", ordre_section: null, libelle: "a", valeur: "1" },
+    { section: "PREMIERE", ordre_section: 1, libelle: "b", valeur: "2" },
+  ]);
+  assertEquals(sections.map((s) => s.section), ["PREMIERE", "NULLE"]);
+});
+
+Deno.test("ordre null explicite est traite comme absent", () => {
+  const [s] = grouperChamps([
+    { section: "A", libelle: "sans ordre", ordre: null, valeur: "1" },
+    { section: "A", libelle: "avec ordre", ordre: 1, valeur: "2" },
+  ]);
+  assertEquals(s.champs.map((c) => c.libelle), ["avec ordre", "sans ordre"]);
+});
+
+Deno.test("les trois categories de section coexistent dans le bon ordre", () => {
+  const sections = grouperChamps([
+    { section: "ZZZ", libelle: "a", valeur: "1" },
+    { section: "PREMIERE", ordre_section: 1, libelle: "b", valeur: "2" },
+    { libelle: "orphelin", valeur: "3" },
+    { section: "AAA", libelle: "c", valeur: "4" },
+  ]);
+  assertEquals(sections.map((s) => s.section), ["", "PREMIERE", "AAA", "ZZZ"]);
+});
