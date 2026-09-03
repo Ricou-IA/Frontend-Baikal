@@ -11,6 +11,9 @@ import { ErreurAcces, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 import { normaliserCriteres } from "./filtres.ts";
 import { canalVente } from "./canal.ts";
 import { ErreurRelais, preparerRelais, relaisConfigure } from "./relais.ts";
+import { ONGLETS } from "./onglets.ts";
+import { grouperChamps } from "./champs.ts";
+import { type ActionFiche, normaliserManifeste } from "./manifeste.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -23,6 +26,51 @@ function json(payload: unknown, status = 200): Response {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+// Un seul point d'appel du relais : toutes les actions inter-projets passent
+// ici. Renvoie la charge JSON du site ou leve une ErreurRelais.
+async function appelerRelais(
+  site: Awaited<ReturnType<typeof chargerSite>>,
+  corps: Record<string, unknown>,
+): Promise<unknown> {
+  const cible = preparerRelais(site);
+  if (!cible) throw new ErreurRelais("Site sans canal d'administration configure");
+  const reponse = await fetch(cible.url, {
+    method: "POST",
+    headers: cible.headers,
+    body: JSON.stringify(corps),
+  });
+  const texte = await reponse.text();
+  let charge: unknown;
+  try {
+    charge = JSON.parse(texte);
+  } catch {
+    charge = { brut: texte.slice(0, 500) };
+  }
+  if (!reponse.ok) {
+    throw new ErreurRelais(`Site ${site.id}: HTTP ${reponse.status}`);
+  }
+  return charge;
+}
+
+// Le manifeste est demande POUR CE DOSSIER : c'est ainsi qu'un site n'expose
+// une action que quand elle a un sens (credits pro sur un dossier b2b).
+// Un relais en panne ne doit pas rendre la fiche illisible : on renvoie une
+// liste vide et le motif.
+async function chargerManifeste(
+  site: Awaited<ReturnType<typeof chargerSite>>,
+  dossierId: string,
+): Promise<{ actions: ActionFiche[]; erreur: string | null }> {
+  if (!relaisConfigure(site)) return { actions: [], erreur: null };
+  try {
+    const charge = await appelerRelais(site, { action: "manifeste", dossier_id: dossierId });
+    return { actions: normaliserManifeste(charge), erreur: null };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error("[admin-dossiers] manifeste", message);
+    return { actions: [], erreur: message };
+  }
 }
 
 interface EtapeFunnel {
@@ -145,9 +193,9 @@ serve(async (req) => {
       if (!schemaVues) {
         return json({ data: { disponible: false }, error: null });
       }
-      const [vues] = await sql`
-        SELECT to_regclass(${schemaVues + ".baikal_dossier_emails"})::text  AS emails,
-               to_regclass(${schemaVues + ".baikal_dossier_events"})::text  AS events`;
+      // Les onglets reellement disponibles (action fiche) se lisent desormais
+      // via ONGLETS + to_regclass, generique sur les sept vues -- l'ancienne
+      // detection ad hoc emails/events n'a plus de lecteur.
       const colonnes = new Set(
         (await sql`
           SELECT column_name FROM information_schema.columns
@@ -219,16 +267,43 @@ serve(async (req) => {
         const [dossier] = await sql`
           SELECT * FROM ${sql(schemaVues)}.baikal_dossiers WHERE dossier_id = ${dossierId}`;
         if (!dossier) return json({ data: null, error: "Dossier introuvable" }, 404);
-        const emails = vues.emails
-          ? await sql`
-            SELECT * FROM ${sql(schemaVues)}.baikal_dossier_emails
-            WHERE dossier_id = ${dossierId} ORDER BY envoye_le DESC LIMIT 200`
-          : null;
-        const events = vues.events
-          ? await sql`
-            SELECT * FROM ${sql(schemaVues)}.baikal_dossier_events
-            WHERE dossier_id = ${dossierId} ORDER BY survenu_le DESC LIMIT 100`
-          : null;
+
+        // Onglets reellement disponibles chez ce site : une vue absente n'est
+        // pas une erreur, c'est un onglet qui ne s'affiche pas. unnest sur
+        // deux tableaux parametres = une seule requete, sans un seul nom
+        // d'objet concatene dans du SQL brut.
+        const cles = Object.keys(ONGLETS);
+        const nomsVues = cles.map((cle) => ONGLETS[cle].vue);
+        const presentes: { cle: string; ok: boolean }[] = await sql`
+          SELECT cle, to_regclass(${schemaVues} || '.' || vue) IS NOT NULL AS ok
+          FROM unnest(${cles}::text[], ${nomsVues}::text[]) AS t(cle, vue)`;
+        const vues = presentes.filter((v) => v.ok).map((v) => v.cle as string);
+
+        // Compteurs : les libelles d'onglets ("Documents (3)") et le grisage
+        // des onglets vides en dependent. Une requete par vue plutot qu'un
+        // UNION ALL compose : la connexion est en max:1 de toute facon, et
+        // sept count indexes sur dossier_id ne se discutent pas.
+        const compteurs: Record<string, number> = {};
+        for (const cle of vues) {
+          const [c] = await sql`
+            SELECT count(*) AS n FROM ${sql(schemaVues)}.${sql(ONGLETS[cle].vue)}
+            WHERE dossier_id = ${dossierId}`;
+          compteurs[cle] = Number(c.n);
+        }
+
+        // Champs declares : la vue est optionnelle, comme tout le reste.
+        const [champsVue] = await sql`
+          SELECT to_regclass(${schemaVues + ".baikal_dossier_champs"}) IS NOT NULL AS ok`;
+        const sections = champsVue.ok
+          ? grouperChamps(
+            await sql`
+              SELECT * FROM ${sql(schemaVues)}.baikal_dossier_champs
+              WHERE dossier_id = ${dossierId}`,
+          )
+          : [];
+
+        const manifeste = await chargerManifeste(site, dossierId);
+
         return json({
           data: {
             disponible: true,
@@ -236,10 +311,12 @@ serve(async (req) => {
               ...dossier,
               canal: canalVente(dossier.attribution as Record<string, unknown> | null),
             },
-            emails,
-            events,
+            sections,
+            compteurs,
+            vues,
             funnel,
-            actions: relaisConfigure(site),
+            actions: manifeste.actions,
+            actionsErreur: manifeste.erreur,
           },
           error: null,
         });
