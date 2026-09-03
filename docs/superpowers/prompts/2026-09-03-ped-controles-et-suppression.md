@@ -77,7 +77,17 @@ rien d'autre à faire côté affichage — pas d'état « résolu » à transmet
 juste l'absence de la ligne. Cette règle vaut pour les deux natures de
 contrôle.
 
-## 3. Ajouter l'action « Supprimer » au manifeste
+## 3. L'action « Supprimer » — DÉJÀ FAIT, rien à reprendre
+
+> **Cette section est close.** Elle est conservée pour mémoire, comme trace
+> de la décision et du contrat. Au 2026-09-03, l'action `hard-delete` est
+> déployée en production, votre handler accepte les deux noms
+> (`hard-delete` et `supprimer`), et le manifeste déclare déjà l'entrée :
+> le bouton apparaît donc dans la console sans autre intervention. Ne
+> refaites rien ici. Seules les sections 1 et 2 attendent encore votre
+> travail.
+
+### Pour mémoire — le contrat retenu
 
 Votre ancien back-office avait trois boutons : Re-extraire, Renvoyer email,
 Supprimer. La fiche Baikal affiche « Purger les documents » à la place du
