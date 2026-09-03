@@ -7,7 +7,10 @@ import type { Site } from "../_shared/sites.ts";
 export class ErreurRelais extends Error {
   constructor(
     message: string,
-    readonly statut?: number,
+    // Code que Baikal renvoie a la console : 502 quand le site a repondu en
+    // erreur, 504 quand il n'a pas repondu du tout, rien (donc 500) quand
+    // c'est le canal lui-meme qui est mal configure.
+    readonly statutSortie?: number,
     readonly detail?: unknown,
   ) {
     super(message);

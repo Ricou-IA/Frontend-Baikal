@@ -51,6 +51,7 @@ async function appelerRelais(
     if (e instanceof DOMException && e.name === "TimeoutError") {
       throw new ErreurRelais(
         `Site ${site.id}: pas de reponse en ${Math.round(timeoutMs / 1000)}s`,
+        504,
       );
     }
     throw e;
@@ -65,8 +66,8 @@ async function appelerRelais(
   if (!reponse.ok) {
     throw new ErreurRelais(
       `Site ${site.id}: HTTP ${reponse.status}`,
-      reponse.status,
-      charge,
+      502,
+      { statut_site: reponse.status, corps: charge },
     );
   }
   return charge;
@@ -406,7 +407,7 @@ serve(async (req) => {
     if (e instanceof ErreurRelais) {
       return json(
         { data: null, error: e.message, detail: e.detail ?? null },
-        e.statut ? 502 : 500,
+        e.statutSortie ?? 500,
       );
     }
     const message = e instanceof Error ? e.message : String(e);

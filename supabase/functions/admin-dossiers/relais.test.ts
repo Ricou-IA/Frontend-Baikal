@@ -42,17 +42,27 @@ Deno.test("preparerRelais: cible complete, slash final rogne", () => {
   Deno.env.delete("RELAIS_TEST_CLE");
 });
 
-// Fix round 1 : le catch general de serve() distingue une reponse du site
-// (statut + detail, remonte en 502) d'une erreur de configuration du canal
-// (secret absent, remonte en 500) -- ce test verifie que la classe transporte
-// bien les deux champs quand ils sont fournis, et les laisse a undefined sinon.
-Deno.test("ErreurRelais: porte statut et detail quand fournis, undefined sinon", () => {
-  const avecDetail = new ErreurRelais("Site x: HTTP 403", 403, { motif: "credits insuffisants" });
-  assertEquals(avecDetail.statut, 403);
-  assertEquals(avecDetail.detail, { motif: "credits insuffisants" });
-
-  const sansDetail = new ErreurRelais("Site sans canal d'administration configure");
-  assertEquals(sansDetail.statut, undefined);
-  assertEquals(sansDetail.detail, undefined);
+// statutSortie est le code que Baikal renvoie a la console, pas le statut du
+// site : 502 pour une reponse en erreur du site (avec son detail), 504 pour
+// une absence de reponse, rien (donc 500 au niveau du catch general) pour un
+// canal mal configure cote Baikal.
+Deno.test("ErreurRelais: reponse du site en erreur -> statutSortie 502 avec detail", () => {
+  const e = new ErreurRelais(
+    "Site x: HTTP 403",
+    502,
+    { statut_site: 403, corps: { motif: "credits insuffisants" } },
+  );
+  assertEquals(e.statutSortie, 502);
+  assertEquals(e.detail, { statut_site: 403, corps: { motif: "credits insuffisants" } });
+});
+Deno.test("ErreurRelais: timeout -> statutSortie 504 sans detail", () => {
+  const e = new ErreurRelais("Site x: pas de reponse en 8s", 504);
+  assertEquals(e.statutSortie, 504);
+  assertEquals(e.detail, undefined);
+});
+Deno.test("ErreurRelais: canal mal configure -> statutSortie et detail absents", () => {
+  const e = new ErreurRelais("Site sans canal d'administration configure");
+  assertEquals(e.statutSortie, undefined);
+  assertEquals(e.detail, undefined);
 });
 
