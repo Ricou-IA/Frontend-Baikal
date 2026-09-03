@@ -131,6 +131,25 @@ Entrée : `{ action: "manifeste", dossier_id }`. Sortie :
   `type` ∈ `choix` `nombre` `texte` `booleen`. Un `choix` doit fournir
   `options: [{valeur, libelle}]` non vide.
 
+**L'`id` d'un paramètre EST la clé JSON que recevra votre Edge Function.**
+Baikal ne compose plus le corps relayé : il transmet les paramètres du
+manifeste tels quels, sous les identifiants que vous déclarez, à côté de
+`action` et `dossier_id`. Trois conséquences à traiter avant la bascule :
+
+- l'ancien corps `{ action, dossier_id, email_action }` devient
+  `{ action, dossier_id, emailAction }` si vous déclarez le paramètre sous
+  l'id `emailAction`. Adaptez vos gestionnaires, **ou** conservez vos noms
+  actuels comme identifiants de paramètres (`{ "id": "email_action", … }`,
+  `{ "id": "credits", … }`) — les deux marchent, mais il faut choisir. Sans
+  ce choix, `resend-email` et `add-pro-credits` liront `undefined`.
+- le type JSON suit le type déclaré : `choix` et `texte` arrivent en chaîne,
+  `nombre` en nombre, `booleen` en booléen. Un champ `nombre` que
+  l'utilisateur a vidé arrive en chaîne vide.
+- **Baikal ne borne plus rien.** Les `min` et `max` d'un paramètre `nombre`
+  ne sont que des attributs d'affichage du champ, jamais une validation :
+  l'ancien plafond à 100 crédits n'existe plus nulle part ailleurs que chez
+  vous. Validez et bornez chaque valeur reçue côté site.
+
 **Le manifeste est calculé pour CE dossier** : n'expose `add-pro-credits`
 que si le dossier est B2B. C'est ce qui évite d'écrire des règles métier
 dans Baikal.
