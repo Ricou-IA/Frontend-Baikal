@@ -13,7 +13,7 @@ import { canalVente } from "./canal.ts";
 import { ErreurRelais, preparerRelais, relaisConfigure } from "./relais.ts";
 import { ONGLETS, paginationOnglet, resoudreOnglet, triEffectif } from "./onglets.ts";
 import { grouperChamps } from "./champs.ts";
-import { type ActionFiche, normaliserManifeste } from "./manifeste.ts";
+import { type ActionFiche, normaliserManifeste, trouverAction } from "./manifeste.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -33,14 +33,28 @@ function json(payload: unknown, status = 200): Response {
 async function appelerRelais(
   site: Awaited<ReturnType<typeof chargerSite>>,
   corps: Record<string, unknown>,
+  timeoutMs = 30000,
 ): Promise<unknown> {
   const cible = preparerRelais(site);
   if (!cible) throw new ErreurRelais("Site sans canal d'administration configure");
-  const reponse = await fetch(cible.url, {
-    method: "POST",
-    headers: cible.headers,
-    body: JSON.stringify(corps),
-  });
+  let reponse: Response;
+  try {
+    reponse = await fetch(cible.url, {
+      method: "POST",
+      headers: cible.headers,
+      body: JSON.stringify(corps),
+      // Deno n'impose aucun delai a fetch : sans ce signal, un site injoignable
+      // ferait pendre la fiche entiere jusqu'au delai de l'Edge Function.
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "TimeoutError") {
+      throw new ErreurRelais(
+        `Site ${site.id}: pas de reponse en ${Math.round(timeoutMs / 1000)}s`,
+      );
+    }
+    throw e;
+  }
   const texte = await reponse.text();
   let charge: unknown;
   try {
@@ -64,7 +78,14 @@ async function chargerManifeste(
 ): Promise<{ actions: ActionFiche[]; erreur: string | null }> {
   if (!relaisConfigure(site)) return { actions: [], erreur: null };
   try {
-    const charge = await appelerRelais(site, { action: "manifeste", dossier_id: dossierId });
+    // Lecture courte sur le chemin de l'affichage de la fiche : budget reduit
+    // par rapport au defaut des actions (30s), une re-extraction pouvant etre
+    // synchrone cote site.
+    const charge = await appelerRelais(
+      site,
+      { action: "manifeste", dossier_id: dossierId },
+      8000,
+    );
     return { actions: normaliserManifeste(charge), erreur: null };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
@@ -111,61 +132,62 @@ serve(async (req) => {
     });
     const site = await chargerSite(admin, appId);
 
-    // Chemin relais : actions et fiche etendue via l'EF d'administration du
-    // site (spec, section 7). Pas de connexion SQL ici : tout part en HTTP.
-    if (action === "site-detail" || action === "site-action") {
+    // Chemin relais : plus que deux usages, l'ouverture d'un fichier et
+    // l'execution d'une action declaree par le site. La liste des actions
+    // n'est plus connue de Baikal : elle vient du manifeste du site.
+    if (action === "fichier" || action === "site-action") {
       const dossierId = typeof body.dossierId === "string" ? body.dossierId : "";
       if (!dossierId) return json({ data: null, error: "dossierId requis" }, 400);
-      const ACTIONS_SITE: Record<string, { superAdminSeul: boolean }> = {
-        "detail": { superAdminSeul: false },
-        "re-extract": { superAdminSeul: false },
-        "resend-email": { superAdminSeul: false },
-        "reset-extractions": { superAdminSeul: false },
-        "add-pro-credits": { superAdminSeul: true },
-        "purge-documents": { superAdminSeul: true },
-      };
-      const actionSite = action === "site-detail" ? "detail" : String(body.actionSite ?? "");
-      const def = ACTIONS_SITE[actionSite];
-      if (!def || (action === "site-action" && actionSite === "detail")) {
-        return json({ data: null, error: `Action site inconnue: ${actionSite}` }, 400);
+      if (!relaisConfigure(site)) {
+        return json({ data: null, error: "Site sans canal d'administration configure" }, 400);
       }
-      if (def.superAdminSeul) {
+
+      if (action === "fichier") {
+        const cible = body.cible === "resultat" ? "resultat" : "document";
+        const id = typeof body.id === "string" ? body.id : "";
+        if (!id) return json({ data: null, error: "id requis" }, 400);
+        const charge = await appelerRelais(site, {
+          action: "fichier",
+          dossier_id: dossierId,
+          cible,
+          id,
+        });
+        return json({ data: charge, error: null });
+      }
+
+      // site-action : on redemande le manifeste pour ce dossier, ce qui
+      // remplace exactement l'ancienne liste en dur -- une action absente du
+      // manifeste n'est pas relayee.
+      const manifeste = await chargerManifeste(site, dossierId);
+      if (manifeste.erreur) {
+        return json({ data: null, error: `Manifeste indisponible: ${manifeste.erreur}` }, 502);
+      }
+      const def = trouverAction(manifeste.actions, body.actionSite);
+      if (!def) {
+        return json({ data: null, error: `Action site inconnue: ${body.actionSite}` }, 400);
+      }
+      if (def.superAdmin) {
         const { data: profil } = await caller
           .from("profiles").select("app_role").eq("id", user.id).single();
         if (profil?.app_role !== "super_admin") {
           return json({ data: null, error: "Action reservee au super_admin" }, 403);
         }
       }
-      const cible = preparerRelais(site);
-      if (!cible) {
-        return json({ data: null, error: "Site sans canal d'administration configure" }, 400);
+
+      // Les parametres sont relayes tels quels : c'est l'EF du site qui les
+      // valide, elle seule connait ses bornes metier.
+      const parametres: Record<string, unknown> = {};
+      for (const p of def.parametres) {
+        if (body.parametres && typeof body.parametres === "object") {
+          const fourni = (body.parametres as Record<string, unknown>)[p.id];
+          if (fourni !== undefined) parametres[p.id] = fourni;
+        }
       }
-      const corps: Record<string, unknown> = { action: actionSite, dossier_id: dossierId };
-      if (actionSite === "resend-email") {
-        corps.email_action = typeof body.emailAction === "string" ? body.emailAction : "";
-      }
-      if (actionSite === "add-pro-credits") {
-        const brut = Number(body.credits);
-        corps.credits = Number.isFinite(brut) && brut > 0 ? Math.min(100, Math.floor(brut)) : 1;
-      }
-      const reponse = await fetch(cible.url, {
-        method: "POST",
-        headers: cible.headers,
-        body: JSON.stringify(corps),
+      const charge = await appelerRelais(site, {
+        action: def.id,
+        dossier_id: dossierId,
+        ...parametres,
       });
-      const texte = await reponse.text();
-      let charge: unknown;
-      try {
-        charge = JSON.parse(texte);
-      } catch {
-        charge = { brut: texte.slice(0, 500) };
-      }
-      if (!reponse.ok) {
-        return json(
-          { data: null, error: `Site ${site.id}: HTTP ${reponse.status}`, detail: charge },
-          502,
-        );
-      }
       return json({ data: charge, error: null });
     }
 
