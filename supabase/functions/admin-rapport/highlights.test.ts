@@ -10,10 +10,10 @@ function base(): FaitsHighlights {
     franchise: { seuil: 15, ventes: 13, partageables: 0, quote_part: 0 },
     seo: {
       google: {
-        periode: { clics: 523, impressions: 9819, ctr: 0.053, position: 15.2 },
-        precedent: { clics: 644, impressions: 10412, ctr: 0.062, position: 10.0 },
+        periode: { clics: 523, impressions: 9819, impressions_hors_bruit: 11846, ctr: 0.053, position: 15.2 },
+        precedent: { clics: 644, impressions: 10412, impressions_hors_bruit: 11600, ctr: 0.062, position: 10.0 },
       },
-      bing: { periode: { clics: 137, impressions: 2245, ctr: 0.06, position: 0 }, precedent: null },
+      bing: { periode: { clics: 137, impressions: 2245, impressions_hors_bruit: null, ctr: 0.06, position: 0 }, precedent: null },
       requetes_periode: [
         { cle: "pré état daté", clics: 120, impressions: 900, position: 2.8 },
         { cle: "pré état daté gratuit", clics: 40, impressions: 300, position: 5.1 },
@@ -50,8 +50,10 @@ Deno.test("trame complete pour un mois ordinaire", () => {
   assertEquals(h[0], "13 ventes en août 2026 contre 14 en juillet 2026 (−1).");
   assertEquals(h[1], "Seuil de 15 ventes non atteint (13 sur 15) : aucune vente partageable ce mois.");
   assertEquals(h[2], "523 clics Google contre 644 (−121, −19 %).");
-  assertEquals(h[3], "9 819 impressions Google contre 10 412 (−593, −6 %).");
-  assertEquals(h[4], "Position moyenne Google 15,2 contre 10,0 (5,2 places perdues).");
+  assertEquals(h[3], "11 846 impressions Google hors bruit contre 11 600 (+246, +2 %).");
+  // Jamais de position moyenne globale ni d'impressions brutes (annexe 2, B.2).
+  assert(!h.some((p) => p.includes("Position moyenne")));
+  assert(!h.some((p) => p.includes("9 819")));
   // Meilleure progression : « gratuit » gagne 3,5 places, « pré état daté » 1,4.
   assert(h.includes("« pré état daté gratuit » passe de la position 8,6 à 5,1."));
   assert(h.includes("1 requête entre dans le top 10 : « nouvelle requête »."));
@@ -66,7 +68,7 @@ Deno.test("premiere periode mesuree : pas de comparaison", () => {
   f.seo.requetes_precedent = [];
   const h = calculerHighlights(f);
   assertEquals(h[0], "13 ventes en août 2026, première période mesurée.");
-  assert(h.includes("523 clics et 9 819 impressions Google, première période mesurée."));
+  assert(h.includes("523 clics Google, première période mesurée."));
   assert(!h.some((p) => p.includes("top 10")));
 });
 

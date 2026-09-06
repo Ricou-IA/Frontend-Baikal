@@ -20,7 +20,6 @@ const SIGNE_MOINS = new RegExp(String.fromCharCode(0x2212), 'g');
 const t = (s) => String(s ?? '').replace(ESPACES_INSECABLES, ' ').replace(SIGNE_MOINS, '-');
 const eur = (n) => t(`${new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(n || 0))} €`);
 const nb = (n) => t(new Intl.NumberFormat('fr-FR').format(Number(n || 0)));
-const pct = (n) => t(`${(Number(n || 0) * 100).toFixed(1).replace('.', ',')} %`);
 const pos = (n) => t(Number(n || 0).toFixed(1).replace('.', ','));
 const dateFr = (iso) => {
   if (!iso) return '';
@@ -79,11 +78,14 @@ function BlocSeo({ seo, moisEntier }) {
     periode: source.periode ? f(source.periode) : '—',
     precedent: source.precedent ? f(source.precedent) : '—',
   });
-  const lignes = (source) => [
+  // Ni total d'impressions brut ni position moyenne globale : ecartes par le
+  // contrat agence (annexe 2, B.2), ils mentent sur ce site. Google montre les
+  // impressions hors bruit ; Bing n'a pas cette notion, il montre les siennes.
+  const lignes = (source, google) => [
     ligne('Clics', source, (x) => nb(x.clics)),
-    ligne('Impressions', source, (x) => nb(x.impressions)),
-    ligne('CTR', source, (x) => pct(x.ctr)),
-    ligne('Position moyenne', source, (x) => pos(x.position)),
+    google
+      ? ligne('Impressions hors bruit', source, (x) => (x.impressions_hors_bruit === null ? '—' : nb(x.impressions_hors_bruit)))
+      : ligne('Impressions', source, (x) => nb(x.impressions)),
   ];
   const colonnes = [
     { titre: 'Indicateur', valeur: (l) => l.libelle, flex: 2 },
@@ -101,11 +103,11 @@ function BlocSeo({ seo, moisEntier }) {
       <View style={{ flexDirection: 'row', gap: 12 }}>
         <View style={{ flex: 1 }}>
           <Text style={[s.cellTh, { paddingHorizontal: 0 }]}>Google</Text>
-          <Table colonnes={colonnes} lignes={lignes(seo.google)} cle={(l) => l.libelle} />
+          <Table colonnes={colonnes} lignes={lignes(seo.google, true)} cle={(l) => l.libelle} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={[s.cellTh, { paddingHorizontal: 0 }]}>Bing</Text>
-          <Table colonnes={colonnes} lignes={lignes(seo.bing)} cle={(l) => l.libelle} />
+          <Table colonnes={colonnes} lignes={lignes(seo.bing, false)} cle={(l) => l.libelle} />
         </View>
       </View>
       {seo.top_requetes.length > 0 && (
@@ -212,8 +214,8 @@ export default function RapportPdf({ contenu, evolutions, commentaire, version, 
         <BlocSeo seo={c.seo} moisEntier={c.mois_entier} />
         <Text style={s.note}>
           {t(c.mois_entier
-            ? 'Totaux Google et Bing depuis la série quotidienne de la propriété. Requêtes et pages : Search Console, hors bruit.'
-            : `Totaux Google et Bing depuis la série quotidienne de la propriété, exacts au jour. Requêtes et pages : Search Console, hors bruit, cumul des mois couverts (${c.mois_couverts.join(', ')}).`)}
+            ? 'Clics depuis la série quotidienne de la propriété. Impressions Google hors bruit : total des pages du mois moins les requêtes entre guillemets. Requêtes et pages : Search Console, hors bruit. Pas de position moyenne globale ni de total brut : ces deux chiffres ne décrivent pas ce site.'
+            : `Clics depuis la série quotidienne de la propriété, exacts au jour. Impressions Google hors bruit, requêtes et pages : Search Console, cumul des mois couverts (${c.mois_couverts.join(', ')}). Pas de position moyenne globale ni de total brut : ces deux chiffres ne décrivent pas ce site.`)}
         </Text>
 
         {c.highlights.length > 0 && (

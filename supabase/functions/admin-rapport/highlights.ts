@@ -7,11 +7,17 @@
 // periode est deja libellee par l'appelant (« en août 2026 », « du 1er au 15
 // août 2026 ») : ces regles ne connaissent pas le calendrier.
 
+// Ce que le rapport montre : clics (serie quotidienne, exacts) et impressions
+// HORS BRUIT (Google : total des pages du mois moins les requetes entre
+// guillemets marquees is_noise). Le total brut et la position moyenne globale
+// sont conserves dans le JSON mais jamais affiches ni commentes : ecartes par
+// le contrat agence (annexe 2, B.2), ils mentent sur ce site.
 export interface TotauxSeo {
   clics: number;
-  impressions: number;
+  impressions: number; // brut, non affiche
+  impressions_hors_bruit: number | null; // null = notion sans objet (Bing)
   ctr: number;
-  position: number;
+  position: number; // non affichee
 }
 
 export interface RequeteMois {
@@ -93,25 +99,22 @@ export function calculerHighlights(f: FaitsHighlights): string[] {
     }
   }
 
-  // 3-5. Google : clics, impressions, position.
+  // 3-4. Google : clics, puis impressions hors bruit. Jamais la position
+  // moyenne globale ni le total brut (annexe 2, B.2 du contrat agence).
   const g = f.seo.google.periode;
   const gp = f.seo.google.precedent;
   if (g && gp) {
     out.push(`${nb(g.clics)} clics Google contre ${nb(gp.clics)} (${variation(g.clics, gp.clics)}).`);
-    out.push(`${nb(g.impressions)} impressions Google contre ${nb(gp.impressions)} (${variation(g.impressions, gp.impressions)}).`);
-    if (g.position > 0 && gp.position > 0) {
-      const delta = Number((g.position - gp.position).toFixed(1));
-      const detail = delta === 0
-        ? "stable"
-        : `${dec(Math.abs(delta))} place${Math.abs(delta) >= 2 ? "s" : ""} ${delta < 0 ? "gagnée" : "perdue"}${Math.abs(delta) >= 2 ? "s" : ""}`;
-      out.push(`Position moyenne Google ${dec(g.position)} contre ${dec(gp.position)} (${detail}).`);
+    if (g.impressions_hors_bruit !== null && gp.impressions_hors_bruit !== null) {
+      out.push(`${nb(g.impressions_hors_bruit)} impressions Google hors bruit contre ${nb(gp.impressions_hors_bruit)} (${variation(g.impressions_hors_bruit, gp.impressions_hors_bruit)}).`);
     }
   } else if (g) {
-    out.push(`${nb(g.clics)} clics et ${nb(g.impressions)} impressions Google, première période mesurée.`);
+    out.push(`${nb(g.clics)} clics Google, première période mesurée.`);
   }
 
-  // 6. Meilleure progression de position : requetes presentes les deux
-  // periodes avec au moins 20 impressions chacune.
+  // 5. Meilleure progression de position : requetes presentes les deux
+  // periodes avec au moins 20 impressions chacune. La position n'est lue
+  // qu'au niveau d'une requete, jamais globalement.
   const precMap = new Map(f.seo.requetes_precedent.map((r) => [r.cle, r]));
   let meilleure: { cle: string; avant: number; apres: number } | null = null;
   for (const r of f.seo.requetes_periode) {
@@ -126,7 +129,7 @@ export function calculerHighlights(f: FaitsHighlights): string[] {
     out.push(`« ${meilleure.cle} » passe de la position ${dec(meilleure.avant)} à ${dec(meilleure.apres)}.`);
   }
 
-  // 7. Entrees dans le top 10 par clics.
+  // 6. Entrees dans le top 10 par clics.
   const top10 = (l: RequeteMois[]) =>
     [...l].sort((a, b) => b.clics - a.clics).slice(0, 10).map((r) => r.cle);
   if (f.seo.requetes_precedent.length > 0) {
@@ -137,7 +140,7 @@ export function calculerHighlights(f: FaitsHighlights): string[] {
     }
   }
 
-  // 8. Bing, seulement si la periode precedente est mesuree (pas
+  // 7. Bing, seulement si la periode precedente est mesuree (pas
   // d'historique Bing avant le cron : un 0 serait un mensonge).
   const b = f.seo.bing.periode;
   const bp = f.seo.bing.precedent;

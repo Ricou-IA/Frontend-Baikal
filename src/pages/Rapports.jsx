@@ -56,7 +56,14 @@ async function blobEnBase64(blob) {
 function Apercu({ contenu }) {
   const c = contenu;
   const moisCouverts = new Set(c.mois_couverts);
-  const seo = (source) => (source ? `${fmtNombre(source.clics)} clics · ${fmtNombre(source.impressions)} impressions · position ${Number(source.position).toFixed(1).replace('.', ',')}` : '—');
+  // Ni impressions brutes ni position moyenne globale (contrat agence, annexe 2 B.2).
+  const seo = (source, google) => {
+    if (!source) return '—';
+    const impressions = google
+      ? (source.impressions_hors_bruit === null ? '—' : `${fmtNombre(source.impressions_hors_bruit)} impressions hors bruit`)
+      : `${fmtNombre(source.impressions)} impressions`;
+    return `${fmtNombre(source.clics)} clics · ${impressions}`;
+  };
   return (
     <div className="space-y-4">
       {c.sources_manquantes.length > 0 && (
@@ -76,8 +83,8 @@ function Apercu({ contenu }) {
         </div>
         <div className="bg-baikal-surface border border-baikal-border rounded-lg p-4 space-y-1 text-sm text-baikal-text">
           <div className="text-xs opacity-60 uppercase tracking-wider">SEO de la période</div>
-          <div><span className="opacity-60">Google</span> · {seo(c.seo.google.periode)}</div>
-          <div><span className="opacity-60">Bing</span> · {seo(c.seo.bing.periode)}</div>
+          <div><span className="opacity-60">Google</span> · {seo(c.seo.google.periode, true)}</div>
+          <div><span className="opacity-60">Bing</span> · {seo(c.seo.bing.periode, false)}</div>
         </div>
       </div>
 

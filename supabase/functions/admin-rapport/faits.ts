@@ -54,6 +54,7 @@ function totaux(rows: any[]): TotauxSeo | null {
   return {
     clics,
     impressions,
+    impressions_hors_bruit: null,
     ctr: impressions > 0 ? arrondi(clics / impressions, 4) : 0,
     position: impressions > 0 ? arrondi(posPond / impressions, 1) : 0,
   };
@@ -67,6 +68,32 @@ async function serieSite(admin: any, appId: string, source: string, p: Periode):
     .gte("period_start", p.debut).lte("period_start", p.fin);
   if (error) throw new Error(error.message);
   return totaux(data ?? []);
+}
+
+// Impressions Google hors bruit, au mois : total des pages du mois moins les
+// requetes entre guillemets (is_noise), qui font des milliers d'impressions a
+// 0 clic. Sur une periode partielle, c'est le cumul des mois couverts : dit
+// dans le rapport. Null si aucun mois archive.
+async function impressionsHorsBruit(admin: any, appId: string, mois: string[]): Promise<number | null> {
+  if (mois.length === 0) return null;
+  const debuts = mois.map((m) => `${m}-01`);
+  const [pages, bruit] = await Promise.all([
+    admin.schema("admin").from("seo_snapshots")
+      .select("impressions")
+      .eq("app_id", appId).eq("source", "google")
+      .eq("granularity", "month").eq("dimension", "page")
+      .in("period_start", debuts).limit(5000),
+    admin.schema("admin").from("seo_snapshots")
+      .select("impressions")
+      .eq("app_id", appId).eq("source", "google")
+      .eq("granularity", "month").eq("dimension", "query")
+      .in("period_start", debuts).eq("is_noise", true).limit(5000),
+  ]);
+  if (pages.error) throw new Error(pages.error.message);
+  if (bruit.error) throw new Error(bruit.error.message);
+  if (!pages.data || pages.data.length === 0) return null;
+  const somme = (rows: any[]) => rows.reduce((a, r) => a + Number(r.impressions), 0);
+  return Math.max(0, somme(pages.data) - somme(bruit.data ?? []));
 }
 
 // Lignes mensuelles (requetes ou pages) cumulees sur les mois couverts :
@@ -167,7 +194,7 @@ export async function construireFaits(admin: any, appId: string, periode: Period
   const nombrePrecedent = Number(avant ?? 0) > 0 ? await compterVentes(admin, appId, prec) : null;
 
   // --- SEO.
-  const [gM, gP, bM, bP, reqM, reqP, pagesM] = await Promise.all([
+  const [gBrut, gpBrut, bM, bP, reqM, reqP, pagesM, hbM, hbP] = await Promise.all([
     serieSite(admin, appId, "google", periode),
     serieSite(admin, appId, "google", prec),
     serieSite(admin, appId, "bing", periode),
@@ -175,7 +202,11 @@ export async function construireFaits(admin: any, appId: string, periode: Period
     lignesCumulees(admin, appId, "query", mois, 1000),
     lignesCumulees(admin, appId, "query", moisPrec, 1000),
     lignesCumulees(admin, appId, "page", mois, 10),
+    impressionsHorsBruit(admin, appId, mois),
+    impressionsHorsBruit(admin, appId, moisPrec),
   ]);
+  const gM = gBrut && { ...gBrut, impressions_hors_bruit: hbM };
+  const gP = gpBrut && { ...gpBrut, impressions_hors_bruit: hbP };
   if (!gM) manquantes.push("Aucune mesure Google sur la période");
   if (!bM) manquantes.push("Aucune mesure Bing sur la période");
 
