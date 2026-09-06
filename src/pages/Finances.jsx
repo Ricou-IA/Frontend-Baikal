@@ -534,6 +534,8 @@ function Partenariat({ appId }) {
                 <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
                   <th className="px-4 py-2">Mois</th>
                   <th className="text-right px-2 py-2">Ventes</th>
+                  <th className="text-right px-2 py-2">CA HT</th>
+                  <th className="text-right px-2 py-2">Coûts du mois</th>
                   <th className="text-right px-2 py-2">Partageables</th>
                   <th className="text-right px-2 py-2">CA partageable</th>
                   <th className="text-right px-2 py-2">Coûts imputés</th>
@@ -544,26 +546,47 @@ function Partenariat({ appId }) {
               </thead>
               <tbody>
                 {lignes.length === 0 && (
-                  <LigneVide colonnes={8} message="Aucun mois depuis le début du contrat." />
+                  <LigneVide colonnes={10} message="Aucune vente archivée pour ce site." />
                 )}
-                {lignes.map((l) => (
-                  <tr key={l.mois} className="border-t border-baikal-border/50">
-                    <td className="px-4 py-2 font-mono text-xs">{String(l.mois).slice(0, 7)}</td>
-                    <td className="text-right px-2 py-2 tabular-nums">{fmtNombre(l.ventes)}</td>
-                    <td className={`text-right px-2 py-2 tabular-nums ${l.ventes_partageables === 0 ? 'opacity-40' : 'text-white'}`}>
-                      {fmtNombre(l.ventes_partageables)}
-                    </td>
-                    <td className="text-right px-2 py-2 tabular-nums">{fmtEur(Number(l.ca_partageable_ht))}</td>
-                    <td className="text-right px-2 py-2 tabular-nums opacity-70">{fmtEur(Number(l.couts_imputables))}</td>
-                    <td className="text-right px-2 py-2 tabular-nums">{fmtEur(Number(l.resultat_partageable))}</td>
-                    <td className={`text-right px-2 py-2 tabular-nums ${Number(l.report_sortant) < 0 ? 'text-red-400' : 'opacity-40'}`}>
-                      {Number(l.report_sortant) < 0 ? fmtEur(Number(l.report_sortant)) : '—'}
-                    </td>
-                    <td className={`text-right px-4 py-2 tabular-nums font-semibold ${Number(l.quote_part) > 0 ? 'text-emerald-400' : 'opacity-40'}`}>
-                      {Number(l.quote_part) > 0 ? fmtEur(Number(l.quote_part)) : '—'}
-                    </td>
-                  </tr>
-                ))}
+                {lignes.map((l) => {
+                  // Les mois anterieurs au contrat sont affiches pour la tendance,
+                  // estompes et sans partage : meme lecture que le /admin du site.
+                  const dans = l.dans_decompte !== false;
+                  return (
+                    <tr key={l.mois} className={`border-t border-baikal-border/50 ${dans ? '' : 'opacity-45'}`}>
+                      <td className="px-4 py-2 font-mono text-xs whitespace-nowrap">
+                        {String(l.mois).slice(0, 7)}
+                        {!dans && <span className="ml-2 text-[10px] font-sans opacity-70">hors décompte</span>}
+                      </td>
+                      <td className="text-right px-2 py-2 tabular-nums">{fmtNombre(l.ventes)}</td>
+                      <td className="text-right px-2 py-2 tabular-nums">{fmtEur(Number(l.ca_ht))}</td>
+                      <td className="text-right px-2 py-2 tabular-nums opacity-70">{fmtEur(Number(l.couts_mois))}</td>
+                      {dans ? (
+                        <>
+                          <td className={`text-right px-2 py-2 tabular-nums ${l.ventes_partageables === 0 ? 'opacity-40' : 'text-white'}`}>
+                            {fmtNombre(l.ventes_partageables)}
+                          </td>
+                          <td className="text-right px-2 py-2 tabular-nums">{fmtEur(Number(l.ca_partageable_ht))}</td>
+                          <td className="text-right px-2 py-2 tabular-nums opacity-70">{fmtEur(Number(l.couts_imputables))}</td>
+                          <td className="text-right px-2 py-2 tabular-nums">{fmtEur(Number(l.resultat_partageable))}</td>
+                          <td className={`text-right px-2 py-2 tabular-nums ${Number(l.report_sortant) < 0 ? 'text-red-400' : 'opacity-40'}`}>
+                            {Number(l.report_sortant) < 0 ? fmtEur(Number(l.report_sortant)) : '—'}
+                          </td>
+                          <td className={`text-right px-4 py-2 tabular-nums font-semibold ${Number(l.quote_part) > 0 ? 'text-emerald-400' : 'opacity-40'}`}>
+                            {Number(l.quote_part) > 0 ? fmtEur(Number(l.quote_part)) : '—'}
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          {[0, 1, 2, 3, 4].map((i) => (
+                            <td key={i} className="text-right px-2 py-2 opacity-40">—</td>
+                          ))}
+                          <td className="text-right px-4 py-2 opacity-40">—</td>
+                        </>
+                      )}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -572,7 +595,9 @@ function Partenariat({ appId }) {
             ventes de chaque mois civil ne sont pas partagées. Le seuil s'apprécie mois par mois,
             sans report des ventes non réalisées — mais un résultat négatif, lui, se reporte
             jusqu'à apurement. Les coûts directs retenus ({contrat.couts_directs.join(', ')}) sont
-            imputés au prorata des ventes partageables.
+            imputés au prorata des ventes partageables. Les mois antérieurs au contrat sont
+            affichés « hors décompte » : ventes et CA HT de l'assiette pour la tendance, sans
+            franchise ni partage.
             {' '}<strong className="opacity-100">Les boutons ci-dessus simulent une autre assiette</strong> ;
             ils ne modifient pas le contrat, dont l'assiette reste « {contrat.assiette} ».
           </p>
