@@ -21,7 +21,10 @@ import { Document, Page, StyleSheet, Text, View } from '@react-pdf/renderer';
 // invisible a la relecture et refuse par le lint.
 const ESPACES_INSECABLES = new RegExp(`[${String.fromCharCode(0x202f)}${String.fromCharCode(0xa0)}]`, 'g');
 const SIGNE_MOINS = new RegExp(String.fromCharCode(0x2212), 'g');
-const t = (s) => String(s ?? '').replace(ESPACES_INSECABLES, ' ').replace(SIGNE_MOINS, '-');
+// Fleches (U+2190-2193) et signe « approximativement egal » : absents de WinAnsi.
+const FLECHES = { [String.fromCharCode(0x2192)]: '->', [String.fromCharCode(0x2190)]: '<-', [String.fromCharCode(0x2191)]: '^', [String.fromCharCode(0x2193)]: 'v', [String.fromCharCode(0x2248)]: '~' };
+const HORS_POLICE = new RegExp(`[${Object.keys(FLECHES).join('')}]`, 'g');
+const t = (s) => String(s ?? '').replace(ESPACES_INSECABLES, ' ').replace(SIGNE_MOINS, '-').replace(HORS_POLICE, (c) => FLECHES[c]);
 const eur = (n) => t(`${new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(n || 0))} €`);
 const nb = (n) => t(new Intl.NumberFormat('fr-FR').format(Number(n || 0)));
 const pos = (n) => (n === null || n === undefined ? '—' : t(Number(n).toFixed(1).replace('.', ',')));
