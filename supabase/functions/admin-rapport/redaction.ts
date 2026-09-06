@@ -114,7 +114,7 @@ const CONSIGNE_LECTURE_SEO = `Tu rédiges, en français, la « Lecture SEO » du
 
 DONNÉES REÇUES (tu ne disposes que de celles-ci)
 0. Période du rapport : date de début, date de fin, et période précédente de même durée à laquelle elle est comparée. Toute date que tu écris se déduit de ces bornes ; tu n'en supposes aucune autre.
-1. Trafic : clics et impressions Google par jour ouvré (jours fériés français exclus), période du rapport contre période précédente, et la même chose pour Bing. Sert à dire si la demande monte ou baisse, et si les deux moteurs bougent ensemble.
+1. Trafic : clics et impressions Google par jour, période du rapport contre période précédente, et la même chose pour Bing. Sert à dire si la demande monte ou baisse, et si les deux moteurs bougent ensemble.
 2. Impressions hors bruit par mois. Sert à distinguer une hausse de clics par le taux de clic d'une hausse par la visibilité.
 3. Clusters de requêtes par mois : requêtes, clics, impressions, position pondérée par les impressions. Sert à lire une tendance par sujet, jamais la position d'une page.
 4. Requête × page sur les pages clés, période du rapport contre période précédente, normalisées par jour : requêtes, clics, impressions, position pondérée. C'est la seule source valable pour la position d'une page sur ses requêtes.
@@ -147,7 +147,7 @@ FORME
 Puces courtes commençant par « - », phrases à l'indicatif, ton direct, vouvoiement, orthographe française complète avec accents. Pas d'introduction, pas de conclusion. 250 mots au plus.
 
 GARDE-FOUS DE LECTURE
-(1) Comparer en jours ouvrés ou en semaines pleines : une fenêtre avec un week-end ou un férié de plus fausse tout.
+(1) Comparer des fenêtres de même durée, en jours calendaires ou en semaines pleines de sept jours : une fenêtre plus longue fausse tout.
 (2) L'été est un trou de demande, pas un signal de site : entre le 20 juillet et le 25 août, deux moteurs qui baissent ensemble à position égale, c'est de la saisonnalité, et aucune correction ne se décide sur cette fenêtre.
 (3) Les requêtes entre guillemets sont du bruit, déjà exclues des chiffres fournis.
 (4) La position moyenne d'une page n'est pas sa position sur son cluster : la position d'une page se lit au point 4 seulement.
@@ -176,8 +176,8 @@ function fmtCluster(l: { cluster: string; requetes: number; clics: number; impre
 }
 
 export async function redigerLectureSeo(lecture: LectureSeo, contexte: ContexteLecture): Promise<string> {
-  const trafic = (l: { semaine: string; jours_ouvres: number; clics: number; clics_par_jour: number; impressions: number; reference: boolean }) =>
-    `semaine du ${l.semaine}${l.reference ? " (référence, meilleure semaine récente)" : ""} : ${nbFr(l.clics)} clics sur ${l.jours_ouvres} jours ouvrés (${posFr(l.clics_par_jour)}/j), ${nbFr(l.impressions)} impressions ouvrées`;
+  const trafic = (l: { semaine: string; jours: number; clics: number; clics_par_jour: number; impressions: number; reference: boolean }) =>
+    `semaine du ${l.semaine}${l.reference ? " (référence, meilleure semaine récente)" : ""} : ${nbFr(l.clics)} clics sur ${l.jours} jours (${posFr(l.clics_par_jour)}/j), ${nbFr(l.impressions)} impressions`;
   const vp = lecture.ventes.par_paiement;
   const vc = lecture.ventes.par_creation;
   const notre = lecture.autorite.find((a) => a.notre);
@@ -186,8 +186,8 @@ export async function redigerLectureSeo(lecture: LectureSeo, contexte: ContexteL
   const mobile = lecture.appareils.find((a) => a.appareil === "mobile");
 
   const fen = (p: { debut: string; fin: string }) => `du ${p.debut} au ${p.fin}`;
-  const traficP = (t: { jours_ouvres: number; clics: number; impressions: number; clics_par_jour: number; impressions_par_jour: number } | null, p: { debut: string; fin: string }) =>
-    t ? `${fen(p)} : ${nbFr(t.jours_ouvres)} jours ouvrés, ${nbFr(t.clics)} clics (${posFr(t.clics_par_jour)}/jour ouvré), ${nbFr(t.impressions)} impressions (${posFr(t.impressions_par_jour)}/jour ouvré)` : `${fen(p)} : aucune mesure`;
+  const traficP = (t: { jours: number; clics: number; impressions: number; clics_par_jour: number; impressions_par_jour: number } | null, p: { debut: string; fin: string }) =>
+    t ? `${fen(p)} : ${nbFr(t.jours)} jours mesurés, ${nbFr(t.clics)} clics (${posFr(t.clics_par_jour)}/jour), ${nbFr(t.impressions)} impressions (${posFr(t.impressions_par_jour)}/jour)` : `${fen(p)} : aucune mesure`;
   const joursP = Math.round((new Date(`${contexte.periode.fin}T00:00:00Z`).getTime() - new Date(`${contexte.periode.debut}T00:00:00Z`).getTime()) / 86_400_000) + 1;
   const joursQ = Math.round((new Date(`${contexte.precedent.fin}T00:00:00Z`).getTime() - new Date(`${contexte.precedent.debut}T00:00:00Z`).getTime()) / 86_400_000) + 1;
   const parJour = (n: number, jours: number) => posFr(jours > 0 ? n / jours : 0);
@@ -196,7 +196,7 @@ export async function redigerLectureSeo(lecture: LectureSeo, contexte: ContexteL
   const lignes: string[] = [
     `0. PÉRIODE DU RAPPORT : ${fen(contexte.periode)} (${contexte.libelle_periode}), comparée à la période précédente ${fen(contexte.precedent)} (${contexte.libelle_precedent}).`,
     "",
-    "1. TRAFIC EN JOURS OUVRÉS (lundi-vendredi hors fériés français) :",
+    "1. TRAFIC PAR JOUR (tous les jours, le site vend sept jours sur sept) :",
     `- Google, période du rapport, ${traficP(tp?.google.periode ?? null, contexte.periode)}`,
     `- Google, période précédente, ${traficP(tp?.google.precedent ?? null, contexte.precedent)}`,
     `- Bing, période du rapport, ${traficP(tp?.bing.periode ?? null, contexte.periode)}`,

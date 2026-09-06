@@ -105,8 +105,8 @@ function Resultat({ audit, texte, setTexte, lectureSeule }) {
       {l?.trafic && (
         <>
           <div className="grid md:grid-cols-2 gap-4">
-            <Tableau {...trafic('Google, jours ouvrés')} lignes={l.trafic.google} cle={(x) => x.semaine} classeLigne={(x) => (x.reference ? 'opacity-60' : '')} />
-            <Tableau {...trafic('Bing, jours ouvrés')} lignes={l.trafic.bing} cle={(x) => x.semaine} classeLigne={(x) => (x.reference ? 'opacity-60' : '')} />
+            <Tableau {...trafic('Google, par semaine pleine')} lignes={l.trafic.google} cle={(x) => x.semaine} classeLigne={(x) => (x.reference ? 'opacity-60' : '')} />
+            <Tableau {...trafic('Bing, par semaine pleine')} lignes={l.trafic.bing} cle={(x) => x.semaine} classeLigne={(x) => (x.reference ? 'opacity-60' : '')} />
           </div>
           <div className="grid md:grid-cols-2 gap-4">
             <Tableau

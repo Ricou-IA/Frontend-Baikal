@@ -12,7 +12,7 @@ import type { Commit } from "./github.ts";
 // Meme cascade d'attribution que la page Clients : la part organique des
 // ventes se lit sur l'attribution figee de chaque vente, par date de paiement.
 import { canalVente } from "../admin-dossiers/canal.ts";
-import { estOuvre, moisCouverts, type Periode, periodePrecedente } from "./periode.ts";
+import { moisCouverts, type Periode, periodePrecedente } from "./periode.ts";
 
 export interface LigneCluster {
   cluster: string;
@@ -24,7 +24,7 @@ export interface LigneCluster {
 
 export interface LigneSemaine {
   semaine: string; // lundi, YYYY-MM-DD
-  jours_ouvres: number;
+  jours: number; // 7 pour une semaine pleine
   clics: number;
   clics_par_jour: number;
   impressions: number;
@@ -52,9 +52,9 @@ export interface LignePageCle {
   top_requetes: string[];
 }
 
-// Trafic d'une periode en jours ouvres (lundi-vendredi hors feries francais).
+// Trafic d'une periode, sept jours sur sept : un SaaS vend le week-end.
 export interface TraficPeriode {
-  jours_ouvres: number;
+  jours: number;
   clics: number;
   impressions: number;
   clics_par_jour: number;
@@ -142,7 +142,7 @@ function jourIso(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-// --- Bloc 1 : trafic en semaines pleines, jours ouvres (lundi-vendredi).
+// --- Bloc 1 : trafic en semaines pleines de sept jours (lundi-dimanche).
 async function traficHebdo(admin: any, appId: string, source: string, fin: string): Promise<LigneSemaine[]> {
   const finDate = new Date(`${fin}T00:00:00Z`);
   const dernierDimanche = new Date(finDate);
@@ -159,7 +159,6 @@ async function traficHebdo(admin: any, appId: string, source: string, fin: strin
   for (const r of data ?? []) {
     const d = new Date(`${r.period_start}T00:00:00Z`);
     const js = d.getUTCDay();
-    if (js === 0 || js === 6) continue;
     const lundi = new Date(d);
     lundi.setUTCDate(d.getUTCDate() - ((js + 6) % 7));
     const cle = jourIso(lundi);
@@ -170,10 +169,10 @@ async function traficHebdo(admin: any, appId: string, source: string, fin: strin
     semaines.set(cle, cur);
   }
   const lignes: LigneSemaine[] = [...semaines.entries()]
-    .filter(([, s]) => s.jours >= 5)
+    .filter(([, s]) => s.jours >= 7) // semaine pleine seulement
     .map(([semaine, s]) => ({
       semaine,
-      jours_ouvres: s.jours,
+      jours: s.jours,
       clics: s.clics,
       clics_par_jour: arrondi(s.clics / s.jours),
       impressions: s.impressions,
@@ -192,8 +191,8 @@ async function traficHebdo(admin: any, appId: string, source: string, fin: strin
   return ref && !dernieres.includes(ref) ? [...dernieres, ref] : dernieres;
 }
 
-// --- Bloc 1 (consigne) : periode contre periode precedente, jours ouvres
-// hors feries, depuis la serie quotidienne du site.
+// --- Bloc 1 (consigne) : periode contre periode precedente, tous les jours,
+// depuis la serie quotidienne du site.
 async function traficPeriode(admin: any, appId: string, source: string, p: Periode): Promise<TraficPeriode | null> {
   const { data, error } = await admin.schema("admin").from("seo_snapshots")
     .select("period_start, clicks, impressions")
@@ -203,14 +202,12 @@ async function traficPeriode(admin: any, appId: string, source: string, p: Perio
   if (error) throw new Error(error.message);
   let jours = 0, clics = 0, impressions = 0;
   for (const r of data ?? []) {
-    const j = String(r.period_start).slice(0, 10);
-    if (!estOuvre(j)) continue;
     jours += 1;
     clics += Number(r.clicks);
     impressions += Number(r.impressions);
   }
   if (jours === 0) return null;
-  return { jours_ouvres: jours, clics, impressions, clics_par_jour: arrondi(clics / jours), impressions_par_jour: arrondi(impressions / jours) };
+  return { jours, clics, impressions, clics_par_jour: arrondi(clics / jours), impressions_par_jour: arrondi(impressions / jours) };
 }
 
 // --- Appareils : mobile / ordinateur / tablette (dimension device, au mois).

@@ -180,7 +180,7 @@ function BlocLectureSeo({ lecture, chantiers }) {
   const semaine = (l) => `du ${dateFr(l.semaine)}${l.reference ? ' (réf.)' : ''}`;
   const colonnesTrafic = [
     { titre: 'Semaine', valeur: semaine, flex: 1.6 },
-    { titre: 'Jours ouvrés', valeur: (l) => nb(l.jours_ouvres), droite: true },
+    { titre: 'Jours', valeur: (l) => nb(l.jours), droite: true },
     { titre: 'Clics', valeur: (l) => nb(l.clics), droite: true },
     { titre: 'Clics / jour', valeur: (l) => t(Number(l.clics_par_jour).toFixed(1).replace('.', ',')), droite: true, gras: true },
     { titre: 'Impressions', valeur: (l) => nb(l.impressions), droite: true },
@@ -190,7 +190,7 @@ function BlocLectureSeo({ lecture, chantiers }) {
   // coupe pas et ses enfants s'empilent au meme endroit (vu le 06/09).
   return (
     <>
-      <Text style={s.h3}>Trafic en jours ouvrés (lundi-vendredi), semaines pleines</Text>
+      <Text style={s.h3}>Trafic par semaine pleine (7 jours)</Text>
       <View style={{ flexDirection: 'row', gap: 12 }}>
         <View style={{ flex: 1 }}>
           <Text style={[s.cellTh, { paddingHorizontal: 0 }]}>Google</Text>
