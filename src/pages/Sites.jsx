@@ -25,6 +25,8 @@ const CHAMPS = [
   ['expediteur_email', 'Expediteur (email)'],
   ['reply_to', 'Reply-to'],
   ['repo_github', 'Dépôt GitHub (owner/repo)'],
+  ['seo_panier', 'Requêtes SEO suivies (une par ligne)', 'liste'],
+  ['seo_pages_cles', 'Pages clés SEO (chemins, une par ligne)', 'liste'],
 ];
 
 // Modele de comptes du site (config.apps.modele_comptes). Decide ce que la
@@ -38,7 +40,10 @@ const MODELES_COMPTES = [
 function FicheSite({ site, onSaved }) {
   const [valeurs, setValeurs] = useState(() => {
     const v = {};
-    for (const [champ] of CHAMPS) v[champ] = site[champ] ?? '';
+    for (const [champ, , type] of CHAMPS) {
+      // Les listes arrivent en tableau JSON et se saisissent une valeur par ligne.
+      v[champ] = type === 'liste' && Array.isArray(site[champ]) ? site[champ].join('\n') : (site[champ] ?? '');
+    }
     v.modele_comptes = site.modele_comptes || 'organisations';
     return v;
   });
@@ -83,15 +88,24 @@ function FicheSite({ site, onSaved }) {
       </div>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {CHAMPS.map(([champ, label]) => (
+        {CHAMPS.map(([champ, label, type]) => (
           <label key={champ} className="block text-sm text-baikal-text">
             <span className="opacity-70">{label}</span>
-            <input
-              type="text"
-              value={valeurs[champ]}
-              onChange={(e) => setValeurs((v) => ({ ...v, [champ]: e.target.value }))}
-              className="mt-1 w-full px-2 py-1.5 rounded border border-baikal-border bg-baikal-bg text-baikal-text focus:border-baikal-cyan outline-none font-mono text-sm"
-            />
+            {type === 'liste' ? (
+              <textarea
+                value={valeurs[champ]}
+                rows={4}
+                onChange={(e) => setValeurs((v) => ({ ...v, [champ]: e.target.value }))}
+                className="mt-1 w-full px-2 py-1.5 rounded border border-baikal-border bg-baikal-bg text-baikal-text focus:border-baikal-cyan outline-none font-mono text-sm"
+              />
+            ) : (
+              <input
+                type="text"
+                value={valeurs[champ]}
+                onChange={(e) => setValeurs((v) => ({ ...v, [champ]: e.target.value }))}
+                className="mt-1 w-full px-2 py-1.5 rounded border border-baikal-border bg-baikal-bg text-baikal-text focus:border-baikal-cyan outline-none font-mono text-sm"
+              />
+            )}
             {champ === 'env_secret_ref' && (
               <span className="block mt-1 text-xs opacity-60">
                 Les clés et secrets ne se saisissent jamais ici : ce champ ne porte que le nom du secret.

@@ -73,6 +73,8 @@ interface SiteRegistre {
   id: string;
   domaine: string | null;
   gsc_propriete: string | null;
+  seo_panier: string[] | null;
+  seo_pages_cles: string[] | null;
 }
 
 type Ligne = {
@@ -81,7 +83,7 @@ type Ligne = {
   period_start: string;
   period_end: string;
   granularity: "month" | "day" | "observation";
-  dimension: "query" | "page" | "site" | "device" | "country" | "appearance";
+  dimension: "query" | "page" | "site" | "device" | "country" | "appearance" | "query_page";
   key: string;
   clicks: number;
   impressions: number;
@@ -116,7 +118,7 @@ serve(async (req) => {
 
   const { data: sites, error: sitesErr } = await admin
     .schema("config").from("apps")
-    .select("id, domaine, gsc_propriete")
+    .select("id, domaine, gsc_propriete, seo_panier, seo_pages_cles")
     .eq("is_active", true)
     .not("gsc_propriete", "is", null);
   if (sitesErr) return json({ error: sitesErr.message }, 500);
@@ -186,6 +188,57 @@ serve(async (req) => {
       }));
   }
 
+  // Requete x page, limitee aux pages cles OU aux requetes suivies du site
+  // (union : une requete suivie peut classer une page hors liste, c'est ce
+  // qu'on veut voir). L'archive n'avait pas cette dimension croisee, et sans
+  // elle la position d'une page sur son cluster est illisible (piege 4 de la
+  // grille du flash audit). Deux appels a filtre regex, fusionnes par cle
+  // « requete|page ». Volume : quelques centaines de lignes par mois.
+  const echapperRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  async function captureQueryPage(site: SiteRegistre, periode: { start: string; end: string }, finDonnees: string) {
+    const pages = (site.seo_pages_cles ?? []).filter((p) => typeof p === "string" && p.length > 0);
+    const requetes = (site.seo_panier ?? []).filter((q) => typeof q === "string" && q.length > 0);
+    if (pages.length === 0 && requetes.length === 0) return { lignes: 0 };
+    const prop = site.gsc_propriete!;
+    const base = site.domaine ? `https://${site.domaine}` : "";
+    const appels: Promise<Array<{ keys?: string[]; clicks: number; impressions: number; ctr: number; position: number }>>[] = [];
+    if (pages.length > 0 && base) {
+      const motif = `^${echapperRegex(base)}(${pages.map((p) => echapperRegex(p === "/" ? "/" : p)).join("|")})$`;
+      appels.push(searchAnalytics(prop, periode.start, finDonnees, ["query", "page"], 5000,
+        [{ dimension: "page", operator: "includingRegex", expression: motif }]));
+    }
+    if (requetes.length > 0) {
+      const motif = `^(${requetes.map(echapperRegex).join("|")})$`;
+      appels.push(searchAnalytics(prop, periode.start, finDonnees, ["query", "page"], 5000,
+        [{ dimension: "query", operator: "includingRegex", expression: motif }]));
+    }
+    const resultats = await Promise.all(appels);
+    const lignes: Ligne[] = [];
+    for (const rows of resultats) {
+      for (const r of rows) {
+        const [requete, page] = r.keys ?? [];
+        if (!requete || !page) continue;
+        lignes.push({
+          app_id: site.id,
+          source: "google",
+          period_start: periode.start,
+          period_end: periode.end,
+          granularity: "month",
+          dimension: "query_page",
+          key: `${requete}|${page}`,
+          clicks: r.clicks,
+          impressions: r.impressions,
+          ctr: Number(r.ctr.toFixed(5)),
+          position: Number(r.position.toFixed(2)),
+          is_noise: isExactPhraseQuery(requete),
+          captured_at: maintenant,
+        });
+      }
+    }
+    const n = await upsert(lignes);
+    return { lignes: n };
+  }
+
   async function captureGoogle(site: SiteRegistre, periode: { start: string; end: string }, dataEnd?: string) {
     const finDonnees = dataEnd && dataEnd < periode.end ? dataEnd : periode.end;
     const prop = site.gsc_propriete!;
@@ -205,7 +258,8 @@ serve(async (req) => {
       ...lignesGoogle(site, pays, "country", periode),
       ...lignesGoogle(site, apparences, "appearance", periode),
     ]);
-    return { periode: `${periode.start}..${periode.end}`, lignes: n };
+    const croise = await captureQueryPage(site, periode, finDonnees);
+    return { periode: `${periode.start}..${periode.end}`, lignes: n, query_page: croise.lignes };
   }
 
   async function captureBingTops(site: SiteRegistre) {

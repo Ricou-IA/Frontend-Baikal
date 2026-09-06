@@ -359,7 +359,7 @@ return (
 
 function ChargesRecurrentes({ appId }) {
   const [version, setVersion] = useState(0);
-  const formVide = { libelle: '', montant: '', debut: '', finMode: 'revocation', fin: '' };
+  const formVide = { libelle: '', montant: '', debut: '', finMode: 'revocation', fin: '', coutDirect: true };
   const [form, setForm] = useState(formVide);
   const [edition, setEdition] = useState(null); // { id, libelle, montant, debut, finMode, fin }
   const [revocation, setRevocation] = useState(null); // { id, fin }
@@ -393,6 +393,7 @@ function ChargesRecurrentes({ appId }) {
       montant: Number(form.montant),
       debut: form.debut,
       fin: form.finMode === 'date' ? form.fin : null,
+      cout_direct: form.coutDirect,
     });
     if (!r.error) setForm(formVide);
     terminer(r);
@@ -406,6 +407,7 @@ function ChargesRecurrentes({ appId }) {
       montant: Number(edition.montant),
       debut: edition.debut,
       fin: edition.finMode === 'date' ? edition.fin : null,
+      cout_direct: edition.coutDirect,
     }));
   };
 
@@ -440,12 +442,13 @@ function ChargesRecurrentes({ appId }) {
                   <th className="text-right px-2 py-2">Par mois</th>
                   <th className="px-2 py-2">Depuis</th>
                   <th className="px-2 py-2">Jusqu'au</th>
+                  <th className="px-2 py-2">Coût direct</th>
                   <th className="px-4 py-2"></th>
                 </tr>
               </thead>
               <tbody>
                 {lignes.length === 0 && (
-                  <LigneVide colonnes={5} message="Aucune charge saisie — le résultat ne déduit alors que les frais Stripe, les remboursements et le coût IA." />
+                  <LigneVide colonnes={6} message="Aucune charge saisie — le résultat ne déduit alors que les frais Stripe, les remboursements et le coût IA." />
                 )}
                 {lignes.map((c) => {
                   const enEdition = edition?.id === c.id;
@@ -463,6 +466,9 @@ function ChargesRecurrentes({ appId }) {
                           <input type="date" value={edition.debut} onChange={(e) => setEdition({ ...edition, debut: e.target.value })} className={`${CHAMP} font-mono`} />
                         </td>
                         <td className="px-2 py-2"><ChampsFin etat={edition} setEtat={setEdition} /></td>
+                        <td className="px-2 py-2">
+                          <input type="checkbox" checked={edition.coutDirect} onChange={(e) => setEdition({ ...edition, coutDirect: e.target.checked })} />
+                        </td>
                         <td className="px-4 py-2 text-right whitespace-nowrap">
                           <button onClick={enregistrer} disabled={occupe} title="Enregistrer" className="p-1 text-baikal-cyan hover:text-white disabled:opacity-50">
                             <Check className="w-4 h-4" />
@@ -502,6 +508,9 @@ function ChargesRecurrentes({ appId }) {
                           <span className="opacity-60">Jusqu'à révocation</span>
                         )}
                       </td>
+                      <td className={`px-2 py-2 text-xs ${c.cout_direct === false ? 'opacity-40' : 'text-emerald-400'}`}>
+                        {c.cout_direct === false ? 'Structure' : 'Oui'}
+                      </td>
                       <td className="px-4 py-2 text-right whitespace-nowrap">
                         {!c.fin && !enRevocation && (
                           <button
@@ -521,6 +530,7 @@ function ChargesRecurrentes({ appId }) {
                             debut: c.debut,
                             finMode: c.fin ? 'date' : 'revocation',
                             fin: c.fin || '',
+                            coutDirect: c.cout_direct !== false,
                           })}
                           disabled={occupe}
                           title="Modifier"
@@ -567,6 +577,10 @@ function ChargesRecurrentes({ appId }) {
               className={`${CHAMP} font-mono`}
             />
             <ChampsFin etat={form} setEtat={setForm} />
+            <label className="flex items-center gap-1.5 text-sm text-baikal-text">
+              <input type="checkbox" checked={form.coutDirect} onChange={(e) => setForm({ ...form, coutDirect: e.target.checked })} />
+              Coût direct
+            </label>
             <button
               onClick={ajouter}
               disabled={occupe || !form.libelle || !form.montant || !form.debut || !finValide(form)}
@@ -590,7 +604,7 @@ function ChargesRecurrentes({ appId }) {
 
 function ChargesPonctuelles({ appId }) {
   const [version, setVersion] = useState(0);
-  const formVide = { libelle: '', montant: '', jour: new Date().toISOString().slice(0, 10) };
+  const formVide = { libelle: '', montant: '', jour: new Date().toISOString().slice(0, 10), coutDirect: true };
   const [form, setForm] = useState(formVide);
   const [occupe, setOccupe] = useState(false);
   const [erreurForm, setErreurForm] = useState(null);
@@ -617,6 +631,7 @@ function ChargesPonctuelles({ appId }) {
       libelle: form.libelle,
       montant: Number(form.montant),
       jour: form.jour,
+      cout_direct: form.coutDirect,
     });
     if (!r.error) setForm(formVide);
     terminer(r);
@@ -645,18 +660,22 @@ function ChargesPonctuelles({ appId }) {
                   <th className="px-4 py-2">Date</th>
                   <th className="px-2 py-2">Libellé</th>
                   <th className="text-right px-2 py-2">Montant</th>
+                  <th className="px-2 py-2">Coût direct</th>
                   <th className="px-4 py-2"></th>
                 </tr>
               </thead>
               <tbody>
                 {lignes.length === 0 && (
-                  <LigneVide colonnes={4} message="Aucune charge ponctuelle saisie." />
+                  <LigneVide colonnes={5} message="Aucune charge ponctuelle saisie." />
                 )}
                 {lignes.map((c) => (
                   <tr key={c.id} className={`border-t border-baikal-border/50 ${classeMois(c.jour)}`}>
                     <td className="px-4 py-2 font-mono text-xs">{c.jour}</td>
                     <td className="px-2 py-2">{c.libelle}</td>
                     <td className="text-right px-2 py-2 tabular-nums">{fmtEur(Number(c.montant_eur))}</td>
+                    <td className={`px-2 py-2 text-xs ${c.cout_direct === false ? 'opacity-40' : 'text-emerald-400'}`}>
+                      {c.cout_direct === false ? 'Structure' : 'Oui'}
+                    </td>
                     <td className="px-4 py-2 text-right">
                       <button
                         onClick={() => supprimer(c.id)}
@@ -694,6 +713,10 @@ function ChargesPonctuelles({ appId }) {
               placeholder="€"
               className={`${CHAMP} w-28 tabular-nums`}
             />
+            <label className="flex items-center gap-1.5 text-sm text-baikal-text">
+              <input type="checkbox" checked={form.coutDirect} onChange={(e) => setForm({ ...form, coutDirect: e.target.checked })} />
+              Coût direct
+            </label>
             <button
               onClick={ajouter}
               disabled={occupe || !form.libelle || !form.montant || !form.jour}
@@ -865,28 +888,35 @@ function Partenariat({ appId }) {
                 <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
                   <th className="px-4 py-2">Mois</th>
                   <th className="text-right px-2 py-2">Ventes</th>
+                  <th className="text-right px-2 py-2">Remb.</th>
+                  <th className="text-right px-2 py-2">Nettes</th>
                   <th className="text-right px-2 py-2">CA HT</th>
-                  <th className="text-right px-2 py-2">Coûts du mois</th>
+                  <th className="text-right px-2 py-2">Coûts directs</th>
                   <th className="text-right px-2 py-2">Partageables</th>
                   <th className="text-right px-2 py-2">CA partageable</th>
-                  <th className="text-right px-2 py-2">Coûts imputés</th>
+                  <th className="text-right px-2 py-2">CD imputés</th>
+                  <th className="text-right px-2 py-2">Report</th>
                   <th className="text-right px-2 py-2">Résultat</th>
                   <th className="text-right px-4 py-2">Quote-part</th>
                 </tr>
               </thead>
               <tbody>
                 {lignes.length === 0 && (
-                  <LigneVide colonnes={9} message="Aucune vente archivée pour ce site." />
+                  <LigneVide colonnes={12} message="Aucune vente archivée pour ce site." />
                 )}
                 {lignes.map((l) => {
-                  // Avant le contrat : ventes et CA HT pour la tendance, pas de partage.
+                  // Avant le contrat : registre pour la tendance, pas de partage.
                   const dans = l.dans_decompte !== false;
                   return (
                     <tr key={l.mois} className={`border-t border-baikal-border/50 ${classeMois(l.mois)}`}>
                       <td className="px-4 py-2 font-mono text-xs">{String(l.mois).slice(0, 7)}</td>
                       <td className="text-right px-2 py-2 tabular-nums">{fmtNombre(l.ventes)}</td>
+                      <td className={`text-right px-2 py-2 tabular-nums ${Number(l.remboursees) > 0 ? 'text-amber-400' : 'opacity-40'}`}>
+                        {Number(l.remboursees) > 0 ? fmtNombre(l.remboursees) : '—'}
+                      </td>
+                      <td className="text-right px-2 py-2 tabular-nums text-white">{fmtNombre(l.ventes_nettes)}</td>
                       <td className="text-right px-2 py-2 tabular-nums">{fmtEur(Number(l.ca_ht))}</td>
-                      <td className="text-right px-2 py-2 tabular-nums opacity-70">{fmtEur(Number(l.couts_mois))}</td>
+                      <td className="text-right px-2 py-2 tabular-nums opacity-70">{fmtEur(Number(l.couts_directs))}</td>
                       {dans ? (
                         <>
                           <td className={`text-right px-2 py-2 tabular-nums ${l.ventes_partageables === 0 ? 'opacity-40' : 'text-white'}`}>
@@ -894,14 +924,17 @@ function Partenariat({ appId }) {
                           </td>
                           <td className="text-right px-2 py-2 tabular-nums">{fmtEur(Number(l.ca_partageable_ht))}</td>
                           <td className="text-right px-2 py-2 tabular-nums opacity-70">{fmtEur(Number(l.couts_imputables))}</td>
-                          <td className="text-right px-2 py-2 tabular-nums">{fmtEur(Number(l.resultat_partageable))}</td>
+                          <td className={`text-right px-2 py-2 tabular-nums ${Number(l.report_entrant) < 0 ? 'text-red-400' : 'opacity-40'}`}>
+                            {Number(l.report_entrant) < 0 ? fmtEur(Number(l.report_entrant)) : '—'}
+                          </td>
+                          <td className="text-right px-2 py-2 tabular-nums">{fmtEur(Number(l.resultat_apres_report))}</td>
                           <td className={`text-right px-4 py-2 tabular-nums font-semibold ${Number(l.quote_part) > 0 ? 'text-emerald-400' : 'opacity-40'}`}>
                             {Number(l.quote_part) > 0 ? fmtEur(Number(l.quote_part)) : '—'}
                           </td>
                         </>
                       ) : (
                         <>
-                          {[0, 1, 2, 3].map((i) => (
+                          {[0, 1, 2, 3, 4].map((i) => (
                             <td key={i} className="text-right px-2 py-2 opacity-40">—</td>
                           ))}
                           <td className="text-right px-4 py-2 opacity-40">—</td>
@@ -914,11 +947,14 @@ function Partenariat({ appId }) {
             </table>
           </div>
           <p className="text-[11px] text-baikal-text opacity-50 leading-relaxed">
-            <strong className="opacity-100">Lecture</strong> · Les {contrat.franchise} premières
-            ventes encaissées de chaque mois civil ne sont pas partagées. Le seuil s'apprécie mois
-            par mois, sans report d'un mois sur l'autre. Les coûts directs retenus
-            ({contrat.couts_directs.join(', ')}) sont imputés au prorata des ventes partageables.
-            Les mois antérieurs au contrat donnent la tendance, sans franchise ni partage.
+            <strong className="opacity-100">Lecture</strong> · Contrat signé le 18/08/2026, article 7.
+            Une vente remboursée n'est pas une Vente : elle sort des ventes nettes, du seuil et du CA.
+            Les {contrat.franchise} premières ventes nettes de chaque mois civil reviennent à CONFER ; le
+            seuil ne se reporte pas. Les Coûts Directs (art. 8.1 : IA, Stripe, publicité, charges cochées
+            « coût direct ») sont pris pour tout le mois puis imputés au prorata des ventes partageables.
+            Un résultat négatif se reporte sur les mois suivants jusqu'à apurement. CA partageable = HT
+            effectivement encaissé sur les ventes au-delà du seuil. Les mois antérieurs au contrat donnent
+            la tendance, sans partage.
           </p>
         </ContenuEstompe>
       )}

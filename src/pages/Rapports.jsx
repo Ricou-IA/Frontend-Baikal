@@ -4,28 +4,44 @@
  * Rapport au partenaire SEO du site, sur une période bornée (spec 2026-09-06).
  *
  *   1. Choisir la période (mois, trimestre ou du… au…), « Préparer » : l'EF
- *      fige les faits (décompte du partenariat, ventes, SEO, highlights par
- *      règles) et propose les « Évolutions du logiciel » depuis les commits.
- *   2. Relire et corriger les deux textes libres ; « Rédiger » met en forme
- *      l'ébauche du commentaire, le champ reste éditable.
+ *      fige les faits (Annexe 2 du contrat, ventes, SEO, lecture SEO,
+ *      highlights par règles) et propose trois textes : évolutions du logiciel
+ *      (commits), lecture SEO (grille du flash audit), et, sur ébauche, le
+ *      commentaire.
+ *   2. Relire et corriger les textes ; « Rédiger » met en forme l'ébauche du
+ *      commentaire, les champs restent éditables.
  *   3. « Générer le PDF » : le document est fabriqué ici (@react-pdf/renderer,
  *      chargé à la demande), puis archivé par l'EF avec les faits et les textes.
  *
  * Ce qui est archivé, c'est le contenu des champs au moment du clic : jamais
- * la proposition du modèle telle quelle.
+ * la proposition du modèle telle quelle. Les chantiers SEO se déclarent en
+ * bas de page : ils nourrissent la lecture et le PDF.
  * ============================================================================
  */
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, FileText, Download, Sparkles, Wand2 } from 'lucide-react';
+import { AlertTriangle, FileText, Download, Sparkles, Wand2, Plus, Trash2 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import ConsoleLayout from '../components/console/ConsoleLayout';
-import { Chargement, Erreur, LigneVide, Section, Vide } from '../components/console/etats';
+import { Chargement, ContenuEstompe, Erreur, LigneVide, Section, Vide } from '../components/console/etats';
 import SelecteurPeriode, { libellePeriode, moisPeriode } from '../components/rapports/SelecteurPeriode';
 import { rapportService } from '../services/rapport.service';
 
 const CHAMP = 'px-2 py-1.5 rounded border border-baikal-border bg-baikal-bg text-baikal-text focus:border-baikal-cyan outline-none text-sm';
 const ZONE = `${CHAMP} w-full min-h-[120px] leading-relaxed`;
 const BOUTON = 'flex items-center gap-1.5 px-3 py-1.5 rounded border text-sm transition-colors disabled:opacity-50';
+const VERDICTS = [
+  ['', 'En attente'],
+  ['gagne', 'Gagné'],
+  ['en_progres', 'En progrès'],
+  ['rate', 'Raté'],
+  ['sans_objet', 'Sans objet'],
+];
+const CLASSE_VERDICT = {
+  gagne: 'text-emerald-400',
+  en_progres: 'text-amber-400',
+  rate: 'text-red-400',
+  sans_objet: 'opacity-60',
+};
 
 function fmtEur(n) {
   return `${new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(n || 0))} €`;
@@ -43,6 +59,7 @@ function dateFr(iso) {
   return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 const majuscule = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
+const pos = (n) => (n === null || n === undefined ? '—' : Number(n).toFixed(1).replace('.', ','));
 
 async function blobEnBase64(blob) {
   return new Promise((resolve, reject) => {
@@ -56,7 +73,8 @@ async function blobEnBase64(blob) {
 function Apercu({ contenu }) {
   const c = contenu;
   const moisCouverts = new Set(c.mois_couverts);
-  // Ni impressions brutes ni position moyenne globale (contrat agence, annexe 2 B.2).
+  const comptes = (c.partenariat.lignes || []).filter((l) => moisCouverts.has(l.mois) && l.dans_decompte !== false);
+  const lecture = c.lecture_seo;
   const seo = (source, google) => {
     if (!source) return '—';
     const impressions = google
@@ -75,11 +93,22 @@ function Apercu({ contenu }) {
         </div>
       )}
 
-      <div className="grid md:grid-cols-2 gap-4">
+      <div className="grid md:grid-cols-3 gap-4">
         <div className="bg-baikal-surface border border-baikal-border rounded-lg p-4 space-y-1 text-sm text-baikal-text">
           <div className="text-xs opacity-60 uppercase tracking-wider">Ventes {c.libelle_periode}</div>
-          <div className="text-2xl text-white tabular-nums">{fmtNombre(c.ventes.nombre)}</div>
-          <div className="opacity-70">{fmtEur(c.ventes.total_ttc)} TTC · {fmtEur(c.ventes.total_ht)} HT</div>
+          <div className="text-2xl text-white tabular-nums">{fmtNombre(c.ventes.nettes)} <span className="text-sm opacity-60">nettes</span></div>
+          <div className="opacity-70">{fmtNombre(c.ventes.nombre)} encaissées, {fmtNombre(c.ventes.remboursees)} remboursée{c.ventes.remboursees > 1 ? 's' : ''} · {fmtEur(c.ventes.total_ht)} HT</div>
+        </div>
+        <div className="bg-baikal-surface border border-baikal-border rounded-lg p-4 space-y-1 text-sm text-baikal-text">
+          <div className="text-xs opacity-60 uppercase tracking-wider">Compte de partage</div>
+          {comptes.length === 0 && <div className="opacity-60">Aucun mois de la période dans le décompte.</div>}
+          {comptes.map((l) => (
+            <div key={l.mois}>
+              <span className="font-mono text-xs">{l.mois}</span> · {fmtNombre(l.ventes_partageables)} partageable{l.ventes_partageables > 1 ? 's' : ''} ·
+              {' '}<span className={Number(l.quote_part) > 0 ? 'text-emerald-400 font-semibold' : 'opacity-60'}>quote-part {fmtEur(l.quote_part)}</span>
+              {Number(l.report_sortant) < 0 && <span className="text-red-400"> · report {fmtEur(l.report_sortant)}</span>}
+            </div>
+          ))}
         </div>
         <div className="bg-baikal-surface border border-baikal-border rounded-lg p-4 space-y-1 text-sm text-baikal-text">
           <div className="text-xs opacity-60 uppercase tracking-wider">SEO de la période</div>
@@ -96,50 +125,48 @@ function Apercu({ contenu }) {
         </ul>
       </div>
 
-      {c.partenariat.contrat && (
-        <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
-          <table className="w-full text-sm text-baikal-text">
-            <thead>
-              <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
-                <th className="px-4 py-2">Mois</th>
-                <th className="text-right px-2 py-2">Ventes</th>
-                <th className="text-right px-2 py-2">CA HT</th>
-                <th className="text-right px-2 py-2">Partageables</th>
-                <th className="text-right px-4 py-2">Quote-part</th>
-              </tr>
-            </thead>
-            <tbody>
-              {c.partenariat.lignes.map((l) => (
-                <tr key={l.mois} className={`border-t border-baikal-border/50 ${moisCouverts.has(l.mois) ? 'bg-baikal-cyan/10 text-white' : ''}`}>
-                  <td className="px-4 py-1.5 font-mono text-xs">{l.mois}</td>
-                  <td className="text-right px-2 py-1.5 tabular-nums">{fmtNombre(l.ventes)}</td>
-                  <td className="text-right px-2 py-1.5 tabular-nums">{fmtEur(l.ca_ht)}</td>
-                  <td className="text-right px-2 py-1.5 tabular-nums">{l.dans_decompte === false ? '—' : fmtNombre(l.ventes_partageables)}</td>
-                  <td className="text-right px-4 py-1.5 tabular-nums">{l.dans_decompte === false ? '—' : fmtEur(l.quote_part)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {c.ventes.lignes.length > 0 && (
-        <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
-          <div className="max-h-[260px] overflow-y-auto">
+      {lecture && (
+        <div className="grid md:grid-cols-2 gap-4">
+          <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
+            <div className="px-4 py-2 text-xs opacity-60 uppercase tracking-wider text-baikal-text">Trafic Google, jours ouvrés</div>
             <table className="w-full text-sm text-baikal-text">
-              <thead className="sticky top-0 bg-baikal-surface">
-                <tr className="text-left text-xs opacity-70">
-                  <th className="px-4 py-2">Date</th>
-                  <th className="px-2 py-2">Offre</th>
-                  <th className="text-right px-4 py-2">TTC</th>
+              <thead>
+                <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
+                  <th className="px-4 py-1.5">Semaine</th>
+                  <th className="text-right px-2 py-1.5">Clics / j</th>
+                  <th className="text-right px-4 py-1.5">Impressions</th>
                 </tr>
               </thead>
               <tbody>
-                {c.ventes.lignes.map((v, i) => (
-                  <tr key={`${v.date}-${i}`} className="border-t border-baikal-border/50">
-                    <td className="px-4 py-1.5 font-mono text-xs">{v.date}</td>
-                    <td className="px-2 py-1.5">{v.offre}</td>
-                    <td className="text-right px-4 py-1.5 tabular-nums">{fmtEur(v.montant_ttc)}</td>
+                {lecture.trafic.google.map((l) => (
+                  <tr key={l.semaine} className={`border-t border-baikal-border/50 ${l.reference ? 'opacity-60' : ''}`}>
+                    <td className="px-4 py-1.5 font-mono text-xs">{l.semaine}{l.reference ? ' (réf.)' : ''}</td>
+                    <td className="text-right px-2 py-1.5 tabular-nums text-white">{Number(l.clics_par_jour).toFixed(1).replace('.', ',')}</td>
+                    <td className="text-right px-4 py-1.5 tabular-nums">{fmtNombre(l.impressions)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
+            <div className="px-4 py-2 text-xs opacity-60 uppercase tracking-wider text-baikal-text">Requêtes suivies (requête × page)</div>
+            <table className="w-full text-sm text-baikal-text">
+              <thead>
+                <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
+                  <th className="px-4 py-1.5">Requête</th>
+                  <th className="px-2 py-1.5">Page</th>
+                  <th className="text-right px-2 py-1.5">Pos.</th>
+                  <th className="text-right px-4 py-1.5">Préc.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lecture.suivi.requetes.length === 0 && <LigneVide colonnes={4} message="Aucune requête suivie ou aucun relevé requête × page." />}
+                {lecture.suivi.requetes.map((r) => (
+                  <tr key={r.requete} className="border-t border-baikal-border/50">
+                    <td className="px-4 py-1.5">{r.requete}</td>
+                    <td className="px-2 py-1.5 font-mono text-xs opacity-70">{r.page || '—'}</td>
+                    <td className="text-right px-2 py-1.5 tabular-nums text-white">{pos(r.position)}</td>
+                    <td className="text-right px-4 py-1.5 tabular-nums opacity-70">{pos(r.position_precedente)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -155,6 +182,7 @@ function Generateur({ appId, onGenere }) {
   const [periode, setPeriode] = useState(moisPrecedent);
   const [preparation, setPreparation] = useState(null);
   const [evolutions, setEvolutions] = useState('');
+  const [lectureSeo, setLectureSeo] = useState('');
   const [ebauche, setEbauche] = useState('');
   const [commentaire, setCommentaire] = useState('');
   const [occupe, setOccupe] = useState(null); // 'preparer' | 'rediger' | 'generer'
@@ -166,6 +194,7 @@ function Generateur({ appId, onGenere }) {
   useEffect(() => {
     setPreparation(null);
     setEvolutions('');
+    setLectureSeo('');
     setCommentaire('');
     setDernier(null);
     setErreur(null);
@@ -179,6 +208,7 @@ function Generateur({ appId, onGenere }) {
     if (error) { setErreur(error.message); return; }
     setPreparation(data);
     setEvolutions(data.evolutions_proposees || '');
+    setLectureSeo(data.lecture_seo_proposee || '');
   };
 
   const rediger = async () => {
@@ -209,6 +239,7 @@ function Generateur({ appId, onGenere }) {
         <RapportPdf
           contenu={preparation.contenu}
           evolutions={evolutions}
+          lectureSeo={lectureSeo}
           commentaire={commentaire}
           version={version}
           genereLe={genereLe}
@@ -216,7 +247,7 @@ function Generateur({ appId, onGenere }) {
       ).toBlob();
       const pdfBase64 = await blobEnBase64(blob);
       const { data, error } = await rapportService.enregistrer(appId, periode, {
-        contenu: preparation.contenu, ebauche, evolutions, commentaire, pdfBase64,
+        contenu: preparation.contenu, ebauche, evolutions, lectureSeo, commentaire, pdfBase64,
       });
       if (error) throw error;
       setDernier({
@@ -239,8 +270,8 @@ function Generateur({ appId, onGenere }) {
     <Section
       titre="Rapport au partenaire"
       sousTitre={partenaire
-        ? `À l'attention de ${partenaire} — décompte, ventes, SEO, highlights, évolutions et commentaire`
-        : 'Décompte du partenariat, ventes, SEO, highlights, évolutions et commentaire de la période'}
+        ? `À l'attention de ${partenaire} — registre et compte de partage, ventes, SEO, lecture SEO, highlights, évolutions et commentaire`
+        : 'Registre et compte de partage, ventes, SEO, lecture SEO, highlights, évolutions et commentaire de la période'}
       action={(
         <div className="flex items-center gap-3 flex-wrap justify-end">
           <SelecteurPeriode valeur={periode} onChange={setPeriode} />
@@ -258,7 +289,7 @@ function Generateur({ appId, onGenere }) {
       {erreur && <Erreur message={erreur} />}
       {occupe === 'preparer' && !preparation && <Chargement />}
       {!preparation && occupe !== 'preparer' && (
-        <Vide message={`Période choisie : ${libellePeriode(periode)}. « Préparer » fige les faits depuis l'archive et propose les évolutions du logiciel depuis les commits de la période.`} />
+        <Vide message={`Période choisie : ${libellePeriode(periode)}. « Préparer » fige les faits depuis l'archive, lit les commits de la période et propose la lecture SEO. Compte une trentaine de secondes.`} />
       )}
 
       {preparation && (
@@ -270,6 +301,14 @@ function Generateur({ appId, onGenere }) {
             )}
           </p>
           <Apercu contenu={contenu} />
+
+          <div className="space-y-2">
+            <label className="text-sm text-baikal-text">
+              <span className="font-semibold text-white">Lecture SEO</span>
+              <span className="opacity-60"> — proposition rédigée depuis les chiffres calculés et les chantiers déclarés, à relire</span>
+            </label>
+            <textarea value={lectureSeo} onChange={(e) => setLectureSeo(e.target.value)} className={`${ZONE} min-h-[220px]`} placeholder="## Bilan des chantiers…" />
+          </div>
 
           <div className="space-y-2">
             <label className="text-sm text-baikal-text">
@@ -326,11 +365,139 @@ function Generateur({ appId, onGenere }) {
           </div>
           <p className="text-[11px] text-baikal-text opacity-50 leading-relaxed">
             <strong className="opacity-100">Lecture</strong> · Les highlights sont calculés par règles fixes,
-            la trame est la même d'une période à l'autre. Les deux textes libres sont des propositions : c'est le
+            la trame est la même d'une période à l'autre. Les trois textes libres sont des propositions : c'est le
             contenu des champs au moment de « Générer » qui est archivé avec le PDF. Régénérer une période crée
-            une nouvelle version, l'ancienne reste téléchargeable.
+            une nouvelle version, l'ancienne reste téléchargeable. Le compte de partage suit l'Annexe 2 du contrat
+            signé le 18/08/2026 ; il est dû dans les 15 jours suivant la fin du mois (art. 7.4).
           </p>
         </div>
+      )}
+    </Section>
+  );
+}
+
+function Chantiers({ appId }) {
+  const [version, setVersion] = useState(0);
+  const [donnees, setDonnees] = useState(null);
+  const [erreur, setErreur] = useState(null);
+  const [occupe, setOccupe] = useState(false);
+  const formVide = { date: new Date().toISOString().slice(0, 10), libelle: '', cible: '', hypothese: '', mesure_prevue_le: '' };
+  const [form, setForm] = useState(formVide);
+
+  useEffect(() => {
+    let actif = true;
+    rapportService.chantiers(appId).then(({ data, error }) => {
+      if (!actif) return;
+      if (error) setErreur(error.message);
+      else { setErreur(null); setDonnees(data); }
+    });
+    return () => { actif = false; };
+  }, [appId, version]);
+
+  const terminer = ({ error }) => {
+    setOccupe(false);
+    if (error) setErreur(error.message);
+    else { setErreur(null); setVersion((v) => v + 1); }
+  };
+
+  const ajouter = async () => {
+    if (!form.date || !form.libelle.trim()) return;
+    setOccupe(true);
+    const r = await rapportService.creerChantier(appId, {
+      date: form.date,
+      libelle: form.libelle,
+      cible: form.cible || null,
+      hypothese: form.hypothese || null,
+      mesure_prevue_le: form.mesure_prevue_le || null,
+    });
+    if (!r.error) setForm(formVide);
+    terminer(r);
+  };
+
+  const poserVerdict = async (id, verdict) => {
+    setOccupe(true);
+    terminer(await rapportService.modifierChantier(id, { verdict: verdict || null }));
+  };
+
+  const supprimer = async (id) => {
+    setOccupe(true);
+    terminer(await rapportService.supprimerChantier(id));
+  };
+
+  const lignes = donnees?.lignes ?? [];
+
+  return (
+    <Section
+      titre="Chantiers SEO"
+      sousTitre="Ce qui a été fait, sur quelle cible, avec quel verdict — la matière du « Bilan des chantiers » du rapport"
+    >
+      {erreur && <Erreur message={erreur} />}
+      {!donnees && !erreur && <Chargement />}
+      {donnees && (
+        <ContenuEstompe enCours={occupe}>
+          <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
+            <table className="w-full text-sm text-baikal-text">
+              <thead>
+                <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
+                  <th className="px-4 py-2">Date</th>
+                  <th className="px-2 py-2">Chantier</th>
+                  <th className="px-2 py-2">Cible</th>
+                  <th className="px-2 py-2">Mesure prévue</th>
+                  <th className="px-2 py-2">Verdict</th>
+                  <th className="px-4 py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {lignes.length === 0 && <LigneVide colonnes={6} message="Aucun chantier déclaré pour ce site." />}
+                {lignes.map((c) => (
+                  <tr key={c.id} className="border-t border-baikal-border/50 align-top">
+                    <td className="px-4 py-2 font-mono text-xs whitespace-nowrap">{c.date}</td>
+                    <td className="px-2 py-2">
+                      <div>{c.libelle}</div>
+                      {c.hypothese && <div className="text-xs opacity-60 mt-0.5">{c.hypothese}</div>}
+                    </td>
+                    <td className="px-2 py-2 text-xs font-mono opacity-80">{c.cible || '—'}</td>
+                    <td className="px-2 py-2 font-mono text-xs">{c.mesure_prevue_le || '—'}</td>
+                    <td className="px-2 py-2">
+                      <select
+                        value={c.verdict || ''}
+                        onChange={(e) => poserVerdict(c.id, e.target.value)}
+                        className={`${CHAMP} py-1 ${CLASSE_VERDICT[c.verdict] || ''}`}
+                      >
+                        {VERDICTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                      </select>
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      <button onClick={() => supprimer(c.id)} title="Supprimer" className="p-1 text-baikal-text hover:text-red-400 transition-colors">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex items-start gap-2 flex-wrap">
+            <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className={`${CHAMP} font-mono`} />
+            <input value={form.libelle} onChange={(e) => setForm({ ...form, libelle: e.target.value })} placeholder="Chantier (ce qui a été fait)" className={`${CHAMP} w-72`} />
+            <input value={form.cible} onChange={(e) => setForm({ ...form, cible: e.target.value })} placeholder="Cible (cluster prix, /comparatif…)" className={`${CHAMP} w-56`} />
+            <input value={form.hypothese} onChange={(e) => setForm({ ...form, hypothese: e.target.value })} placeholder="Hypothèse" className={`${CHAMP} w-64`} />
+            <input type="date" value={form.mesure_prevue_le} onChange={(e) => setForm({ ...form, mesure_prevue_le: e.target.value })} title="Mesure prévue le" className={`${CHAMP} font-mono`} />
+            <button
+              onClick={ajouter}
+              disabled={occupe || !form.date || !form.libelle.trim()}
+              className={`${BOUTON} border-baikal-cyan text-baikal-cyan hover:bg-baikal-cyan/10`}
+            >
+              <Plus className="w-4 h-4" />
+              Ajouter
+            </button>
+          </div>
+          <p className="text-[11px] text-baikal-text opacity-50 leading-relaxed">
+            <strong className="opacity-100">Lecture</strong> · Le verdict se pose après lecture des chiffres,
+            jamais avant. Un chantier de liens ne se lit pas avant trois mois. Le rapport reprend un verdict posé
+            sans le contredire ; sans verdict, il écrit « trop tôt pour conclure ».
+          </p>
+        </ContenuEstompe>
       )}
     </Section>
   );
@@ -398,6 +565,7 @@ function RapportsContent() {
   return (
     <div className="p-6 space-y-10">
       <Generateur appId={currentApp} onGenere={() => setVersion((v) => v + 1)} />
+      <Chantiers appId={currentApp} />
       <Archives appId={currentApp} version={version} />
     </div>
   );

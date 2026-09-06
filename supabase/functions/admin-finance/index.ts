@@ -371,6 +371,7 @@ serve(async (req) => {
           montant_mensuel_eur: Number(body.montant ?? 0),
           debut: String(body.debut),
           fin: body.fin ? String(body.fin) : null,
+          cout_direct: body.cout_direct === undefined ? true : Boolean(body.cout_direct),
         }).select().single();
       if (error) throw new Error(error.message);
       return json({ data, error: null });
@@ -387,6 +388,7 @@ serve(async (req) => {
       if (body.montant !== undefined) patch.montant_mensuel_eur = Number(body.montant);
       if (body.debut !== undefined) patch.debut = String(body.debut);
       if (body.fin !== undefined) patch.fin = body.fin ? String(body.fin) : null;
+      if (body.cout_direct !== undefined) patch.cout_direct = Boolean(body.cout_direct);
       const { data, error } = await admin.schema("admin").from("charges_recurrentes")
         .update(patch).eq("id", String(body.id)).select().single();
       if (error) throw new Error(error.message);
@@ -408,6 +410,7 @@ serve(async (req) => {
           categorie: String(body.categorie ?? "autre"),
           montant_eur: Number(body.montant ?? 0),
           jour: String(body.jour),
+          cout_direct: body.cout_direct === undefined ? true : Boolean(body.cout_direct),
         }).select().single();
       if (error) throw new Error(error.message);
       return json({ data, error: null });

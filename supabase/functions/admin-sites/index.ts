@@ -32,7 +32,12 @@ const CHAMPS_SITE = [
   "reply_to",
   "modele_comptes",
   "repo_github",
+  "seo_panier",
+  "seo_pages_cles",
 ] as const;
+
+// Champs listes (une valeur par ligne cote saisie, tableau JSON en base).
+const CHAMPS_LISTE = new Set(["seo_panier", "seo_pages_cles"]);
 
 // Modele de comptes d'un site (config.apps.modele_comptes) : organisations
 // (membres d'organisations, page Utilisateurs) ou clients (clients du site,
@@ -82,7 +87,7 @@ serve(async (req) => {
         if (profile?.app_role === "super_admin") {
           const { data, error } = await admin.schema("config").from("apps")
             .select("id, name, domaine, gsc_propriete, env_url, env_secret_ref, " +
-              "expediteur_nom, expediteur_email, reply_to, modele_comptes, repo_github, is_active")
+              "expediteur_nom, expediteur_email, reply_to, modele_comptes, repo_github, seo_panier, seo_pages_cles, is_active")
             .order("sort_order");
           if (error) throw error;
           return json({ data, error: null });
@@ -103,7 +108,14 @@ serve(async (req) => {
         if (!s.id) return json({ data: null, error: "site.id requis" }, 400);
         const maj: Record<string, unknown> = {};
         for (const champ of CHAMPS_SITE) {
-          if (champ in s) maj[champ] = s[champ] === "" ? null : s[champ];
+          if (!(champ in s)) continue;
+          if (CHAMPS_LISTE.has(champ)) {
+            const brut = Array.isArray(s[champ]) ? s[champ] : String(s[champ] ?? "").split(/\r?\n/);
+            const liste = brut.map((x: unknown) => String(x).trim()).filter(Boolean);
+            maj[champ] = liste.length ? liste : null;
+          } else {
+            maj[champ] = s[champ] === "" ? null : s[champ];
+          }
         }
         if (Object.keys(maj).length === 0) {
           return json({ data: null, error: "Aucun champ a enregistrer" }, 400);

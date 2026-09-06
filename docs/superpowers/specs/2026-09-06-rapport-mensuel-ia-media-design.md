@@ -181,3 +181,38 @@ Fichiers : `index.ts` (routage, droits), `faits.ts` (sections 2 à 4),
 
 Envoi par email, graphiques dans le PDF, rapport pour d'autres partenaires
 que celui du site (un seul contrat par site aujourd'hui), traduction.
+
+## Avenant du 06/09 soir — contrat signé et Lecture SEO
+
+Le contrat IA MEDIA signé (11/08 et 18/08/2026) remplace les brouillons de
+juillet. Décisions d'Eric : le contrat signé a le dernier mot.
+
+- **Décompte au modèle de l'Annexe 2** : Registre des Ventes (mois, ventes,
+  remb./litiges, ventes nettes, CA HT encaissé, Coûts Directs) et Compte de
+  partage ligne à ligne (ventes nettes, seuil 15, partageables, ratio, CA
+  partageable HT, CD du mois, CD imputables, report de solde négatif,
+  Résultat Partageable, quote-parts 50/50, remboursement des CD avancés,
+  solde net). Une vente remboursée n'est pas une Vente (art. 1). Le report du
+  solde négatif existe (art. 7.2). Prix de référence 20,83 € HT ; CA
+  partageable = HT effectivement encaissé (mode « reel »). Cumul 12 mois
+  glissants du CA HT et du Résultat Partageable (clause de rendez-vous, art. 20).
+- **Coûts Directs (art. 8.1)** = IA + Stripe + publicité + charges
+  récurrentes et ponctuelles cochées « coût direct » (défaut oui ; un frais de
+  structure se décoche). Les remboursements ne sont pas un coût.
+- **Lecture SEO** (grille du flash audit, dépôt Pack Vendeur
+  `docs/superpowers/prompts/2026-09-06-grille-flash-audit-seo.md`) : blocs
+  calculés — trafic en jours ouvrés sur semaines pleines (Google, Bing,
+  référence = meilleure des 12 dernières), ventes selon les deux comptes
+  (paiement / création, ce dernier lu en direct dans `baikal_dossiers`, avec
+  conversion par page d'entrée organique), clusters de requêtes (regex de la
+  grille, hors bruit), requêtes suivies et pages clés en requête × page
+  (nouvelle dimension `query_page` archivée au mois par `admin-seo-snapshot`,
+  union pages clés OU requêtes suivies, filtres regex GSC), chantiers déclarés
+  (`admin.seo_chantiers`, verdict posé par Eric). Bloc rédigé par le modèle
+  avec les pièges de la grille en garde-fous, en quatre parties (bilan des
+  chantiers, lectures, réglé, la seule chose à faire), relu dans un champ.
+- **Paramétrage par site** dans `/sites` : requêtes suivies et pages clés,
+  une par ligne (`config.apps.seo_panier`, `seo_pages_cles`). Ce sont des
+  outils de suivi, pas des clauses du contrat.
+- Règles maintenues : pas de position moyenne globale ni d'impressions
+  brutes ; `not is_noise` partout ; nommer le compte de ventes affiché.

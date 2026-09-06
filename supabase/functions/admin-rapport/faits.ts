@@ -1,5 +1,7 @@
-// Faits du rapport, lus dans l'archive `admin` (jamais en direct) : decompte
-// du partenariat, ventes de la periode, SEO de la periode. Une source absente
+// Faits du rapport, lus dans l'archive `admin` (jamais en direct, sauf la
+// conversion par page d'entree qui lit la vue contractuelle du site) :
+// Registre des Ventes et compte de partage (Annexe 2 du contrat signe),
+// ventes de la periode, SEO de la periode, lecture SEO. Une source absente
 // (pas de contrat, Bing avant le cron) donne une section vide et une entree
 // dans `sources_manquantes`, jamais une erreur.
 //
@@ -9,6 +11,7 @@
 // mois entier). Le decompte du partenariat reste mensuel par nature du contrat.
 // deno-lint-ignore-file no-explicit-any
 import { calculerHighlights, type FaitsHighlights, type RequeteMois, type TotauxSeo } from "./highlights.ts";
+import { construireLectureSeo, type LectureSeo } from "./lecture-seo.ts";
 import {
   estMoisEntier,
   libelleMois,
@@ -25,14 +28,27 @@ export interface Faits {
   libelle_periode: string;
   mois_entier: boolean;
   mois_couverts: string[];
-  partenariat: { contrat: any | null; lignes: any[] };
-  ventes: { lignes: any[]; nombre: number; total_ttc: number; total_ht: number; nombre_precedent: number | null };
+  partenariat: {
+    contrat: any | null;
+    lignes: any[];
+    cumul_12_mois: { ca_ht: number; resultat_partageable: number; depuis: string | null } | null;
+  };
+  ventes: {
+    lignes: any[];
+    nombre: number;
+    remboursees: number;
+    nettes: number;
+    total_ttc: number;
+    total_ht: number;
+    nombre_precedent: number | null;
+  };
   seo: {
     google: { periode: TotauxSeo | null; precedent: TotauxSeo | null };
     bing: { periode: TotauxSeo | null; precedent: TotauxSeo | null };
     top_requetes: RequeteMois[];
     top_pages: RequeteMois[];
   };
+  lecture_seo: LectureSeo | null;
   highlights: string[];
   sources_manquantes: string[];
 }
@@ -127,14 +143,18 @@ async function lignesCumulees(admin: any, appId: string, dimension: string, mois
     .slice(0, limite);
 }
 
-async function compterVentes(admin: any, appId: string, p: Periode): Promise<number> {
-  const { count, error } = await admin.schema("admin").from("ventes_enrichies")
-    .select("id", { count: "exact", head: true })
+// Ventes B2C encaissees (> 0 EUR) d'une periode : brutes et nettes de
+// remboursements (une vente remboursee n'est pas une Vente, art. 1).
+async function compterVentes(admin: any, appId: string, p: Periode): Promise<{ brutes: number; nettes: number }> {
+  const { data, error } = await admin.schema("admin").from("ventes_enrichies")
+    .select("montant_rembourse")
     .eq("app_id", appId).eq("perimetre", "b2c").eq("exclue", false)
     .gt("montant_ttc", 0)
     .gte("paid_at", `${p.debut}T00:00:00Z`).lte("paid_at", `${p.fin}T23:59:59Z`);
   if (error) throw new Error(error.message);
-  return Number(count ?? 0);
+  const brutes = (data ?? []).length;
+  const nettes = (data ?? []).filter((v: any) => Number(v.montant_rembourse) === 0).length;
+  return { brutes, nettes };
 }
 
 export async function construireFaits(admin: any, appId: string, periode: Periode): Promise<Faits> {
@@ -148,11 +168,13 @@ export async function construireFaits(admin: any, appId: string, periode: Period
     .select("id, name, domaine, repo_github").eq("id", appId).maybeSingle();
   if (!app) throw new Error("Site inconnu");
 
-  // --- Partenariat : 12 mois jusqu'au dernier mois couvert, assiette du contrat.
+  // --- Partenariat : Registre et compte de partage, 12 mois jusqu'au dernier
+  // mois couvert, assiette du contrat.
   const { data: contrats } = await admin.schema("admin").from("partenariats")
     .select("*").eq("app_id", appId).order("debut").limit(1);
   const contrat = contrats?.[0] ?? null;
   let lignesPartenariat: any[] = [];
+  let cumul: Faits["partenariat"]["cumul_12_mois"] = null;
   if (contrat) {
     const { data, error } = await admin.rpc("admin_partenariat_serie", {
       p_partenariat: contrat.id, p_assiette: null, p_prix_unitaire: null,
@@ -163,6 +185,13 @@ export async function construireFaits(admin: any, appId: string, periode: Period
       .map((l: any) => ({ ...l, mois: String(l.mois).slice(0, 7) }))
       .filter((l: any) => l.mois <= dernier)
       .slice(-12);
+    // Clause de rendez-vous (art. 20) : CA HT et Resultat Partageable sur 12
+    // mois glissants.
+    cumul = {
+      ca_ht: arrondi(lignesPartenariat.reduce((a: number, l: any) => a + Number(l.ca_ht), 0)),
+      resultat_partageable: arrondi(lignesPartenariat.reduce((a: number, l: any) => a + Number(l.resultat_partageable), 0)),
+      depuis: lignesPartenariat[0]?.mois ?? null,
+    };
   } else {
     manquantes.push("Aucun contrat de partenariat sur ce site");
   }
@@ -170,7 +199,7 @@ export async function construireFaits(admin: any, appId: string, periode: Period
   // --- Ventes de la periode : B2C encaissees, jamais de donnee nominative,
   // et sans origine : le partenaire ne descend pas a cette finesse (Eric, 06/09).
   const { data: ventes, error: eVentes } = await admin.schema("admin").from("ventes_enrichies")
-    .select("paid_at, offre, montant_ttc, montant_ht")
+    .select("paid_at, offre, montant_ttc, montant_ht, montant_rembourse, rembourse_le")
     .eq("app_id", appId).eq("perimetre", "b2c").eq("exclue", false)
     .gt("montant_ttc", 0)
     .gte("paid_at", `${periode.debut}T00:00:00Z`).lte("paid_at", `${periode.fin}T23:59:59Z`)
@@ -181,9 +210,12 @@ export async function construireFaits(admin: any, appId: string, periode: Period
     offre: v.offre,
     montant_ttc: Number(v.montant_ttc),
     montant_ht: Number(v.montant_ht),
+    montant_rembourse: Number(v.montant_rembourse ?? 0),
+    rembourse_le: v.rembourse_le ? String(v.rembourse_le).slice(0, 10) : null,
   }));
-  const totalTtc = arrondi(lignesVentes.reduce((a: number, v: any) => a + v.montant_ttc, 0));
-  const totalHt = arrondi(lignesVentes.reduce((a: number, v: any) => a + v.montant_ht, 0));
+  const nettes = lignesVentes.filter((v: any) => v.montant_rembourse === 0);
+  const totalTtc = arrondi(nettes.reduce((a: number, v: any) => a + v.montant_ttc, 0));
+  const totalHt = arrondi(nettes.reduce((a: number, v: any) => a + v.montant_ht, 0));
 
   // Periode precedente « mesuree » si l'archive a au moins une vente avant le
   // debut de la periode, sinon la comparaison n'aurait pas de sens.
@@ -191,7 +223,7 @@ export async function construireFaits(admin: any, appId: string, periode: Period
     .select("id", { count: "exact", head: true })
     .eq("app_id", appId).eq("perimetre", "b2c").eq("exclue", false)
     .lt("paid_at", `${periode.debut}T00:00:00Z`);
-  const nombrePrecedent = Number(avant ?? 0) > 0 ? await compterVentes(admin, appId, prec) : null;
+  const precedent = Number(avant ?? 0) > 0 ? await compterVentes(admin, appId, prec) : null;
 
   // --- SEO.
   const [gBrut, gpBrut, bM, bP, reqM, reqP, pagesM, hbM, hbP] = await Promise.all([
@@ -216,11 +248,11 @@ export async function construireFaits(admin: any, appId: string, periode: Period
   const faitsHighlights: FaitsHighlights = {
     libelle: moisEntier ? `en ${libelle}` : libelle,
     libelle_precedent: moisEntier ? `en ${libelleMois(moisPrec[0])}` : "sur la période précédente",
-    ventes: { periode: lignesVentes.length, precedent: nombrePrecedent },
+    ventes: { periode: nettes.length, precedent: precedent ? precedent.nettes : null },
     franchise: contrat && ligneMois && ligneMois.dans_decompte !== false
       ? {
         seuil: Number(contrat.franchise),
-        ventes: Number(ligneMois.ventes),
+        ventes: Number(ligneMois.ventes_nettes),
         partageables: Number(ligneMois.ventes_partageables),
         quote_part: Number(ligneMois.quote_part),
       }
@@ -232,6 +264,16 @@ export async function construireFaits(admin: any, appId: string, periode: Period
       requetes_precedent: reqP,
     },
   };
+
+  // --- Lecture SEO (grille du flash audit). Une panne ici ne doit pas
+  // empecher le rapport : section absente et signalee.
+  let lecture: LectureSeo | null = null;
+  try {
+    lecture = await construireLectureSeo(admin, appId, periode, { ventes: lignesVentes.length, nettes: nettes.length });
+    manquantes.push(...lecture.sources_manquantes);
+  } catch (e) {
+    manquantes.push(`Lecture SEO indisponible : ${(e as Error).message}`);
+  }
 
   return {
     site: { id: app.id, nom: app.name, domaine: app.domaine ?? null, repo_github: app.repo_github ?? null },
@@ -253,13 +295,16 @@ export async function construireFaits(admin: any, appId: string, periode: Period
         couts_directs: contrat.couts_directs ?? [],
       },
       lignes: lignesPartenariat,
+      cumul_12_mois: cumul,
     },
     ventes: {
       lignes: lignesVentes,
       nombre: lignesVentes.length,
+      remboursees: lignesVentes.length - nettes.length,
+      nettes: nettes.length,
       total_ttc: totalTtc,
       total_ht: totalHt,
-      nombre_precedent: nombrePrecedent,
+      nombre_precedent: precedent ? precedent.nettes : null,
     },
     seo: {
       google: { periode: gM, precedent: gP },
@@ -267,6 +312,7 @@ export async function construireFaits(admin: any, appId: string, periode: Period
       top_requetes: reqM.slice(0, 10),
       top_pages: pagesM,
     },
+    lecture_seo: lecture,
     highlights: calculerHighlights(faitsHighlights),
     sources_manquantes: manquantes,
   };

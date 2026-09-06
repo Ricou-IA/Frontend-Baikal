@@ -2,11 +2,14 @@
 // (spec docs/superpowers/specs/2026-09-06-rapport-mensuel-ia-media-design.md).
 //
 // Actions (JWT utilisateur, droits par site) :
-//   preparer    { appId, debut, fin }   → faits figes + commits + evolutions proposees
+//   preparer    { appId, debut, fin }   → faits figes (Annexe 2, ventes, SEO, lecture SEO,
+//                                         highlights) + commits + textes proposes
 //   rediger     { appId, debut, fin, ebauche, highlights } → commentaire propose
-//   enregistrer { appId, debut, fin, contenu, ebauche, evolutions, commentaire, pdf_base64 }
+//   enregistrer { appId, debut, fin, contenu, ebauche, evolutions, lecture_seo, commentaire, pdf_base64 }
 //                                       → depose le PDF (bucket rapports), archive la ligne
 //   liste       { appId }               → rapports archives, URL signee 1 h
+//   chantiers   { appId }               → chantiers SEO du site
+//   chantier-creer / chantier-modifier / chantier-supprimer
 //
 // Le PDF est fabrique dans le navigateur ; l'EF ne fait que l'archiver.
 // deno-lint-ignore-file no-explicit-any
@@ -16,9 +19,10 @@ import { ErreurAcces, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 import { construireFaits } from "./faits.ts";
 import { commitsDuMois } from "./github.ts";
 import { libellePeriode, validerPeriode } from "./periode.ts";
-import { redigerCommentaire, redigerEvolutions } from "./redaction.ts";
+import { redigerCommentaire, redigerEvolutions, redigerLectureSeo } from "./redaction.ts";
 
 const BUCKET = "rapports";
+const VERDICTS = ["gagne", "en_progres", "rate", "sans_objet"];
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -31,6 +35,11 @@ function json(payload: unknown, status = 200): Response {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+function texteOuNull(v: unknown, max = 300): string | null {
+  const s = String(v ?? "").trim();
+  return s ? s.slice(0, max) : null;
 }
 
 serve(async (req) => {
@@ -52,11 +61,14 @@ serve(async (req) => {
     });
     const autorises = await sitesAutorises(caller);
     const appId = String(body.appId ?? "");
-    exigerSite(autorises, appId);
+    // Les actions par identifiant verifient le site de la ligne, pas le body.
+    const parId = ["chantier-modifier", "chantier-supprimer"];
+    if (!parId.includes(action)) exigerSite(autorises, appId);
 
     if (action === "preparer") {
       const periode = validerPeriode(body.debut, body.fin);
       const faits = await construireFaits(admin, appId, periode);
+      const libelle = libellePeriode(periode);
 
       // Evolutions du logiciel : commits de la periode si le depot et le
       // jeton existent ; sinon la section manque et la page le dit.
@@ -73,13 +85,28 @@ serve(async (req) => {
           if (commits.length === 0) {
             faits.sources_manquantes.push("Aucun commit sur la période dans le dépôt");
           } else {
-            evolutions = await redigerEvolutions(commits, libellePeriode(periode));
+            evolutions = await redigerEvolutions(commits, libelle);
           }
         } catch (e) {
           faits.sources_manquantes.push(`Évolutions du logiciel indisponibles : ${(e as Error).message}`);
         }
       }
-      return json({ data: { contenu: faits, commits, evolutions_proposees: evolutions }, error: null });
+
+      // Lecture SEO redigee : proposition depuis les chiffres calcules, relue
+      // par Eric dans son champ.
+      let lectureSeo = "";
+      if (faits.lecture_seo) {
+        try {
+          lectureSeo = await redigerLectureSeo(faits.lecture_seo, faits.highlights, libelle);
+        } catch (e) {
+          faits.sources_manquantes.push(`Rédaction de la lecture SEO indisponible : ${(e as Error).message}`);
+        }
+      }
+
+      return json({
+        data: { contenu: faits, commits, evolutions_proposees: evolutions, lecture_seo_proposee: lectureSeo },
+        error: null,
+      });
     }
 
     if (action === "rediger") {
@@ -119,6 +146,7 @@ serve(async (req) => {
         contenu,
         ebauche: body.ebauche ? String(body.ebauche) : null,
         evolutions: body.evolutions ? String(body.evolutions) : null,
+        lecture_seo: body.lecture_seo ? String(body.lecture_seo) : null,
         commentaire: body.commentaire ? String(body.commentaire) : null,
         pdf_path: chemin,
         genere_par: user?.user?.id ?? null,
@@ -138,17 +166,71 @@ serve(async (req) => {
       const lignes = [];
       for (const r of data ?? []) {
         const { data: signe } = await admin.storage.from(BUCKET).createSignedUrl(r.pdf_path, 3600);
+        const p = { debut: String(r.debut).slice(0, 10), fin: String(r.fin).slice(0, 10) };
         lignes.push({
           id: r.id,
-          debut: String(r.debut).slice(0, 10),
-          fin: String(r.fin).slice(0, 10),
-          libelle: libellePeriode({ debut: String(r.debut).slice(0, 10), fin: String(r.fin).slice(0, 10) }),
+          ...p,
+          libelle: libellePeriode(p),
           version: r.version,
           genere_le: r.genere_le,
           url: signe?.signedUrl ?? null,
         });
       }
       return json({ data: { lignes }, error: null });
+    }
+
+    // --- Chantiers SEO : ce qui a ete fait, sur quelle cible, quel verdict.
+    if (action === "chantiers") {
+      const { data, error } = await admin.schema("admin").from("seo_chantiers")
+        .select("*").eq("app_id", appId).order("date", { ascending: false });
+      if (error) throw new Error(error.message);
+      return json({ data: { lignes: data ?? [] }, error: null });
+    }
+
+    if (action === "chantier-creer") {
+      const libelle = texteOuNull(body.libelle, 200);
+      const date = texteOuNull(body.date, 10);
+      if (!libelle || !date) return json({ data: null, error: "Date et libellé requis" }, 400);
+      const verdict = texteOuNull(body.verdict, 20);
+      if (verdict && !VERDICTS.includes(verdict)) return json({ data: null, error: "Verdict inconnu" }, 400);
+      const { data, error } = await admin.schema("admin").from("seo_chantiers").insert({
+        app_id: appId,
+        date,
+        libelle,
+        cible: texteOuNull(body.cible, 200),
+        hypothese: texteOuNull(body.hypothese, 500),
+        mesure_prevue_le: texteOuNull(body.mesure_prevue_le, 10),
+        verdict,
+      }).select().single();
+      if (error) throw new Error(error.message);
+      return json({ data, error: null });
+    }
+
+    if (action === "chantier-modifier" || action === "chantier-supprimer") {
+      const { data: ligne } = await admin.schema("admin").from("seo_chantiers")
+        .select("app_id").eq("id", String(body.id)).maybeSingle();
+      if (!ligne) return json({ data: null, error: "Chantier introuvable" }, 404);
+      exigerSite(autorises, ligne.app_id);
+      if (action === "chantier-supprimer") {
+        const { error } = await admin.schema("admin").from("seo_chantiers").delete().eq("id", String(body.id));
+        if (error) throw new Error(error.message);
+        return json({ data: { supprime: true }, error: null });
+      }
+      const patch: Record<string, unknown> = {};
+      if (body.libelle !== undefined) patch.libelle = texteOuNull(body.libelle, 200);
+      if (body.date !== undefined) patch.date = texteOuNull(body.date, 10);
+      if (body.cible !== undefined) patch.cible = texteOuNull(body.cible, 200);
+      if (body.hypothese !== undefined) patch.hypothese = texteOuNull(body.hypothese, 500);
+      if (body.mesure_prevue_le !== undefined) patch.mesure_prevue_le = texteOuNull(body.mesure_prevue_le, 10);
+      if (body.verdict !== undefined) {
+        const v = texteOuNull(body.verdict, 20);
+        if (v && !VERDICTS.includes(v)) return json({ data: null, error: "Verdict inconnu" }, 400);
+        patch.verdict = v;
+      }
+      const { data, error } = await admin.schema("admin").from("seo_chantiers")
+        .update(patch).eq("id", String(body.id)).select().single();
+      if (error) throw new Error(error.message);
+      return json({ data, error: null });
     }
 
     return json({ data: null, error: `Action inconnue: ${action}` }, 400);

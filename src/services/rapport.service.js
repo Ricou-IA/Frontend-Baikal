@@ -41,12 +41,24 @@ export const rapportService = {
   rediger(appId, { debut, fin }, ebauche, highlights) {
     return appelerEdge({ action: 'rediger', appId, debut, fin, ebauche, highlights });
   },
-  enregistrer(appId, { debut, fin }, { contenu, ebauche, evolutions, commentaire, pdfBase64 }) {
+  enregistrer(appId, { debut, fin }, { contenu, ebauche, evolutions, lectureSeo, commentaire, pdfBase64 }) {
     return appelerEdge({
-      action: 'enregistrer', appId, debut, fin, contenu, ebauche, evolutions, commentaire, pdf_base64: pdfBase64,
+      action: 'enregistrer', appId, debut, fin, contenu, ebauche, evolutions, lecture_seo: lectureSeo, commentaire, pdf_base64: pdfBase64,
     });
   },
   liste(appId) {
     return appelerEdge({ action: 'liste', appId });
+  },
+  chantiers(appId) {
+    return appelerEdge({ action: 'chantiers', appId });
+  },
+  creerChantier(appId, chantier) {
+    return appelerEdge({ action: 'chantier-creer', appId, ...chantier });
+  },
+  modifierChantier(id, patch) {
+    return appelerEdge({ action: 'chantier-modifier', id, ...patch });
+  },
+  supprimerChantier(id) {
+    return appelerEdge({ action: 'chantier-supprimer', id });
   },
 };
