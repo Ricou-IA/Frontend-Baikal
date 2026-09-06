@@ -14,34 +14,21 @@
  *      chargé à la demande), puis archivé par l'EF avec les faits et les textes.
  *
  * Ce qui est archivé, c'est le contenu des champs au moment du clic : jamais
- * la proposition du modèle telle quelle. Les chantiers SEO se déclarent en
- * bas de page : ils nourrissent la lecture et le PDF.
+ * la proposition du modèle telle quelle. La lecture SEO reprend le dernier
+ * audit enregistré sur la période depuis la page SEO, s'il existe.
  * ============================================================================
  */
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, FileText, Download, Sparkles, Wand2, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, FileText, Download, Sparkles, Wand2 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import ConsoleLayout from '../components/console/ConsoleLayout';
-import { Chargement, ContenuEstompe, Erreur, LigneVide, Section, Vide } from '../components/console/etats';
+import { Chargement, Erreur, LigneVide, Section, Vide } from '../components/console/etats';
 import SelecteurPeriode, { libellePeriode, moisPeriode } from '../components/rapports/SelecteurPeriode';
 import { rapportService } from '../services/rapport.service';
 
 const CHAMP = 'px-2 py-1.5 rounded border border-baikal-border bg-baikal-bg text-baikal-text focus:border-baikal-cyan outline-none text-sm';
 const ZONE = `${CHAMP} w-full min-h-[120px] leading-relaxed`;
 const BOUTON = 'flex items-center gap-1.5 px-3 py-1.5 rounded border text-sm transition-colors disabled:opacity-50';
-const VERDICTS = [
-  ['', 'En attente'],
-  ['gagne', 'Gagné'],
-  ['en_progres', 'En progrès'],
-  ['rate', 'Raté'],
-  ['sans_objet', 'Sans objet'],
-];
-const CLASSE_VERDICT = {
-  gagne: 'text-emerald-400',
-  en_progres: 'text-amber-400',
-  rate: 'text-red-400',
-  sans_objet: 'opacity-60',
-};
 
 function fmtEur(n) {
   return `${new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(n || 0))} €`;
@@ -305,7 +292,7 @@ function Generateur({ appId, onGenere }) {
           <div className="space-y-2">
             <label className="text-sm text-baikal-text">
               <span className="font-semibold text-white">Lecture SEO</span>
-              <span className="opacity-60"> — proposition rédigée depuis les chiffres calculés et les chantiers déclarés, à relire</span>
+              <span className="opacity-60"> — {preparation.audit_id ? `reprise de l'audit enregistré le ${dateFr(preparation.audit_le)}` : 'proposition rédigée depuis les chiffres calculés, à relire'}</span>
             </label>
             <textarea value={lectureSeo} onChange={(e) => setLectureSeo(e.target.value)} className={`${ZONE} min-h-[220px]`} placeholder="## Bilan des chantiers…" />
           </div>
@@ -376,133 +363,6 @@ function Generateur({ appId, onGenere }) {
   );
 }
 
-function Chantiers({ appId }) {
-  const [version, setVersion] = useState(0);
-  const [donnees, setDonnees] = useState(null);
-  const [erreur, setErreur] = useState(null);
-  const [occupe, setOccupe] = useState(false);
-  const formVide = { date: new Date().toISOString().slice(0, 10), libelle: '', cible: '', hypothese: '', mesure_prevue_le: '' };
-  const [form, setForm] = useState(formVide);
-
-  useEffect(() => {
-    let actif = true;
-    rapportService.chantiers(appId).then(({ data, error }) => {
-      if (!actif) return;
-      if (error) setErreur(error.message);
-      else { setErreur(null); setDonnees(data); }
-    });
-    return () => { actif = false; };
-  }, [appId, version]);
-
-  const terminer = ({ error }) => {
-    setOccupe(false);
-    if (error) setErreur(error.message);
-    else { setErreur(null); setVersion((v) => v + 1); }
-  };
-
-  const ajouter = async () => {
-    if (!form.date || !form.libelle.trim()) return;
-    setOccupe(true);
-    const r = await rapportService.creerChantier(appId, {
-      date: form.date,
-      libelle: form.libelle,
-      cible: form.cible || null,
-      hypothese: form.hypothese || null,
-      mesure_prevue_le: form.mesure_prevue_le || null,
-    });
-    if (!r.error) setForm(formVide);
-    terminer(r);
-  };
-
-  const poserVerdict = async (id, verdict) => {
-    setOccupe(true);
-    terminer(await rapportService.modifierChantier(id, { verdict: verdict || null }));
-  };
-
-  const supprimer = async (id) => {
-    setOccupe(true);
-    terminer(await rapportService.supprimerChantier(id));
-  };
-
-  const lignes = donnees?.lignes ?? [];
-
-  return (
-    <Section
-      titre="Chantiers SEO"
-      sousTitre="Ce qui a été fait, sur quelle cible, avec quel verdict — la matière du « Bilan des chantiers » du rapport"
-    >
-      {erreur && <Erreur message={erreur} />}
-      {!donnees && !erreur && <Chargement />}
-      {donnees && (
-        <ContenuEstompe enCours={occupe}>
-          <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
-            <table className="w-full text-sm text-baikal-text">
-              <thead>
-                <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
-                  <th className="px-4 py-2">Date</th>
-                  <th className="px-2 py-2">Chantier</th>
-                  <th className="px-2 py-2">Cible</th>
-                  <th className="px-2 py-2">Mesure prévue</th>
-                  <th className="px-2 py-2">Verdict</th>
-                  <th className="px-4 py-2"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {lignes.length === 0 && <LigneVide colonnes={6} message="Aucun chantier déclaré pour ce site." />}
-                {lignes.map((c) => (
-                  <tr key={c.id} className="border-t border-baikal-border/50 align-top">
-                    <td className="px-4 py-2 font-mono text-xs whitespace-nowrap">{c.date}</td>
-                    <td className="px-2 py-2">
-                      <div>{c.libelle}</div>
-                      {c.hypothese && <div className="text-xs opacity-60 mt-0.5">{c.hypothese}</div>}
-                    </td>
-                    <td className="px-2 py-2 text-xs font-mono opacity-80">{c.cible || '—'}</td>
-                    <td className="px-2 py-2 font-mono text-xs">{c.mesure_prevue_le || '—'}</td>
-                    <td className="px-2 py-2">
-                      <select
-                        value={c.verdict || ''}
-                        onChange={(e) => poserVerdict(c.id, e.target.value)}
-                        className={`${CHAMP} py-1 ${CLASSE_VERDICT[c.verdict] || ''}`}
-                      >
-                        {VERDICTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                      </select>
-                    </td>
-                    <td className="px-4 py-2 text-right">
-                      <button onClick={() => supprimer(c.id)} title="Supprimer" className="p-1 text-baikal-text hover:text-red-400 transition-colors">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="flex items-start gap-2 flex-wrap">
-            <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className={`${CHAMP} font-mono`} />
-            <input value={form.libelle} onChange={(e) => setForm({ ...form, libelle: e.target.value })} placeholder="Chantier (ce qui a été fait)" className={`${CHAMP} w-72`} />
-            <input value={form.cible} onChange={(e) => setForm({ ...form, cible: e.target.value })} placeholder="Cible (cluster prix, /comparatif…)" className={`${CHAMP} w-56`} />
-            <input value={form.hypothese} onChange={(e) => setForm({ ...form, hypothese: e.target.value })} placeholder="Hypothèse" className={`${CHAMP} w-64`} />
-            <input type="date" value={form.mesure_prevue_le} onChange={(e) => setForm({ ...form, mesure_prevue_le: e.target.value })} title="Mesure prévue le" className={`${CHAMP} font-mono`} />
-            <button
-              onClick={ajouter}
-              disabled={occupe || !form.date || !form.libelle.trim()}
-              className={`${BOUTON} border-baikal-cyan text-baikal-cyan hover:bg-baikal-cyan/10`}
-            >
-              <Plus className="w-4 h-4" />
-              Ajouter
-            </button>
-          </div>
-          <p className="text-[11px] text-baikal-text opacity-50 leading-relaxed">
-            <strong className="opacity-100">Lecture</strong> · Le verdict se pose après lecture des chiffres,
-            jamais avant. Un chantier de liens ne se lit pas avant trois mois. Le rapport reprend un verdict posé
-            sans le contredire ; sans verdict, il écrit « trop tôt pour conclure ».
-          </p>
-        </ContenuEstompe>
-      )}
-    </Section>
-  );
-}
-
 function Archives({ appId, version }) {
   const [donnees, setDonnees] = useState(null);
   const [erreur, setErreur] = useState(null);
@@ -565,7 +425,6 @@ function RapportsContent() {
   return (
     <div className="p-6 space-y-10">
       <Generateur appId={currentApp} onGenere={() => setVersion((v) => v + 1)} />
-      <Chantiers appId={currentApp} />
       <Archives appId={currentApp} version={version} />
     </div>
   );

@@ -216,3 +216,28 @@ juillet. Décisions d'Eric : le contrat signé a le dernier mot.
   outils de suivi, pas des clauses du contrat.
 - Règles maintenues : pas de position moyenne globale ni d'impressions
   brutes ; `not is_noise` partout ; nommer le compte de ventes affiché.
+
+## Avenant du 06/09 nuit — audit SEO, autorité Moz, appareils
+
+- **Audit SEO lançable depuis Baikal** (page SEO, rubrique « Audit SEO ») :
+  même sélecteur de période, bouton « Lancer l'audit », les blocs de la
+  grille à l'écran (trafic jours ouvrés, deux comptes de ventes et conversion
+  par page, clusters, requêtes suivies et pages clés en requête × page,
+  appareils, autorité Moz, chantiers) et le texte rédigé, éditable.
+  « Enregistrer l'audit » l'archive (`admin.seo_audits`) ; le rapport au
+  partenaire reprend le dernier audit enregistré de sa période, sinon il
+  calcule à la volée. Audits archivés consultables en lecture seule.
+- **Chantiers sans saisie** : la rubrique Chantiers de `/rapports` est
+  retirée. Les chantiers viennent des commits SEO du dépôt (90 jours) plus,
+  s'il y en a, des lignes de `admin.seo_chantiers` (verdicts déjà posés).
+- **Autorité Moz** : EF `admin-seo-autorite`, cron le 5 à 05h30 UTC, table
+  `admin.seo_autorite` (DA, PA, spam, domaines référents, liens externes,
+  nofollow, supprimés, last_crawled, brut), domaines dans
+  `config.apps.seo_concurrents`, secret `MOZ_API_TOKEN`. Quota gratuit :
+  50 lignes/mois, un relevé mensuel de 9 domaines, jamais de retry. Ligne de
+  départ du 06/09/2026 insérée. Tableau « Autorité » dans la page SEO
+  (domaines × mois, DA en gros, référents en petit, nous surlignés) et dans
+  le PDF (Lecture SEO).
+- **Mobile et ordinateur** : dimension `device` de l'archive, action
+  `appareils` de `admin-seo`, tableau mensuel dans la page SEO, bloc dans
+  l'audit et le PDF (clics et part par appareil, période vs précédente).

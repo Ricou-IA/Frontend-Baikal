@@ -11,6 +11,7 @@
 // mois entier). Le decompte du partenariat reste mensuel par nature du contrat.
 // deno-lint-ignore-file no-explicit-any
 import { calculerHighlights, type FaitsHighlights, type RequeteMois, type TotauxSeo } from "./highlights.ts";
+import type { Commit } from "./github.ts";
 import { construireLectureSeo, type LectureSeo } from "./lecture-seo.ts";
 import {
   estMoisEntier,
@@ -157,7 +158,7 @@ async function compterVentes(admin: any, appId: string, p: Periode): Promise<{ b
   return { brutes, nettes };
 }
 
-export async function construireFaits(admin: any, appId: string, periode: Periode): Promise<Faits> {
+export async function construireFaits(admin: any, appId: string, periode: Periode, commitsSeo: Commit[] = []): Promise<Faits> {
   const prec = periodePrecedente(periode);
   const moisEntier = estMoisEntier(periode);
   const mois = moisCouverts(periode);
@@ -269,7 +270,7 @@ export async function construireFaits(admin: any, appId: string, periode: Period
   // empecher le rapport : section absente et signalee.
   let lecture: LectureSeo | null = null;
   try {
-    lecture = await construireLectureSeo(admin, appId, periode, { ventes: lignesVentes.length, nettes: nettes.length });
+    lecture = await construireLectureSeo(admin, appId, periode, { ventes: lignesVentes.length, nettes: nettes.length }, commitsSeo);
     manquantes.push(...lecture.sources_manquantes);
   } catch (e) {
     manquantes.push(`Lecture SEO indisponible : ${(e as Error).message}`);

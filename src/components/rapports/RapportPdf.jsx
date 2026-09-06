@@ -33,6 +33,7 @@ const dateFr = (iso) => {
 };
 const majuscule = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
 const VERDICTS = { gagne: 'Gagné', en_progres: 'En progrès', rate: 'Raté', sans_objet: 'Sans objet' };
+const APPAREILS = { mobile: 'Mobile', desktop: 'Ordinateur', tablet: 'Tablette' };
 const CLUSTERS = {
   en_ligne: 'En ligne', prix: 'Prix', modele: 'Modèle', foncia: 'Foncia / Nexity / Citya',
   delai: 'Délai', tantiemes: 'Tantièmes', remboursement: 'Remboursement', autre: 'Autre',
@@ -229,6 +230,45 @@ function BlocLectureSeo({ lecture, chantiers }) {
         </View>
       )}
 
+      {lecture.appareils && lecture.appareils.length > 0 && (
+        <View>
+          <Text style={s.h3}>Clics Google par appareil</Text>
+          <Table
+            colonnes={[
+              { titre: 'Appareil', valeur: (l) => APPAREILS[l.appareil] || l.appareil, flex: 2 },
+              { titre: 'Clics', valeur: (l) => nb(l.clics), droite: true, gras: true },
+              { titre: 'Part', valeur: (l) => pctRatio(l.part_clics), droite: true },
+              { titre: 'Impressions', valeur: (l) => nb(l.impressions), droite: true },
+              { titre: 'Clics préc.', valeur: (l) => (l.clics_precedent === null ? '—' : nb(l.clics_precedent)), droite: true },
+              { titre: 'Part préc.', valeur: (l) => (l.part_clics_precedent === null ? '—' : pctRatio(l.part_clics_precedent)), droite: true },
+            ]}
+            lignes={lecture.appareils}
+            cle={(l) => l.appareil}
+          />
+        </View>
+      )}
+
+      {lecture.autorite && lecture.autorite.length > 0 && (
+        <View>
+          <Text style={s.h3}>Autorité de domaine (Moz), nous et les concurrents</Text>
+          <Table
+            colonnes={[
+              { titre: 'Domaine', valeur: (l) => `${l.domaine}${l.notre ? ' (nous)' : ''}`, flex: 3 },
+              { titre: 'DA', valeur: (l) => (l.da === null ? '—' : nb(l.da)), droite: true, gras: true },
+              { titre: 'DA préc.', valeur: (l) => (l.da_precedent === null ? '—' : nb(l.da_precedent)), droite: true },
+              { titre: 'Domaines référents', valeur: (l) => (l.ref_domains === null ? '—' : nb(l.ref_domains)), droite: true, gras: true },
+              { titre: 'Réf. préc.', valeur: (l) => (l.ref_domains_precedent === null ? '—' : nb(l.ref_domains_precedent)), droite: true },
+              { titre: 'Spam', valeur: (l) => (l.spam === null ? '—' : nb(l.spam)), droite: true },
+              { titre: 'Relevé', valeur: (l) => dateFr(l.mesure_le), flex: 1.2, droite: true },
+            ]}
+            lignes={lecture.autorite}
+            cle={(l) => l.domaine}
+            classeLigne={(l) => (l.notre ? s.trCourant : null)}
+          />
+          <Text style={s.note}>Relevé mensuel Moz (Domain Authority, domaines référents, score de spam). Outil de suivi interne.</Text>
+        </View>
+      )}
+
       {lecture.clusters.periode.length > 0 && (
         <View>
           <Text style={s.h3}>Clusters de requêtes (hors bruit), période et période précédente</Text>
@@ -293,13 +333,13 @@ function BlocLectureSeo({ lecture, chantiers }) {
           <Table
             colonnes={[
               { titre: 'Date', valeur: (l) => dateFr(l.date), flex: 1 },
-              { titre: 'Chantier', valeur: (l) => l.libelle, flex: 3.5 },
+              { titre: 'Chantier', valeur: (l) => `${l.libelle}${l.source === 'commit' ? ' (commit)' : ''}`, flex: 3.5 },
               { titre: 'Cible', valeur: (l) => l.cible || '—', flex: 2 },
               { titre: 'Mesure', valeur: (l) => (l.mesure_prevue_le ? dateFr(l.mesure_prevue_le) : '—'), flex: 1 },
               { titre: 'Verdict', valeur: (l) => VERDICTS[l.verdict] || 'En attente', flex: 1.2, gras: true },
             ]}
             lignes={chantiers}
-            cle={(l) => l.id}
+            cle={(l, i) => `${l.date}-${i}`}
           />
         </View>
       )}

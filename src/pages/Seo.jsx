@@ -8,6 +8,8 @@
  *   2. Comparatif periode vs periode : statuts Regression / Disparue /
  *      Nouvelle / Progression / Stable (logique PV, ±1 rang).
  *   3. Bing vs Google : archive mensuelle admin.seo_snapshots + ecarts.
+ *   4. Mobile et ordinateur (dimension device), Autorite (releve Moz mensuel,
+ *      nous et les concurrents), Audit SEO (grille du flash audit, archive).
  * Enrobage et selecteur de site fournis par ConsoleLayout (useApp).
  * ============================================================================
  */
@@ -42,6 +44,8 @@ import {
 import ConsoleLayout from '../components/console/ConsoleLayout';
 import KpiCarte from '../components/console/KpiCarte';
 import { seoService } from '../services/seo.service';
+import AuditSeo from '../components/seo/AuditSeo';
+import { Appareils, Autorite } from '../components/seo/AutoriteEtAppareils';
 
 const FENETRES = [7, 28, 90];
 
@@ -980,8 +984,11 @@ function SeoContent() {
     <div className="p-6 space-y-10">
       <Performances appId={currentApp} />
       <VueEnsemble appId={currentApp} />
+      <Appareils appId={currentApp} />
       <Comparatif appId={currentApp} />
       <BingVsGoogle appId={currentApp} />
+      <Autorite appId={currentApp} />
+      <AuditSeo appId={currentApp} />
     </div>
   );
 }

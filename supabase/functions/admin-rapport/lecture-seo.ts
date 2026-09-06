@@ -1,12 +1,14 @@
-// « Lecture SEO » du rapport : les blocs calcules de la grille du flash audit
+// « Lecture SEO » : les blocs calcules de la grille du flash audit
 // (docs/superpowers/prompts/2026-09-06-grille-flash-audit-seo.md, depot Pack
-// Vendeur). Trois regles venues de vrais faux positifs :
+// Vendeur), plus l'autorite Moz et la repartition par appareil. Trois regles
+// venues de vrais faux positifs :
 //   (a) jamais de position moyenne globale ni de total d'impressions brut ;
 //   (b) toujours `not is_noise`, et des semaines pleines / jours ouvres ;
 //   (c) deux comptes de ventes legitimes (paiement, creation) : nommer celui
 //       qu'on affiche.
 // deno-lint-ignore-file no-explicit-any
 import { chargerSite, ErreurSite, lecteurSite } from "../_shared/sites.ts";
+import type { Commit } from "./github.ts";
 import { moisCouverts, type Periode, periodePrecedente } from "./periode.ts";
 
 export interface LigneCluster {
@@ -45,8 +47,39 @@ export interface LignePageCle {
   top_requetes: string[];
 }
 
+export interface LigneAutorite {
+  domaine: string;
+  notre: boolean;
+  mesure_le: string | null;
+  da: number | null;
+  ref_domains: number | null;
+  spam: number | null;
+  da_precedent: number | null;
+  ref_domains_precedent: number | null;
+}
+
+export interface LigneAppareil {
+  appareil: string; // mobile | desktop | tablet
+  clics: number;
+  impressions: number;
+  part_clics: number; // 0..1
+  clics_precedent: number | null;
+  part_clics_precedent: number | null;
+}
+
+export interface Chantier {
+  date: string;
+  libelle: string;
+  cible: string | null;
+  hypothese: string | null;
+  mesure_prevue_le: string | null;
+  verdict: string | null;
+  source: "declare" | "commit";
+}
+
 export interface LectureSeo {
   trafic: { google: LigneSemaine[]; bing: LigneSemaine[] };
+  appareils: LigneAppareil[];
   ventes: {
     par_paiement: { ventes: number; nettes: number };
     par_creation: {
@@ -61,7 +94,8 @@ export interface LectureSeo {
   };
   clusters: { periode: LigneCluster[]; precedent: LigneCluster[] };
   suivi: { requetes: LigneSuivi[]; pages: LignePageCle[]; disponible: boolean };
-  chantiers: any[];
+  autorite: LigneAutorite[];
+  chantiers: Chantier[];
   sources_manquantes: string[];
 }
 
@@ -93,7 +127,6 @@ function jourIso(d: Date): string {
 // --- Bloc 1 : trafic en semaines pleines, jours ouvres (lundi-vendredi).
 async function traficHebdo(admin: any, appId: string, source: string, fin: string): Promise<LigneSemaine[]> {
   const finDate = new Date(`${fin}T00:00:00Z`);
-  // Derniere semaine pleine : celle dont le dimanche est <= fin.
   const dernierDimanche = new Date(finDate);
   dernierDimanche.setUTCDate(finDate.getUTCDate() - ((finDate.getUTCDay() + 7) % 7));
   const premierLundi = new Date(dernierDimanche);
@@ -108,7 +141,7 @@ async function traficHebdo(admin: any, appId: string, source: string, fin: strin
   for (const r of data ?? []) {
     const d = new Date(`${r.period_start}T00:00:00Z`);
     const js = d.getUTCDay();
-    if (js === 0 || js === 6) continue; // week-end exclu
+    if (js === 0 || js === 6) continue;
     const lundi = new Date(d);
     lundi.setUTCDate(d.getUTCDate() - ((js + 6) % 7));
     const cle = jourIso(lundi);
@@ -119,7 +152,7 @@ async function traficHebdo(admin: any, appId: string, source: string, fin: strin
     semaines.set(cle, cur);
   }
   const lignes: LigneSemaine[] = [...semaines.entries()]
-    .filter(([, s]) => s.jours >= 5) // semaine pleine seulement
+    .filter(([, s]) => s.jours >= 5)
     .map(([semaine, s]) => ({
       semaine,
       jours_ouvres: s.jours,
@@ -129,17 +162,54 @@ async function traficHebdo(admin: any, appId: string, source: string, fin: strin
       reference: false,
     }))
     .sort((a, b) => a.semaine.localeCompare(b.semaine));
-  // Reference = meilleure semaine des 12 (hors la derniere), pour situer la
-  // derniere semaine pleine par rapport au pic recent.
   if (lignes.length > 1) {
     const candidates = lignes.slice(0, -1);
     const meilleure = candidates.reduce((a, b) => (b.clics_par_jour > a.clics_par_jour ? b : a));
     meilleure.reference = true;
   }
-  // On garde la reference, puis les 6 dernieres semaines.
   const dernieres = lignes.slice(-6);
   const ref = lignes.find((l) => l.reference);
   return ref && !dernieres.includes(ref) ? [ref, ...dernieres] : dernieres;
+}
+
+// --- Appareils : mobile / ordinateur / tablette (dimension device, au mois).
+async function appareilsSur(admin: any, appId: string, mois: string[]): Promise<Map<string, { clics: number; impressions: number }>> {
+  const out = new Map<string, { clics: number; impressions: number }>();
+  if (mois.length === 0) return out;
+  const { data, error } = await admin.schema("admin").from("seo_snapshots")
+    .select("key, clicks, impressions")
+    .eq("app_id", appId).eq("source", "google")
+    .eq("granularity", "month").eq("dimension", "device")
+    .in("period_start", mois.map((m) => `${m}-01`));
+  if (error) throw new Error(error.message);
+  for (const r of data ?? []) {
+    const k = String(r.key).toLowerCase();
+    const cur = out.get(k) ?? { clics: 0, impressions: 0 };
+    cur.clics += Number(r.clicks);
+    cur.impressions += Number(r.impressions);
+    out.set(k, cur);
+  }
+  return out;
+}
+
+function appareils(periode: Map<string, { clics: number; impressions: number }>, precedent: Map<string, { clics: number; impressions: number }>): LigneAppareil[] {
+  const total = [...periode.values()].reduce((a, v) => a + v.clics, 0);
+  const totalPrec = [...precedent.values()].reduce((a, v) => a + v.clics, 0);
+  const ordre = ["mobile", "desktop", "tablet"];
+  return ordre
+    .filter((k) => periode.has(k) || precedent.has(k))
+    .map((k) => {
+      const p = periode.get(k) ?? { clics: 0, impressions: 0 };
+      const q = precedent.get(k);
+      return {
+        appareil: k,
+        clics: p.clics,
+        impressions: p.impressions,
+        part_clics: total > 0 ? arrondi(p.clics / total, 3) : 0,
+        clics_precedent: q ? q.clics : null,
+        part_clics_precedent: q && totalPrec > 0 ? arrondi(q.clics / totalPrec, 3) : null,
+      };
+    });
 }
 
 // --- Bloc 3 : clusters mensuels sur les mois couverts (not is_noise).
@@ -263,9 +333,62 @@ function suiviPages(pages: string[], base: string, periode: Croise[], precedent:
   });
 }
 
+// --- Autorite Moz : dernier releve <= fin de periode, et dernier releve <=
+// fin de la periode precedente. Le notre en tete, puis par domaines referents.
+async function autoriteSur(admin: any, appId: string, notreDomaine: string | null, fin: string, finPrec: string): Promise<LigneAutorite[]> {
+  const { data, error } = await admin.schema("admin").from("seo_autorite")
+    .select("domaine, mesure_le, da, ref_domains, spam")
+    .eq("app_id", appId).lte("mesure_le", fin).order("mesure_le");
+  if (error) throw new Error(error.message);
+  const dernier = new Map<string, any>();
+  const dernierPrec = new Map<string, any>();
+  for (const r of data ?? []) {
+    dernier.set(r.domaine, r);
+    if (String(r.mesure_le) <= finPrec) dernierPrec.set(r.domaine, r);
+  }
+  return [...dernier.entries()]
+    .map(([domaine, r]) => {
+      const p = dernierPrec.get(domaine);
+      return {
+        domaine,
+        notre: domaine === notreDomaine,
+        mesure_le: String(r.mesure_le).slice(0, 10),
+        da: r.da ?? null,
+        ref_domains: r.ref_domains ?? null,
+        spam: r.spam ?? null,
+        da_precedent: p && p !== r ? (p.da ?? null) : null,
+        ref_domains_precedent: p && p !== r ? (p.ref_domains ?? null) : null,
+      };
+    })
+    .sort((a, b) => (b.notre ? 1 : 0) - (a.notre ? 1 : 0) || (b.ref_domains ?? 0) - (a.ref_domains ?? 0));
+}
+
+// --- Chantiers : declares dans Baikal (verdict pose), plus les commits SEO
+// du depot (sans saisie : ce qui a ete fait est dans git).
+const COMMIT_SEO = /seo|contenu|guide|page|titre|title|301|redirect|canoni|meta|schema|sitemap|lien|netlink|blog|article|geo|llms|glossaire/i;
+
+function chantiersDepuis(declares: any[], commits: Commit[]): Chantier[] {
+  const out: Chantier[] = declares.map((c) => ({
+    date: String(c.date).slice(0, 10),
+    libelle: c.libelle,
+    cible: c.cible ?? null,
+    hypothese: c.hypothese ?? null,
+    mesure_prevue_le: c.mesure_prevue_le ? String(c.mesure_prevue_le).slice(0, 10) : null,
+    verdict: c.verdict ?? null,
+    source: "declare" as const,
+  }));
+  const dejaVus = new Set(out.map((c) => c.libelle.toLowerCase()));
+  for (const c of commits) {
+    if (!COMMIT_SEO.test(c.sujet)) continue;
+    const libelle = c.sujet.replace(/^\w+(\([^)]*\))?:\s*/, "");
+    if (dejaVus.has(libelle.toLowerCase())) continue;
+    out.push({ date: c.date, libelle, cible: null, hypothese: null, mesure_prevue_le: null, verdict: null, source: "commit" });
+  }
+  return out.sort((a, b) => a.date.localeCompare(b.date));
+}
+
 // --- Bloc 6 : ventes par date de creation, conversion par page d'entree.
-// Lecture EN DIRECT de la vue contractuelle du site (baikal_dossiers) : la
-// conversion se lit sur tous les dossiers, pas seulement les ventes archivees.
+// Lecture EN DIRECT de la vue contractuelle du site (baikal_dossiers).
 async function ventesParCreation(admin: any, appId: string, p: Periode) {
   const vide = {
     disponible: false, dossiers: 0, emails: 0, payes: 0, payes_organique: 0,
@@ -336,6 +459,7 @@ export async function construireLectureSeo(
   appId: string,
   periode: Periode,
   ventesParPaiement: { ventes: number; nettes: number },
+  commits: Commit[] = [],
 ): Promise<LectureSeo> {
   const prec = periodePrecedente(periode);
   const mois = moisCouverts(periode);
@@ -348,7 +472,7 @@ export async function construireLectureSeo(
   const pagesCles: string[] = Array.isArray(app?.seo_pages_cles) ? app.seo_pages_cles.map(String) : [];
   const base = app?.domaine ? `https://${app.domaine}` : "";
 
-  const [google, bing, clM, clP, crM, crP, chantiers] = await Promise.all([
+  const [google, bing, clM, clP, crM, crP, declares, appM, appP, autorite] = await Promise.all([
     traficHebdo(admin, appId, "google", periode.fin),
     traficHebdo(admin, appId, "bing", periode.fin),
     clustersSur(admin, appId, mois),
@@ -356,6 +480,9 @@ export async function construireLectureSeo(
     croiseSur(admin, appId, mois),
     croiseSur(admin, appId, moisPrec),
     admin.schema("admin").from("seo_chantiers").select("*").eq("app_id", appId).order("date"),
+    appareilsSur(admin, appId, mois),
+    appareilsSur(admin, appId, moisPrec),
+    autoriteSur(admin, appId, app?.domaine ?? null, periode.fin, prec.fin),
   ]);
 
   let parCreation;
@@ -370,9 +497,11 @@ export async function construireLectureSeo(
   const suiviDisponible = crM.length > 0;
   if (!suiviDisponible) manquantes.push("Aucun relevé requête × page archivé sur la période (capture Search Console à lancer)");
   if (panier.length === 0 && pagesCles.length === 0) manquantes.push("Requêtes suivies et pages clés non renseignées dans /sites");
+  if (autorite.length === 0) manquantes.push("Aucun relevé d'autorité Moz");
 
   return {
     trafic: { google, bing },
+    appareils: appareils(appM, appP),
     ventes: { par_paiement: ventesParPaiement, par_creation: parCreation },
     clusters: { periode: clM, precedent: clP },
     suivi: {
@@ -380,7 +509,8 @@ export async function construireLectureSeo(
       pages: suiviPages(pagesCles, base, crM, crP),
       disponible: suiviDisponible,
     },
-    chantiers: chantiers.data ?? [],
+    autorite,
+    chantiers: chantiersDepuis(declares.data ?? [], commits),
     sources_manquantes: manquantes,
   };
 }

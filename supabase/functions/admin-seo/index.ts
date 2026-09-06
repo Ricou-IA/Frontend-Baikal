@@ -353,6 +353,45 @@ serve(async (req) => {
         });
       }
 
+      case "appareils": {
+        // Repartition mensuelle des clics et impressions Google par appareil
+        // (dimension device de l'export GSC, archivee au mois).
+        exigerSite(sites, appId);
+        const nbMois = Math.min(Number(body.mois ?? 12), 24);
+        const depuis = new Date();
+        depuis.setUTCDate(1);
+        depuis.setUTCMonth(depuis.getUTCMonth() - (nbMois - 1));
+        const { data, error } = await admin.schema("admin").from("seo_snapshots")
+          .select("period_start, key, clicks, impressions")
+          .eq("app_id", appId).eq("source", "google")
+          .eq("dimension", "device").eq("granularity", "month")
+          .gte("period_start", depuis.toISOString().slice(0, 10))
+          .order("period_start");
+        if (error) throw error;
+        const parMois = new Map<string, Record<string, { clics: number; impressions: number }>>();
+        for (const r of data ?? []) {
+          const m = String(r.period_start).slice(0, 7);
+          const cur = parMois.get(m) ?? {};
+          const k = String(r.key).toLowerCase();
+          cur[k] = { clics: (cur[k]?.clics ?? 0) + r.clicks, impressions: (cur[k]?.impressions ?? 0) + r.impressions };
+          parMois.set(m, cur);
+        }
+        const lignes = [...parMois.entries()].map(([mois, a]) => {
+          const total = Object.values(a).reduce((x, v) => x + v.clics, 0);
+          return {
+            mois,
+            total_clics: total,
+            appareils: ["mobile", "desktop", "tablet"].map((k) => ({
+              appareil: k,
+              clics: a[k]?.clics ?? 0,
+              impressions: a[k]?.impressions ?? 0,
+              part_clics: total > 0 ? Number(((a[k]?.clics ?? 0) / total).toFixed(3)) : 0,
+            })),
+          };
+        });
+        return json({ data: { lignes }, error: null });
+      }
+
       case "bing-vs-google": {
         exigerSite(sites, appId);
         // Serie mensuelle : Google = somme des PAGES archivees (les requetes

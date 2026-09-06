@@ -1,15 +1,18 @@
-// admin-rapport — rapport au partenaire SEO du site, sur une periode bornee
-// (spec docs/superpowers/specs/2026-09-06-rapport-mensuel-ia-media-design.md).
+// admin-rapport — rapport au partenaire SEO du site et audit SEO, sur une
+// periode bornee (spec docs/superpowers/specs/2026-09-06-rapport-mensuel-ia-media-design.md).
 //
 // Actions (JWT utilisateur, droits par site) :
 //   preparer    { appId, debut, fin }   → faits figes (Annexe 2, ventes, SEO, lecture SEO,
-//                                         highlights) + commits + textes proposes
+//                                         highlights) + commits + textes proposes. Reprend le
+//                                         dernier audit SEO enregistre sur la meme periode.
 //   rediger     { appId, debut, fin, ebauche, highlights } → commentaire propose
 //   enregistrer { appId, debut, fin, contenu, ebauche, evolutions, lecture_seo, commentaire, pdf_base64 }
 //                                       → depose le PDF (bucket rapports), archive la ligne
 //   liste       { appId }               → rapports archives, URL signee 1 h
-//   chantiers   { appId }               → chantiers SEO du site
-//   chantier-creer / chantier-modifier / chantier-supprimer
+//   audit       { appId, debut, fin }   → lecture SEO calculee + texte propose
+//   audit-enregistrer { appId, debut, fin, contenu, texte } → archive l'audit relu
+//   audits      { appId }               → audits archives
+//   audit-lire  { id }                  → un audit complet
 //
 // Le PDF est fabrique dans le navigateur ; l'EF ne fait que l'archiver.
 // deno-lint-ignore-file no-explicit-any
@@ -17,12 +20,11 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ErreurAcces, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 import { construireFaits } from "./faits.ts";
-import { commitsDuMois } from "./github.ts";
-import { libellePeriode, validerPeriode } from "./periode.ts";
+import { type Commit, commitsDuMois } from "./github.ts";
+import { libellePeriode, type Periode, validerPeriode } from "./periode.ts";
 import { redigerCommentaire, redigerEvolutions, redigerLectureSeo } from "./redaction.ts";
 
 const BUCKET = "rapports";
-const VERDICTS = ["gagne", "en_progres", "rate", "sans_objet"];
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -37,9 +39,40 @@ function json(payload: unknown, status = 200): Response {
   });
 }
 
-function texteOuNull(v: unknown, max = 300): string | null {
-  const s = String(v ?? "").trim();
-  return s ? s.slice(0, max) : null;
+function joursAvant(iso: string, n: number): string {
+  return new Date(new Date(`${iso}T00:00:00Z`).getTime() - n * 86_400_000).toISOString().slice(0, 10);
+}
+
+// Commits du depot du site sur une fenetre : source des « evolutions du
+// logiciel » (periode) et des chantiers SEO (90 jours). Jamais une erreur :
+// une source absente est signalee dans `manquantes`.
+async function commitsSite(
+  repo: string | null,
+  debut: string,
+  fin: string,
+  manquantes: string[],
+  libelle: string,
+): Promise<Commit[]> {
+  const token = Deno.env.get("ADMIN_GITHUB_TOKEN");
+  if (!repo) {
+    manquantes.push(`Dépôt GitHub non renseigné dans /sites : pas ${libelle}`);
+    return [];
+  }
+  if (!token) {
+    manquantes.push(`Secret ADMIN_GITHUB_TOKEN absent : pas ${libelle}`);
+    return [];
+  }
+  try {
+    return await commitsDuMois(repo, token, debut, fin);
+  } catch (e) {
+    manquantes.push(`Commits indisponibles (${libelle}) : ${(e as Error).message}`);
+    return [];
+  }
+}
+
+async function repoDuSite(admin: any, appId: string): Promise<string | null> {
+  const { data } = await admin.schema("config").from("apps").select("repo_github").eq("id", appId).maybeSingle();
+  return data?.repo_github ?? null;
 }
 
 serve(async (req) => {
@@ -61,41 +94,100 @@ serve(async (req) => {
     });
     const autorises = await sitesAutorises(caller);
     const appId = String(body.appId ?? "");
-    // Les actions par identifiant verifient le site de la ligne, pas le body.
-    const parId = ["chantier-modifier", "chantier-supprimer"];
+    const parId = ["audit-lire"];
     if (!parId.includes(action)) exigerSite(autorises, appId);
+
+    // --- Audit SEO : la lecture calculee et son texte, sans le reste du rapport.
+    if (action === "audit") {
+      const periode = validerPeriode(body.debut, body.fin);
+      const manquantes: string[] = [];
+      const repo = await repoDuSite(admin, appId);
+      const commitsSeo = await commitsSite(repo, joursAvant(periode.fin, 90), periode.fin, manquantes, "de chantiers déduits des commits");
+      const faits = await construireFaits(admin, appId, periode, commitsSeo);
+      faits.sources_manquantes.push(...manquantes);
+      let texte = "";
+      if (faits.lecture_seo) {
+        try {
+          texte = await redigerLectureSeo(faits.lecture_seo, faits.highlights, libellePeriode(periode));
+        } catch (e) {
+          faits.sources_manquantes.push(`Rédaction indisponible : ${(e as Error).message}`);
+        }
+      }
+      return json({
+        data: {
+          periode,
+          libelle_periode: faits.libelle_periode,
+          mois_entier: faits.mois_entier,
+          mois_couverts: faits.mois_couverts,
+          lecture: faits.lecture_seo,
+          highlights: faits.highlights,
+          seo: faits.seo,
+          texte_propose: texte,
+          sources_manquantes: faits.sources_manquantes,
+        },
+        error: null,
+      });
+    }
+
+    if (action === "audit-enregistrer") {
+      const periode = validerPeriode(body.debut, body.fin);
+      if (!body.contenu || typeof body.contenu !== "object") return json({ data: null, error: "Contenu manquant" }, 400);
+      const { data: user } = await caller.auth.getUser();
+      const { data, error } = await admin.schema("admin").from("seo_audits").insert({
+        app_id: appId,
+        debut: periode.debut,
+        fin: periode.fin,
+        contenu: body.contenu,
+        texte: body.texte ? String(body.texte) : null,
+        cree_par: user?.user?.id ?? null,
+      }).select("id, cree_le").single();
+      if (error) throw new Error(error.message);
+      return json({ data, error: null });
+    }
+
+    if (action === "audits") {
+      const { data, error } = await admin.schema("admin").from("seo_audits")
+        .select("id, debut, fin, cree_le, texte")
+        .eq("app_id", appId).order("cree_le", { ascending: false }).limit(40);
+      if (error) throw new Error(error.message);
+      const lignes = (data ?? []).map((a: any) => {
+        const p: Periode = { debut: String(a.debut).slice(0, 10), fin: String(a.fin).slice(0, 10) };
+        return { id: a.id, ...p, libelle: libellePeriode(p), cree_le: a.cree_le, extrait: String(a.texte ?? "").slice(0, 160) };
+      });
+      return json({ data: { lignes }, error: null });
+    }
+
+    if (action === "audit-lire") {
+      const { data, error } = await admin.schema("admin").from("seo_audits")
+        .select("*").eq("id", String(body.id)).maybeSingle();
+      if (error) throw new Error(error.message);
+      if (!data) return json({ data: null, error: "Audit introuvable" }, 404);
+      exigerSite(autorises, data.app_id);
+      const p: Periode = { debut: String(data.debut).slice(0, 10), fin: String(data.fin).slice(0, 10) };
+      return json({ data: { ...data, ...p, libelle: libellePeriode(p) }, error: null });
+    }
 
     if (action === "preparer") {
       const periode = validerPeriode(body.debut, body.fin);
-      const faits = await construireFaits(admin, appId, periode);
       const libelle = libellePeriode(periode);
+      const manquantes: string[] = [];
+      const repo = await repoDuSite(admin, appId);
+      const commits = await commitsSite(repo, periode.debut, periode.fin, manquantes, "d'évolutions du logiciel");
+      const commitsSeo = await commitsSite(repo, joursAvant(periode.fin, 90), periode.fin, [], "");
+      const faits = await construireFaits(admin, appId, periode, commitsSeo);
+      faits.sources_manquantes.push(...manquantes);
 
-      // Evolutions du logiciel : commits de la periode si le depot et le
-      // jeton existent ; sinon la section manque et la page le dit.
-      let commits: { date: string; sujet: string }[] = [];
-      let evolutions = "";
-      const token = Deno.env.get("ADMIN_GITHUB_TOKEN");
-      if (!faits.site.repo_github) {
-        faits.sources_manquantes.push("Dépôt GitHub non renseigné dans /sites : pas d'évolutions du logiciel");
-      } else if (!token) {
-        faits.sources_manquantes.push("Secret ADMIN_GITHUB_TOKEN absent : pas d'évolutions du logiciel");
-      } else {
-        try {
-          commits = await commitsDuMois(faits.site.repo_github, token, periode.debut, periode.fin);
-          if (commits.length === 0) {
-            faits.sources_manquantes.push("Aucun commit sur la période dans le dépôt");
-          } else {
-            evolutions = await redigerEvolutions(commits, libelle);
-          }
-        } catch (e) {
-          faits.sources_manquantes.push(`Évolutions du logiciel indisponibles : ${(e as Error).message}`);
-        }
-      }
-
-      // Lecture SEO redigee : proposition depuis les chiffres calcules, relue
-      // par Eric dans son champ.
+      // Le dernier audit SEO enregistre sur la meme periode fait foi : c'est
+      // ce qu'Eric a relu. Sinon, proposition calculee a la volee.
+      const { data: audit } = await admin.schema("admin").from("seo_audits")
+        .select("id, contenu, texte, cree_le")
+        .eq("app_id", appId).eq("debut", periode.debut).eq("fin", periode.fin)
+        .order("cree_le", { ascending: false }).limit(1).maybeSingle();
       let lectureSeo = "";
-      if (faits.lecture_seo) {
+      if (audit) {
+        faits.lecture_seo = audit.contenu;
+        lectureSeo = audit.texte ?? "";
+      } else if (faits.lecture_seo) {
         try {
           lectureSeo = await redigerLectureSeo(faits.lecture_seo, faits.highlights, libelle);
         } catch (e) {
@@ -103,8 +195,26 @@ serve(async (req) => {
         }
       }
 
+      let evolutions = "";
+      if (commits.length === 0 && repo && Deno.env.get("ADMIN_GITHUB_TOKEN")) {
+        faits.sources_manquantes.push("Aucun commit sur la période dans le dépôt");
+      } else if (commits.length > 0) {
+        try {
+          evolutions = await redigerEvolutions(commits, libelle);
+        } catch (e) {
+          faits.sources_manquantes.push(`Évolutions du logiciel indisponibles : ${(e as Error).message}`);
+        }
+      }
+
       return json({
-        data: { contenu: faits, commits, evolutions_proposees: evolutions, lecture_seo_proposee: lectureSeo },
+        data: {
+          contenu: faits,
+          commits,
+          evolutions_proposees: evolutions,
+          lecture_seo_proposee: lectureSeo,
+          audit_id: audit?.id ?? null,
+          audit_le: audit?.cree_le ?? null,
+        },
         error: null,
       });
     }
@@ -166,7 +276,7 @@ serve(async (req) => {
       const lignes = [];
       for (const r of data ?? []) {
         const { data: signe } = await admin.storage.from(BUCKET).createSignedUrl(r.pdf_path, 3600);
-        const p = { debut: String(r.debut).slice(0, 10), fin: String(r.fin).slice(0, 10) };
+        const p: Periode = { debut: String(r.debut).slice(0, 10), fin: String(r.fin).slice(0, 10) };
         lignes.push({
           id: r.id,
           ...p,
@@ -177,60 +287,6 @@ serve(async (req) => {
         });
       }
       return json({ data: { lignes }, error: null });
-    }
-
-    // --- Chantiers SEO : ce qui a ete fait, sur quelle cible, quel verdict.
-    if (action === "chantiers") {
-      const { data, error } = await admin.schema("admin").from("seo_chantiers")
-        .select("*").eq("app_id", appId).order("date", { ascending: false });
-      if (error) throw new Error(error.message);
-      return json({ data: { lignes: data ?? [] }, error: null });
-    }
-
-    if (action === "chantier-creer") {
-      const libelle = texteOuNull(body.libelle, 200);
-      const date = texteOuNull(body.date, 10);
-      if (!libelle || !date) return json({ data: null, error: "Date et libellé requis" }, 400);
-      const verdict = texteOuNull(body.verdict, 20);
-      if (verdict && !VERDICTS.includes(verdict)) return json({ data: null, error: "Verdict inconnu" }, 400);
-      const { data, error } = await admin.schema("admin").from("seo_chantiers").insert({
-        app_id: appId,
-        date,
-        libelle,
-        cible: texteOuNull(body.cible, 200),
-        hypothese: texteOuNull(body.hypothese, 500),
-        mesure_prevue_le: texteOuNull(body.mesure_prevue_le, 10),
-        verdict,
-      }).select().single();
-      if (error) throw new Error(error.message);
-      return json({ data, error: null });
-    }
-
-    if (action === "chantier-modifier" || action === "chantier-supprimer") {
-      const { data: ligne } = await admin.schema("admin").from("seo_chantiers")
-        .select("app_id").eq("id", String(body.id)).maybeSingle();
-      if (!ligne) return json({ data: null, error: "Chantier introuvable" }, 404);
-      exigerSite(autorises, ligne.app_id);
-      if (action === "chantier-supprimer") {
-        const { error } = await admin.schema("admin").from("seo_chantiers").delete().eq("id", String(body.id));
-        if (error) throw new Error(error.message);
-        return json({ data: { supprime: true }, error: null });
-      }
-      const patch: Record<string, unknown> = {};
-      if (body.libelle !== undefined) patch.libelle = texteOuNull(body.libelle, 200);
-      if (body.date !== undefined) patch.date = texteOuNull(body.date, 10);
-      if (body.cible !== undefined) patch.cible = texteOuNull(body.cible, 200);
-      if (body.hypothese !== undefined) patch.hypothese = texteOuNull(body.hypothese, 500);
-      if (body.mesure_prevue_le !== undefined) patch.mesure_prevue_le = texteOuNull(body.mesure_prevue_le, 10);
-      if (body.verdict !== undefined) {
-        const v = texteOuNull(body.verdict, 20);
-        if (v && !VERDICTS.includes(v)) return json({ data: null, error: "Verdict inconnu" }, 400);
-        patch.verdict = v;
-      }
-      const { data, error } = await admin.schema("admin").from("seo_chantiers")
-        .update(patch).eq("id", String(body.id)).select().single();
-      if (error) throw new Error(error.message);
-      return json({ data, error: null });
     }
 
     return json({ data: null, error: `Action inconnue: ${action}` }, 400);

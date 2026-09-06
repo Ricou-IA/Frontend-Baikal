@@ -40,6 +40,24 @@ export const seoService = {
   getSerie(appId, mois = 16) {
     return appelerEdge('admin-seo', { action: 'serie', appId, mois });
   },
+  getAutorite(appId) {
+    return appelerEdge('admin-seo-autorite', { action: 'serie', appId });
+  },
+  getAppareils(appId, mois = 12) {
+    return appelerEdge('admin-seo', { action: 'appareils', appId, mois });
+  },
+  lancerAudit(appId, { debut, fin }) {
+    return appelerEdge('admin-rapport', { action: 'audit', appId, debut, fin });
+  },
+  enregistrerAudit(appId, { debut, fin }, contenu, texte) {
+    return appelerEdge('admin-rapport', { action: 'audit-enregistrer', appId, debut, fin, contenu, texte });
+  },
+  getAudits(appId) {
+    return appelerEdge('admin-rapport', { action: 'audits', appId });
+  },
+  lireAudit(appId, id) {
+    return appelerEdge('admin-rapport', { action: 'audit-lire', appId, id });
+  },
   getSerieRequete(appId, requete, mois = 16) {
     return appelerEdge('admin-seo', { action: 'serie-requete', appId, requete, mois });
   },
