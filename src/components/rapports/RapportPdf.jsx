@@ -188,29 +188,28 @@ function BlocSeo({ seo, moisEntier }) {
 
 function BlocLectureSeo({ lecture, chantiers }) {
   const semaine = (l) => `${l.semaine_iso || dateFr(l.semaine)}${l.reference ? ' (réf.)' : ''}`;
+  const ctrTxt = (x) => (!x || x.ctr === undefined ? '—' : t(`${(x.ctr * 100).toFixed(1).replace('.', ',')} %`));
+  // Google et Bing sur la meme ligne, une semaine par ligne.
+  const bingParLundi = new Map((lecture.trafic.bing || []).map((b) => [b.semaine, b]));
+  const lignesTrafic = (lecture.trafic.google || []).map((g) => ({ ...g, bing: bingParLundi.get(g.semaine) || null }));
   const colonnesTrafic = [
-    { titre: 'Semaine', valeur: semaine, flex: 1.4 },
-    { titre: 'Clics', valeur: (l) => nb(l.clics), droite: true },
-    { titre: 'Clics / jour', valeur: (l) => t(Number(l.clics_par_jour).toFixed(1).replace('.', ',')), droite: true, gras: true },
-    { titre: 'Impressions', valeur: (l) => nb(l.impressions), droite: true },
-    { titre: 'CTR', valeur: (l) => (l.ctr === undefined ? '—' : t(`${(l.ctr * 100).toFixed(1).replace('.', ',')} %`)), droite: true },
+    { titre: 'Semaine', valeur: semaine, flex: 1.3 },
+    { titre: 'G. clics/j', valeur: (l) => t(Number(l.clics_par_jour).toFixed(1).replace('.', ',')), droite: true, gras: true },
+    { titre: 'G. clics', valeur: (l) => nb(l.clics), droite: true },
+    { titre: 'G. impr.', valeur: (l) => nb(l.impressions), droite: true },
+    { titre: 'G. CTR', valeur: (l) => ctrTxt(l), droite: true },
+    { titre: 'B. clics/j', valeur: (l) => (l.bing ? t(Number(l.bing.clics_par_jour).toFixed(1).replace('.', ',')) : '—'), droite: true, gras: true },
+    { titre: 'B. clics', valeur: (l) => (l.bing ? nb(l.bing.clics) : '—'), droite: true },
+    { titre: 'B. impr.', valeur: (l) => (l.bing ? nb(l.bing.impressions) : '—'), droite: true },
+    { titre: 'B. CTR', valeur: (l) => ctrTxt(l.bing), droite: true },
   ];
   const vc = lecture.ventes.par_creation;
   // Fragment, pas de View englobant : un conteneur plus haut qu'une page ne se
   // coupe pas et ses enfants s'empilent au meme endroit (vu le 06/09).
   return (
     <>
-      <Text style={s.h3}>Trafic par semaine pleine (7 jours)</Text>
-      <View style={{ flexDirection: 'row', gap: 12 }}>
-        <View style={{ flex: 1 }}>
-          <Text style={[s.cellTh, { paddingHorizontal: 0 }]}>Google</Text>
-          <Table colonnes={colonnesTrafic} lignes={lecture.trafic.google} cle={(l) => l.semaine} classeLigne={(l) => (l.reference ? s.trEstompe : null)} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={[s.cellTh, { paddingHorizontal: 0 }]}>Bing</Text>
-          <Table colonnes={colonnesTrafic} lignes={lecture.trafic.bing} cle={(l) => l.semaine} classeLigne={(l) => (l.reference ? s.trEstompe : null)} />
-        </View>
-      </View>
+      <Text style={s.h3}>Trafic par semaine pleine (7 jours) — Google (G.) et Bing (B.)</Text>
+      <Table colonnes={colonnesTrafic} lignes={lignesTrafic} cle={(l) => l.semaine} classeLigne={(l) => (l.reference ? s.trEstompe : null)} />
       <Text style={s.note}>Semaines ISO du lundi au dimanche. « réf. » : meilleure semaine des douze dernières, pour situer la dernière semaine pleine.</Text>
 
       <Text style={s.h3}>Ventes, deux comptes</Text>
@@ -265,22 +264,26 @@ function BlocLectureSeo({ lecture, chantiers }) {
 
       {lecture.autorite && lecture.autorite.length > 0 && (
         <View>
-          <Text style={s.h3}>Autorité de domaine (Moz), nous et les concurrents</Text>
+          <Text style={s.h3}>Autorité de domaine (Moz), du plus fort au plus faible</Text>
           <Table
             colonnes={[
-              { titre: 'Domaine', valeur: (l) => `${l.domaine}${l.notre ? ' (nous)' : ''}`, flex: 3 },
+              { titre: 'Domaine', valeur: (l) => `${l.domaine}${l.notre ? ' (nous)' : ''}`, flex: 2.6 },
               { titre: 'DA', valeur: (l) => (l.da === null ? '—' : nb(l.da)), droite: true, gras: true },
-              { titre: 'DA préc.', valeur: (l) => (l.da_precedent === null ? '—' : nb(l.da_precedent)), droite: true },
-              { titre: 'Domaines référents', valeur: (l) => (l.ref_domains === null ? '—' : nb(l.ref_domains)), droite: true, gras: true },
-              { titre: 'Réf. préc.', valeur: (l) => (l.ref_domains_precedent === null ? '—' : nb(l.ref_domains_precedent)), droite: true },
+              { titre: 'DA préc.', valeur: (l) => (l.da_precedent === null || l.da_precedent === undefined ? '—' : nb(l.da_precedent)), droite: true },
+              { titre: 'PA', valeur: (l) => (l.pa === null || l.pa === undefined ? '—' : nb(l.pa)), droite: true },
               { titre: 'Spam', valeur: (l) => (l.spam === null ? '—' : nb(l.spam)), droite: true },
-              { titre: 'Relevé', valeur: (l) => dateFr(l.mesure_le), flex: 1.2, droite: true },
+              { titre: 'Dom. réf.', valeur: (l) => (l.ref_domains === null ? '—' : nb(l.ref_domains)), droite: true, gras: true },
+              { titre: 'Réf. préc.', valeur: (l) => (l.ref_domains_precedent === null || l.ref_domains_precedent === undefined ? '—' : nb(l.ref_domains_precedent)), droite: true },
+              { titre: 'Liens ext.', valeur: (l) => (l.external_links === null || l.external_links === undefined ? '—' : nb(l.external_links)), droite: true },
+              { titre: 'Nofollow', valeur: (l) => (l.nofollow_ref_domains === null || l.nofollow_ref_domains === undefined ? '—' : nb(l.nofollow_ref_domains)), droite: true },
+              { titre: 'Supprimés', valeur: (l) => (l.deleted_ref_domains === null || l.deleted_ref_domains === undefined ? '—' : nb(l.deleted_ref_domains)), droite: true },
+              { titre: 'Relevé', valeur: (l) => dateFr(l.mesure_le), flex: 1.1, droite: true },
             ]}
-            lignes={lecture.autorite}
+            lignes={[...lecture.autorite].sort((a, b) => (b.da ?? -1) - (a.da ?? -1))}
             cle={(l) => l.domaine}
             classeLigne={(l) => (l.notre ? s.trCourant : null)}
           />
-          <Text style={s.note}>Relevé mensuel Moz (Domain Authority, domaines référents, score de spam). Outil de suivi interne.</Text>
+          <Text style={s.note}>Relevé mensuel Moz : Domain Authority et Page Authority (0-100), score de spam, domaines référents, liens externes, domaines référents en nofollow et perdus. Dernier relevé connu à la génération, avec le relevé précédent pour l'écart. Outil de suivi interne.</Text>
         </View>
       )}
 
