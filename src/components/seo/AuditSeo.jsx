@@ -10,7 +10,7 @@
  * ============================================================================
  */
 import { useEffect, useState } from 'react';
-import { AlertTriangle, Sparkles, Save, Eye } from 'lucide-react';
+import { AlertTriangle, Sparkles, Save, Eye, Trash2 } from 'lucide-react';
 import { Chargement, Erreur, LigneVide, Section, Vide } from '../console/etats';
 import SelecteurPeriode, { libellePeriode, moisPeriode } from '../rapports/SelecteurPeriode';
 import { seoService } from '../../services/seo.service';
@@ -267,6 +267,13 @@ export default function AuditSeo({ appId }) {
     setVersion((v) => v + 1);
   };
 
+  const supprimerArchive = async (a) => {
+    if (!window.confirm(`Supprimer l'audit ${a.libelle} du ${dateFr(a.cree_le)} ?`)) return;
+    const { error } = await seoService.supprimerAudit(appId, a.id);
+    if (error) { setErreur(error.message); return; }
+    setVersion((v) => v + 1);
+  };
+
   const ouvrir = async (id) => {
     setErreur(null);
     const { data, error } = await seoService.lireAudit(appId, id);
@@ -327,9 +334,12 @@ export default function AuditSeo({ appId }) {
               <tr key={a.id} className="border-t border-baikal-border/50">
                 <td className="px-4 py-2">{majuscule(a.libelle)}</td>
                 <td className="px-2 py-2 text-xs opacity-70">{dateFr(a.cree_le)}</td>
-                <td className="px-4 py-2 text-right">
+                <td className="px-4 py-2 text-right whitespace-nowrap">
                   <button onClick={() => ouvrir(a.id)} className="inline-flex items-center gap-1 text-baikal-cyan hover:underline">
                     <Eye className="w-3.5 h-3.5" /> Voir
+                  </button>
+                  <button onClick={() => supprimerArchive(a)} title="Supprimer cet audit" className="ml-3 p-1 text-baikal-text hover:text-red-400 transition-colors align-middle">
+                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </td>
               </tr>

@@ -49,6 +49,9 @@ export const rapportService = {
   liste(appId) {
     return appelerEdge({ action: 'liste', appId });
   },
+  supprimer(appId, id) {
+    return appelerEdge({ action: 'supprimer', appId, id });
+  },
   chantiers(appId) {
     return appelerEdge({ action: 'chantiers', appId });
   },

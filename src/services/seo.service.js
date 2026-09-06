@@ -58,6 +58,9 @@ export const seoService = {
   lireAudit(appId, id) {
     return appelerEdge('admin-rapport', { action: 'audit-lire', appId, id });
   },
+  supprimerAudit(appId, id) {
+    return appelerEdge('admin-rapport', { action: 'audit-supprimer', appId, id });
+  },
   getSerieRequete(appId, requete, mois = 16) {
     return appelerEdge('admin-seo', { action: 'serie-requete', appId, requete, mois });
   },

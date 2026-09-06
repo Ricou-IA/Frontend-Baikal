@@ -19,7 +19,7 @@
  * ============================================================================
  */
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, FileText, Download, Sparkles, Wand2 } from 'lucide-react';
+import { AlertTriangle, FileText, Download, Sparkles, Wand2, Trash2 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import ConsoleLayout from '../components/console/ConsoleLayout';
 import { Chargement, Erreur, LigneVide, Section, Vide } from '../components/console/etats';
@@ -366,6 +366,7 @@ function Generateur({ appId, onGenere }) {
 function Archives({ appId, version }) {
   const [donnees, setDonnees] = useState(null);
   const [erreur, setErreur] = useState(null);
+  const [rechargement, setRechargement] = useState(0);
 
   useEffect(() => {
     let actif = true;
@@ -376,7 +377,15 @@ function Archives({ appId, version }) {
       else setDonnees(data);
     });
     return () => { actif = false; };
-  }, [appId, version]);
+  }, [appId, version, rechargement]);
+
+  // Suppression definitive : la ligne d'archive et le PDF du bucket.
+  const supprimer = async (r) => {
+    if (!window.confirm(`Supprimer le rapport ${r.libelle}, version ${r.version} ? Le PDF sera effacé.`)) return;
+    const { error } = await rapportService.supprimer(appId, r.id);
+    if (error) setErreur(error.message);
+    else setRechargement((v) => v + 1);
+  };
 
   const lignes = useMemo(() => donnees?.lignes ?? [], [donnees]);
 
@@ -402,12 +411,15 @@ function Archives({ appId, version }) {
                   <td className="px-4 py-2">{majuscule(r.libelle)}</td>
                   <td className="px-2 py-2 tabular-nums">v{r.version}</td>
                   <td className="px-2 py-2 text-xs">{dateFr(r.genere_le)}</td>
-                  <td className="px-4 py-2 text-right">
+                  <td className="px-4 py-2 text-right whitespace-nowrap">
                     {r.url ? (
                       <a href={r.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-baikal-cyan hover:underline">
                         <Download className="w-3.5 h-3.5" /> PDF
                       </a>
                     ) : <span className="opacity-40">—</span>}
+                    <button onClick={() => supprimer(r)} title="Supprimer ce rapport et son PDF" className="ml-3 p-1 text-baikal-text hover:text-red-400 transition-colors align-middle">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </td>
                 </tr>
               ))}

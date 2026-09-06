@@ -9,6 +9,8 @@
 //   enregistrer { appId, debut, fin, contenu, ebauche, evolutions, lecture_seo, commentaire, pdf_base64 }
 //                                       → depose le PDF (bucket rapports), archive la ligne
 //   liste       { appId }               → rapports archives, URL signee 1 h
+//   supprimer   { id }                  → supprime un rapport archive (ligne + PDF)
+//   audit-supprimer { id }              → supprime un audit archive
 //   audit       { appId, debut, fin }   → lecture SEO calculee + texte propose
 //   audit-enregistrer { appId, debut, fin, contenu, texte } → archive l'audit relu
 //   audits      { appId }               → audits archives
@@ -94,7 +96,7 @@ serve(async (req) => {
     });
     const autorises = await sitesAutorises(caller);
     const appId = String(body.appId ?? "");
-    const parId = ["audit-lire"];
+    const parId = ["audit-lire", "audit-supprimer", "supprimer"];
     if (!parId.includes(action)) exigerSite(autorises, appId);
 
     // --- Audit SEO : la lecture calculee et son texte, sans le reste du rapport.
@@ -143,6 +145,30 @@ serve(async (req) => {
       }).select("id, cree_le").single();
       if (error) throw new Error(error.message);
       return json({ data, error: null });
+    }
+
+    if (action === "audit-supprimer") {
+      const { data: audit } = await admin.schema("admin").from("seo_audits")
+        .select("app_id").eq("id", String(body.id)).maybeSingle();
+      if (!audit) return json({ data: null, error: "Audit introuvable" }, 404);
+      exigerSite(autorises, audit.app_id);
+      const { error } = await admin.schema("admin").from("seo_audits").delete().eq("id", String(body.id));
+      if (error) throw new Error(error.message);
+      return json({ data: { supprime: true }, error: null });
+    }
+
+    if (action === "supprimer") {
+      // La ligne et le PDF partent ensemble : un rapport supprime ne doit pas
+      // laisser de fichier orphelin dans le bucket.
+      const { data: rapport } = await admin.schema("admin").from("rapports")
+        .select("app_id, pdf_path").eq("id", String(body.id)).maybeSingle();
+      if (!rapport) return json({ data: null, error: "Rapport introuvable" }, 404);
+      exigerSite(autorises, rapport.app_id);
+      const { error: eFichier } = await admin.storage.from(BUCKET).remove([rapport.pdf_path]);
+      if (eFichier) throw new Error(`Suppression du PDF impossible : ${eFichier.message}`);
+      const { error } = await admin.schema("admin").from("rapports").delete().eq("id", String(body.id));
+      if (error) throw new Error(error.message);
+      return json({ data: { supprime: true }, error: null });
     }
 
     if (action === "audits") {
