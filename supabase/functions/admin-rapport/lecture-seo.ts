@@ -371,8 +371,8 @@ async function autoriteSur(admin: any, appId: string, notreDomaine: string | nul
 // fix(contenu)...) ou un sujet explicitement SEO. Le tunnel, l'admin, les
 // widgets et les emails n'en sont pas, meme s'ils touchent une « page ».
 const SCOPE_SEO = /^\w+\((seo|geo|contenu|blog|guide|guides|glossaire|sitemap|netlinking|aeo)\)/i;
-const SUJET_SEO = /(seo|geo|aeo|301|redirection|canonique|canonical|meta|schema|json-ld|sitemap|netlinking|backlink|llms\.txt|glossaire|maillage|title|balise)/i;
-const HORS_SEO = /(admin|widget|checkout|stripe|paiement|email|mailing|prospection|leads|mcp|rgpd|cron|rls)/i;
+const SUJET_SEO = /\b(seo|geo|aeo|301|redirection|canonique|canonical|meta|schema|json-ld|sitemap|netlinking|backlink|llms\.txt|glossaire|maillage|title|balise)\b/i;
+const HORS_SEO = /\b(admin|widget|checkout|stripe|paiement|email|mailing|prospection|leads|mcp|rgpd|cron|rls)\b/i;
 const MAX_COMMITS_CHANTIERS = 10;
 
 function chantiersDepuis(declares: any[], commits: Commit[]): Chantier[] {
