@@ -15,6 +15,7 @@ import { Chargement, Erreur, LigneVide, Section, Vide } from '../console/etats';
 import SelecteurPeriode, { libellePeriode, moisPeriode } from '../rapports/SelecteurPeriode';
 import { seoService } from '../../services/seo.service';
 import ConfirmModal from '../ui/ConfirmModal';
+import TableauTrafic from './TableauTrafic';
 
 const CHAMP = 'px-2 py-1.5 rounded border border-baikal-border bg-baikal-bg text-baikal-text focus:border-baikal-cyan outline-none text-sm';
 const BOUTON = 'flex items-center gap-1.5 px-3 py-1.5 rounded border text-sm transition-colors disabled:opacity-50';
@@ -27,7 +28,6 @@ const APPAREILS = { mobile: 'Mobile', desktop: 'Ordinateur', tablet: 'Tablette' 
 const nb = (n) => new Intl.NumberFormat('fr-FR').format(Number(n || 0));
 const pos = (n) => (n === null || n === undefined ? '—' : Number(n).toFixed(1).replace('.', ','));
 const pct = (n) => `${Math.round(Number(n || 0) * 100)} %`;
-const pctFin = (n) => `${(Number(n || 0) * 100).toFixed(1).replace('.', ',')} %`;
 // Variation de position : negatif = gain de places (vert), positif = perte.
 function Variation({ actuel, precedent }) {
   if (actuel === null || actuel === undefined || precedent === null || precedent === undefined) return <span className="opacity-40">—</span>;
@@ -94,16 +94,6 @@ function TexteAudit({ texte }) {
 function Resultat({ audit, texte, setTexte, lectureSeule }) {
   const l = audit.lecture;
   const vc = l?.ventes?.par_creation;
-  const trafic = (source) => ({
-    titre: source,
-    colonnes: [
-      { titre: 'Semaine', valeur: (x) => <span title={`Semaine du ${x.semaine}`}>{x.semaine_iso || x.semaine}{x.reference ? ' (réf.)' : ''}</span> },
-      { titre: 'Clics / j', valeur: (x) => Number(x.clics_par_jour).toFixed(1).replace('.', ','), droite: true, gras: true },
-      { titre: 'Clics', valeur: (x) => nb(x.clics), droite: true },
-      { titre: 'Impressions', valeur: (x) => nb(x.impressions), droite: true },
-      { titre: 'CTR', valeur: (x) => (x.ctr === undefined ? '—' : pctFin(x.ctr)), droite: true },
-    ],
-  });
   return (
     <div className="space-y-4">
       {audit.sources_manquantes?.length > 0 && (
@@ -114,10 +104,7 @@ function Resultat({ audit, texte, setTexte, lectureSeule }) {
       )}
       {l?.trafic && (
         <>
-          <div className="grid md:grid-cols-2 gap-4">
-            <Tableau {...trafic('Google, par semaine pleine')} lignes={l.trafic.google} cle={(x) => x.semaine} classeLigne={(x) => (x.reference ? 'opacity-60' : '')} />
-            <Tableau {...trafic('Bing, par semaine pleine')} lignes={l.trafic.bing} cle={(x) => x.semaine} classeLigne={(x) => (x.reference ? 'opacity-60' : '')} />
-          </div>
+          <TableauTrafic google={l.trafic.google} bing={l.trafic.bing} titre="Trafic par semaine pleine — Google et Bing" />
           <div className="grid md:grid-cols-2 gap-4">
             <Tableau
               titre="Ventes, deux comptes"
@@ -200,17 +187,21 @@ function Resultat({ audit, texte, setTexte, lectureSeule }) {
             />
           </div>
           <Tableau
-            titre="Autorité de domaine (Moz)"
+            titre="Autorité de domaine (Moz), du plus fort au plus faible"
             colonnes={[
               { titre: 'Domaine', valeur: (x) => `${x.domaine}${x.notre ? ' (nous)' : ''}` },
               { titre: 'DA', valeur: (x) => (x.da === null ? '—' : nb(x.da)), droite: true, gras: true },
-              { titre: 'DA préc.', valeur: (x) => (x.da_precedent === null ? '—' : nb(x.da_precedent)), droite: true },
-              { titre: 'Domaines référents', valeur: (x) => (x.ref_domains === null ? '—' : nb(x.ref_domains)), droite: true, gras: true },
-              { titre: 'Réf. préc.', valeur: (x) => (x.ref_domains_precedent === null ? '—' : nb(x.ref_domains_precedent)), droite: true },
-              { titre: 'Spam', valeur: (x) => (x.spam === null ? '—' : nb(x.spam)), droite: true },
+              { titre: 'DA préc.', valeur: (x) => (x.da_precedent === null || x.da_precedent === undefined ? '—' : nb(x.da_precedent)), droite: true },
+              { titre: 'PA', valeur: (x) => (x.pa === null || x.pa === undefined ? '—' : nb(x.pa)), droite: true },
+              { titre: 'Spam', valeur: (x) => (x.spam === null ? '—' : <span className={x.spam >= 10 ? 'text-amber-400' : ''}>{nb(x.spam)}</span>), droite: true },
+              { titre: 'Domaines réf.', valeur: (x) => (x.ref_domains === null ? '—' : nb(x.ref_domains)), droite: true, gras: true },
+              { titre: 'Réf. préc.', valeur: (x) => (x.ref_domains_precedent === null || x.ref_domains_precedent === undefined ? '—' : nb(x.ref_domains_precedent)), droite: true },
+              { titre: 'Liens ext.', valeur: (x) => (x.external_links === null || x.external_links === undefined ? '—' : nb(x.external_links)), droite: true },
+              { titre: 'Nofollow', valeur: (x) => (x.nofollow_ref_domains === null || x.nofollow_ref_domains === undefined ? '—' : nb(x.nofollow_ref_domains)), droite: true },
+              { titre: 'Supprimés', valeur: (x) => (x.deleted_ref_domains === null || x.deleted_ref_domains === undefined ? '—' : nb(x.deleted_ref_domains)), droite: true },
               { titre: 'Relevé', valeur: (x) => dateFr(x.mesure_le), droite: true },
             ]}
-            lignes={l.autorite || []}
+            lignes={[...(l.autorite || [])].sort((a, b) => (b.da ?? -1) - (a.da ?? -1))}
             cle={(x) => x.domaine}
             classeLigne={(x) => (x.notre ? 'bg-baikal-cyan/10 text-white' : '')}
           />

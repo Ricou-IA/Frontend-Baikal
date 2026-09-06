@@ -233,7 +233,7 @@ export async function redigerLectureSeo(lecture: LectureSeo, contexte: ContexteL
     ...(lecture.chantiers.length === 0 ? ["- aucun chantier ouvert"] : []),
     "",
     ...(notre && meilleur && notre.ref_domains !== null
-      ? [`8. AUTORITÉ (relevé du ${notre.mesure_le}) : ${nbFr(notre.ref_domains)} domaines référents pour le site, contre ${nbFr(meilleur.ref_domains)} pour le concurrent le mieux placé.`]
+      ? [`8. AUTORITÉ (relevé du ${notre.mesure_le}) : ${nbFr(notre.ref_domains)} domaines référents pour le site${notre.ref_domains_precedent !== null ? ` (${nbFr(notre.ref_domains_precedent)} au relevé du ${notre.mesure_precedente_le})` : ""}, contre ${nbFr(meilleur.ref_domains)} pour le concurrent le mieux placé.`]
       : ["8. AUTORITÉ : non fournie."]),
     ...(mobile && mobile.part_clics_precedent !== null
       ? ["", `Part mobile des clics Google : ${pctFr(mobile.part_clics)} (${contexte.libelle_periode}) contre ${pctFr(mobile.part_clics_precedent)} (${contexte.libelle_precedent}).`]

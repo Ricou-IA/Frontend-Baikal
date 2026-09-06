@@ -69,8 +69,14 @@ export interface LigneAutorite {
   notre: boolean;
   mesure_le: string | null;
   da: number | null;
+  pa: number | null;
   ref_domains: number | null;
+  external_links: number | null;
+  nofollow_ref_domains: number | null;
+  deleted_ref_domains: number | null;
   spam: number | null;
+  last_crawled: string | null;
+  mesure_precedente_le: string | null;
   da_precedent: number | null;
   ref_domains_precedent: number | null;
 }
@@ -388,34 +394,43 @@ function suiviPages(pages: string[], base: string, periode: Croise[], precedent:
   });
 }
 
-// --- Autorite Moz : dernier releve <= fin de periode, et dernier releve <=
-// fin de la periode precedente. Le notre en tete, puis par domaines referents.
-async function autoriteSur(admin: any, appId: string, notreDomaine: string | null, fin: string, finPrec: string): Promise<LigneAutorite[]> {
+// --- Autorite Moz : le dernier releve connu de chaque domaine (l'autorite
+// est un etat, pas un flux : un rapport d'aout genere en septembre montre le
+// releve de septembre), et le releve juste avant pour l'ecart. Toutes les
+// mesures, tri par DA decroissant.
+async function autoriteSur(admin: any, appId: string, notreDomaine: string | null): Promise<LigneAutorite[]> {
   const { data, error } = await admin.schema("admin").from("seo_autorite")
-    .select("domaine, mesure_le, da, ref_domains, spam")
-    .eq("app_id", appId).lte("mesure_le", fin).order("mesure_le");
+    .select("domaine, mesure_le, da, pa, spam, ref_domains, external_links, nofollow_ref_domains, deleted_ref_domains, last_crawled")
+    .eq("app_id", appId).order("mesure_le");
   if (error) throw new Error(error.message);
-  const dernier = new Map<string, any>();
-  const dernierPrec = new Map<string, any>();
+  const releves = new Map<string, any[]>();
   for (const r of data ?? []) {
-    dernier.set(r.domaine, r);
-    if (String(r.mesure_le) <= finPrec) dernierPrec.set(r.domaine, r);
+    const l = releves.get(r.domaine) ?? [];
+    l.push(r);
+    releves.set(r.domaine, l);
   }
-  return [...dernier.entries()]
-    .map(([domaine, r]) => {
-      const p = dernierPrec.get(domaine);
+  return [...releves.entries()]
+    .map(([domaine, l]) => {
+      const r = l[l.length - 1];
+      const p = l.length > 1 ? l[l.length - 2] : null;
       return {
         domaine,
         notre: domaine === notreDomaine,
         mesure_le: String(r.mesure_le).slice(0, 10),
         da: r.da ?? null,
+        pa: r.pa ?? null,
         ref_domains: r.ref_domains ?? null,
+        external_links: r.external_links ?? null,
+        nofollow_ref_domains: r.nofollow_ref_domains ?? null,
+        deleted_ref_domains: r.deleted_ref_domains ?? null,
         spam: r.spam ?? null,
-        da_precedent: p && p !== r ? (p.da ?? null) : null,
-        ref_domains_precedent: p && p !== r ? (p.ref_domains ?? null) : null,
+        last_crawled: r.last_crawled ? String(r.last_crawled).slice(0, 10) : null,
+        mesure_precedente_le: p ? String(p.mesure_le).slice(0, 10) : null,
+        da_precedent: p ? (p.da ?? null) : null,
+        ref_domains_precedent: p ? (p.ref_domains ?? null) : null,
       };
     })
-    .sort((a, b) => (b.notre ? 1 : 0) - (a.notre ? 1 : 0) || (b.ref_domains ?? 0) - (a.ref_domains ?? 0));
+    .sort((a, b) => (b.da ?? -1) - (a.da ?? -1) || (b.ref_domains ?? -1) - (a.ref_domains ?? -1));
 }
 
 // --- Chantiers : declares dans Baikal (verdict pose), plus les commits SEO
@@ -558,7 +573,7 @@ export async function construireLectureSeo(
     admin.schema("admin").from("seo_chantiers").select("*").eq("app_id", appId).order("date"),
     appareilsSur(admin, appId, mois),
     appareilsSur(admin, appId, moisPrec),
-    autoriteSur(admin, appId, app?.domaine ?? null, periode.fin, prec.fin),
+    autoriteSur(admin, appId, app?.domaine ?? null),
     organiquesParPaiement(admin, appId, periode),
     traficPeriode(admin, appId, "google", periode),
     traficPeriode(admin, appId, "google", prec),

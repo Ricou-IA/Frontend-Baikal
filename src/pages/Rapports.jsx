@@ -26,6 +26,7 @@ import { Chargement, Erreur, LigneVide, Section, Vide } from '../components/cons
 import SelecteurPeriode, { libellePeriode, moisPeriode } from '../components/rapports/SelecteurPeriode';
 import { rapportService } from '../services/rapport.service';
 import ConfirmModal from '../components/ui/ConfirmModal';
+import TableauTrafic from '../components/seo/TableauTrafic';
 
 const CHAMP = 'px-2 py-1.5 rounded border border-baikal-border bg-baikal-bg text-baikal-text focus:border-baikal-cyan outline-none text-sm';
 const ZONE = `${CHAMP} w-full min-h-[120px] leading-relaxed`;
@@ -48,7 +49,6 @@ function dateFr(iso) {
 }
 const majuscule = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
 const pos = (n) => (n === null || n === undefined ? '—' : Number(n).toFixed(1).replace('.', ','));
-const pct = (n) => `${(Number(n || 0) * 100).toFixed(1).replace('.', ',')} %`;
 const THEMES = [['ventes', 'Ventes'], ['google', 'Google'], ['requetes', 'Requêtes'], ['bing', 'Bing']];
 // Variation de position : negatif = gain de places (vert), positif = perte.
 function Variation({ actuel, precedent }) {
@@ -137,29 +137,7 @@ function Apercu({ contenu }) {
 
       {lecture?.trafic && (
         <div className="grid md:grid-cols-2 gap-4">
-          <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
-            <div className="px-4 py-2 text-xs opacity-60 uppercase tracking-wider text-baikal-text">Trafic Google, par semaine pleine</div>
-            <table className="w-full text-sm text-baikal-text">
-              <thead>
-                <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
-                  <th className="px-4 py-1.5">Semaine</th>
-                  <th className="text-right px-2 py-1.5">Clics / j</th>
-                  <th className="text-right px-2 py-1.5">Impressions</th>
-                  <th className="text-right px-4 py-1.5">CTR</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lecture.trafic.google.map((l) => (
-                  <tr key={l.semaine} className={`border-t border-baikal-border/50 ${l.reference ? 'opacity-60' : ''}`}>
-                    <td className="px-4 py-1.5 font-mono text-xs" title={`Semaine du ${l.semaine}`}>{l.semaine_iso || l.semaine}{l.reference ? ' (réf.)' : ''}</td>
-                    <td className="text-right px-2 py-1.5 tabular-nums text-white">{Number(l.clics_par_jour).toFixed(1).replace('.', ',')}</td>
-                    <td className="text-right px-2 py-1.5 tabular-nums">{fmtNombre(l.impressions)}</td>
-                    <td className="text-right px-4 py-1.5 tabular-nums">{l.ctr === undefined ? '—' : pct(l.ctr)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <TableauTrafic google={lecture.trafic.google} bing={lecture.trafic.bing} titre="Trafic par semaine pleine — Google et Bing" />
           <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
             <div className="px-4 py-2 text-xs opacity-60 uppercase tracking-wider text-baikal-text">Requêtes suivies (requête × page)</div>
             <table className="w-full text-sm text-baikal-text">
