@@ -79,6 +79,8 @@ function contexteLecture(faits: Awaited<ReturnType<typeof construireFaits>>, per
   return {
     libelle_periode: libellePeriode(periode),
     libelle_precedent: faits.mois_entier ? libelleMois(moisCouverts(prec)[0]) : libellePeriode(prec),
+    periode: { debut: periode.debut, fin: periode.fin },
+    precedent: { debut: prec.debut, fin: prec.fin },
     impressions_hors_bruit: {
       periode: faits.seo.google.periode?.impressions_hors_bruit ?? null,
       precedent: faits.seo.google.precedent?.impressions_hors_bruit ?? null,

@@ -87,3 +87,31 @@ export function validerPeriode(debut: unknown, fin: unknown): Periode {
   if (nbJours({ debut: a, fin: b }) > 366) throw new Error("Période limitée à un an");
   return { debut: a, fin: b };
 }
+
+// Jours feries francais (metropole) : fixes + mobiles calcules depuis Paques.
+function paques(annee: number): Date {
+  const a = annee % 19, b = Math.floor(annee / 100), c = annee % 100;
+  const d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const mois = Math.floor((h + l - 7 * m + 114) / 31), jour = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(Date.UTC(annee, mois - 1, jour));
+}
+
+export function estFerie(isoDate: string): boolean {
+  const x = new Date(`${isoDate}T00:00:00Z`);
+  const a = x.getUTCFullYear();
+  const md = isoDate.slice(5);
+  if (["01-01", "05-01", "05-08", "07-14", "08-15", "11-01", "11-11", "12-25"].includes(md)) return true;
+  const pq = paques(a).getTime();
+  const j = x.getTime();
+  const un = 86_400_000;
+  return j === pq + un || j === pq + 39 * un || j === pq + 50 * un; // lundi de Paques, Ascension, lundi de Pentecote
+}
+
+// Vrai pour un jour ouvre : lundi a vendredi, hors jours feries.
+export function estOuvre(isoDate: string): boolean {
+  const js = new Date(`${isoDate}T00:00:00Z`).getUTCDay();
+  return js !== 0 && js !== 6 && !estFerie(isoDate);
+}

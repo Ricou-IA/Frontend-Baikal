@@ -12,7 +12,7 @@ import type { Commit } from "./github.ts";
 // Meme cascade d'attribution que la page Clients : la part organique des
 // ventes se lit sur l'attribution figee de chaque vente, par date de paiement.
 import { canalVente } from "../admin-dossiers/canal.ts";
-import { moisCouverts, type Periode, periodePrecedente } from "./periode.ts";
+import { estOuvre, moisCouverts, type Periode, periodePrecedente } from "./periode.ts";
 
 export interface LigneCluster {
   cluster: string;
@@ -46,8 +46,19 @@ export interface LignePageCle {
   clics: number;
   impressions: number;
   position: number | null;
+  clics_precedent: number;
+  impressions_precedent: number;
   position_precedente: number | null;
   top_requetes: string[];
+}
+
+// Trafic d'une periode en jours ouvres (lundi-vendredi hors feries francais).
+export interface TraficPeriode {
+  jours_ouvres: number;
+  clics: number;
+  impressions: number;
+  clics_par_jour: number;
+  impressions_par_jour: number;
 }
 
 export interface LigneAutorite {
@@ -82,6 +93,10 @@ export interface Chantier {
 
 export interface LectureSeo {
   trafic: { google: LigneSemaine[]; bing: LigneSemaine[] };
+  trafic_periode: {
+    google: { periode: TraficPeriode | null; precedent: TraficPeriode | null };
+    bing: { periode: TraficPeriode | null; precedent: TraficPeriode | null };
+  };
   appareils: LigneAppareil[];
   ventes: {
     par_paiement: { ventes: number; nettes: number; organiques?: number };
@@ -175,6 +190,27 @@ async function traficHebdo(admin: any, appId: string, source: string, fin: strin
   const dernieres = lignes.slice(-6).reverse();
   const ref = lignes.find((l) => l.reference);
   return ref && !dernieres.includes(ref) ? [...dernieres, ref] : dernieres;
+}
+
+// --- Bloc 1 (consigne) : periode contre periode precedente, jours ouvres
+// hors feries, depuis la serie quotidienne du site.
+async function traficPeriode(admin: any, appId: string, source: string, p: Periode): Promise<TraficPeriode | null> {
+  const { data, error } = await admin.schema("admin").from("seo_snapshots")
+    .select("period_start, clicks, impressions")
+    .eq("app_id", appId).eq("source", source)
+    .eq("granularity", "day").eq("dimension", "site")
+    .gte("period_start", p.debut).lte("period_start", p.fin);
+  if (error) throw new Error(error.message);
+  let jours = 0, clics = 0, impressions = 0;
+  for (const r of data ?? []) {
+    const j = String(r.period_start).slice(0, 10);
+    if (!estOuvre(j)) continue;
+    jours += 1;
+    clics += Number(r.clicks);
+    impressions += Number(r.impressions);
+  }
+  if (jours === 0) return null;
+  return { jours_ouvres: jours, clics, impressions, clics_par_jour: arrondi(clics / jours), impressions_par_jour: arrondi(impressions / jours) };
 }
 
 // --- Appareils : mobile / ordinateur / tablette (dimension device, au mois).
@@ -332,6 +368,8 @@ function suiviPages(pages: string[], base: string, periode: Croise[], precedent:
       clics: sm.clics,
       impressions: sm.impressions,
       position: sm.position,
+      clics_precedent: sp.clics,
+      impressions_precedent: sp.impressions,
       position_precedente: sp.position,
       top_requetes: [...m].sort((a, b) => b.clics - a.clics || b.impressions - a.impressions).slice(0, 8).map((r) => r.requete),
     };
@@ -498,7 +536,7 @@ export async function construireLectureSeo(
   const pagesCles: string[] = Array.isArray(app?.seo_pages_cles) ? app.seo_pages_cles.map(String) : [];
   const base = app?.domaine ? `https://${app.domaine}` : "";
 
-  const [google, bing, clM, clP, crM, crP, declares, appM, appP, autorite, organiques] = await Promise.all([
+  const [google, bing, clM, clP, crM, crP, declares, appM, appP, autorite, organiques, tgM, tgP, tbM, tbP] = await Promise.all([
     traficHebdo(admin, appId, "google", periode.fin),
     traficHebdo(admin, appId, "bing", periode.fin),
     clustersSur(admin, appId, mois),
@@ -510,6 +548,10 @@ export async function construireLectureSeo(
     appareilsSur(admin, appId, moisPrec),
     autoriteSur(admin, appId, app?.domaine ?? null, periode.fin, prec.fin),
     organiquesParPaiement(admin, appId, periode),
+    traficPeriode(admin, appId, "google", periode),
+    traficPeriode(admin, appId, "google", prec),
+    traficPeriode(admin, appId, "bing", periode),
+    traficPeriode(admin, appId, "bing", prec),
   ]);
 
   let parCreation;
@@ -528,6 +570,7 @@ export async function construireLectureSeo(
 
   return {
     trafic: { google, bing },
+    trafic_periode: { google: { periode: tgM, precedent: tgP }, bing: { periode: tbM, precedent: tbP } },
     appareils: appareils(appM, appP),
     ventes: { par_paiement: { ...ventesParPaiement, organiques }, par_creation: parCreation },
     clusters: { periode: clM, precedent: clP },
