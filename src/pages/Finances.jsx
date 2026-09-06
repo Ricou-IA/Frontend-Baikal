@@ -842,25 +842,17 @@ function Ventes({ appId }) {
   );
 }
 
-const ASSIETTES = [
-  ['organic', 'Organique seul'],
-  ['organic_unattributed', 'Organique + sans origine'],
-  ['hors_ads', 'Tout sauf publicité'],
-  ['toutes', 'Toutes les ventes'],
-];
-
 function Partenariat({ appId }) {
-  const [assiette, setAssiette] = useState(null);
-
+  // Decompte du contrat tel quel : toutes les ventes encaissees, aucune
+  // simulation d'assiette (decision d'Eric du 06/09/2026).
   const { donnees, erreur, enCours } = useDonneesCachees(
-    `partenariat:${appId}:${assiette ?? 'contrat'}`,
-    () => financeService.getPartenariat(appId, assiette),
+    `partenariat:${appId}`,
+    () => financeService.getPartenariat(appId),
     appId,
   );
 
   const contrat = donnees?.contrat;
   const lignes = donnees?.lignes ?? [];
-  const assietteActive = donnees?.simulation?.assiette;
 
   return (
     <Section
@@ -868,22 +860,6 @@ function Partenariat({ appId }) {
       sousTitre={contrat
         ? `${contrat.partenaire} — franchise de ${contrat.franchise} ventes par mois civil, partage à ${Math.round(contrat.part * 100)} %, depuis le ${contrat.debut}`
         : undefined}
-      action={contrat && (
-        <div className="flex gap-2 items-center flex-wrap">
-          {ASSIETTES.map(([cle, libelle]) => (
-            <button
-              key={cle}
-              onClick={() => setAssiette(cle)}
-              disabled={enCours}
-              className={`px-3 py-1 rounded border text-sm disabled:opacity-50 ${assietteActive === cle
-                ? 'border-baikal-cyan text-baikal-cyan'
-                : 'border-baikal-border text-baikal-text'}`}
-            >
-              {libelle}
-            </button>
-          ))}
-        </div>
-      )}
     >
       {erreur && <Erreur message={erreur} />}
       {!donnees && !erreur && <Chargement />}
@@ -952,8 +928,6 @@ function Partenariat({ appId }) {
             par mois, sans report d'un mois sur l'autre. Les coûts directs retenus
             ({contrat.couts_directs.join(', ')}) sont imputés au prorata des ventes partageables.
             Les mois antérieurs au contrat donnent la tendance, sans franchise ni partage.
-            {' '}<strong className="opacity-100">Les boutons ci-dessus simulent une autre assiette</strong> ;
-            ils ne modifient pas le contrat, dont l'assiette reste « {contrat.assiette} ».
           </p>
         </ContenuEstompe>
       )}
