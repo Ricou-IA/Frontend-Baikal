@@ -3,7 +3,7 @@
 // Vendeur), plus l'autorite Moz et la repartition par appareil. Trois regles
 // venues de vrais faux positifs :
 //   (a) jamais de position moyenne globale ni de total d'impressions brut ;
-//   (b) toujours `not is_noise`, et des semaines pleines / jours ouvres ;
+//   (b) toujours `not is_noise`, et des fenetres de meme duree (semaines pleines de 7 jours) ;
 //   (c) deux comptes de ventes legitimes (paiement, creation) : nommer celui
 //       qu'on affiche.
 // deno-lint-ignore-file no-explicit-any
