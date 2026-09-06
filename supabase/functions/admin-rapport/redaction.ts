@@ -7,16 +7,48 @@
 import type { Commit } from "./github.ts";
 import type { LectureSeo } from "./lecture-seo.ts";
 
-const MODELE = "gpt-4o-mini";
+// Modele de redaction : secret ADMIN_RAPPORT_MODELE, sinon gemini-3.8-flash
+// (le modele courant du groupe, Eric 06/09/2026). Un nom « gemini-* » passe par
+// l'API Gemini (GEMINI_API_KEY), tout autre nom par OpenAI (OPENAI_API_KEY).
+// Meme contrat des deux cotes : consigne systeme + texte utilisateur, sortie
+// texte brut.
+const MODELE_DEFAUT = "gemini-3.8-flash";
 
-async function completer(systeme: string, utilisateur: string, maxTokens = 900): Promise<string> {
+function modele(): string {
+  return (Deno.env.get("ADMIN_RAPPORT_MODELE") ?? "").trim() || MODELE_DEFAUT;
+}
+
+async function completerGemini(nom: string, systeme: string, utilisateur: string, maxTokens: number): Promise<string> {
+  const cle = Deno.env.get("GEMINI_API_KEY");
+  if (!cle) throw new Error("GEMINI_API_KEY absent");
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(nom)}:generateContent`,
+    {
+      method: "POST",
+      headers: { "x-goog-api-key": cle, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: systeme }] },
+        contents: [{ role: "user", parts: [{ text: utilisateur }] }],
+        generationConfig: { temperature: 0.3, maxOutputTokens: maxTokens },
+      }),
+    },
+  );
+  if (!res.ok) throw new Error(`Gemini ${res.status} (${nom}): ${(await res.text()).slice(0, 200)}`);
+  const json = await res.json();
+  const parts = json.candidates?.[0]?.content?.parts ?? [];
+  const texte = parts.map((p: { text?: string }) => p.text ?? "").join("").trim();
+  if (!texte) throw new Error(`Gemini (${nom}) : réponse vide${json.candidates?.[0]?.finishReason ? `, ${json.candidates[0].finishReason}` : ""}`);
+  return texte;
+}
+
+async function completerOpenAI(nom: string, systeme: string, utilisateur: string, maxTokens: number): Promise<string> {
   const cle = Deno.env.get("OPENAI_API_KEY");
   if (!cle) throw new Error("OPENAI_API_KEY absent");
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: { Authorization: `Bearer ${cle}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: MODELE,
+      model: nom,
       temperature: 0.3,
       max_tokens: maxTokens,
       messages: [
@@ -25,9 +57,17 @@ async function completer(systeme: string, utilisateur: string, maxTokens = 900):
       ],
     }),
   });
-  if (!res.ok) throw new Error(`OpenAI ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  if (!res.ok) throw new Error(`OpenAI ${res.status} (${nom}): ${(await res.text()).slice(0, 200)}`);
   const json = await res.json();
   return String(json.choices?.[0]?.message?.content ?? "").trim();
+}
+
+async function completer(systeme: string, utilisateur: string, maxTokens = 900): Promise<string> {
+  const nom = modele();
+  // Gemini compte les tokens de reflexion dans la sortie : marge large.
+  return nom.startsWith("gemini")
+    ? await completerGemini(nom, systeme, utilisateur, Math.max(maxTokens * 4, 4000))
+    : await completerOpenAI(nom, systeme, utilisateur, maxTokens);
 }
 
 export async function redigerEvolutions(commits: Commit[], libellePeriode: string): Promise<string> {

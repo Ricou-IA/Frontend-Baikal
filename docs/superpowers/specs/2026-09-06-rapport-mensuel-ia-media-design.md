@@ -21,7 +21,7 @@ mois, des highlights, les évolutions du logiciel et un commentaire.
 | Destinataire | IA MEDIA (partenaire SEO), pas les associés de CONFER. |
 | Highlights | **Faits calculés par règles**, trame identique chaque mois. Aucun modèle. |
 | Textes libres | Deux blocs assistés par un modèle : « Évolutions du logiciel » (source : commits GitHub du mois) et « Commentaire du mois » (source : ébauche tapée par Eric). Eric relit et corrige les deux avant de générer. |
-| Modèle | OpenAI `gpt-4o-mini`, clé `OPENAI_API_KEY` déjà présente dans les secrets EF. Le modèle ne voit que l'ébauche, les commits et les chiffres du mois ; il ne touche jamais à la trame calculée. |
+| Modèle | `gemini-3.8-flash` par défaut (le modèle courant du groupe, décision d'Eric du 06/09 soir), réglable par le secret `ADMIN_RAPPORT_MODELE` ; un nom « gemini-* » passe par `GEMINI_API_KEY`, tout autre nom par OpenAI `OPENAI_API_KEY`. Le modèle ne voit que l'ébauche, les commits et les chiffres du mois ; il ne touche jamais à la trame calculée. |
 | PDF | Fabriqué **dans le navigateur** avec `@react-pdf/renderer` (A4 natif, vrai fichier), envoyé à l'EF qui le dépose dans le bucket privé `rapports` et écrit la ligne d'archive. Pas de graphique Recharts : tableaux uniquement. |
 | Archivage | Table `admin.rapports`, une ligne par génération. Régénérer un mois crée une nouvelle version ; l'ancienne reste lisible. |
 | Envoi | Hors lot : Eric télécharge le PDF et l'envoie lui-même. |
