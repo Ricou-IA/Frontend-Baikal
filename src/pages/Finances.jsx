@@ -904,7 +904,7 @@ function Partenariat({ appId }) {
                 {lignes.length === 0 && (
                   <LigneVide colonnes={12} message="Aucune vente archivée pour ce site." />
                 )}
-                {lignes.map((l) => {
+                {[...lignes].reverse().map((l) => {
                   // Avant le contrat : registre pour la tendance, pas de partage.
                   const dans = l.dans_decompte !== false;
                   return (

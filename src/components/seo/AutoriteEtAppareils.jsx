@@ -23,7 +23,8 @@ export function Autorite({ appId }) {
     () => seoService.getAutorite(appId),
     appId,
   );
-  const mois = donnees?.mois ?? [];
+  // Colonnes du plus recent au plus ancien : la premiere lue est la derniere mesure.
+  const mois = [...(donnees?.mois ?? [])].reverse();
   const domaines = donnees?.domaines ?? [];
   const vide = Boolean(donnees) && mois.length === 0;
 

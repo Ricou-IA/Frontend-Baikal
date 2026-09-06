@@ -409,7 +409,7 @@ export default function RapportPdf({ contenu, evolutions, lectureSeo, commentair
                 { titre: 'Partageables', valeur: (l) => (l.dans_decompte === false ? '—' : nb(l.ventes_partageables)), droite: true },
                 { titre: 'Quote-part', valeur: (l) => (l.dans_decompte === false ? '—' : eur(l.quote_part)), droite: true, gras: true },
               ]}
-              lignes={c.partenariat.lignes}
+              lignes={[...c.partenariat.lignes].reverse()}
               cle={(l) => l.mois}
               classeLigne={(l) => (moisCouverts.has(l.mois) ? s.trCourant : l.dans_decompte === false ? s.trEstompe : null)}
             />

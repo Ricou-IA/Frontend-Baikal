@@ -167,9 +167,11 @@ async function traficHebdo(admin: any, appId: string, source: string, fin: strin
     const meilleure = candidates.reduce((a, b) => (b.clics_par_jour > a.clics_par_jour ? b : a));
     meilleure.reference = true;
   }
-  const dernieres = lignes.slice(-6);
+  // Du plus recent au plus ancien (premiere ligne lue = derniere semaine
+  // pleine), la semaine de reference en dernier si elle est plus ancienne.
+  const dernieres = lignes.slice(-6).reverse();
   const ref = lignes.find((l) => l.reference);
-  return ref && !dernieres.includes(ref) ? [ref, ...dernieres] : dernieres;
+  return ref && !dernieres.includes(ref) ? [...dernieres, ref] : dernieres;
 }
 
 // --- Appareils : mobile / ordinateur / tablette (dimension device, au mois).

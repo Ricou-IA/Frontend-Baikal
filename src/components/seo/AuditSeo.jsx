@@ -102,7 +102,7 @@ function Resultat({ audit, texte, setTexte, lectureSeule }) {
           <ul className="space-y-0.5">{audit.sources_manquantes.map((m) => <li key={m}>{m}</li>)}</ul>
         </div>
       )}
-      {l && (
+      {l?.trafic && (
         <>
           <div className="grid md:grid-cols-2 gap-4">
             <Tableau {...trafic('Google, jours ouvrés')} lignes={l.trafic.google} cle={(x) => x.semaine} classeLigne={(x) => (x.reference ? 'opacity-60' : '')} />

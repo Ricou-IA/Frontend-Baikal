@@ -185,7 +185,9 @@ serve(async (req) => {
         .order("cree_le", { ascending: false }).limit(1).maybeSingle();
       let lectureSeo = "";
       if (audit) {
-        faits.lecture_seo = audit.contenu;
+        // L'audit archive enveloppe la lecture : { lecture, highlights, seo, ... }.
+        const contenuAudit = audit.contenu ?? {};
+        if (contenuAudit.lecture && contenuAudit.lecture.trafic) faits.lecture_seo = contenuAudit.lecture;
         lectureSeo = audit.texte ?? "";
       } else if (faits.lecture_seo) {
         try {

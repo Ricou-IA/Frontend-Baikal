@@ -112,7 +112,7 @@ function Apercu({ contenu }) {
         </ul>
       </div>
 
-      {lecture && (
+      {lecture?.trafic && (
         <div className="grid md:grid-cols-2 gap-4">
           <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
             <div className="px-4 py-2 text-xs opacity-60 uppercase tracking-wider text-baikal-text">Trafic Google, jours ouvrés</div>
