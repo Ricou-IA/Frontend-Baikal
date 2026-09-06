@@ -21,6 +21,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ErreurAcces, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 import { captureJour, capturePeriode } from "./capture.ts";
 import { enrichirSite, sitesAvecVue } from "./enrichissement.ts";
+// Meme cascade que la page Clients (admin-dossiers/canal.ts) : l'origine
+// affichee dans /finances doit se lire comme celle de la fiche client. Le
+// canal SQL de l'archive (admin.canal_vente) reste stocke mais n'est plus
+// affiche : il ne connait ni GEO ni Direct. L'archive ne porte pas
+// l'apporteur : portail_pro n'est donc pas detectable ici.
+import { canalVente, domaineVente } from "../admin-dossiers/canal.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -311,7 +317,12 @@ serve(async (req) => {
         .gte("paid_at", debut.toISOString()).lte("paid_at", fin.toISOString())
         .order("paid_at", { ascending: false }).limit(500);
       if (error) throw new Error(error.message);
-      return json({ data: { lignes: data ?? [] }, error: null });
+      const lignes = (data ?? []).map((v: any) => ({
+        ...v,
+        canal: canalVente(v.attribution ?? null),
+        domaine: domaineVente(v.attribution ?? null) || null,
+      }));
+      return json({ data: { lignes }, error: null });
     }
 
     if (action === "partenariat") {

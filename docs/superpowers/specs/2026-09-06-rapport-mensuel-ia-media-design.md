@@ -39,8 +39,9 @@ mois, des highlights, les évolutions du logiciel et un commentaire.
    le tableau, rappel des termes : franchise, part, assiette, coûts directs,
    prix unitaire.
 3. **Ventes du mois** : une ligne par vente B2C encaissée (> 0 €), date, offre,
-   origine (libellé canal + domaine s'il existe), montant TTC, montant HT.
-   Total en pied. **Jamais de donnée nominative** : l'archive n'en porte pas.
+   montant TTC, montant HT. Total en pied. **Jamais de donnée nominative** :
+   l'archive n'en porte pas. **Pas d'origine** : cette finesse reste
+   consultable dans Baikal, le partenaire n'y descend pas (Eric, 06/09).
 4. **SEO du mois** : Google et Bing côte à côte, clics, impressions, CTR,
    position, chacun avec la valeur du mois précédent et la variation en
    valeur. Puis top 10 requêtes Google (clics, impressions, position) et top
@@ -90,9 +91,7 @@ Chaque règle produit une phrase ou rien. M = mois du rapport, M-1 = précédent
    baissé : « « pré état daté gratuit » passe de 8,6 à 5,1 ».
 7. Entrées dans le top 10 : requêtes du top 10 par clics en M absentes du top
    10 de M-1 : « 2 requêtes entrent dans le top 10 : … ».
-8. Nouvelle origine de vente : un `domaine` de vente vu en M pour la première
-   fois dans l'archive : « première vente venue de chatgpt.com ».
-9. Bing : « 137 clics Bing contre 174 (−37) », seulement si M-1 mesuré.
+8. Bing : « 137 clics Bing contre 174 (−37) », seulement si M-1 mesuré.
 
 Les pourcentages ne s'affichent que si la base M-1 est ≥ 20 ; sinon la
 variation en valeur seule (règle d'Eric : pas de % quand il n'a pas de sens).

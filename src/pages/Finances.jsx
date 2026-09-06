@@ -27,6 +27,9 @@ import {
   Chargement, ContenuEstompe, Erreur, LigneVide, Section, Vide,
 } from '../components/console/etats';
 import { financeService } from '../services/finance.service';
+// Origine des ventes : memes buckets et memes libelles que la page Clients
+// (BadgeCanal), calcules par l'EF avec la cascade de admin-dossiers/canal.ts.
+import { BadgeCanal, CANAUX } from '../components/console/badges-clients';
 
 const FENETRES = [
   ['7j', '7 derniers jours'],
@@ -54,15 +57,6 @@ const classeMois = (mois) => (String(mois).slice(0, 7) === MOIS_COURANT
   : '');
 
 const CHAMP = 'px-2 py-1.5 rounded border border-baikal-border bg-baikal-bg text-baikal-text focus:border-baikal-cyan outline-none text-sm';
-
-const CANAUX = {
-  paid: ['Publicité', 'text-amber-400'],
-  campaign: ['Campagne', 'text-violet-400'],
-  organic: ['Organique', 'text-emerald-400'],
-  referral: ['Référent', 'text-blue-400'],
-  unattributed: ['Sans origine', 'text-baikal-text'],
-  indetermine: ['Origine perdue', 'text-red-400/80'],
-};
 
 function fmtEur(n) {
   if (n === null || n === undefined) return '—';
@@ -780,7 +774,7 @@ function Ventes({ appId }) {
                   const [libelle, classe] = CANAUX[c.canal] || [c.canal, 'text-baikal-text'];
                   return (
                     <span key={c.canal} className="px-3 py-1.5 rounded-md border border-baikal-border text-sm text-baikal-text">
-                      <span className={classe}>{libelle}</span> · <span className="text-white">{c.ventes}</span> · {fmtEur(c.ca)}
+                      <span className={classe}>{libelle || 'Sans origine'}</span> · <span className="text-white">{c.ventes}</span> · {fmtEur(c.ca)}
                     </span>
                   );
                 })}
@@ -817,12 +811,9 @@ function Ventes({ appId }) {
                       <td className="px-4 py-1.5 font-mono text-xs">{v.paid_at?.slice(0, 10)}</td>
                       <td className="px-2 py-1.5">{v.offre}</td>
                       <td className="px-2 py-1.5">
-                        <span className={(CANAUX[v.canal] || ['', 'text-baikal-text'])[1]}>
-                          {(CANAUX[v.canal] || [v.canal])[0]}
-                        </span>
-                        {v.domaine && (
-                          <span className="ml-1.5 text-xs font-mono opacity-60">{v.domaine}</span>
-                        )}
+                        {CANAUX[v.canal]?.[0]
+                          ? <BadgeCanal canal={v.canal} attribution={v.attribution} />
+                          : <span className="opacity-40">—</span>}
                       </td>
                       <td className="text-right px-2 py-1.5 tabular-nums">{fmtEur(Number(v.montant_ttc))}</td>
                       <td className="text-right px-2 py-1.5 tabular-nums opacity-70">{fmtEur(Number(v.montant_ht))}</td>

@@ -27,7 +27,6 @@ function base(): FaitsHighlights {
         { cle: "pré état daté gratuit", clics: 35, impressions: 280, position: 8.6 },
       ],
     },
-    ventes: { domaines_mois: ["chatgpt.com", "google.com"], domaines_connus_avant: ["google.com"] },
   };
 }
 
@@ -51,7 +50,6 @@ Deno.test("trame complete pour un mois ordinaire", () => {
   // Meilleure progression : « gratuit » gagne 3,5 places, « pré état daté » 1,4.
   assert(h.includes("« pré état daté gratuit » passe de la position 8,6 à 5,1."));
   assert(h.includes("1 requête entre dans le top 10 : « nouvelle requête »."));
-  assert(h.includes("Première vente venue de chatgpt.com."));
   // Bing sans mois precedent : aucune phrase Bing.
   assert(!h.some((p) => p.includes("Bing")));
 });

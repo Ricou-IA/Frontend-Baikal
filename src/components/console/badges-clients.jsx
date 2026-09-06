@@ -20,8 +20,8 @@ const COULEUR_DEFAUT = 'bg-baikal-bg text-baikal-text border-baikal-border';
 // Buckets de la cascade canalVente (admin-dossiers/canal.ts), meme ordre de
 // priorite que son en-tete (portail_pro > paid > geo > campaign > organic >
 // referral > direct > indetermine > unattributed). Libelles adaptes a
-// l'affichage (organic affiche 'SEO', unattributed masque — choix assume,
-// different de /finances qui garde sa propre liste CANAUX). Depuis le
+// l'affichage (organic affiche 'SEO', unattributed masque — choix assume ;
+// /finances reutilise cette liste et ce badge depuis le 06/09/2026). Depuis le
 // 2026-09-03 cette cascade n'est plus un portage du SQL admin.canal_vente
 // (divergence deliberee, voir l'en-tete de canal.ts) : direct et geo n'ont
 // pas d'equivalent cote archive financiere.

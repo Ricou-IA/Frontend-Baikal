@@ -13,15 +13,6 @@
  */
 import { Document, Page, StyleSheet, Text, View } from '@react-pdf/renderer';
 
-const CANAUX = {
-  paid: 'Publicité',
-  campaign: 'Campagne',
-  organic: 'Organique',
-  referral: 'Référent',
-  unattributed: 'Sans origine',
-  indetermine: 'Origine perdue',
-};
-
 // Construits par code de caractere : un U+202F litteral dans la source serait
 // invisible a la relecture et refuse par le lint.
 const ESPACES_INSECABLES = new RegExp(`[${String.fromCharCode(0x202f)}${String.fromCharCode(0xa0)}]`, 'g');
@@ -213,12 +204,11 @@ export default function RapportPdf({ contenu, evolutions, commentaire, version, 
           <Table
             colonnes={[
               { titre: 'Date', valeur: (l) => dateFr(l.date), flex: 1 },
-              { titre: 'Offre', valeur: (l) => l.offre, flex: 1.6 },
-              { titre: 'Origine', valeur: (l) => `${CANAUX[l.canal] || l.canal}${l.domaine ? ` · ${l.domaine}` : ''}`, flex: 2.4 },
+              { titre: 'Offre', valeur: (l) => l.offre, flex: 4 },
               { titre: 'TTC', valeur: (l) => eur(l.montant_ttc), droite: true },
               { titre: 'HT', valeur: (l) => eur(l.montant_ht), droite: true },
             ]}
-            lignes={[...c.ventes.lignes, { total: true, date: '', offre: 'Total', canal: '', montant_ttc: c.ventes.total_ttc, montant_ht: c.ventes.total_ht }]}
+            lignes={[...c.ventes.lignes, { total: true, date: '', offre: 'Total', montant_ttc: c.ventes.total_ttc, montant_ht: c.ventes.total_ht }]}
             cle={(l, i) => `${l.date}-${i}`}
             classeLigne={(l) => (l.total ? { fontFamily: 'Helvetica-Bold', backgroundColor: '#f3f4f6' } : null)}
           />

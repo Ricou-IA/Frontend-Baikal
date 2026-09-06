@@ -112,9 +112,10 @@ export async function construireFaits(admin: any, appId: string, mois: string): 
     manquantes.push("Aucun contrat de partenariat sur ce site");
   }
 
-  // --- Ventes du mois : B2C encaissees, jamais de donnee nominative.
+  // --- Ventes du mois : B2C encaissees, jamais de donnee nominative, et
+  // sans origine : le partenaire ne descend pas a cette finesse (Eric, 06/09).
   const { data: ventes, error: eVentes } = await admin.schema("admin").from("ventes_enrichies")
-    .select("paid_at, offre, canal, domaine, montant_ttc, montant_ht")
+    .select("paid_at, offre, montant_ttc, montant_ht")
     .eq("app_id", appId).eq("perimetre", "b2c").eq("exclue", false)
     .gt("montant_ttc", 0)
     .gte("paid_at", `${debut}T00:00:00Z`).lte("paid_at", `${fin}T23:59:59Z`)
@@ -123,20 +124,11 @@ export async function construireFaits(admin: any, appId: string, mois: string): 
   const lignesVentes = (ventes ?? []).map((v: any) => ({
     date: String(v.paid_at).slice(0, 10),
     offre: v.offre,
-    canal: v.canal ?? "unattributed",
-    domaine: v.domaine ?? null,
     montant_ttc: Number(v.montant_ttc),
     montant_ht: Number(v.montant_ht),
   }));
   const totalTtc = arrondi(lignesVentes.reduce((a: number, v: any) => a + v.montant_ttc, 0));
   const totalHt = arrondi(lignesVentes.reduce((a: number, v: any) => a + v.montant_ht, 0));
-
-  const { data: anciennes } = await admin.schema("admin").from("ventes_enrichies")
-    .select("domaine")
-    .eq("app_id", appId).eq("perimetre", "b2c").eq("exclue", false)
-    .not("domaine", "is", null)
-    .lt("paid_at", `${debut}T00:00:00Z`).limit(5000);
-  const domainesConnus: string[] = Array.from(new Set<string>((anciennes ?? []).map((v: any) => String(v.domaine))));
 
   // --- SEO.
   const [gM, gP, bM, bP, reqM, reqP, pagesM] = await Promise.all([
@@ -168,10 +160,6 @@ export async function construireFaits(admin: any, appId: string, mois: string): 
       bing: { mois: bM, precedent: bP },
       requetes_mois: reqM,
       requetes_precedent: reqP,
-    },
-    ventes: {
-      domaines_mois: lignesVentes.map((v: any) => v.domaine).filter(Boolean),
-      domaines_connus_avant: domainesConnus,
     },
   };
 

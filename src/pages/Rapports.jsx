@@ -22,15 +22,6 @@ import ConsoleLayout from '../components/console/ConsoleLayout';
 import { Chargement, Erreur, LigneVide, Section, Vide } from '../components/console/etats';
 import { rapportService } from '../services/rapport.service';
 
-const CANAUX = {
-  paid: 'Publicité',
-  campaign: 'Campagne',
-  organic: 'Organique',
-  referral: 'Référent',
-  unattributed: 'Sans origine',
-  indetermine: 'Origine perdue',
-};
-
 const CHAMP = 'px-2 py-1.5 rounded border border-baikal-border bg-baikal-bg text-baikal-text focus:border-baikal-cyan outline-none text-sm';
 const ZONE = `${CHAMP} w-full min-h-[120px] leading-relaxed`;
 const BOUTON = 'flex items-center gap-1.5 px-3 py-1.5 rounded border text-sm transition-colors disabled:opacity-50';
@@ -130,7 +121,6 @@ function Apercu({ contenu }) {
                 <tr className="text-left text-xs opacity-70">
                   <th className="px-4 py-2">Date</th>
                   <th className="px-2 py-2">Offre</th>
-                  <th className="px-2 py-2">Origine</th>
                   <th className="text-right px-4 py-2">TTC</th>
                 </tr>
               </thead>
@@ -139,7 +129,6 @@ function Apercu({ contenu }) {
                   <tr key={`${v.date}-${i}`} className="border-t border-baikal-border/50">
                     <td className="px-4 py-1.5 font-mono text-xs">{v.date}</td>
                     <td className="px-2 py-1.5">{v.offre}</td>
-                    <td className="px-2 py-1.5">{CANAUX[v.canal] || v.canal}{v.domaine && <span className="ml-1.5 text-xs font-mono opacity-60">{v.domaine}</span>}</td>
                     <td className="text-right px-4 py-1.5 tabular-nums">{fmtEur(v.montant_ttc)}</td>
                   </tr>
                 ))}

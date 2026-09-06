@@ -39,10 +39,6 @@ export interface FaitsHighlights {
     requetes_mois: RequeteMois[];
     requetes_precedent: RequeteMois[];
   };
-  ventes: {
-    domaines_mois: string[];
-    domaines_connus_avant: string[];
-  };
 }
 
 const MOIS_FR = [
@@ -157,14 +153,7 @@ export function calculerHighlights(f: FaitsHighlights): string[] {
     }
   }
 
-  // 8. Nouvelle origine de vente.
-  const connus = new Set(f.ventes.domaines_connus_avant);
-  const nouveaux = [...new Set(f.ventes.domaines_mois)].filter((d) => d && !connus.has(d));
-  for (const d of nouveaux) {
-    out.push(`Première vente venue de ${d}.`);
-  }
-
-  // 9. Bing, seulement si le mois precedent est mesure (pas d'historique
+  // 8. Bing, seulement si le mois precedent est mesure (pas d'historique
   // Bing avant le cron : un 0 serait un mensonge).
   const b = f.seo.bing.mois;
   const bp = f.seo.bing.precedent;
