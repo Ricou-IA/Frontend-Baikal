@@ -183,8 +183,10 @@ function BlocLectureSeo({ lecture, chantiers }) {
     { titre: 'Impressions', valeur: (l) => nb(l.impressions), droite: true },
   ];
   const vc = lecture.ventes.par_creation;
+  // Fragment, pas de View englobant : un conteneur plus haut qu'une page ne se
+  // coupe pas et ses enfants s'empilent au meme endroit (vu le 06/09).
   return (
-    <View>
+    <>
       <Text style={s.h3}>Trafic en jours ouvrés (lundi-vendredi), semaines pleines</Text>
       <View style={{ flexDirection: 'row', gap: 12 }}>
         <View style={{ flex: 1 }}>
@@ -343,7 +345,7 @@ function BlocLectureSeo({ lecture, chantiers }) {
           />
         </View>
       )}
-    </View>
+    </>
   );
 }
 
@@ -396,7 +398,7 @@ export default function RapportPdf({ contenu, evolutions, lectureSeo, commentair
         </View>
 
         {contrat && (
-          <View>
+          <>
             <Text style={s.h2}>Registre des Ventes</Text>
             <Table
               colonnes={[
@@ -429,7 +431,7 @@ export default function RapportPdf({ contenu, evolutions, lectureSeo, commentair
             <Text style={s.note}>
               {t(`Article 7.2 : Ventes Partageables = Ventes du mois − ${contrat.franchise} ; CA Partageable = HT effectivement encaissé sur ces ventes ; Coûts Directs imputables = Coûts Directs du mois × ratio ; Résultat Partageable = CA Partageable − Coûts Directs imputables, après report du solde négatif antérieur ; quote-part de chaque Partie ${Math.round(contrat.part * 100)} %. Pièces jointes : export Stripe, justificatifs des Coûts Directs, rapport mensuel d'${partenaire}.`)}
             </Text>
-          </View>
+          </>
         )}
 
         <Text style={s.h2} break>{t(`Ventes de la période (${nb(c.ventes.nettes)} nettes sur ${nb(c.ventes.nombre)})`)}</Text>
@@ -460,19 +462,20 @@ export default function RapportPdf({ contenu, evolutions, lectureSeo, commentair
         </Text>
 
         {lecture && (
-          <View>
+          <>
             <Text style={s.h2} break>Lecture SEO</Text>
             <BlocLectureSeo lecture={lecture} chantiers={lecture.chantiers || []} />
             {lectureSeo && lectureSeo.trim() && (
-              <View style={{ marginTop: 8 }}>
+              <>
+                <Text style={s.h3}>Lecture</Text>
                 <Paragraphes texte={lectureSeo} />
-              </View>
+              </>
             )}
-          </View>
+          </>
         )}
 
         {c.highlights.length > 0 && (
-          <View>
+          <>
             <Text style={s.h2}>Highlights</Text>
             {c.highlights.map((h, i) => (
               <View key={i} style={s.puce}>
@@ -480,21 +483,21 @@ export default function RapportPdf({ contenu, evolutions, lectureSeo, commentair
                 <Text style={s.puceTexte}>{t(h)}</Text>
               </View>
             ))}
-          </View>
+          </>
         )}
 
         {evolutions && evolutions.trim() && (
-          <View>
+          <>
             <Text style={s.h2}>Évolutions du logiciel</Text>
             <Paragraphes texte={evolutions} />
-          </View>
+          </>
         )}
 
         {commentaire && commentaire.trim() && (
-          <View>
+          <>
             <Text style={s.h2}>Commentaire</Text>
             <Paragraphes texte={commentaire} />
-          </View>
+          </>
         )}
 
         <View style={s.pied} fixed>
