@@ -107,88 +107,123 @@ export async function redigerCommentaire(
   return await completer(systeme, utilisateur);
 }
 
-// Les pieges de la grille, donnes au modele comme garde-fous. Ils viennent de
-// vrais faux positifs vecus sur ce site.
-const PIEGES = [
-  "Comparer en jours ouvrés ou en semaines pleines : une fenêtre avec un week-end ou un férié de plus fausse tout.",
-  "Août est un trou de demande, pas un signal de site : deux moteurs qui baissent ensemble à position égale = saisonnalité.",
-  "Les requêtes entre guillemets sont du bruit (déjà exclues des chiffres fournis).",
-  "La position moyenne d'une page n'est pas sa position sur son cluster : lire en requête × page.",
-  "L'export par requêtes cache environ la moitié des clics (requêtes anonymisées) : un « 0 clic » en requête × page ne vaut que pour les requêtes nommées.",
-  "Deux comptes de ventes légitimes, par date de paiement et par date de création : toujours dire lequel on lit.",
-  "Une position qui se dégrade à impressions croissantes est souvent une page qui sort sur de nouvelles requêtes lointaines, pas une page qui perd ses acquis.",
-  "Jamais de position moyenne globale ni de total d'impressions brut : ces deux chiffres mentent sur ce site.",
-];
+// Consigne d'Eric du 06/09/2026, reprise mot pour mot. Le message
+// utilisateur suit la numerotation de ses « DONNEES RECUES » : le modele ne
+// recoit rien d'autre (ni highlights, ni compte par date de creation).
+const CONSIGNE_LECTURE_SEO = `Tu rédiges, en français, la « Lecture SEO » du rapport mensuel que l'éditeur du site pre-etat-date.ai (« nous ») adresse à IA MEDIA, son partenaire SEO (« vous »). Ce texte sera lu tel quel par le partenaire.
 
-function fmtCluster(l: { cluster: string; requetes: number; clics: number; impressions: number; position: number | null }) {
-  return `${l.cluster} : ${l.requetes} requêtes, ${l.clics} clics, ${l.impressions} impressions, position pondérée ${l.position ?? "n/a"}`;
+DONNÉES REÇUES (tu ne disposes que de celles-ci)
+1. Trafic : clics et impressions Google par jour ouvré, semaine de référence contre dernière semaine pleine, et la même chose pour Bing. Sert à dire si la demande monte ou baisse, et si les deux moteurs bougent ensemble.
+2. Impressions hors bruit par mois. Sert à distinguer une hausse de clics par le taux de clic d'une hausse par la visibilité.
+3. Clusters de requêtes par mois : requêtes, clics, impressions, position pondérée par les impressions. Sert à lire une tendance par sujet, jamais la position d'une page.
+4. Requête × page sur les pages clés, deux fenêtres normalisées par jour : requêtes, clics, impressions, position pondérée. C'est la seule source valable pour la position d'une page sur ses requêtes.
+5. Panier de dix requêtes de suivi : position requête × page, page classée, écart avec la mesure précédente.
+6. Ventes par date de paiement, nettes de remboursements, avec la part venue du référencement naturel et la conversion par page d'entrée. C'est le compte du contrat ; ne cite aucun autre compte de ventes.
+7. Chantiers : libellé, date, cible (cluster ou page), hypothèse, verdict déjà posé s'il existe.
+8. Facultatif : nombre de domaines référents du site et du concurrent le mieux placé.
+
+RÈGLES SUR LES CHIFFRES
+- Tu n'inventes aucun chiffre et tu n'en arrondis aucun autrement qu'il est donné. Chaque chiffre cité est suivi de sa fenêtre (dates ou mois).
+- Tu ne cites jamais une position moyenne globale ni un total d'impressions brut : ces deux chiffres mentent sur ce site.
+- Un chiffre absent des données n'existe pas : tu ne commentes l'autorité que si le point 8 est fourni, et tu ne cites jamais un nom de client, une adresse, un coût interne ou un outil.
+- Format français : espace avant les milliers, virgule décimale, « % » précédé d'une espace.
+
+VERDICTS (partie 1)
+- Un chantier ne se juge que sur une fenêtre qui commence après sa date, d'au moins trois semaines pleines, hors période du 20 juillet au 25 août. Un chantier de liens ne se juge pas avant trois mois. Sinon : « trop tôt pour conclure ».
+- Gagné : la cible gagne au moins trois places en requête × page à impressions comparables, ou ses clics sont multipliés par 1,5 sur fenêtre comparable.
+- En progrès : la position s'améliore sans que les clics suivent.
+- Raté : la cible perd plus de dix places sur ses propres requêtes à impressions comparables.
+- Sans objet : la demande visée est tombée sous vingt impressions par mois hors bruit.
+- Un verdict déjà posé est repris tel quel, sans être contredit.
+
+STRUCTURE IMPOSÉE, quatre parties avec ces titres exacts sur leur propre ligne :
+« ## Bilan des chantiers » : un verdict par chantier avec le chiffre qui le prouve, ou « aucun chantier sur la période ».
+« ## Lectures à ne pas rater » : deux ou trois effets de composition ou de saisonnalité visibles dans les chiffres ; un mot sur l'autorité seulement si le point 8 est fourni, un mot sur la part mobile seulement si elle bouge d'au moins cinq points.
+« ## Ce qui est réglé » : une à trois puces, ou « rien de nouveau ».
+« ## La seule chose à faire ensuite » : UNE action, qui la fait (vous ou nous), et la date de la prochaine mesure.
+
+FORME
+Puces courtes commençant par « - », phrases à l'indicatif, ton direct, vouvoiement, orthographe française complète avec accents. Pas d'introduction, pas de conclusion. 250 mots au plus.
+
+GARDE-FOUS DE LECTURE
+(1) Comparer en jours ouvrés ou en semaines pleines : une fenêtre avec un week-end ou un férié de plus fausse tout.
+(2) Août est un trou de demande, pas un signal de site : deux moteurs qui baissent ensemble à position égale, c'est de la saisonnalité.
+(3) Les requêtes entre guillemets sont du bruit, déjà exclues des chiffres fournis.
+(4) La position moyenne d'une page n'est pas sa position sur son cluster : la position d'une page se lit au point 4 seulement.
+(5) L'export par requêtes cache environ la moitié des clics : un « 0 clic » en requête × page ne vaut que pour les requêtes nommées.
+(6) Une position qui se dégrade à impressions croissantes est souvent une page qui sort sur de nouvelles requêtes lointaines, pas une page qui perd ses acquis.
+(7) Une hausse de clics à impressions hors bruit stables est une hausse du taux de clic ; une hausse des deux est une hausse de visibilité.
+(8) Un lien produit son effet en trois à six mois : ne jamais lire un chantier de liens plus tôt.`;
+
+export interface ContexteLecture {
+  libelle_periode: string;
+  libelle_precedent: string;
+  // Point 2 : impressions Google hors bruit, periode et precedente.
+  impressions_hors_bruit: { periode: number | null; precedent: number | null };
 }
 
-export async function redigerLectureSeo(
-  lecture: LectureSeo,
-  highlights: string[],
-  libellePeriode: string,
-): Promise<string> {
-  const systeme = [
-    "Tu rédiges, en français, la « Lecture SEO » d'un rapport adressé à IA MEDIA, partenaire SEO",
-    "du site pre-etat-date.ai, au nom de l'éditeur du site. Tu ne disposes QUE des chiffres fournis :",
-    "tu n'en inventes aucun, tu n'en arrondis aucun autrement qu'ils sont donnés, et tu ne cites",
-    "jamais une position moyenne globale ni un total d'impressions brut.",
-    "Structure imposée, quatre parties avec ces titres exacts sur leur propre ligne :",
-    "« ## Bilan des chantiers » (un verdict par chantier : gagné / en progrès / raté / sans objet, avec le",
-    "chiffre qui le prouve ; si un chantier a déjà un verdict posé, reprends-le sans le contredire ;",
-    "s'il n'en a pas et que les chiffres ne permettent pas de conclure, écris « trop tôt pour conclure » ;",
-    "regroupe les commits qui relèvent d'un même chantier, ignore ceux sans effet SEO mesurable),",
-    "puis, dans les lectures, un mot sur l'autorité (domaines référents contre le concurrent le mieux placé)",
-    "et sur la part mobile si elle bouge,",
-    "« ## Lectures à ne pas rater » (deux ou trois effets de composition ou de saisonnalité visibles dans",
-    "les chiffres), « ## Ce qui est réglé » (une à trois puces, ou « rien de nouveau »),",
-    "« ## La seule chose à faire ensuite » (UNE action, et la date de la prochaine mesure).",
-    "Puces courtes commençant par « - », phrases à l'indicatif, ton direct, vouvoiement, orthographe",
-    "française complète avec accents. Pas d'introduction, pas de conclusion.",
-    "Garde-fous de lecture : " + PIEGES.map((p, i) => `(${i + 1}) ${p}`).join(" "),
-  ].join(" ");
+const nbFr = (n: number | null | undefined) =>
+  n === null || n === undefined ? "n/a" : new Intl.NumberFormat("fr-FR").format(n).replace(/\u202f/g, " ");
+const posFr = (n: number | null | undefined) =>
+  n === null || n === undefined ? "n/a" : n.toFixed(1).replace(".", ",");
+const pctFr = (n: number) => `${Math.round(n * 100)} %`;
 
+function fmtCluster(l: { cluster: string; requetes: number; clics: number; impressions: number; position: number | null }) {
+  return `${l.cluster} : ${nbFr(l.requetes)} requêtes, ${nbFr(l.clics)} clics, ${nbFr(l.impressions)} impressions, position pondérée ${posFr(l.position)}`;
+}
+
+export async function redigerLectureSeo(lecture: LectureSeo, contexte: ContexteLecture): Promise<string> {
   const trafic = (l: { semaine: string; jours_ouvres: number; clics: number; clics_par_jour: number; impressions: number; reference: boolean }) =>
-    `semaine du ${l.semaine}${l.reference ? " (référence, meilleure semaine récente)" : ""} : ${l.clics} clics sur ${l.jours_ouvres} jours ouvrés (${l.clics_par_jour}/j), ${l.impressions} impressions ouvrées`;
+    `semaine du ${l.semaine}${l.reference ? " (référence, meilleure semaine récente)" : ""} : ${nbFr(l.clics)} clics sur ${l.jours_ouvres} jours ouvrés (${posFr(l.clics_par_jour)}/j), ${nbFr(l.impressions)} impressions ouvrées`;
+  const vp = lecture.ventes.par_paiement;
   const vc = lecture.ventes.par_creation;
+  const notre = lecture.autorite.find((a) => a.notre);
+  const meilleur = lecture.autorite.filter((a) => !a.notre && a.ref_domains !== null)
+    .sort((a, b) => (b.ref_domains ?? 0) - (a.ref_domains ?? 0))[0];
+  const mobile = lecture.appareils.find((a) => a.appareil === "mobile");
+
   const lignes: string[] = [
-    `Période : ${libellePeriode}`,
+    `Période : ${contexte.libelle_periode} (période précédente : ${contexte.libelle_precedent}).`,
     "",
-    "Trafic Google (jours ouvrés) :",
+    "1. TRAFIC — Google, jours ouvrés, semaines pleines (de la plus récente à la plus ancienne) :",
     ...lecture.trafic.google.map((l) => `- ${trafic(l)}`),
-    "Trafic Bing (jours ouvrés) :",
+    "   Bing, jours ouvrés, semaines pleines :",
     ...lecture.trafic.bing.map((l) => `- ${trafic(l)}`),
     "",
-    `Ventes par date de paiement (Stripe) : ${lecture.ventes.par_paiement.ventes} ventes, ${lecture.ventes.par_paiement.nettes} nettes de remboursements.`,
-    vc.disponible
-      ? `Ventes par date de création (dossiers créés sur la période, doublons exclus) : ${vc.dossiers} dossiers, ${vc.emails} emails, ${vc.payes} ventes dont ${vc.payes_organique} organiques.`
-      : "Compte par date de création indisponible.",
-    ...vc.par_canal.map((c) => `- canal ${c.canal} : ${c.dossiers} dossiers → ${c.emails} emails → ${c.payes} ventes`),
-    ...(vc.par_page.length ? ["Portes d'entrée organiques (dossiers → emails → ventes) :"] : []),
-    ...vc.par_page.map((p) => `- ${p.page} : ${p.dossiers} → ${p.emails} → ${p.payes}`),
+    "2. IMPRESSIONS GOOGLE HORS BRUIT :",
+    `- ${contexte.libelle_periode} : ${nbFr(contexte.impressions_hors_bruit.periode)}`,
+    `- ${contexte.libelle_precedent} : ${nbFr(contexte.impressions_hors_bruit.precedent)}`,
     "",
-    "Clusters de requêtes, période :",
+    `3. CLUSTERS DE REQUÊTES — ${contexte.libelle_periode} :`,
     ...lecture.clusters.periode.map((c) => `- ${fmtCluster(c)}`),
-    "Clusters de requêtes, période précédente :",
+    `   ${contexte.libelle_precedent} :`,
     ...lecture.clusters.precedent.map((c) => `- ${fmtCluster(c)}`),
     "",
-    "Requêtes suivies (requête × page, position pondérée, période vs précédente) :",
-    ...lecture.suivi.requetes.map((r) => `- « ${r.requete} » : page ${r.page ?? "aucune"}, ${r.clics} clics, ${r.impressions} impressions, position ${r.position ?? "n/a"} (précédente ${r.position_precedente ?? "n/a"})`),
-    "Pages clés (requête × page) :",
-    ...lecture.suivi.pages.map((p) => `- ${p.page} : ${p.requetes} requêtes, ${p.clics} clics, ${p.impressions} impressions, position ${p.position ?? "n/a"} (précédente ${p.position_precedente ?? "n/a"}) ; top : ${p.top_requetes.join(", ") || "aucune"}`),
+    `4. REQUÊTE × PAGE SUR LES PAGES CLÉS — ${contexte.libelle_periode} (précédente entre parenthèses) :`,
+    ...lecture.suivi.pages.map((p) => `- ${p.page} : ${nbFr(p.requetes)} requêtes, ${nbFr(p.clics)} clics, ${nbFr(p.impressions)} impressions, position pondérée ${posFr(p.position)} (précédente ${posFr(p.position_precedente)}) ; premières requêtes : ${p.top_requetes.join(", ") || "aucune"}`),
+    ...(lecture.suivi.pages.length === 0 ? ["- aucun relevé requête × page"] : []),
     "",
-    "Répartition des clics Google par appareil (période, et précédente) :",
-    ...lecture.appareils.map((a) => `- ${a.appareil} : ${a.clics} clics (${Math.round(a.part_clics * 100)} %)${a.clics_precedent !== null ? ` contre ${a.clics_precedent} (${Math.round((a.part_clics_precedent ?? 0) * 100)} %)` : ""}`),
+    `5. PANIER DE REQUÊTES SUIVIES — ${contexte.libelle_periode} :`,
+    ...lecture.suivi.requetes.map((r) => `- « ${r.requete} » : page ${r.page ?? "aucune"}, position ${posFr(r.position)} (précédente ${posFr(r.position_precedente)}), ${nbFr(r.clics)} clics, ${nbFr(r.impressions)} impressions`),
+    ...(lecture.suivi.requetes.length === 0 ? ["- aucune requête suivie"] : []),
     "",
-    "Autorité de domaine (Moz, dernier relevé ; DA et domaines référents ; précédent entre parenthèses) :",
-    ...lecture.autorite.map((a) => `- ${a.domaine}${a.notre ? " (nous)" : ""} : DA ${a.da ?? "n/a"}${a.da_precedent !== null ? ` (${a.da_precedent})` : ""}, ${a.ref_domains ?? "n/a"} domaines référents${a.ref_domains_precedent !== null ? ` (${a.ref_domains_precedent})` : ""}, spam ${a.spam ?? "n/a"}`),
+    `6. VENTES PAR DATE DE PAIEMENT, NETTES DE REMBOURSEMENTS — ${contexte.libelle_periode} :`,
+    `- ${nbFr(vp.nettes)} ventes nettes (${nbFr(vp.ventes)} encaissées)${vp.organiques !== undefined ? `, dont ${nbFr(vp.organiques)} venues du référencement naturel` : ""}`,
+    ...(vc.disponible && vc.par_page.length
+      ? ["   Conversion par page d'entrée organique (dossiers créés sur la période → taux de vente) :",
+        ...vc.par_page.map((p) => `- ${p.page} : ${nbFr(p.dossiers)} dossiers, taux de vente ${p.dossiers > 0 ? pctFr(p.payes / p.dossiers) : "n/a"}`)]
+      : []),
     "",
-    "Chantiers SEO (déclarés avec verdict, ou déduits des commits du dépôt) :",
-    ...lecture.chantiers.map((c) => `- ${c.date} « ${c.libelle} »${c.cible ? ` cible ${c.cible}` : ""}${c.hypothese ? `, hypothèse : ${c.hypothese}` : ""}${c.verdict ? `, verdict posé : ${c.verdict}` : ", verdict : aucun"}${c.mesure_prevue_le ? `, mesure prévue le ${c.mesure_prevue_le}` : ""}${c.source === "commit" ? " (commit)" : ""}`),
+    "7. CHANTIERS :",
+    ...lecture.chantiers.map((c) => `- ${c.date} « ${c.libelle} »${c.cible ? `, cible ${c.cible}` : ""}${c.hypothese ? `, hypothèse : ${c.hypothese}` : ""}${c.verdict ? `, verdict déjà posé : ${c.verdict}` : ""}`),
+    ...(lecture.chantiers.length === 0 ? ["- aucun chantier sur la période"] : []),
     "",
-    "Highlights calculés :",
-    ...highlights.map((h) => `- ${h}`),
+    ...(notre && meilleur && notre.ref_domains !== null
+      ? [`8. AUTORITÉ (relevé du ${notre.mesure_le}) : ${nbFr(notre.ref_domains)} domaines référents pour le site, contre ${nbFr(meilleur.ref_domains)} pour le concurrent le mieux placé.`]
+      : ["8. AUTORITÉ : non fournie."]),
+    ...(mobile && mobile.part_clics_precedent !== null
+      ? ["", `Part mobile des clics Google : ${pctFr(mobile.part_clics)} (${contexte.libelle_periode}) contre ${pctFr(mobile.part_clics_precedent)} (${contexte.libelle_precedent}).`]
+      : []),
   ];
-  return await completer(systeme, lignes.join("\n"), 1400);
+  return await completer(CONSIGNE_LECTURE_SEO, lignes.join("\n"), 1400);
 }

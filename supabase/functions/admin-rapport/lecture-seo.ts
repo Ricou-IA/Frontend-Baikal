@@ -9,6 +9,9 @@
 // deno-lint-ignore-file no-explicit-any
 import { chargerSite, ErreurSite, lecteurSite } from "../_shared/sites.ts";
 import type { Commit } from "./github.ts";
+// Meme cascade d'attribution que la page Clients : la part organique des
+// ventes se lit sur l'attribution figee de chaque vente, par date de paiement.
+import { canalVente } from "../admin-dossiers/canal.ts";
 import { moisCouverts, type Periode, periodePrecedente } from "./periode.ts";
 
 export interface LigneCluster {
@@ -81,7 +84,7 @@ export interface LectureSeo {
   trafic: { google: LigneSemaine[]; bing: LigneSemaine[] };
   appareils: LigneAppareil[];
   ventes: {
-    par_paiement: { ventes: number; nettes: number };
+    par_paiement: { ventes: number; nettes: number; organiques?: number };
     par_creation: {
       disponible: boolean;
       dossiers: number;
@@ -465,6 +468,18 @@ async function ventesParCreation(admin: any, appId: string, p: Periode) {
   }
 }
 
+// Ventes nettes de la periode venues du referencement naturel, par date de
+// paiement (le compte du contrat), d'apres l'attribution figee de chaque vente.
+async function organiquesParPaiement(admin: any, appId: string, p: Periode): Promise<number> {
+  const { data, error } = await admin.schema("admin").from("ventes_enrichies")
+    .select("attribution")
+    .eq("app_id", appId).eq("perimetre", "b2c").eq("exclue", false)
+    .gt("montant_ttc", 0).eq("montant_rembourse", 0)
+    .gte("paid_at", `${p.debut}T00:00:00Z`).lte("paid_at", `${p.fin}T23:59:59Z`);
+  if (error) throw new Error(error.message);
+  return (data ?? []).filter((v: any) => canalVente(v.attribution ?? null) === "organic").length;
+}
+
 export async function construireLectureSeo(
   admin: any,
   appId: string,
@@ -483,7 +498,7 @@ export async function construireLectureSeo(
   const pagesCles: string[] = Array.isArray(app?.seo_pages_cles) ? app.seo_pages_cles.map(String) : [];
   const base = app?.domaine ? `https://${app.domaine}` : "";
 
-  const [google, bing, clM, clP, crM, crP, declares, appM, appP, autorite] = await Promise.all([
+  const [google, bing, clM, clP, crM, crP, declares, appM, appP, autorite, organiques] = await Promise.all([
     traficHebdo(admin, appId, "google", periode.fin),
     traficHebdo(admin, appId, "bing", periode.fin),
     clustersSur(admin, appId, mois),
@@ -494,6 +509,7 @@ export async function construireLectureSeo(
     appareilsSur(admin, appId, mois),
     appareilsSur(admin, appId, moisPrec),
     autoriteSur(admin, appId, app?.domaine ?? null, periode.fin, prec.fin),
+    organiquesParPaiement(admin, appId, periode),
   ]);
 
   let parCreation;
@@ -513,7 +529,7 @@ export async function construireLectureSeo(
   return {
     trafic: { google, bing },
     appareils: appareils(appM, appP),
-    ventes: { par_paiement: ventesParPaiement, par_creation: parCreation },
+    ventes: { par_paiement: { ...ventesParPaiement, organiques }, par_creation: parCreation },
     clusters: { periode: clM, precedent: clP },
     suivi: {
       requetes: suiviRequetes(panier, crM, crP),

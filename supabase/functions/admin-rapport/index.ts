@@ -23,7 +23,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ErreurAcces, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 import { construireFaits } from "./faits.ts";
 import { type Commit, commitsDuMois } from "./github.ts";
-import { libellePeriode, type Periode, validerPeriode } from "./periode.ts";
+import { libelleMois, libellePeriode, moisCouverts, type Periode, periodePrecedente, validerPeriode } from "./periode.ts";
 import { redigerCommentaire, redigerEvolutions, redigerLectureSeo } from "./redaction.ts";
 
 const BUCKET = "rapports";
@@ -72,6 +72,20 @@ async function commitsSite(
   }
 }
 
+// Contexte donne au modele pour la lecture SEO : libelles des deux periodes
+// et impressions hors bruit (point 2 de la consigne).
+function contexteLecture(faits: Awaited<ReturnType<typeof construireFaits>>, periode: Periode) {
+  const prec = periodePrecedente(periode);
+  return {
+    libelle_periode: libellePeriode(periode),
+    libelle_precedent: faits.mois_entier ? libelleMois(moisCouverts(prec)[0]) : libellePeriode(prec),
+    impressions_hors_bruit: {
+      periode: faits.seo.google.periode?.impressions_hors_bruit ?? null,
+      precedent: faits.seo.google.precedent?.impressions_hors_bruit ?? null,
+    },
+  };
+}
+
 async function repoDuSite(admin: any, appId: string): Promise<string | null> {
   const { data } = await admin.schema("config").from("apps").select("repo_github").eq("id", appId).maybeSingle();
   return data?.repo_github ?? null;
@@ -110,7 +124,7 @@ serve(async (req) => {
       let texte = "";
       if (faits.lecture_seo) {
         try {
-          texte = await redigerLectureSeo(faits.lecture_seo, faits.highlights, libellePeriode(periode));
+          texte = await redigerLectureSeo(faits.lecture_seo, contexteLecture(faits, periode));
         } catch (e) {
           faits.sources_manquantes.push(`Rédaction indisponible : ${(e as Error).message}`);
         }
@@ -217,7 +231,7 @@ serve(async (req) => {
         lectureSeo = audit.texte ?? "";
       } else if (faits.lecture_seo) {
         try {
-          lectureSeo = await redigerLectureSeo(faits.lecture_seo, faits.highlights, libelle);
+          lectureSeo = await redigerLectureSeo(faits.lecture_seo, contexteLecture(faits, periode));
         } catch (e) {
           faits.sources_manquantes.push(`Rédaction de la lecture SEO indisponible : ${(e as Error).message}`);
         }
