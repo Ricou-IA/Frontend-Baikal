@@ -30,7 +30,13 @@ const CHAMPS_SITE = [
   "expediteur_nom",
   "expediteur_email",
   "reply_to",
+  "modele_comptes",
 ] as const;
+
+// Modele de comptes d'un site (config.apps.modele_comptes) : organisations
+// (membres d'organisations, page Utilisateurs) ou clients (clients du site,
+// page Clients — aucun profil console n'est cree a l'inscription).
+const MODELES_COMPTES = ["organisations", "clients"];
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -75,7 +81,7 @@ serve(async (req) => {
         if (profile?.app_role === "super_admin") {
           const { data, error } = await admin.schema("config").from("apps")
             .select("id, name, domaine, gsc_propriete, env_url, env_secret_ref, " +
-              "expediteur_nom, expediteur_email, reply_to, is_active")
+              "expediteur_nom, expediteur_email, reply_to, modele_comptes, is_active")
             .order("sort_order");
           if (error) throw error;
           return json({ data, error: null });
@@ -100,6 +106,11 @@ serve(async (req) => {
         }
         if (Object.keys(maj).length === 0) {
           return json({ data: null, error: "Aucun champ a enregistrer" }, 400);
+        }
+        // Le modele n'est jamais vide : un "" ne doit pas devenir NULL et
+        // casser la contrainte CHECK.
+        if ("modele_comptes" in maj && !MODELES_COMPTES.includes(String(maj.modele_comptes))) {
+          return json({ data: null, error: "modele_comptes : organisations ou clients" }, 400);
         }
         const { data, error } = await admin.schema("config").from("apps")
           .update(maj).eq("id", s.id).select("id").single();

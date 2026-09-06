@@ -9,89 +9,12 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { Save, UserPlus, X, Plus, Trash2 } from 'lucide-react';
+import { Save, Plus, Trash2 } from 'lucide-react';
 import ConsoleLayout from '../components/console/ConsoleLayout';
 import { useApp } from '../contexts/AppContext';
 import { sitesService } from '../services/sites.service';
-import { droitsService } from '../services/droits.service';
+import AdminsSite from '../components/console/AdminsSite';
 import ConfirmModal from '../components/ui/ConfirmModal';
-
-// Bloc « Admins delegues » d'une fiche site : liste, ajout par email d'un
-// compte existant, retrait. Les droits vivent dans admin.droits_sites.
-function AdminsSite({ appId }) {
-  const [admins, setAdmins] = useState([]);
-  const [email, setEmail] = useState('');
-  const [occupe, setOccupe] = useState(false);
-  const [erreur, setErreur] = useState(null);
-
-  const charger = useCallback(async () => {
-    const { data, error } = await droitsService.list(appId);
-    if (error) setErreur(error.message);
-    else setAdmins(data || []);
-  }, [appId]);
-
-  useEffect(() => { charger(); }, [charger]);
-
-  const ajouter = async () => {
-    if (!email.includes('@')) return;
-    setOccupe(true);
-    setErreur(null);
-    const { error } = await droitsService.grant(appId, email.trim());
-    setOccupe(false);
-    if (error) setErreur(error.message);
-    else { setEmail(''); charger(); }
-  };
-
-  const retirer = async (userId) => {
-    setErreur(null);
-    const { error } = await droitsService.revoke(appId, userId);
-    if (error) setErreur(error.message);
-    else charger();
-  };
-
-  return (
-    <div className="border-t border-baikal-border pt-3 space-y-2">
-      <p className="text-sm text-baikal-text opacity-70">Admins delegues</p>
-      {admins.length === 0 && (
-        <p className="text-xs text-baikal-text opacity-50">Aucun — seul le super admin voit ce site.</p>
-      )}
-      <ul className="space-y-1">
-        {admins.map((a) => (
-          <li key={a.userId} className="flex items-center gap-2 text-sm text-baikal-text font-mono">
-            <span>{a.email}</span>
-            {a.nom && <span className="opacity-60">({a.nom})</span>}
-            <button
-              onClick={() => retirer(a.userId)}
-              title="Retirer le droit"
-              className="p-1 text-baikal-text hover:text-red-400 transition-colors"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </li>
-        ))}
-      </ul>
-      <div className="flex items-center gap-2">
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') ajouter(); }}
-          placeholder="email d'un compte existant"
-          className="px-2 py-1.5 rounded border border-baikal-border bg-baikal-bg text-baikal-text focus:border-baikal-cyan outline-none font-mono text-sm w-64"
-        />
-        <button
-          onClick={ajouter}
-          disabled={occupe || !email.includes('@')}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-baikal-cyan text-baikal-cyan hover:bg-baikal-cyan/10 transition-colors disabled:opacity-50 text-sm"
-        >
-          <UserPlus className="w-4 h-4" />
-          Ajouter
-        </button>
-      </div>
-      {erreur && <p className="text-red-400 text-sm">{erreur}</p>}
-    </div>
-  );
-}
 
 const CHAMPS = [
   ['domaine', 'Domaine'],
@@ -103,10 +26,19 @@ const CHAMPS = [
   ['reply_to', 'Reply-to'],
 ];
 
+// Modele de comptes du site (config.apps.modele_comptes). Decide ce que la
+// console fait des inscriptions du site : membres d'organisations (page
+// Utilisateurs) ou clients du site (page Clients, aucun profil console).
+const MODELES_COMPTES = [
+  ['organisations', "Organisations — les comptes sont des membres d'organisations (page Utilisateurs)"],
+  ['clients', 'Clients — les comptes sont des clients du site (page Clients)'],
+];
+
 function FicheSite({ site, onSaved }) {
   const [valeurs, setValeurs] = useState(() => {
     const v = {};
     for (const [champ] of CHAMPS) v[champ] = site[champ] ?? '';
+    v.modele_comptes = site.modele_comptes || 'organisations';
     return v;
   });
   const [enregistrement, setEnregistrement] = useState(false);
@@ -168,10 +100,29 @@ function FicheSite({ site, onSaved }) {
         ))}
       </div>
 
+      <label className="block text-sm text-baikal-text">
+        <span className="opacity-70">Modèle de comptes</span>
+        <select
+          value={valeurs.modele_comptes}
+          onChange={(e) => setValeurs((v) => ({ ...v, modele_comptes: e.target.value }))}
+          className="mt-1 w-full max-w-xl px-2 py-1.5 rounded border border-baikal-border bg-baikal-bg text-baikal-text focus:border-baikal-cyan outline-none text-sm"
+        >
+          {MODELES_COMPTES.map(([valeur, label]) => (
+            <option key={valeur} value={valeur}>{label}</option>
+          ))}
+        </select>
+        <span className="block mt-1 text-xs opacity-60">
+          Un site en modèle « clients » ne crée jamais de compte console à l'inscription :
+          ses clients se lisent dans la page Clients, jamais dans Utilisateurs.
+        </span>
+      </label>
+
       {erreur && <p className="text-red-400 text-sm">{erreur}</p>}
       {message && <p className="text-green-400 text-sm">{message}</p>}
 
-      <AdminsSite appId={site.id} />
+      <div className="border-t border-baikal-border pt-3">
+        <AdminsSite appId={site.id} />
+      </div>
     </div>
   );
 }

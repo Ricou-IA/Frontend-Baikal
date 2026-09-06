@@ -30,6 +30,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@contexts/AuthContext';
 import { useApp } from '@contexts/AppContext';
 import ConsoleLayout from '../../components/console/ConsoleLayout';
+import AdminsSite from '../../components/console/AdminsSite';
 import { usersService, organizationService } from '@services';
 import { supabase } from '@lib/supabaseClient';
 import {
@@ -42,6 +43,8 @@ import {
     ChevronLeft,
     Clock,
     Plus,
+    KeyRound,
+    Contact,
 } from 'lucide-react';
 
 // ============================================================================
@@ -67,13 +70,21 @@ function UsersContent() {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const { isSuperAdmin, isOrgAdmin, sitesAdmin, profile } = useAuth();
-    const { currentApp } = useApp();
+    const { currentApp, availableApps } = useApp();
     // Un admin delegue (ni super ni org_admin) consulte sans agir.
     const peutAgir = isSuperAdmin || isOrgAdmin;
     const peutVoirAttente = isSuperAdmin || (!isOrgAdmin && (sitesAdmin || []).includes(currentApp));
+    // Modele de comptes du site (config.apps.modele_comptes) : un site en
+    // modele « clients » n'a pas d'utilisateurs console — ses comptes sont
+    // ses clients, page Clients. Ici ne reste que l'acces console.
+    const siteCourant = (availableApps || []).find((a) => a.id === currentApp);
+    const siteClients = siteCourant?.modele_comptes === 'clients';
 
-    // Onglet actif (super_admin uniquement)
+    // Onglets : pending | all (sites a organisations) ; acces (super_admin).
     const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'pending');
+    useEffect(() => {
+        if (siteClients && activeTab !== 'acces') setActiveTab('acces');
+    }, [siteClients, activeTab]);
 
     // États - Pending users
     const [pendingUsers, setPendingUsers] = useState([]);
@@ -407,7 +418,9 @@ function UsersContent() {
                     </div>
                     <div>
                         <h1 className="text-lg font-mono font-bold text-white">UTILISATEURS</h1>
-                        <p className="text-xs text-baikal-text font-mono">Gestion des utilisateurs du site selectionne</p>
+                        <p className="text-xs text-baikal-text font-mono">
+                            Comptes de la console et des organisations du site — les clients d'un site se lisent dans Clients
+                        </p>
                     </div>
                 </div>
                 {isSuperAdmin && (
@@ -425,6 +438,7 @@ function UsersContent() {
             <div className="bg-baikal-surface border-b border-baikal-border">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <nav className="flex gap-1 -mb-px">
+                        {!siteClients && (
                         <button
                             onClick={() => setActiveTab('pending')}
                             className={`
@@ -443,6 +457,8 @@ function UsersContent() {
                                 </span>
                             )}
                         </button>
+                        )}
+                        {!siteClients && (
                         <button
                             onClick={() => setActiveTab('all')}
                             className={`
@@ -456,6 +472,22 @@ function UsersContent() {
                             <Users className="w-4 h-4" />
                             Tous les utilisateurs
                         </button>
+                        )}
+                        {isSuperAdmin && (
+                        <button
+                            onClick={() => setActiveTab('acces')}
+                            className={`
+                                relative flex items-center gap-2 px-4 py-4 text-sm font-medium border-b-2 transition-colors
+                                ${activeTab === 'acces'
+                                    ? 'border-baikal-cyan text-baikal-cyan'
+                                    : 'border-transparent text-baikal-text hover:text-white hover:border-baikal-border'
+                                }
+                            `}
+                        >
+                            <KeyRound className="w-4 h-4" />
+                            Accès console
+                        </button>
+                        )}
                     </nav>
                 </div>
             </div>
@@ -486,8 +518,42 @@ function UsersContent() {
                     </div>
                 )}
 
+                {/* =============== SITE EN MODELE CLIENTS =============== */}
+                {siteClients && (
+                    <div className="mb-6 p-4 bg-baikal-surface border border-baikal-border rounded-md flex items-start gap-3">
+                        <Contact className="w-5 h-5 text-baikal-cyan flex-shrink-0 mt-0.5" />
+                        <div className="text-sm text-baikal-text">
+                            <p className="text-white font-medium">
+                                {siteCourant?.name} a des clients, pas des utilisateurs.
+                            </p>
+                            <p className="mt-1">
+                                Les comptes créés sur ce site sont ses clients (paiement one-shot ou abonnement) :
+                                ils se lisent dans la page Clients et n'ont jamais de compte console.
+                                Cet onglet ne gère que les personnes qui administrent le site depuis Baikal.
+                            </p>
+                            <button
+                                onClick={() => navigate('/clients')}
+                                className="mt-2 text-baikal-cyan hover:underline font-mono text-xs"
+                            >
+                                → Ouvrir la page Clients
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* =============== ONGLET ACCES CONSOLE =============== */}
+                {activeTab === 'acces' && isSuperAdmin && (
+                    <div className="bg-baikal-surface border border-baikal-border rounded-md p-4">
+                        <AdminsSite
+                            appId={currentApp}
+                            titre={`Accès à la console Baikal pour ${siteCourant?.name || currentApp}`}
+                            aide="Ces personnes se connectent à Baikal et administrent ce site (vue d'ensemble, SEO, partenariats, clients, utilisateurs). Le compte doit exister : créez-le d'abord avec NOUVEL_USER, puis ajoutez son email ici."
+                        />
+                    </div>
+                )}
+
                 {/* =============== ONGLET EN ATTENTE =============== */}
-                {activeTab === 'pending' && (
+                {!siteClients && activeTab === 'pending' && (
                     <>
                         {loadingPending && (
                             <div className="flex items-center justify-center py-12">
@@ -539,7 +605,7 @@ function UsersContent() {
                 )}
 
                 {/* =============== ONGLET TOUS =============== */}
-                {activeTab === 'all' && (
+                {!siteClients && activeTab === 'all' && (
                     <>
                         {/* Filtres */}
                         <div className="flex flex-col sm:flex-row gap-4 mb-6">
