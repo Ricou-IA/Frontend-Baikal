@@ -14,6 +14,7 @@ import { AlertTriangle, Sparkles, Save, Eye, Trash2 } from 'lucide-react';
 import { Chargement, Erreur, LigneVide, Section, Vide } from '../console/etats';
 import SelecteurPeriode, { libellePeriode, moisPeriode } from '../rapports/SelecteurPeriode';
 import { seoService } from '../../services/seo.service';
+import ConfirmModal from '../ui/ConfirmModal';
 
 const CHAMP = 'px-2 py-1.5 rounded border border-baikal-border bg-baikal-bg text-baikal-text focus:border-baikal-cyan outline-none text-sm';
 const BOUTON = 'flex items-center gap-1.5 px-3 py-1.5 rounded border text-sm transition-colors disabled:opacity-50';
@@ -226,6 +227,8 @@ export default function AuditSeo({ appId }) {
   const [archives, setArchives] = useState(null);
   const [version, setVersion] = useState(0);
   const [enregistre, setEnregistre] = useState(null);
+  const [aSupprimer, setASupprimer] = useState(null);
+  const [suppression, setSuppression] = useState(false);
 
   useEffect(() => {
     setAudit(null);
@@ -267,9 +270,12 @@ export default function AuditSeo({ appId }) {
     setVersion((v) => v + 1);
   };
 
-  const supprimerArchive = async (a) => {
-    if (!window.confirm(`Supprimer l'audit ${a.libelle} du ${dateFr(a.cree_le)} ?`)) return;
-    const { error } = await seoService.supprimerAudit(appId, a.id);
+  const confirmerSuppression = async () => {
+    if (!aSupprimer) return;
+    setSuppression(true);
+    const { error } = await seoService.supprimerAudit(appId, aSupprimer.id);
+    setSuppression(false);
+    setASupprimer(null);
     if (error) { setErreur(error.message); return; }
     setVersion((v) => v + 1);
   };
@@ -338,7 +344,7 @@ export default function AuditSeo({ appId }) {
                   <button onClick={() => ouvrir(a.id)} className="inline-flex items-center gap-1 text-baikal-cyan hover:underline">
                     <Eye className="w-3.5 h-3.5" /> Voir
                   </button>
-                  <button onClick={() => supprimerArchive(a)} title="Supprimer cet audit" className="ml-3 p-1 text-baikal-text hover:text-red-400 transition-colors align-middle">
+                  <button onClick={() => setASupprimer(a)} title="Supprimer cet audit" className="ml-3 p-1 text-baikal-text hover:text-red-400 transition-colors align-middle">
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </td>
@@ -347,6 +353,18 @@ export default function AuditSeo({ appId }) {
           </tbody>
         </table>
       </div>
+      <ConfirmModal
+        isOpen={Boolean(aSupprimer)}
+        onClose={() => setASupprimer(null)}
+        onConfirm={confirmerSuppression}
+        loading={suppression}
+        title="Supprimer cet audit"
+        message="L'audit et son texte relu disparaîtront de l'archive. Un rapport déjà généré à partir de cet audit n'est pas modifié."
+        confirmLabel="Supprimer"
+        cancelLabel="Annuler"
+        icon={Trash2}
+        itemPreview={aSupprimer ? { label: `Audit ${majuscule(aSupprimer.libelle)}`, sublabel: `enregistré le ${dateFr(aSupprimer.cree_le)}` } : null}
+      />
     </Section>
   );
 }

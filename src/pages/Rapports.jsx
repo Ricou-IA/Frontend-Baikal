@@ -25,6 +25,7 @@ import ConsoleLayout from '../components/console/ConsoleLayout';
 import { Chargement, Erreur, LigneVide, Section, Vide } from '../components/console/etats';
 import SelecteurPeriode, { libellePeriode, moisPeriode } from '../components/rapports/SelecteurPeriode';
 import { rapportService } from '../services/rapport.service';
+import ConfirmModal from '../components/ui/ConfirmModal';
 
 const CHAMP = 'px-2 py-1.5 rounded border border-baikal-border bg-baikal-bg text-baikal-text focus:border-baikal-cyan outline-none text-sm';
 const ZONE = `${CHAMP} w-full min-h-[120px] leading-relaxed`;
@@ -367,6 +368,8 @@ function Archives({ appId, version }) {
   const [donnees, setDonnees] = useState(null);
   const [erreur, setErreur] = useState(null);
   const [rechargement, setRechargement] = useState(0);
+  const [aSupprimer, setASupprimer] = useState(null);
+  const [suppression, setSuppression] = useState(false);
 
   useEffect(() => {
     let actif = true;
@@ -379,10 +382,14 @@ function Archives({ appId, version }) {
     return () => { actif = false; };
   }, [appId, version, rechargement]);
 
-  // Suppression definitive : la ligne d'archive et le PDF du bucket.
-  const supprimer = async (r) => {
-    if (!window.confirm(`Supprimer le rapport ${r.libelle}, version ${r.version} ? Le PDF sera effacé.`)) return;
-    const { error } = await rapportService.supprimer(appId, r.id);
+  // Suppression definitive : la ligne d'archive et le PDF du bucket, apres
+  // confirmation dans la modale de la console (pas celle du navigateur).
+  const confirmerSuppression = async () => {
+    if (!aSupprimer) return;
+    setSuppression(true);
+    const { error } = await rapportService.supprimer(appId, aSupprimer.id);
+    setSuppression(false);
+    setASupprimer(null);
     if (error) setErreur(error.message);
     else setRechargement((v) => v + 1);
   };
@@ -417,7 +424,7 @@ function Archives({ appId, version }) {
                         <Download className="w-3.5 h-3.5" /> PDF
                       </a>
                     ) : <span className="opacity-40">—</span>}
-                    <button onClick={() => supprimer(r)} title="Supprimer ce rapport et son PDF" className="ml-3 p-1 text-baikal-text hover:text-red-400 transition-colors align-middle">
+                    <button onClick={() => setASupprimer(r)} title="Supprimer ce rapport et son PDF" className="ml-3 p-1 text-baikal-text hover:text-red-400 transition-colors align-middle">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </td>
@@ -427,6 +434,18 @@ function Archives({ appId, version }) {
           </table>
         </div>
       )}
+      <ConfirmModal
+        isOpen={Boolean(aSupprimer)}
+        onClose={() => setASupprimer(null)}
+        onConfirm={confirmerSuppression}
+        loading={suppression}
+        title="Supprimer ce rapport"
+        message="Le PDF sera effacé du stockage et la version disparaîtra de l'archive. Les autres versions restent."
+        confirmLabel="Supprimer"
+        cancelLabel="Annuler"
+        icon={Trash2}
+        itemPreview={aSupprimer ? { label: `Rapport ${majuscule(aSupprimer.libelle)}`, sublabel: `version ${aSupprimer.version} · généré le ${dateFr(aSupprimer.genere_le)}` } : null}
+      />
     </Section>
   );
 }
