@@ -67,7 +67,7 @@ const s = StyleSheet.create({
 function Table({ colonnes, lignes, cle, classeLigne }) {
   return (
     <View style={s.table}>
-      <View style={s.th} fixed>
+      <View style={s.th}>
         {colonnes.map((c) => (
           <Text key={c.titre} style={[s.cellTh, { flex: c.flex ?? 1 }, c.droite ? s.droite : null]}>{t(c.titre)}</Text>
         ))}
@@ -329,7 +329,7 @@ function BlocLectureSeo({ lecture, chantiers }) {
 
       {chantiers.length > 0 && (
         <View>
-          <Text style={s.h3}>Chantiers SEO déclarés</Text>
+          <Text style={s.h3}>Chantiers SEO</Text>
           <Table
             colonnes={[
               { titre: 'Date', valeur: (l) => dateFr(l.date), flex: 1 },
@@ -338,7 +338,7 @@ function BlocLectureSeo({ lecture, chantiers }) {
               { titre: 'Mesure', valeur: (l) => (l.mesure_prevue_le ? dateFr(l.mesure_prevue_le) : '—'), flex: 1 },
               { titre: 'Verdict', valeur: (l) => VERDICTS[l.verdict] || 'En attente', flex: 1.2, gras: true },
             ]}
-            lignes={chantiers}
+            lignes={[...chantiers].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 12)}
             cle={(l, i) => `${l.date}-${i}`}
           />
         </View>

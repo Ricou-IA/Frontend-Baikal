@@ -367,7 +367,13 @@ async function autoriteSur(admin: any, appId: string, notreDomaine: string | nul
 
 // --- Chantiers : declares dans Baikal (verdict pose), plus les commits SEO
 // du depot (sans saisie : ce qui a ete fait est dans git).
-const COMMIT_SEO = /seo|contenu|guide|page|titre|title|301|redirect|canoni|meta|schema|sitemap|lien|netlink|blog|article|geo|llms|glossaire/i;
+// Un commit vaut chantier SEO s'il porte un scope SEO (feat(seo), docs(geo),
+// fix(contenu)...) ou un sujet explicitement SEO. Le tunnel, l'admin, les
+// widgets et les emails n'en sont pas, meme s'ils touchent une « page ».
+const SCOPE_SEO = /^\w+\((seo|geo|contenu|blog|guide|guides|glossaire|sitemap|netlinking|aeo)\)/i;
+const SUJET_SEO = /(seo|geo|aeo|301|redirection|canonique|canonical|meta|schema|json-ld|sitemap|netlinking|backlink|llms\.txt|glossaire|maillage|title|balise)/i;
+const HORS_SEO = /(admin|widget|checkout|stripe|paiement|email|mailing|prospection|leads|mcp|rgpd|cron|rls)/i;
+const MAX_COMMITS_CHANTIERS = 10;
 
 function chantiersDepuis(declares: any[], commits: Commit[]): Chantier[] {
   const out: Chantier[] = declares.map((c) => ({
@@ -380,13 +386,16 @@ function chantiersDepuis(declares: any[], commits: Commit[]): Chantier[] {
     source: "declare" as const,
   }));
   const dejaVus = new Set(out.map((c) => c.libelle.toLowerCase()));
-  for (const c of commits) {
-    if (!COMMIT_SEO.test(c.sujet)) continue;
+  const retenus = [...commits]
+    .filter((c) => (SCOPE_SEO.test(c.sujet) || SUJET_SEO.test(c.sujet)) && !HORS_SEO.test(c.sujet))
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, MAX_COMMITS_CHANTIERS);
+  for (const c of retenus) {
     const libelle = c.sujet.replace(/^\w+(\([^)]*\))?:\s*/, "");
     if (dejaVus.has(libelle.toLowerCase())) continue;
     out.push({ date: c.date, libelle, cible: null, hypothese: null, mesure_prevue_le: null, verdict: null, source: "commit" });
   }
-  return out.sort((a, b) => a.date.localeCompare(b.date));
+  return out.sort((a, b) => b.date.localeCompare(a.date));
 }
 
 // --- Bloc 6 : ventes par date de creation, conversion par page d'entree.
