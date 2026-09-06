@@ -24,6 +24,7 @@ const CHAMPS = [
   ['expediteur_nom', 'Expediteur (nom)'],
   ['expediteur_email', 'Expediteur (email)'],
   ['reply_to', 'Reply-to'],
+  ['repo_github', 'Dépôt GitHub (owner/repo)'],
 ];
 
 // Modele de comptes du site (config.apps.modele_comptes). Decide ce que la

@@ -40,6 +40,7 @@ import Projects from './pages/admin/Projects';
 import Ingestion from './pages/admin/Ingestion';
 import Seo from './pages/Seo';
 import Finances from './pages/Finances';
+import Rapports from './pages/Rapports';
 import Partenariats from './pages/Partenariats';
 import Sites from './pages/Sites';
 import Clients from './pages/Clients';
@@ -229,6 +230,16 @@ function App() {
             element={
               <AdminRoute>
                 <Finances />
+              </AdminRoute>
+            }
+          />
+
+          {/* Admin - Rapport mensuel au partenaire */}
+          <Route
+            path="/rapports"
+            element={
+              <AdminRoute>
+                <Rapports />
               </AdminRoute>
             }
           />

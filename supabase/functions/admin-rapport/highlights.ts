@@ -61,8 +61,10 @@ export function moisPrecedent(mois: string): string {
   return d.toISOString().slice(0, 7);
 }
 
+// Espace fine insecable (U+202F) remplacee par une espace : lisible partout,
+// y compris dans les polices standard du PDF.
 function nb(n: number): string {
-  return new Intl.NumberFormat("fr-FR").format(n);
+  return new Intl.NumberFormat("fr-FR").format(n).replace(/ /g, " ");
 }
 
 function eur(n: number): string {

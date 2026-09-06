@@ -136,7 +136,7 @@ export async function construireFaits(admin: any, appId: string, mois: string): 
     .eq("app_id", appId).eq("perimetre", "b2c").eq("exclue", false)
     .not("domaine", "is", null)
     .lt("paid_at", `${debut}T00:00:00Z`).limit(5000);
-  const domainesConnus = [...new Set((anciennes ?? []).map((v: any) => String(v.domaine)))];
+  const domainesConnus: string[] = Array.from(new Set<string>((anciennes ?? []).map((v: any) => String(v.domaine))));
 
   // --- SEO.
   const [gM, gP, bM, bP, reqM, reqP, pagesM] = await Promise.all([

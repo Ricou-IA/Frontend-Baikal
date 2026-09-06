@@ -31,6 +31,7 @@ const CHAMPS_SITE = [
   "expediteur_email",
   "reply_to",
   "modele_comptes",
+  "repo_github",
 ] as const;
 
 // Modele de comptes d'un site (config.apps.modele_comptes) : organisations
@@ -81,7 +82,7 @@ serve(async (req) => {
         if (profile?.app_role === "super_admin") {
           const { data, error } = await admin.schema("config").from("apps")
             .select("id, name, domaine, gsc_propriete, env_url, env_secret_ref, " +
-              "expediteur_nom, expediteur_email, reply_to, modele_comptes, is_active")
+              "expediteur_nom, expediteur_email, reply_to, modele_comptes, repo_github, is_active")
             .order("sort_order");
           if (error) throw error;
           return json({ data, error: null });
