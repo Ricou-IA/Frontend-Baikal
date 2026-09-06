@@ -7,7 +7,11 @@
 //   ventes           { appId, debut, fin }    → lignes de vente de la periode
 //   charges          { appId }                → charges recurrentes
 //   charge-creer     { appId, ... }
+//   charge-modifier  { id, libelle, montant, debut, fin }
 //   charge-supprimer { id }
+//   ponctuelles          { appId }            → charges ponctuelles
+//   ponctuelle-creer     { appId, libelle, montant, jour }
+//   ponctuelle-supprimer { id }
 //
 // La page ne lit QUE l'archive : aucun appel Stripe en lecture d'ecran.
 // Droits par site appliques partout, comme admin-seo.
@@ -58,6 +62,17 @@ function chargesSurPeriode(charges: any[], debut: Date, fin: Date): number {
   return arrondi(total);
 }
 
+// Une charge ponctuelle tombe le jour ou elle est datee, sans prorata.
+function ponctuellesSurPeriode(ponctuelles: any[], debut: Date, fin: Date): number {
+  const d = debut.toISOString().slice(0, 10);
+  const f = fin.toISOString().slice(0, 10);
+  let total = 0;
+  for (const c of ponctuelles) {
+    if (c.jour >= d && c.jour <= f) total += Number(c.montant_eur);
+  }
+  return arrondi(total);
+}
+
 function agregerVentes(ventes: any[]) {
   const t = {
     ventes: ventes.length,
@@ -79,7 +94,9 @@ function agregerVentes(ventes: any[]) {
   return t;
 }
 
-async function fenetre(admin: any, appId: string, debut: Date, fin: Date, charges: any[]) {
+async function fenetre(
+  admin: any, appId: string, debut: Date, fin: Date, charges: any[], ponctuelles: any[] = [],
+) {
   const [{ data: ventes }, { data: jours }] = await Promise.all([
     admin.schema("admin").from("ventes_enrichies")
       .select("montant_ttc, montant_ht, frais_stripe_eur, montant_rembourse, canal, perimetre")
@@ -111,19 +128,32 @@ async function fenetre(admin: any, appId: string, debut: Date, fin: Date, charge
     if (!j.complet) incomplets.push(j.jour);
   }
   const chargesFixes = chargesSurPeriode(charges, debut, fin);
+  const chargesPonctuelles = ponctuellesSurPeriode(ponctuelles, debut, fin);
 
   return {
     ...t,
     cout_ia: arrondi(coutIa),
     ads,
     charges_fixes: chargesFixes,
+    charges_ponctuelles: chargesPonctuelles,
     resultat: arrondi(
-      t.ca_ht - t.frais_stripe - t.remboursements - coutIa - chargesFixes - (ads ?? 0),
+      t.ca_ht - t.frais_stripe - t.remboursements - coutIa - chargesFixes -
+        chargesPonctuelles - (ads ?? 0),
     ),
     complet: incomplets.length === 0,
     jours_incomplets: incomplets,
     par_canal: parCanal,
   };
+}
+
+async function chargesDuSite(admin: any, appId: string): Promise<[any[], any[]]> {
+  const [{ data: charges }, { data: ponctuelles }] = await Promise.all([
+    admin.schema("admin").from("charges_recurrentes")
+      .select("montant_mensuel_eur, debut, fin").eq("app_id", appId),
+    admin.schema("admin").from("charges_ponctuelles")
+      .select("montant_eur, jour").eq("app_id", appId),
+  ]);
+  return [charges ?? [], ponctuelles ?? []];
 }
 
 serve(async (req) => {
@@ -208,7 +238,9 @@ serve(async (req) => {
     });
     const autorises = await sitesAutorises(caller);
     const appId = String(body.appId ?? "");
-    if (action !== "charge-supprimer") exigerSite(autorises, appId);
+    // Les actions par identifiant verifient le site de la ligne, pas le body.
+    const parId = ["charge-supprimer", "charge-modifier", "ponctuelle-supprimer"];
+    if (!parId.includes(action)) exigerSite(autorises, appId);
 
     // Rafraichissement a la demande : meme travail que le cron, mais sur une
     // fenetre courte et declenche par un humain qui a les droits sur le site.
@@ -232,8 +264,7 @@ serve(async (req) => {
 
     if (action === "synthese") {
       const maintenant = new Date();
-      const { data: charges } = await admin.schema("admin").from("charges_recurrentes")
-        .select("montant_mensuel_eur, debut, fin").eq("app_id", appId);
+      const [charges, ponctuelles] = await chargesDuSite(admin, appId);
       const { data: app } = await admin.schema("config").from("apps")
         .select("tva_taux").eq("id", appId).maybeSingle();
 
@@ -242,9 +273,9 @@ serve(async (req) => {
       const annee = new Date(Date.UTC(maintenant.getUTCFullYear(), 0, 1));
 
       const [f7, fMois, fAnnee] = await Promise.all([
-        fenetre(admin, appId, sept, maintenant, charges ?? []),
-        fenetre(admin, appId, mois, maintenant, charges ?? []),
-        fenetre(admin, appId, annee, maintenant, charges ?? []),
+        fenetre(admin, appId, sept, maintenant, charges, ponctuelles),
+        fenetre(admin, appId, mois, maintenant, charges, ponctuelles),
+        fenetre(admin, appId, annee, maintenant, charges, ponctuelles),
       ]);
 
       return json({
@@ -260,14 +291,13 @@ serve(async (req) => {
     if (action === "serie") {
       const nbMois = Math.min(Number(body.mois ?? 12), 36);
       const maintenant = new Date();
-      const { data: charges } = await admin.schema("admin").from("charges_recurrentes")
-        .select("montant_mensuel_eur, debut, fin").eq("app_id", appId);
+      const [charges, ponctuelles] = await chargesDuSite(admin, appId);
 
       const lignes = [];
       for (let i = nbMois - 1; i >= 0; i--) {
         const d = new Date(Date.UTC(maintenant.getUTCFullYear(), maintenant.getUTCMonth() - i, 1));
         const f = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0, 23, 59, 59));
-        const r = await fenetre(admin, appId, d, f > maintenant ? maintenant : f, charges ?? []);
+        const r = await fenetre(admin, appId, d, f > maintenant ? maintenant : f, charges, ponctuelles);
         lignes.push({ mois: d.toISOString().slice(0, 7), ...r });
       }
       return json({ data: { lignes: lignes }, error: null });
@@ -333,6 +363,54 @@ serve(async (req) => {
         }).select().single();
       if (error) throw new Error(error.message);
       return json({ data, error: null });
+    }
+
+    if (action === "charge-modifier") {
+      const { data: charge } = await admin.schema("admin").from("charges_recurrentes")
+        .select("app_id").eq("id", String(body.id)).maybeSingle();
+      if (!charge) return json({ data: null, error: "Charge introuvable" }, 404);
+      exigerSite(autorises, charge.app_id);
+      // fin absente du body = inchangee ; fin: null = jusqu'a revocation.
+      const patch: Record<string, unknown> = {};
+      if (body.libelle !== undefined) patch.libelle = String(body.libelle).slice(0, 120);
+      if (body.montant !== undefined) patch.montant_mensuel_eur = Number(body.montant);
+      if (body.debut !== undefined) patch.debut = String(body.debut);
+      if (body.fin !== undefined) patch.fin = body.fin ? String(body.fin) : null;
+      const { data, error } = await admin.schema("admin").from("charges_recurrentes")
+        .update(patch).eq("id", String(body.id)).select().single();
+      if (error) throw new Error(error.message);
+      return json({ data, error: null });
+    }
+
+    if (action === "ponctuelles") {
+      const { data, error } = await admin.schema("admin").from("charges_ponctuelles")
+        .select("*").eq("app_id", appId).order("jour", { ascending: false });
+      if (error) throw new Error(error.message);
+      return json({ data: { lignes: data ?? [] }, error: null });
+    }
+
+    if (action === "ponctuelle-creer") {
+      const { data, error } = await admin.schema("admin").from("charges_ponctuelles")
+        .insert({
+          app_id: appId,
+          libelle: String(body.libelle ?? "").slice(0, 120),
+          categorie: String(body.categorie ?? "autre"),
+          montant_eur: Number(body.montant ?? 0),
+          jour: String(body.jour),
+        }).select().single();
+      if (error) throw new Error(error.message);
+      return json({ data, error: null });
+    }
+
+    if (action === "ponctuelle-supprimer") {
+      const { data: charge } = await admin.schema("admin").from("charges_ponctuelles")
+        .select("app_id").eq("id", String(body.id)).maybeSingle();
+      if (!charge) return json({ data: null, error: "Charge introuvable" }, 404);
+      exigerSite(autorises, charge.app_id);
+      const { error } = await admin.schema("admin").from("charges_ponctuelles")
+        .delete().eq("id", String(body.id));
+      if (error) throw new Error(error.message);
+      return json({ data: { supprime: true }, error: null });
     }
 
     if (action === "charge-supprimer") {

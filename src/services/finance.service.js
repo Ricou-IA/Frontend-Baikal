@@ -56,8 +56,20 @@ export const financeService = {
   creerCharge(appId, charge) {
     return appelerEdge('admin-finance', { action: 'charge-creer', appId, ...charge });
   },
+  modifierCharge(id, patch) {
+    return appelerEdge('admin-finance', { action: 'charge-modifier', id, ...patch });
+  },
   supprimerCharge(id) {
     return appelerEdge('admin-finance', { action: 'charge-supprimer', id });
+  },
+  getPonctuelles(appId) {
+    return appelerEdge('admin-finance', { action: 'ponctuelles', appId });
+  },
+  creerPonctuelle(appId, charge) {
+    return appelerEdge('admin-finance', { action: 'ponctuelle-creer', appId, ...charge });
+  },
+  supprimerPonctuelle(id) {
+    return appelerEdge('admin-finance', { action: 'ponctuelle-supprimer', id });
   },
 };
 

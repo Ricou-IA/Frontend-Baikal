@@ -6,9 +6,10 @@
  *
  *   1. Synthese : 7 jours / mois en cours / annee en cours, poste par poste.
  *   2. Tendance : serie mensuelle CA HT / couts / resultat.
- *   3. Ventilation par offre.
- *   4. Charges recurrentes (saisie).
- *   5. Ventes de la periode, ouvrables ligne a ligne.
+ *   3. Couts par mois : Stripe, IA, remboursements, charges, poste par poste.
+ *   4. Ventes de la periode, ouvrables ligne a ligne.
+ *   5. Partenariat au resultat (mois par mois, sans report).
+ *   6. Charges recurrentes (saisie, edition, revocation) et ponctuelles.
  *
  * Une vente remboursee reste comptee dans les ventes : le remboursement est
  * un cout affiche a part, pas une annulation de chiffre d'affaires.
@@ -18,7 +19,7 @@ import { useMemo, useState } from 'react';
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from 'recharts';
-import { Plus, Trash2, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, AlertTriangle, RefreshCw, Pencil, Check, X, Ban } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import ConsoleLayout from '../components/console/ConsoleLayout';
 import { useDonneesCachees } from '../hooks/useDonneesCachees';
@@ -42,8 +43,17 @@ const POSTES = [
   ['cout_ia', 'Coût IA', 'eur'],
   ['ads', 'Google Ads', 'eur'],
   ['charges_fixes', 'Charges fixes', 'eur'],
+  ['charges_ponctuelles', 'Charges ponctuelles', 'eur'],
   ['resultat', 'Résultat', 'eur'],
 ];
+
+// Le mois en cours est le seul mis en avant dans les tableaux mensuels.
+const MOIS_COURANT = new Date().toISOString().slice(0, 7);
+const classeMois = (mois) => (String(mois).slice(0, 7) === MOIS_COURANT
+  ? 'bg-baikal-cyan/10 text-white'
+  : '');
+
+const CHAMP = 'px-2 py-1.5 rounded border border-baikal-border bg-baikal-bg text-baikal-text focus:border-baikal-cyan outline-none text-sm';
 
 const CANAUX = {
   paid: ['Publicité', 'text-amber-400'],
@@ -157,7 +167,8 @@ function Synthese({ appId }) {
           </div>
           <p className="text-[11px] text-baikal-text opacity-50 leading-relaxed">
             <strong className="opacity-100">Lecture</strong> · Le résultat déduit du CA HT les frais
-            Stripe, les remboursements, le coût IA et les charges fixes au prorata journalier.
+            Stripe, les remboursements, le coût IA, les charges fixes au prorata journalier et les
+            charges ponctuelles le jour où elles tombent.
             Une vente remboursée reste comptée dans les ventes — le remboursement apparaît à sa
             propre ligne. « Google Ads » reste vide tant qu'aucun compte n'est branché : c'est une
             absence de configuration, pas un jour manquant.
@@ -233,9 +244,131 @@ function Tendance({ appId }) {
   );
 }
 
+const POSTES_COUTS = [
+  ['frais_stripe', 'Stripe'],
+  ['cout_ia', 'IA'],
+  ['remboursements', 'Remboursements'],
+  ['charges_fixes', 'Charges fixes'],
+  ['charges_ponctuelles', 'Charges ponctuelles'],
+];
+
+function CoutsParMois({ appId }) {
+  const [mois, setMois] = useState(12);
+  const { donnees, erreur, enCours } = useDonneesCachees(
+    `serie:${appId}:${mois}`,
+    () => financeService.getSerie(appId, mois),
+    appId,
+  );
+
+  // Les mois sans la moindre activite alourdissent le tableau sans rien dire.
+  const lignes = useMemo(() => (donnees?.lignes ?? [])
+    .filter((l) => l.ventes > 0 || POSTES_COUTS.some(([c]) => Number(l[c]) > 0))
+    .reverse(), [donnees]);
+
+  return (
+    <Section
+      titre="Coûts par mois"
+      sousTitre="Ce que chaque mois a coûté, poste par poste — la même série que la tendance"
+      action={(
+        <div className="flex gap-2 items-center">
+          {[6, 12, 24].map((m) => (
+            <button
+              key={m}
+              onClick={() => setMois(m)}
+              disabled={enCours}
+              className={`px-3 py-1 rounded border disabled:opacity-50 ${mois === m
+                ? 'border-baikal-cyan text-baikal-cyan'
+                : 'border-baikal-border text-baikal-text'}`}
+            >
+              {m} mois
+            </button>
+          ))}
+        </div>
+      )}
+    >
+      {erreur && <Erreur message={erreur} />}
+      {!donnees && !erreur && <Chargement />}
+      {donnees && (
+        <ContenuEstompe enCours={enCours}>
+          <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
+            <table className="w-full text-sm text-baikal-text">
+              <thead>
+                <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
+                  <th className="px-4 py-2">Mois</th>
+                  <th className="text-right px-2 py-2">Ventes</th>
+                  <th className="text-right px-2 py-2">CA HT</th>
+                  {POSTES_COUTS.map(([cle, libelle]) => (
+                    <th key={cle} className="text-right px-2 py-2">{libelle}</th>
+                  ))}
+                  <th className="text-right px-2 py-2">Total coûts</th>
+                  <th className="text-right px-4 py-2">Résultat</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lignes.length === 0 && (
+                  <LigneVide colonnes={5 + POSTES_COUTS.length} message="Aucun mois archivé sur cette période." />
+                )}
+                {lignes.map((l) => {
+                  const total = POSTES_COUTS.reduce((acc, [c]) => acc + Number(l[c] || 0), 0);
+                  return (
+                    <tr key={l.mois} className={`border-t border-baikal-border/50 ${classeMois(l.mois)}`}>
+                      <td className="px-4 py-2 font-mono text-xs">{l.mois}</td>
+                      <td className="text-right px-2 py-2 tabular-nums">{fmtNombre(l.ventes)}</td>
+                      <td className="text-right px-2 py-2 tabular-nums">{fmtEur(l.ca_ht)}</td>
+                      {POSTES_COUTS.map(([cle]) => (
+                        <td key={cle} className={`text-right px-2 py-2 tabular-nums ${Number(l[cle]) > 0 ? '' : 'opacity-40'}`}>
+                          {Number(l[cle]) > 0 ? `− ${fmtEur(l[cle])}` : '—'}
+                        </td>
+                      ))}
+                      <td className="text-right px-2 py-2 tabular-nums font-semibold">− {fmtEur(total)}</td>
+                      <td className={`text-right px-4 py-2 tabular-nums font-semibold ${l.resultat > 0 ? 'text-emerald-400' : l.resultat < 0 ? 'text-red-400' : ''}`}>
+                        {fmtEur(l.resultat)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </ContenuEstompe>
+      )}
+    </Section>
+  );
+}
+
+// Fin d'une charge recurrente : une date, ou « jusqu'a revocation » (fin NULL).
+// Composant de premier niveau : defini dans le rendu, il serait remonte a chaque
+// frappe et l'input de date perdrait le focus.
+function ChampsFin({ etat, setEtat }) {
+return (
+  <div className="flex items-center gap-1.5">
+    <select
+      value={etat.finMode}
+      onChange={(e) => setEtat({ ...etat, finMode: e.target.value })}
+      className={`${CHAMP} w-40`}
+    >
+      <option value="revocation">Jusqu'à révocation</option>
+      <option value="date">Jusqu'au…</option>
+    </select>
+    {etat.finMode === 'date' && (
+      <input
+        type="date"
+        value={etat.fin}
+        min={etat.debut || undefined}
+        onChange={(e) => setEtat({ ...etat, fin: e.target.value })}
+        className={`${CHAMP} font-mono`}
+      />
+    )}
+  </div>
+);
+}
+
 function ChargesRecurrentes({ appId }) {
   const [version, setVersion] = useState(0);
-  const [form, setForm] = useState({ libelle: '', montant: '', debut: '' });
+  const formVide = { libelle: '', montant: '', debut: '', finMode: 'revocation', fin: '' };
+  const [form, setForm] = useState(formVide);
+  const [edition, setEdition] = useState(null); // { id, libelle, montant, debut, finMode, fin }
+  const [revocation, setRevocation] = useState(null); // { id, fin }
   const [occupe, setOccupe] = useState(false);
   const [erreurForm, setErreurForm] = useState(null);
 
@@ -245,27 +378,53 @@ function ChargesRecurrentes({ appId }) {
     appId,
   );
 
-  const ajouter = async () => {
-    if (!form.libelle || !form.montant || !form.debut) return;
-    setOccupe(true);
-    setErreurForm(null);
-    const { error } = await financeService.creerCharge(appId, {
-      libelle: form.libelle,
-      montant: Number(form.montant),
-      debut: form.debut,
-    });
+  const terminer = ({ error }) => {
     setOccupe(false);
     if (error) setErreurForm(error.message);
     else {
-      setForm({ libelle: '', montant: '', debut: '' });
+      setErreurForm(null);
+      setEdition(null);
+      setRevocation(null);
       setVersion((v) => v + 1);
     }
   };
 
+  const finValide = (f) => f.finMode === 'revocation' || Boolean(f.fin);
+
+  const ajouter = async () => {
+    if (!form.libelle || !form.montant || !form.debut || !finValide(form)) return;
+    setOccupe(true);
+    const r = await financeService.creerCharge(appId, {
+      libelle: form.libelle,
+      montant: Number(form.montant),
+      debut: form.debut,
+      fin: form.finMode === 'date' ? form.fin : null,
+    });
+    if (!r.error) setForm(formVide);
+    terminer(r);
+  };
+
+  const enregistrer = async () => {
+    if (!edition.libelle || !edition.montant || !edition.debut || !finValide(edition)) return;
+    setOccupe(true);
+    terminer(await financeService.modifierCharge(edition.id, {
+      libelle: edition.libelle,
+      montant: Number(edition.montant),
+      debut: edition.debut,
+      fin: edition.finMode === 'date' ? edition.fin : null,
+    }));
+  };
+
+  // Revoquer = poser la date de fin d'une charge « jusqu'a revocation ».
+  const revoquer = async () => {
+    if (!revocation?.fin) return;
+    setOccupe(true);
+    terminer(await financeService.modifierCharge(revocation.id, { fin: revocation.fin }));
+  };
+
   const supprimer = async (id) => {
-    const { error } = await financeService.supprimerCharge(id);
-    if (error) setErreurForm(error.message);
-    else setVersion((v) => v + 1);
+    setOccupe(true);
+    terminer(await financeService.supprimerCharge(id));
   };
 
   const lignes = donnees?.lignes ?? [];
@@ -292,19 +451,224 @@ function ChargesRecurrentes({ appId }) {
               </thead>
               <tbody>
                 {lignes.length === 0 && (
-                  <LigneVide colonnes={5} message="Aucune charge saisie — le résultat ne déduit alors que les frais Stripe et le coût IA." />
+                  <LigneVide colonnes={5} message="Aucune charge saisie — le résultat ne déduit alors que les frais Stripe, les remboursements et le coût IA." />
+                )}
+                {lignes.map((c) => {
+                  const enEdition = edition?.id === c.id;
+                  const enRevocation = revocation?.id === c.id;
+                  if (enEdition) {
+                    return (
+                      <tr key={c.id} className="border-t border-baikal-border/50 bg-baikal-cyan/5">
+                        <td className="px-4 py-2">
+                          <input value={edition.libelle} onChange={(e) => setEdition({ ...edition, libelle: e.target.value })} className={`${CHAMP} w-full`} />
+                        </td>
+                        <td className="px-2 py-2 text-right">
+                          <input type="number" step="0.01" value={edition.montant} onChange={(e) => setEdition({ ...edition, montant: e.target.value })} className={`${CHAMP} w-24 text-right tabular-nums`} />
+                        </td>
+                        <td className="px-2 py-2">
+                          <input type="date" value={edition.debut} onChange={(e) => setEdition({ ...edition, debut: e.target.value })} className={`${CHAMP} font-mono`} />
+                        </td>
+                        <td className="px-2 py-2"><ChampsFin etat={edition} setEtat={setEdition} /></td>
+                        <td className="px-4 py-2 text-right whitespace-nowrap">
+                          <button onClick={enregistrer} disabled={occupe} title="Enregistrer" className="p-1 text-baikal-cyan hover:text-white disabled:opacity-50">
+                            <Check className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => setEdition(null)} disabled={occupe} title="Annuler" className="p-1 text-baikal-text hover:text-white disabled:opacity-50">
+                            <X className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  }
+                  return (
+                    <tr key={c.id} className={`border-t border-baikal-border/50 ${c.fin && c.fin < MOIS_COURANT ? 'opacity-50' : ''}`}>
+                      <td className="px-4 py-2">{c.libelle}</td>
+                      <td className="text-right px-2 py-2 tabular-nums">{fmtEur(Number(c.montant_mensuel_eur))}</td>
+                      <td className="px-2 py-2 font-mono text-xs">{c.debut}</td>
+                      <td className="px-2 py-2 text-xs">
+                        {enRevocation ? (
+                          <span className="flex items-center gap-1.5">
+                            <input
+                              type="date"
+                              value={revocation.fin}
+                              min={c.debut}
+                              onChange={(e) => setRevocation({ ...revocation, fin: e.target.value })}
+                              className={`${CHAMP} font-mono`}
+                            />
+                            <button onClick={revoquer} disabled={occupe || !revocation.fin} title="Confirmer la révocation" className="p-1 text-baikal-cyan hover:text-white disabled:opacity-50">
+                              <Check className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => setRevocation(null)} disabled={occupe} title="Annuler" className="p-1 text-baikal-text hover:text-white disabled:opacity-50">
+                              <X className="w-4 h-4" />
+                            </button>
+                          </span>
+                        ) : c.fin ? (
+                          <span className="font-mono">{c.fin}</span>
+                        ) : (
+                          <span className="opacity-60">Jusqu'à révocation</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-right whitespace-nowrap">
+                        {!c.fin && !enRevocation && (
+                          <button
+                            onClick={() => setRevocation({ id: c.id, fin: new Date().toISOString().slice(0, 10) })}
+                            disabled={occupe}
+                            title="Révoquer : poser la date de fin"
+                            className="p-1 text-baikal-text hover:text-amber-400 transition-colors disabled:opacity-50"
+                          >
+                            <Ban className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setEdition({
+                            id: c.id,
+                            libelle: c.libelle,
+                            montant: String(c.montant_mensuel_eur),
+                            debut: c.debut,
+                            finMode: c.fin ? 'date' : 'revocation',
+                            fin: c.fin || '',
+                          })}
+                          disabled={occupe}
+                          title="Modifier"
+                          className="p-1 text-baikal-text hover:text-baikal-cyan transition-colors disabled:opacity-50"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => supprimer(c.id)}
+                          disabled={occupe}
+                          title="Supprimer"
+                          className="p-1 text-baikal-text hover:text-red-400 transition-colors disabled:opacity-50"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <input
+              value={form.libelle}
+              onChange={(e) => setForm({ ...form, libelle: e.target.value })}
+              placeholder="Libellé (hébergement, API…)"
+              className={`${CHAMP} w-64`}
+            />
+            <input
+              type="number"
+              step="0.01"
+              value={form.montant}
+              onChange={(e) => setForm({ ...form, montant: e.target.value })}
+              placeholder="€ / mois"
+              className={`${CHAMP} w-28 tabular-nums`}
+            />
+            <input
+              type="date"
+              value={form.debut}
+              onChange={(e) => setForm({ ...form, debut: e.target.value })}
+              title="Depuis le"
+              className={`${CHAMP} font-mono`}
+            />
+            <ChampsFin etat={form} setEtat={setForm} />
+            <button
+              onClick={ajouter}
+              disabled={occupe || !form.libelle || !form.montant || !form.debut || !finValide(form)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-baikal-cyan text-baikal-cyan hover:bg-baikal-cyan/10 transition-colors disabled:opacity-50 text-sm"
+            >
+              <Plus className="w-4 h-4" />
+              Ajouter
+            </button>
+          </div>
+          <p className="text-[11px] text-baikal-text opacity-50 leading-relaxed">
+            <strong className="opacity-100">Lecture</strong> · Une charge « jusqu'à révocation »
+            court sans fin ; la révoquer, c'est lui poser sa date de fin, elle cesse d'être
+            déduite le lendemain. Chaque ligne se modifie en place.
+          </p>
+          {erreurForm && <Erreur message={erreurForm} />}
+        </ContenuEstompe>
+      )}
+    </Section>
+  );
+}
+
+function ChargesPonctuelles({ appId }) {
+  const [version, setVersion] = useState(0);
+  const formVide = { libelle: '', montant: '', jour: new Date().toISOString().slice(0, 10) };
+  const [form, setForm] = useState(formVide);
+  const [occupe, setOccupe] = useState(false);
+  const [erreurForm, setErreurForm] = useState(null);
+
+  const { donnees, erreur, enCours } = useDonneesCachees(
+    `ponctuelles:${appId}:${version}`,
+    () => financeService.getPonctuelles(appId),
+    appId,
+  );
+
+  const terminer = ({ error }) => {
+    setOccupe(false);
+    if (error) setErreurForm(error.message);
+    else {
+      setErreurForm(null);
+      setVersion((v) => v + 1);
+    }
+  };
+
+  const ajouter = async () => {
+    if (!form.libelle || !form.montant || !form.jour) return;
+    setOccupe(true);
+    const r = await financeService.creerPonctuelle(appId, {
+      libelle: form.libelle,
+      montant: Number(form.montant),
+      jour: form.jour,
+    });
+    if (!r.error) setForm(formVide);
+    terminer(r);
+  };
+
+  const supprimer = async (id) => {
+    setOccupe(true);
+    terminer(await financeService.supprimerPonctuelle(id));
+  };
+
+  const lignes = donnees?.lignes ?? [];
+
+  return (
+    <Section
+      titre="Charges ponctuelles"
+      sousTitre="Dépenses non récurrentes — déduites le jour où elles tombent, sans prorata"
+    >
+      {erreur && <Erreur message={erreur} />}
+      {!donnees && !erreur && <Chargement />}
+      {donnees && (
+        <ContenuEstompe enCours={enCours}>
+          <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
+            <table className="w-full text-sm text-baikal-text">
+              <thead>
+                <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
+                  <th className="px-4 py-2">Date</th>
+                  <th className="px-2 py-2">Libellé</th>
+                  <th className="text-right px-2 py-2">Montant</th>
+                  <th className="px-4 py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {lignes.length === 0 && (
+                  <LigneVide colonnes={4} message="Aucune charge ponctuelle saisie." />
                 )}
                 {lignes.map((c) => (
-                  <tr key={c.id} className="border-t border-baikal-border/50">
-                    <td className="px-4 py-2">{c.libelle}</td>
-                    <td className="text-right px-2 py-2 tabular-nums">{fmtEur(Number(c.montant_mensuel_eur))}</td>
-                    <td className="px-2 py-2 font-mono text-xs">{c.debut}</td>
-                    <td className="px-2 py-2 font-mono text-xs">{c.fin || '—'}</td>
+                  <tr key={c.id} className={`border-t border-baikal-border/50 ${classeMois(c.jour)}`}>
+                    <td className="px-4 py-2 font-mono text-xs">{c.jour}</td>
+                    <td className="px-2 py-2">{c.libelle}</td>
+                    <td className="text-right px-2 py-2 tabular-nums">{fmtEur(Number(c.montant_eur))}</td>
                     <td className="px-4 py-2 text-right">
                       <button
                         onClick={() => supprimer(c.id)}
+                        disabled={occupe}
                         title="Supprimer"
-                        className="p-1 text-baikal-text hover:text-red-400 transition-colors"
+                        className="p-1 text-baikal-text hover:text-red-400 transition-colors disabled:opacity-50"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -317,28 +681,28 @@ function ChargesRecurrentes({ appId }) {
 
           <div className="flex items-center gap-2 flex-wrap">
             <input
+              type="date"
+              value={form.jour}
+              onChange={(e) => setForm({ ...form, jour: e.target.value })}
+              className={`${CHAMP} font-mono`}
+            />
+            <input
               value={form.libelle}
               onChange={(e) => setForm({ ...form, libelle: e.target.value })}
-              placeholder="Libellé (hébergement, API…)"
-              className="px-2 py-1.5 rounded border border-baikal-border bg-baikal-bg text-baikal-text focus:border-baikal-cyan outline-none text-sm w-64"
+              placeholder="Libellé (nom de domaine, prestation…)"
+              className={`${CHAMP} w-72`}
             />
             <input
               type="number"
               step="0.01"
               value={form.montant}
               onChange={(e) => setForm({ ...form, montant: e.target.value })}
-              placeholder="€ / mois"
-              className="px-2 py-1.5 rounded border border-baikal-border bg-baikal-bg text-baikal-text focus:border-baikal-cyan outline-none text-sm w-28 tabular-nums"
-            />
-            <input
-              type="date"
-              value={form.debut}
-              onChange={(e) => setForm({ ...form, debut: e.target.value })}
-              className="px-2 py-1.5 rounded border border-baikal-border bg-baikal-bg text-baikal-text focus:border-baikal-cyan outline-none text-sm font-mono"
+              placeholder="€"
+              className={`${CHAMP} w-28 tabular-nums`}
             />
             <button
               onClick={ajouter}
-              disabled={occupe || !form.libelle || !form.montant || !form.debut}
+              disabled={occupe || !form.libelle || !form.montant || !form.jour}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-baikal-cyan text-baikal-cyan hover:bg-baikal-cyan/10 transition-colors disabled:opacity-50 text-sm"
             >
               <Plus className="w-4 h-4" />
@@ -540,24 +904,19 @@ function Partenariat({ appId }) {
                   <th className="text-right px-2 py-2">CA partageable</th>
                   <th className="text-right px-2 py-2">Coûts imputés</th>
                   <th className="text-right px-2 py-2">Résultat</th>
-                  <th className="text-right px-2 py-2">Report</th>
                   <th className="text-right px-4 py-2">Quote-part</th>
                 </tr>
               </thead>
               <tbody>
                 {lignes.length === 0 && (
-                  <LigneVide colonnes={10} message="Aucune vente archivée pour ce site." />
+                  <LigneVide colonnes={9} message="Aucune vente archivée pour ce site." />
                 )}
                 {lignes.map((l) => {
-                  // Les mois anterieurs au contrat sont affiches pour la tendance,
-                  // estompes et sans partage : meme lecture que le /admin du site.
+                  // Avant le contrat : ventes et CA HT pour la tendance, pas de partage.
                   const dans = l.dans_decompte !== false;
                   return (
-                    <tr key={l.mois} className={`border-t border-baikal-border/50 ${dans ? '' : 'opacity-45'}`}>
-                      <td className="px-4 py-2 font-mono text-xs whitespace-nowrap">
-                        {String(l.mois).slice(0, 7)}
-                        {!dans && <span className="ml-2 text-[10px] font-sans opacity-70">hors décompte</span>}
-                      </td>
+                    <tr key={l.mois} className={`border-t border-baikal-border/50 ${classeMois(l.mois)}`}>
+                      <td className="px-4 py-2 font-mono text-xs">{String(l.mois).slice(0, 7)}</td>
                       <td className="text-right px-2 py-2 tabular-nums">{fmtNombre(l.ventes)}</td>
                       <td className="text-right px-2 py-2 tabular-nums">{fmtEur(Number(l.ca_ht))}</td>
                       <td className="text-right px-2 py-2 tabular-nums opacity-70">{fmtEur(Number(l.couts_mois))}</td>
@@ -569,16 +928,13 @@ function Partenariat({ appId }) {
                           <td className="text-right px-2 py-2 tabular-nums">{fmtEur(Number(l.ca_partageable_ht))}</td>
                           <td className="text-right px-2 py-2 tabular-nums opacity-70">{fmtEur(Number(l.couts_imputables))}</td>
                           <td className="text-right px-2 py-2 tabular-nums">{fmtEur(Number(l.resultat_partageable))}</td>
-                          <td className={`text-right px-2 py-2 tabular-nums ${Number(l.report_sortant) < 0 ? 'text-red-400' : 'opacity-40'}`}>
-                            {Number(l.report_sortant) < 0 ? fmtEur(Number(l.report_sortant)) : '—'}
-                          </td>
                           <td className={`text-right px-4 py-2 tabular-nums font-semibold ${Number(l.quote_part) > 0 ? 'text-emerald-400' : 'opacity-40'}`}>
                             {Number(l.quote_part) > 0 ? fmtEur(Number(l.quote_part)) : '—'}
                           </td>
                         </>
                       ) : (
                         <>
-                          {[0, 1, 2, 3, 4].map((i) => (
+                          {[0, 1, 2, 3].map((i) => (
                             <td key={i} className="text-right px-2 py-2 opacity-40">—</td>
                           ))}
                           <td className="text-right px-4 py-2 opacity-40">—</td>
@@ -592,24 +948,13 @@ function Partenariat({ appId }) {
           </div>
           <p className="text-[11px] text-baikal-text opacity-50 leading-relaxed">
             <strong className="opacity-100">Lecture</strong> · Les {contrat.franchise} premières
-            ventes de chaque mois civil ne sont pas partagées. Le seuil s'apprécie mois par mois,
-            sans report des ventes non réalisées — mais un résultat négatif, lui, se reporte
-            jusqu'à apurement. Les coûts directs retenus ({contrat.couts_directs.join(', ')}) sont
-            imputés au prorata des ventes partageables. Les mois antérieurs au contrat sont
-            affichés « hors décompte » : ventes et CA HT de l'assiette pour la tendance, sans
-            franchise ni partage.
+            ventes encaissées de chaque mois civil ne sont pas partagées. Le seuil s'apprécie mois
+            par mois, sans report d'un mois sur l'autre. Les coûts directs retenus
+            ({contrat.couts_directs.join(', ')}) sont imputés au prorata des ventes partageables.
+            Les mois antérieurs au contrat donnent la tendance, sans franchise ni partage.
             {' '}<strong className="opacity-100">Les boutons ci-dessus simulent une autre assiette</strong> ;
             ils ne modifient pas le contrat, dont l'assiette reste « {contrat.assiette} ».
           </p>
-          <div className="p-3 bg-amber-900/20 border border-amber-500/50 rounded-md flex items-start gap-3 text-amber-300 text-sm">
-            <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-            <span>
-              Trois termes de l'article 7 ne sont pas encore définis contractuellement : l'assiette
-              des « Ventes du mois », le « prix unitaire HT encaissé » (ici {fmtEur(Number(contrat.prix_catalogue_ht))},
-              mode « {contrat.prix_unitaire} ») et la liste des « Coûts Directs ». Les valeurs
-              affichées sont des hypothèses de travail, pas un décompte opposable.
-            </span>
-          </div>
         </ContenuEstompe>
       )}
     </Section>
@@ -622,9 +967,11 @@ function FinancesContent() {
     <div className="p-6 space-y-10">
       <Synthese appId={currentApp} />
       <Tendance appId={currentApp} />
+      <CoutsParMois appId={currentApp} />
       <Ventes appId={currentApp} />
       <Partenariat appId={currentApp} />
       <ChargesRecurrentes appId={currentApp} />
+      <ChargesPonctuelles appId={currentApp} />
     </div>
   );
 }
