@@ -18,6 +18,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { AppProvider, useApp } from '../../contexts/AppContext';
 import SiteSidebar, { SiteBarre } from './SiteSidebar';
+import NouvelleVersion from './NouvelleVersion';
 import { ProfileSwitcher } from '../admin';
 import supabase from '../../lib/supabaseClient';
 
@@ -106,6 +107,7 @@ function LayoutInterne({ actif, badges = {}, children }) {
 
     return (
         <div className="min-h-screen bg-baikal-bg">
+            <NouvelleVersion />
             <header className="bg-baikal-surface border-b border-baikal-border sticky top-0 z-40">
                 <div className="px-4 sm:px-6 lg:px-8">
                     <div className="flex items-center justify-between h-16">
