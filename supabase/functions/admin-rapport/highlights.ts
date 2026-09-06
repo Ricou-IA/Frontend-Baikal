@@ -27,6 +27,14 @@ export interface RequeteMois {
   position: number;
 }
 
+// Un highlight porte son theme : la trame se lit par rubrique (ventes,
+// Google, requetes, Bing), pas comme une liste plate.
+export type ThemeHighlight = "ventes" | "google" | "requetes" | "bing";
+export interface Highlight {
+  theme: ThemeHighlight;
+  texte: string;
+}
+
 export interface FaitsHighlights {
   libelle: string; // « en août 2026 » ou « du 1er au 15 août 2026 »
   libelle_precedent: string; // « en juillet 2026 » ou « sur la période précédente »
@@ -78,24 +86,25 @@ function pluriel(n: number, mot: string): string {
   return `${nb(n)} ${mot}${n > 1 ? "s" : ""}`;
 }
 
-export function calculerHighlights(f: FaitsHighlights): string[] {
-  const out: string[] = [];
+export function calculerHighlights(f: FaitsHighlights): Highlight[] {
+  const out: Highlight[] = [];
+  const push = (theme: ThemeHighlight, texte: string) => out.push({ theme, texte });
 
   // 1. Ventes, periode contre periode precedente.
   const v = f.ventes.periode;
   if (f.ventes.precedent !== null) {
-    out.push(`${pluriel(v, "vente")} ${f.libelle} contre ${nb(f.ventes.precedent)} ${f.libelle_precedent} (${variation(v, f.ventes.precedent)}).`);
+    push("ventes", `${pluriel(v, "vente")} ${f.libelle} contre ${nb(f.ventes.precedent)} ${f.libelle_precedent} (${variation(v, f.ventes.precedent)}).`);
   } else {
-    out.push(`${pluriel(v, "vente")} ${f.libelle}, première période mesurée.`);
+    push("ventes", `${pluriel(v, "vente")} ${f.libelle}, première période mesurée.`);
   }
 
   // 2. Franchise du contrat (mois civil entier seulement).
   if (f.franchise) {
     const fr = f.franchise;
     if (fr.partageables === 0) {
-      out.push(`Seuil de ${fr.seuil} ventes non atteint (${nb(fr.ventes)} sur ${fr.seuil}) : aucune vente partageable ce mois.`);
+      push("ventes", `Seuil de ${fr.seuil} ventes non atteint (${nb(fr.ventes)} sur ${fr.seuil}) : aucune vente partageable ce mois.`);
     } else {
-      out.push(`${pluriel(fr.partageables, "vente")} au-delà du seuil de ${fr.seuil} : quote-part de ${eur(fr.quote_part)}.`);
+      push("ventes", `${pluriel(fr.partageables, "vente")} au-delà du seuil de ${fr.seuil} : quote-part de ${eur(fr.quote_part)}.`);
     }
   }
 
@@ -104,12 +113,19 @@ export function calculerHighlights(f: FaitsHighlights): string[] {
   const g = f.seo.google.periode;
   const gp = f.seo.google.precedent;
   if (g && gp) {
-    out.push(`${nb(g.clics)} clics Google contre ${nb(gp.clics)} (${variation(g.clics, gp.clics)}).`);
+    push("google", `${nb(g.clics)} clics Google contre ${nb(gp.clics)} (${variation(g.clics, gp.clics)}).`);
     if (g.impressions_hors_bruit !== null && gp.impressions_hors_bruit !== null) {
-      out.push(`${nb(g.impressions_hors_bruit)} impressions Google hors bruit contre ${nb(gp.impressions_hors_bruit)} (${variation(g.impressions_hors_bruit, gp.impressions_hors_bruit)}).`);
+      push("google", `${nb(g.impressions_hors_bruit)} impressions Google hors bruit contre ${nb(gp.impressions_hors_bruit)} (${variation(g.impressions_hors_bruit, gp.impressions_hors_bruit)}).`);
+      // CTR hors bruit : clics rapportes aux impressions reelles, en points.
+      if (g.impressions_hors_bruit > 0 && gp.impressions_hors_bruit > 0) {
+        const c = (g.clics / g.impressions_hors_bruit) * 100;
+        const cp = (gp.clics / gp.impressions_hors_bruit) * 100;
+        const delta = c - cp;
+        push("google", `CTR Google hors bruit ${dec(c)} % contre ${dec(cp)} % (${delta > 0 ? "+" : delta < 0 ? "−" : "±"}${dec(Math.abs(delta))} point${Math.abs(delta) >= 2 ? "s" : ""}).`);
+      }
     }
   } else if (g) {
-    out.push(`${nb(g.clics)} clics Google, première période mesurée.`);
+    push("google", `${nb(g.clics)} clics Google, première période mesurée.`);
   }
 
   // 5. Meilleure progression de position : requetes presentes les deux
@@ -126,7 +142,7 @@ export function calculerHighlights(f: FaitsHighlights): string[] {
     }
   }
   if (meilleure) {
-    out.push(`« ${meilleure.cle} » passe de la position ${dec(meilleure.avant)} à ${dec(meilleure.apres)}.`);
+    push("requetes", `« ${meilleure.cle} » passe de la position ${dec(meilleure.avant)} à ${dec(meilleure.apres)} (${dec(meilleure.avant - meilleure.apres)} place${meilleure.avant - meilleure.apres >= 2 ? "s" : ""} gagnée${meilleure.avant - meilleure.apres >= 2 ? "s" : ""}).`);
   }
 
   // 6. Entrees dans le top 10 par clics.
@@ -136,7 +152,7 @@ export function calculerHighlights(f: FaitsHighlights): string[] {
     const avant = new Set(top10(f.seo.requetes_precedent));
     const entrees = top10(f.seo.requetes_periode).filter((c) => !avant.has(c));
     if (entrees.length > 0) {
-      out.push(`${entrees.length} requête${entrees.length > 1 ? "s entrent" : " entre"} dans le top 10 : ${entrees.map((c) => `« ${c} »`).join(", ")}.`);
+      push("requetes", `${entrees.length} requête${entrees.length > 1 ? "s entrent" : " entre"} dans le top 10 : ${entrees.map((c) => `« ${c} »`).join(", ")}.`);
     }
   }
 
@@ -145,7 +161,7 @@ export function calculerHighlights(f: FaitsHighlights): string[] {
   const b = f.seo.bing.periode;
   const bp = f.seo.bing.precedent;
   if (b && bp) {
-    out.push(`${nb(b.clics)} clics Bing contre ${nb(bp.clics)} (${variation(b.clics, bp.clics)}).`);
+    push("bing", `${nb(b.clics)} clics Bing contre ${nb(bp.clics)} (${variation(b.clics, bp.clics)}).`);
   }
 
   return out;

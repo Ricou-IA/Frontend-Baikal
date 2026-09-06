@@ -24,10 +24,12 @@ export interface LigneCluster {
 
 export interface LigneSemaine {
   semaine: string; // lundi, YYYY-MM-DD
+  semaine_iso: string; // « S35 2026 »
   jours: number; // 7 pour une semaine pleine
   clics: number;
   clics_par_jour: number;
   impressions: number;
+  ctr: number; // clics / impressions, 0..1
   reference: boolean;
 }
 
@@ -59,6 +61,7 @@ export interface TraficPeriode {
   impressions: number;
   clics_par_jour: number;
   impressions_par_jour: number;
+  ctr: number;
 }
 
 export interface LigneAutorite {
@@ -142,6 +145,16 @@ function jourIso(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
+// Numero de semaine ISO 8601 (la semaine appartient a l'annee de son jeudi).
+export function semaineIso(isoLundi: string): string {
+  const lundi = new Date(`${isoLundi}T00:00:00Z`);
+  const jeudi = new Date(lundi);
+  jeudi.setUTCDate(lundi.getUTCDate() + 3);
+  const debutAnnee = new Date(Date.UTC(jeudi.getUTCFullYear(), 0, 1));
+  const n = Math.ceil(((jeudi.getTime() - debutAnnee.getTime()) / 86_400_000 + 1) / 7);
+  return `S${String(n).padStart(2, "0")} ${jeudi.getUTCFullYear()}`;
+}
+
 // --- Bloc 1 : trafic en semaines pleines de sept jours (lundi-dimanche).
 async function traficHebdo(admin: any, appId: string, source: string, fin: string): Promise<LigneSemaine[]> {
   const finDate = new Date(`${fin}T00:00:00Z`);
@@ -172,10 +185,12 @@ async function traficHebdo(admin: any, appId: string, source: string, fin: strin
     .filter(([, s]) => s.jours >= 7) // semaine pleine seulement
     .map(([semaine, s]) => ({
       semaine,
+      semaine_iso: semaineIso(semaine),
       jours: s.jours,
       clics: s.clics,
       clics_par_jour: arrondi(s.clics / s.jours),
       impressions: s.impressions,
+      ctr: s.impressions > 0 ? arrondi(s.clics / s.impressions, 4) : 0,
       reference: false,
     }))
     .sort((a, b) => a.semaine.localeCompare(b.semaine));
@@ -207,7 +222,7 @@ async function traficPeriode(admin: any, appId: string, source: string, p: Perio
     impressions += Number(r.impressions);
   }
   if (jours === 0) return null;
-  return { jours, clics, impressions, clics_par_jour: arrondi(clics / jours), impressions_par_jour: arrondi(impressions / jours) };
+  return { jours, clics, impressions, clics_par_jour: arrondi(clics / jours), impressions_par_jour: arrondi(impressions / jours), ctr: impressions > 0 ? arrondi(clics / impressions, 4) : 0 };
 }
 
 // --- Appareils : mobile / ordinateur / tablette (dimension device, au mois).

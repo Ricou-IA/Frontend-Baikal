@@ -10,7 +10,7 @@
 // donc les mois couverts (dit dans le rapport quand la periode n'est pas un
 // mois entier). Le decompte du partenariat reste mensuel par nature du contrat.
 // deno-lint-ignore-file no-explicit-any
-import { calculerHighlights, type FaitsHighlights, type RequeteMois, type TotauxSeo } from "./highlights.ts";
+import { calculerHighlights, type FaitsHighlights, type Highlight, type RequeteMois, type TotauxSeo } from "./highlights.ts";
 import type { Commit } from "./github.ts";
 import { construireLectureSeo, type LectureSeo } from "./lecture-seo.ts";
 import {
@@ -50,7 +50,7 @@ export interface Faits {
     top_pages: RequeteMois[];
   };
   lecture_seo: LectureSeo | null;
-  highlights: string[];
+  highlights: Highlight[];
   sources_manquantes: string[];
 }
 

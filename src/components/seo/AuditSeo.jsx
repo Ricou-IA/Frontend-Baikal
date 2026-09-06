@@ -27,6 +27,14 @@ const APPAREILS = { mobile: 'Mobile', desktop: 'Ordinateur', tablet: 'Tablette' 
 const nb = (n) => new Intl.NumberFormat('fr-FR').format(Number(n || 0));
 const pos = (n) => (n === null || n === undefined ? '—' : Number(n).toFixed(1).replace('.', ','));
 const pct = (n) => `${Math.round(Number(n || 0) * 100)} %`;
+const pctFin = (n) => `${(Number(n || 0) * 100).toFixed(1).replace('.', ',')} %`;
+// Variation de position : negatif = gain de places (vert), positif = perte.
+function Variation({ actuel, precedent }) {
+  if (actuel === null || actuel === undefined || precedent === null || precedent === undefined) return <span className="opacity-40">—</span>;
+  const d = Number(actuel) - Number(precedent);
+  if (Math.abs(d) < 0.05) return <span className="opacity-60">=</span>;
+  return <span className={d < 0 ? 'text-emerald-400' : 'text-red-400'}>{d < 0 ? '▲' : '▼'} {Math.abs(d).toFixed(1).replace('.', ',')}</span>;
+}
 const majuscule = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
 function moisPrecedent() {
   const d = new Date();
@@ -89,10 +97,11 @@ function Resultat({ audit, texte, setTexte, lectureSeule }) {
   const trafic = (source) => ({
     titre: source,
     colonnes: [
-      { titre: 'Semaine', valeur: (x) => `${x.semaine}${x.reference ? ' (réf.)' : ''}` },
+      { titre: 'Semaine', valeur: (x) => <span title={`Semaine du ${x.semaine}`}>{x.semaine_iso || x.semaine}{x.reference ? ' (réf.)' : ''}</span> },
       { titre: 'Clics / j', valeur: (x) => Number(x.clics_par_jour).toFixed(1).replace('.', ','), droite: true, gras: true },
       { titre: 'Clics', valeur: (x) => nb(x.clics), droite: true },
       { titre: 'Impressions', valeur: (x) => nb(x.impressions), droite: true },
+      { titre: 'CTR', valeur: (x) => (x.ctr === undefined ? '—' : pctFin(x.ctr)), droite: true },
     ],
   });
   return (
@@ -171,6 +180,7 @@ function Resultat({ audit, texte, setTexte, lectureSeule }) {
                 { titre: 'Page', valeur: (x) => <span className="font-mono text-xs opacity-70">{x.page || '—'}</span> },
                 { titre: 'Pos.', valeur: (x) => pos(x.position), droite: true, gras: true },
                 { titre: 'Préc.', valeur: (x) => pos(x.position_precedente), droite: true },
+                { titre: 'Var.', valeur: (x) => <Variation actuel={x.position} precedent={x.position_precedente} />, droite: true },
               ]}
               lignes={l.suivi.requetes}
               cle={(x) => x.requete}
@@ -183,6 +193,7 @@ function Resultat({ audit, texte, setTexte, lectureSeule }) {
                 { titre: 'Clics', valeur: (x) => nb(x.clics), droite: true },
                 { titre: 'Pos.', valeur: (x) => pos(x.position), droite: true, gras: true },
                 { titre: 'Préc.', valeur: (x) => pos(x.position_precedente), droite: true },
+                { titre: 'Var.', valeur: (x) => <Variation actuel={x.position} precedent={x.position_precedente} />, droite: true },
               ]}
               lignes={l.suivi.pages}
               cle={(x) => x.page}

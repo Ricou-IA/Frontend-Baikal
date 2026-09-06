@@ -176,8 +176,8 @@ function fmtCluster(l: { cluster: string; requetes: number; clics: number; impre
 }
 
 export async function redigerLectureSeo(lecture: LectureSeo, contexte: ContexteLecture): Promise<string> {
-  const trafic = (l: { semaine: string; jours: number; clics: number; clics_par_jour: number; impressions: number; reference: boolean }) =>
-    `semaine du ${l.semaine}${l.reference ? " (référence, meilleure semaine récente)" : ""} : ${nbFr(l.clics)} clics sur ${l.jours} jours (${posFr(l.clics_par_jour)}/j), ${nbFr(l.impressions)} impressions`;
+  const trafic = (l: { semaine: string; semaine_iso: string; jours: number; clics: number; clics_par_jour: number; impressions: number; ctr: number; reference: boolean }) =>
+    `${l.semaine_iso} (du ${l.semaine})${l.reference ? " (référence, meilleure semaine récente)" : ""} : ${nbFr(l.clics)} clics sur ${l.jours} jours (${posFr(l.clics_par_jour)}/j), ${nbFr(l.impressions)} impressions, CTR ${posFr(l.ctr * 100)} %`;
   const vp = lecture.ventes.par_paiement;
   const vc = lecture.ventes.par_creation;
   const notre = lecture.autorite.find((a) => a.notre);
@@ -186,8 +186,8 @@ export async function redigerLectureSeo(lecture: LectureSeo, contexte: ContexteL
   const mobile = lecture.appareils.find((a) => a.appareil === "mobile");
 
   const fen = (p: { debut: string; fin: string }) => `du ${p.debut} au ${p.fin}`;
-  const traficP = (t: { jours: number; clics: number; impressions: number; clics_par_jour: number; impressions_par_jour: number } | null, p: { debut: string; fin: string }) =>
-    t ? `${fen(p)} : ${nbFr(t.jours)} jours mesurés, ${nbFr(t.clics)} clics (${posFr(t.clics_par_jour)}/jour), ${nbFr(t.impressions)} impressions (${posFr(t.impressions_par_jour)}/jour)` : `${fen(p)} : aucune mesure`;
+  const traficP = (t: { jours: number; clics: number; impressions: number; clics_par_jour: number; impressions_par_jour: number; ctr: number } | null, p: { debut: string; fin: string }) =>
+    t ? `${fen(p)} : ${nbFr(t.jours)} jours mesurés, ${nbFr(t.clics)} clics (${posFr(t.clics_par_jour)}/jour), ${nbFr(t.impressions)} impressions (${posFr(t.impressions_par_jour)}/jour), CTR ${posFr(t.ctr * 100)} %` : `${fen(p)} : aucune mesure`;
   const joursP = Math.round((new Date(`${contexte.periode.fin}T00:00:00Z`).getTime() - new Date(`${contexte.periode.debut}T00:00:00Z`).getTime()) / 86_400_000) + 1;
   const joursQ = Math.round((new Date(`${contexte.precedent.fin}T00:00:00Z`).getTime() - new Date(`${contexte.precedent.debut}T00:00:00Z`).getTime()) / 86_400_000) + 1;
   const parJour = (n: number, jours: number) => posFr(jours > 0 ? n / jours : 0);

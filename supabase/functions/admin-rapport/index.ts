@@ -267,7 +267,9 @@ serve(async (req) => {
       const periode = validerPeriode(body.debut, body.fin);
       const ebauche = String(body.ebauche ?? "").trim();
       if (!ebauche) return json({ data: null, error: "Ébauche vide" }, 400);
-      const highlights = Array.isArray(body.highlights) ? body.highlights.map(String) : [];
+      const highlights = Array.isArray(body.highlights)
+        ? body.highlights.map((h: unknown) => (typeof h === "string" ? h : String((h as { texte?: string })?.texte ?? "")))
+        : [];
       const commentaire = await redigerCommentaire(ebauche, highlights, libellePeriode(periode));
       return json({ data: { commentaire }, error: null });
     }

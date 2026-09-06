@@ -48,6 +48,17 @@ function dateFr(iso) {
 }
 const majuscule = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
 const pos = (n) => (n === null || n === undefined ? '—' : Number(n).toFixed(1).replace('.', ','));
+const pct = (n) => `${(Number(n || 0) * 100).toFixed(1).replace('.', ',')} %`;
+const THEMES = [['ventes', 'Ventes'], ['google', 'Google'], ['requetes', 'Requêtes'], ['bing', 'Bing']];
+// Variation de position : negatif = gain de places (vert), positif = perte.
+function Variation({ actuel, precedent }) {
+  if (actuel === null || actuel === undefined || precedent === null || precedent === undefined) return <span className="opacity-40">—</span>;
+  const d = Number(actuel) - Number(precedent);
+  if (Math.abs(d) < 0.05) return <span className="opacity-60">=</span>;
+  return <span className={d < 0 ? 'text-emerald-400' : 'text-red-400'}>{d < 0 ? '▲' : '▼'} {Math.abs(d).toFixed(1).replace('.', ',')}</span>;
+}
+const texteHighlight = (h) => (typeof h === 'string' ? h : h.texte);
+const themeHighlight = (h) => (typeof h === 'string' ? 'google' : h.theme);
 
 async function blobEnBase64(blob) {
   return new Promise((resolve, reject) => {
@@ -106,11 +117,22 @@ function Apercu({ contenu }) {
       </div>
 
       <div className="bg-baikal-surface border border-baikal-border rounded-lg p-4">
-        <div className="text-xs opacity-60 uppercase tracking-wider text-baikal-text mb-2">Highlights (calculés)</div>
+        <div className="text-xs opacity-60 uppercase tracking-wider text-baikal-text mb-2">Highlights</div>
         {c.highlights.length === 0 && <p className="text-sm text-baikal-text opacity-60">Aucun fait calculable sur cette période.</p>}
-        <ul className="space-y-1 text-sm text-baikal-text list-disc pl-5">
-          {c.highlights.map((h) => <li key={h}>{h}</li>)}
-        </ul>
+        <div className="grid md:grid-cols-2 gap-x-6 gap-y-3">
+          {THEMES.map(([theme, libelle]) => {
+            const lignes = c.highlights.filter((h) => themeHighlight(h) === theme);
+            if (lignes.length === 0) return null;
+            return (
+              <div key={theme}>
+                <div className="text-xs font-semibold text-white mb-1">{libelle}</div>
+                <ul className="space-y-1 text-sm text-baikal-text list-disc pl-5">
+                  {lignes.map((h) => <li key={texteHighlight(h)}>{texteHighlight(h)}</li>)}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {lecture?.trafic && (
@@ -122,15 +144,17 @@ function Apercu({ contenu }) {
                 <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
                   <th className="px-4 py-1.5">Semaine</th>
                   <th className="text-right px-2 py-1.5">Clics / j</th>
-                  <th className="text-right px-4 py-1.5">Impressions</th>
+                  <th className="text-right px-2 py-1.5">Impressions</th>
+                  <th className="text-right px-4 py-1.5">CTR</th>
                 </tr>
               </thead>
               <tbody>
                 {lecture.trafic.google.map((l) => (
                   <tr key={l.semaine} className={`border-t border-baikal-border/50 ${l.reference ? 'opacity-60' : ''}`}>
-                    <td className="px-4 py-1.5 font-mono text-xs">{l.semaine}{l.reference ? ' (réf.)' : ''}</td>
+                    <td className="px-4 py-1.5 font-mono text-xs" title={`Semaine du ${l.semaine}`}>{l.semaine_iso || l.semaine}{l.reference ? ' (réf.)' : ''}</td>
                     <td className="text-right px-2 py-1.5 tabular-nums text-white">{Number(l.clics_par_jour).toFixed(1).replace('.', ',')}</td>
-                    <td className="text-right px-4 py-1.5 tabular-nums">{fmtNombre(l.impressions)}</td>
+                    <td className="text-right px-2 py-1.5 tabular-nums">{fmtNombre(l.impressions)}</td>
+                    <td className="text-right px-4 py-1.5 tabular-nums">{l.ctr === undefined ? '—' : pct(l.ctr)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -144,7 +168,8 @@ function Apercu({ contenu }) {
                   <th className="px-4 py-1.5">Requête</th>
                   <th className="px-2 py-1.5">Page</th>
                   <th className="text-right px-2 py-1.5">Pos.</th>
-                  <th className="text-right px-4 py-1.5">Préc.</th>
+                  <th className="text-right px-2 py-1.5">Préc.</th>
+                  <th className="text-right px-4 py-1.5">Var.</th>
                 </tr>
               </thead>
               <tbody>
@@ -154,7 +179,8 @@ function Apercu({ contenu }) {
                     <td className="px-4 py-1.5">{r.requete}</td>
                     <td className="px-2 py-1.5 font-mono text-xs opacity-70">{r.page || '—'}</td>
                     <td className="text-right px-2 py-1.5 tabular-nums text-white">{pos(r.position)}</td>
-                    <td className="text-right px-4 py-1.5 tabular-nums opacity-70">{pos(r.position_precedente)}</td>
+                    <td className="text-right px-2 py-1.5 tabular-nums opacity-70">{pos(r.position_precedente)}</td>
+                    <td className="text-right px-4 py-1.5 tabular-nums"><Variation actuel={r.position} precedent={r.position_precedente} /></td>
                   </tr>
                 ))}
               </tbody>

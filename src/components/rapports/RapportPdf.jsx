@@ -37,6 +37,16 @@ const dateFr = (iso) => {
 const majuscule = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
 const VERDICTS = { gagne: 'Gagné', en_progres: 'En progrès', rate: 'Raté', sans_objet: 'Sans objet' };
 const APPAREILS = { mobile: 'Mobile', desktop: 'Ordinateur', tablet: 'Tablette' };
+const THEMES = [['ventes', 'Ventes'], ['google', 'Google'], ['requetes', 'Requêtes'], ['bing', 'Bing']];
+const texteHighlight = (h) => (typeof h === 'string' ? h : h.texte);
+const themeHighlight = (h) => (typeof h === 'string' ? 'google' : h.theme);
+// Variation de position en texte : signe puis places (negatif = gain).
+const variation = (actuel, precedent) => {
+  if (actuel === null || actuel === undefined || precedent === null || precedent === undefined) return '—';
+  const d = Number(actuel) - Number(precedent);
+  if (Math.abs(d) < 0.05) return '=';
+  return `${d < 0 ? '+' : '-'}${Math.abs(d).toFixed(1).replace('.', ',')} pl.`;
+};
 const CLUSTERS = {
   en_ligne: 'En ligne', prix: 'Prix', modele: 'Modèle', foncia: 'Foncia / Nexity / Citya',
   delai: 'Délai', tantiemes: 'Tantièmes', remboursement: 'Remboursement', autre: 'Autre',
@@ -177,13 +187,13 @@ function BlocSeo({ seo, moisEntier }) {
 }
 
 function BlocLectureSeo({ lecture, chantiers }) {
-  const semaine = (l) => `du ${dateFr(l.semaine)}${l.reference ? ' (réf.)' : ''}`;
+  const semaine = (l) => `${l.semaine_iso || dateFr(l.semaine)}${l.reference ? ' (réf.)' : ''}`;
   const colonnesTrafic = [
-    { titre: 'Semaine', valeur: semaine, flex: 1.6 },
-    { titre: 'Jours', valeur: (l) => nb(l.jours), droite: true },
+    { titre: 'Semaine', valeur: semaine, flex: 1.4 },
     { titre: 'Clics', valeur: (l) => nb(l.clics), droite: true },
     { titre: 'Clics / jour', valeur: (l) => t(Number(l.clics_par_jour).toFixed(1).replace('.', ',')), droite: true, gras: true },
     { titre: 'Impressions', valeur: (l) => nb(l.impressions), droite: true },
+    { titre: 'CTR', valeur: (l) => (l.ctr === undefined ? '—' : t(`${(l.ctr * 100).toFixed(1).replace('.', ',')} %`)), droite: true },
   ];
   const vc = lecture.ventes.par_creation;
   // Fragment, pas de View englobant : un conteneur plus haut qu'une page ne se
@@ -201,7 +211,7 @@ function BlocLectureSeo({ lecture, chantiers }) {
           <Table colonnes={colonnesTrafic} lignes={lecture.trafic.bing} cle={(l) => l.semaine} classeLigne={(l) => (l.reference ? s.trEstompe : null)} />
         </View>
       </View>
-      <Text style={s.note}>« réf. » : meilleure semaine des douze dernières, pour situer la dernière semaine pleine.</Text>
+      <Text style={s.note}>Semaines ISO du lundi au dimanche. « réf. » : meilleure semaine des douze dernières, pour situer la dernière semaine pleine.</Text>
 
       <Text style={s.h3}>Ventes, deux comptes</Text>
       <Table
@@ -305,6 +315,7 @@ function BlocLectureSeo({ lecture, chantiers }) {
               { titre: 'Impressions', valeur: (l) => nb(l.impressions), droite: true },
               { titre: 'Position', valeur: (l) => pos(l.position), droite: true, gras: true },
               { titre: 'Préc.', valeur: (l) => pos(l.position_precedente), droite: true },
+              { titre: 'Var.', valeur: (l) => variation(l.position, l.position_precedente), droite: true },
             ]}
             lignes={lecture.suivi.requetes}
             cle={(l) => l.requete}
@@ -324,6 +335,7 @@ function BlocLectureSeo({ lecture, chantiers }) {
               { titre: 'Impressions', valeur: (l) => nb(l.impressions), droite: true },
               { titre: 'Position', valeur: (l) => pos(l.position), droite: true, gras: true },
               { titre: 'Préc.', valeur: (l) => pos(l.position_precedente), droite: true },
+              { titre: 'Var.', valeur: (l) => variation(l.position, l.position_precedente), droite: true },
               { titre: 'Premières requêtes', valeur: (l) => l.top_requetes.slice(0, 4).join(' · '), flex: 3 },
             ]}
             lignes={lecture.suivi.pages}
@@ -480,12 +492,21 @@ export default function RapportPdf({ contenu, evolutions, lectureSeo, commentair
         {c.highlights.length > 0 && (
           <>
             <Text style={s.h2}>Highlights</Text>
-            {c.highlights.map((h, i) => (
-              <View key={i} style={s.puce}>
-                <Text style={s.puceTiret}>•</Text>
-                <Text style={s.puceTexte}>{t(h)}</Text>
-              </View>
-            ))}
+            {THEMES.map(([theme, libelle]) => {
+              const lignes = c.highlights.filter((h) => themeHighlight(h) === theme);
+              if (lignes.length === 0) return null;
+              return (
+                <View key={theme}>
+                  <Text style={s.h3}>{libelle}</Text>
+                  {lignes.map((h, i) => (
+                    <View key={i} style={s.puce}>
+                      <Text style={s.puceTiret}>•</Text>
+                      <Text style={s.puceTexte}>{t(texteHighlight(h))}</Text>
+                    </View>
+                  ))}
+                </View>
+              );
+            })}
           </>
         )}
 
