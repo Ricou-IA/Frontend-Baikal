@@ -1,9 +1,9 @@
 /**
  * RapportPdf.jsx - Baikal Console
  * ============================================================================
- * Le document PDF A4 du rapport mensuel au partenaire, rendu par
- * @react-pdf/renderer dans le navigateur. Charge par import() dynamique
- * depuis /rapports : le moteur PDF ne doit pas alourdir le bundle principal.
+ * Le document PDF A4 du rapport au partenaire, rendu par @react-pdf/renderer
+ * dans le navigateur. Charge par import() dynamique depuis /rapports : le
+ * moteur PDF ne doit pas alourdir le bundle principal.
  *
  * Polices : Helvetica standard (encodage WinAnsi). Deux caracteres produits
  * par le formatage francais n'y existent pas : l'espace fine insecable des
@@ -27,6 +27,7 @@ const dateFr = (iso) => {
   const [a, m, j] = String(iso).slice(0, 10).split('-');
   return `${j}/${m}/${a}`;
 };
+const majuscule = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
 
 const s = StyleSheet.create({
   page: { paddingTop: 48, paddingBottom: 56, paddingHorizontal: 51, fontFamily: 'Helvetica', fontSize: 9, color: '#111827' },
@@ -49,7 +50,6 @@ const s = StyleSheet.create({
   droite: { textAlign: 'right' },
   gras: { fontFamily: 'Helvetica-Bold' },
   pied: { position: 'absolute', bottom: 28, left: 51, right: 51, flexDirection: 'row', justifyContent: 'space-between', fontSize: 7, color: '#6b7280', borderTopWidth: 0.5, borderTopColor: '#d1d5db', paddingTop: 5 },
-  bandeau: { backgroundColor: '#f3f4f6', padding: 6, marginBottom: 8, fontSize: 8, color: '#374151' },
 });
 
 function Table({ colonnes, lignes, cle, classeLigne }) {
@@ -73,10 +73,10 @@ function Table({ colonnes, lignes, cle, classeLigne }) {
   );
 }
 
-function BlocSeo({ seo }) {
+function BlocSeo({ seo, moisEntier }) {
   const ligne = (libelle, source, f) => ({
     libelle,
-    mois: source.mois ? f(source.mois) : '—',
+    periode: source.periode ? f(source.periode) : '—',
     precedent: source.precedent ? f(source.precedent) : '—',
   });
   const lignes = (source) => [
@@ -87,8 +87,14 @@ function BlocSeo({ seo }) {
   ];
   const colonnes = [
     { titre: 'Indicateur', valeur: (l) => l.libelle, flex: 2 },
-    { titre: 'Mois', valeur: (l) => l.mois, droite: true, gras: true },
-    { titre: 'Mois précédent', valeur: (l) => l.precedent, droite: true },
+    { titre: 'Période', valeur: (l) => l.periode, droite: true, gras: true },
+    { titre: moisEntier ? 'Mois précédent' : 'Période précédente', valeur: (l) => l.precedent, droite: true },
+  ];
+  const colonnesTop = (titre, cle) => [
+    { titre, valeur: cle, flex: 4 },
+    { titre: 'Clics', valeur: (l) => nb(l.clics), droite: true },
+    { titre: 'Impressions', valeur: (l) => nb(l.impressions), droite: true },
+    { titre: 'Position', valeur: (l) => pos(l.position), droite: true },
   ];
   return (
     <View>
@@ -105,28 +111,14 @@ function BlocSeo({ seo }) {
       {seo.top_requetes.length > 0 && (
         <View style={{ marginTop: 10 }}>
           <Text style={[s.cellTh, { paddingHorizontal: 0 }]}>Top 10 requêtes Google</Text>
-          <Table
-            colonnes={[
-              { titre: 'Requête', valeur: (l) => l.cle, flex: 4 },
-              { titre: 'Clics', valeur: (l) => nb(l.clics), droite: true },
-              { titre: 'Impressions', valeur: (l) => nb(l.impressions), droite: true },
-              { titre: 'Position', valeur: (l) => pos(l.position), droite: true },
-            ]}
-            lignes={seo.top_requetes}
-            cle={(l) => l.cle}
-          />
+          <Table colonnes={colonnesTop('Requête', (l) => l.cle)} lignes={seo.top_requetes} cle={(l) => l.cle} />
         </View>
       )}
       {seo.top_pages.length > 0 && (
         <View style={{ marginTop: 10 }}>
           <Text style={[s.cellTh, { paddingHorizontal: 0 }]}>Top 10 pages Google</Text>
           <Table
-            colonnes={[
-              { titre: 'Page', valeur: (l) => l.cle.replace(/^https?:\/\/[^/]+/, '') || '/', flex: 4 },
-              { titre: 'Clics', valeur: (l) => nb(l.clics), droite: true },
-              { titre: 'Impressions', valeur: (l) => nb(l.impressions), droite: true },
-              { titre: 'Position', valeur: (l) => pos(l.position), droite: true },
-            ]}
+            colonnes={colonnesTop('Page', (l) => l.cle.replace(/^https?:\/\/[^/]+/, '') || '/')}
             lignes={seo.top_pages}
             cle={(l) => l.cle}
           />
@@ -159,16 +151,17 @@ function Paragraphes({ texte }) {
 export default function RapportPdf({ contenu, evolutions, commentaire, version, genereLe }) {
   const c = contenu;
   const contrat = c.partenariat.contrat;
-  const titreMois = c.libelle_mois.charAt(0).toUpperCase() + c.libelle_mois.slice(1);
+  const libelle = c.mois_entier ? majuscule(c.libelle_periode) : c.libelle_periode;
   const partenaire = contrat?.partenaire ?? 'partenaire';
+  const moisCouverts = new Set(c.mois_couverts);
 
   return (
-    <Document title={`Rapport ${titreMois} — ${c.site.nom}`} author="Baikal" language="fr">
+    <Document title={`Rapport ${libelle} — ${c.site.nom}`} author="Baikal" language="fr">
       <Page size="A4" style={s.page}>
         <View style={s.entete}>
-          <Text style={s.titre}>{t(`${c.site.nom} — Rapport mensuel ${titreMois}`)}</Text>
+          <Text style={s.titre}>{t(`${c.site.nom} — Rapport ${libelle}`)}</Text>
           <Text style={s.sousTitre}>
-            {t(`À l'attention de ${partenaire}${c.site.domaine ? ` · ${c.site.domaine}` : ''} · généré le ${dateFr(genereLe)} · version ${version}`)}
+            {t(`À l'attention de ${partenaire}${c.site.domaine ? ` · ${c.site.domaine}` : ''} · période du ${dateFr(c.periode.debut)} au ${dateFr(c.periode.fin)} · généré le ${dateFr(genereLe)} · version ${version}`)}
           </Text>
         </View>
 
@@ -189,17 +182,17 @@ export default function RapportPdf({ contenu, evolutions, commentaire, version, 
               ]}
               lignes={c.partenariat.lignes}
               cle={(l) => l.mois}
-              classeLigne={(l) => (l.mois === c.mois ? s.trCourant : l.dans_decompte === false ? s.trEstompe : null)}
+              classeLigne={(l) => (moisCouverts.has(l.mois) ? s.trCourant : l.dans_decompte === false ? s.trEstompe : null)}
             />
             <Text style={s.note}>
-              {t(`Franchise de ${contrat.franchise} ventes par mois civil, appréciée mois par mois sans report. Part de ${Math.round(contrat.part * 100)} % du résultat partageable. Assiette « ${contrat.assiette} », prix unitaire « ${contrat.prix_unitaire} »${contrat.prix_catalogue_ht ? ` (${eur(contrat.prix_catalogue_ht)} HT)` : ''}, coûts directs : ${contrat.couts_directs.join(', ')}, imputés au prorata des ventes partageables. Les mois antérieurs au ${dateFr(contrat.debut)} sont donnés pour la tendance.`)}
+              {t(`Décompte mensuel par nature du contrat, les mois de la période sont surlignés. Franchise de ${contrat.franchise} ventes par mois civil, appréciée mois par mois sans report. Part de ${Math.round(contrat.part * 100)} % du résultat partageable. Assiette « ${contrat.assiette} », prix unitaire « ${contrat.prix_unitaire} »${contrat.prix_catalogue_ht ? ` (${eur(contrat.prix_catalogue_ht)} HT)` : ''}, coûts directs : ${contrat.couts_directs.join(', ')}, imputés au prorata des ventes partageables. Les mois antérieurs au ${dateFr(contrat.debut)} sont donnés pour la tendance.`)}
             </Text>
           </View>
         )}
 
-        <Text style={s.h2}>{t(`Ventes du mois (${nb(c.ventes.nombre)})`)}</Text>
+        <Text style={s.h2}>{t(`Ventes de la période (${nb(c.ventes.nombre)})`)}</Text>
         {c.ventes.lignes.length === 0 ? (
-          <Text style={s.para}>Aucune vente encaissée sur le mois.</Text>
+          <Text style={s.para}>Aucune vente encaissée sur la période.</Text>
         ) : (
           <Table
             colonnes={[
@@ -215,9 +208,13 @@ export default function RapportPdf({ contenu, evolutions, commentaire, version, 
         )}
         <Text style={s.note}>Ventes B2C encaissées à plus de 0 €, hors dossiers de test. Aucune donnée nominative.</Text>
 
-        <Text style={s.h2} break>SEO du mois</Text>
-        <BlocSeo seo={c.seo} />
-        <Text style={s.note}>Totaux Google et Bing depuis la série quotidienne de la propriété. Requêtes et pages : Search Console, hors bruit.</Text>
+        <Text style={s.h2} break>SEO de la période</Text>
+        <BlocSeo seo={c.seo} moisEntier={c.mois_entier} />
+        <Text style={s.note}>
+          {t(c.mois_entier
+            ? 'Totaux Google et Bing depuis la série quotidienne de la propriété. Requêtes et pages : Search Console, hors bruit.'
+            : `Totaux Google et Bing depuis la série quotidienne de la propriété, exacts au jour. Requêtes et pages : Search Console, hors bruit, cumul des mois couverts (${c.mois_couverts.join(', ')}).`)}
+        </Text>
 
         {c.highlights.length > 0 && (
           <View>
@@ -240,7 +237,7 @@ export default function RapportPdf({ contenu, evolutions, commentaire, version, 
 
         {commentaire && commentaire.trim() && (
           <View>
-            <Text style={s.h2}>Commentaire du mois</Text>
+            <Text style={s.h2}>Commentaire</Text>
             <Paragraphes texte={commentaire} />
           </View>
         )}

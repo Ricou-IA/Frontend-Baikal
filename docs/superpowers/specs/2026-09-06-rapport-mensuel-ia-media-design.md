@@ -26,6 +26,7 @@ mois, des highlights, les évolutions du logiciel et un commentaire.
 | Archivage | Table `admin.rapports`, une ligne par génération. Régénérer un mois crée une nouvelle version ; l'ancienne reste lisible. |
 | Envoi | Hors lot : Eric télécharge le PDF et l'envoie lui-même. |
 | Actions du logiciel | Historique git du mois du dépôt du site (GitHub API), pas le dossier mémoire local, inaccessible depuis Vercel. |
+| Période (ajout du 06/09 soir) | Le rapport se borne par **deux dates** (mois, trimestre ou du… au…), sélecteur maison sans calendrier natif. Comparaison avec la période précédente de même durée (mois précédent pour un mois entier). Totaux SEO exacts au jour ; top requêtes et pages cumulés sur les mois couverts, dit dans le rapport. Décompte du partenariat toujours mensuel, mois de la période surlignés ; la ligne « franchise » des highlights n'apparaît que pour un mois civil entier. Table `admin.rapports` : colonnes `debut`, `fin` (plus de `mois`), PDF `<app>/<debut>_<fin>-v<n>.pdf`. |
 
 ## Contenu du rapport, dans l'ordre
 

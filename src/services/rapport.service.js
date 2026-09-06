@@ -1,7 +1,7 @@
 /**
  * rapport.service.js - Baikal Console
  * ============================================================================
- * Acces a l'Edge Function admin-rapport : preparation des faits du mois,
+ * Acces a l'Edge Function admin-rapport : preparation des faits d'une periode,
  * redaction assistee, archivage du PDF fabrique dans le navigateur.
  * ============================================================================
  */
@@ -35,15 +35,15 @@ async function appelerEdge(corps) {
 }
 
 export const rapportService = {
-  preparer(appId, mois) {
-    return appelerEdge({ action: 'preparer', appId, mois });
+  preparer(appId, { debut, fin }) {
+    return appelerEdge({ action: 'preparer', appId, debut, fin });
   },
-  rediger(appId, mois, ebauche, highlights) {
-    return appelerEdge({ action: 'rediger', appId, mois, ebauche, highlights });
+  rediger(appId, { debut, fin }, ebauche, highlights) {
+    return appelerEdge({ action: 'rediger', appId, debut, fin, ebauche, highlights });
   },
-  enregistrer(appId, mois, { contenu, ebauche, evolutions, commentaire, pdfBase64 }) {
+  enregistrer(appId, { debut, fin }, { contenu, ebauche, evolutions, commentaire, pdfBase64 }) {
     return appelerEdge({
-      action: 'enregistrer', appId, mois, contenu, ebauche, evolutions, commentaire, pdf_base64: pdfBase64,
+      action: 'enregistrer', appId, debut, fin, contenu, ebauche, evolutions, commentaire, pdf_base64: pdfBase64,
     });
   },
   liste(appId) {

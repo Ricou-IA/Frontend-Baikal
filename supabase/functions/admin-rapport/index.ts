@@ -1,12 +1,12 @@
-// admin-rapport — rapport mensuel au partenaire SEO du site
+// admin-rapport — rapport au partenaire SEO du site, sur une periode bornee
 // (spec docs/superpowers/specs/2026-09-06-rapport-mensuel-ia-media-design.md).
 //
 // Actions (JWT utilisateur, droits par site) :
-//   preparer    { appId, mois }        → faits figes + commits + evolutions proposees
-//   rediger     { appId, mois, ebauche, highlights } → commentaire propose
-//   enregistrer { appId, mois, contenu, ebauche, evolutions, commentaire, pdf_base64 }
-//                                      → depose le PDF (bucket rapports), archive la ligne
-//   liste       { appId }              → rapports archives, URL signee 1 h
+//   preparer    { appId, debut, fin }   → faits figes + commits + evolutions proposees
+//   rediger     { appId, debut, fin, ebauche, highlights } → commentaire propose
+//   enregistrer { appId, debut, fin, contenu, ebauche, evolutions, commentaire, pdf_base64 }
+//                                       → depose le PDF (bucket rapports), archive la ligne
+//   liste       { appId }               → rapports archives, URL signee 1 h
 //
 // Le PDF est fabrique dans le navigateur ; l'EF ne fait que l'archiver.
 // deno-lint-ignore-file no-explicit-any
@@ -15,8 +15,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ErreurAcces, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 import { construireFaits } from "./faits.ts";
 import { commitsDuMois } from "./github.ts";
+import { libellePeriode, validerPeriode } from "./periode.ts";
 import { redigerCommentaire, redigerEvolutions } from "./redaction.ts";
-import { libelleMois } from "./highlights.ts";
 
 const BUCKET = "rapports";
 
@@ -31,12 +31,6 @@ function json(payload: unknown, status = 200): Response {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
-}
-
-function moisValide(m: unknown): string {
-  const s = String(m ?? "");
-  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(s)) throw new Error("Mois attendu au format AAAA-MM");
-  return s;
 }
 
 serve(async (req) => {
@@ -61,11 +55,11 @@ serve(async (req) => {
     exigerSite(autorises, appId);
 
     if (action === "preparer") {
-      const mois = moisValide(body.mois);
-      const faits = await construireFaits(admin, appId, mois);
+      const periode = validerPeriode(body.debut, body.fin);
+      const faits = await construireFaits(admin, appId, periode);
 
-      // Evolutions du logiciel : commits du mois si le depot et le jeton
-      // existent ; sinon la section manque et la page le dit.
+      // Evolutions du logiciel : commits de la periode si le depot et le
+      // jeton existent ; sinon la section manque et la page le dit.
       let commits: { date: string; sujet: string }[] = [];
       let evolutions = "";
       const token = Deno.env.get("ADMIN_GITHUB_TOKEN");
@@ -75,11 +69,11 @@ serve(async (req) => {
         faits.sources_manquantes.push("Secret ADMIN_GITHUB_TOKEN absent : pas d'évolutions du logiciel");
       } else {
         try {
-          commits = await commitsDuMois(faits.site.repo_github, token, faits.debut, faits.fin);
+          commits = await commitsDuMois(faits.site.repo_github, token, periode.debut, periode.fin);
           if (commits.length === 0) {
-            faits.sources_manquantes.push("Aucun commit sur le mois dans le dépôt");
+            faits.sources_manquantes.push("Aucun commit sur la période dans le dépôt");
           } else {
-            evolutions = await redigerEvolutions(commits, libelleMois(mois));
+            evolutions = await redigerEvolutions(commits, libellePeriode(periode));
           }
         } catch (e) {
           faits.sources_manquantes.push(`Évolutions du logiciel indisponibles : ${(e as Error).message}`);
@@ -89,16 +83,16 @@ serve(async (req) => {
     }
 
     if (action === "rediger") {
-      const mois = moisValide(body.mois);
+      const periode = validerPeriode(body.debut, body.fin);
       const ebauche = String(body.ebauche ?? "").trim();
       if (!ebauche) return json({ data: null, error: "Ébauche vide" }, 400);
       const highlights = Array.isArray(body.highlights) ? body.highlights.map(String) : [];
-      const commentaire = await redigerCommentaire(ebauche, highlights, libelleMois(mois));
+      const commentaire = await redigerCommentaire(ebauche, highlights, libellePeriode(periode));
       return json({ data: { commentaire }, error: null });
     }
 
     if (action === "enregistrer") {
-      const mois = moisValide(body.mois);
+      const periode = validerPeriode(body.debut, body.fin);
       const contenu = body.contenu;
       if (!contenu || typeof contenu !== "object") return json({ data: null, error: "Contenu manquant" }, 400);
       const b64 = String(body.pdf_base64 ?? "");
@@ -106,10 +100,10 @@ serve(async (req) => {
       const octets = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 
       const { data: precedents } = await admin.schema("admin").from("rapports")
-        .select("version").eq("app_id", appId).eq("mois", `${mois}-01`)
+        .select("version").eq("app_id", appId).eq("debut", periode.debut).eq("fin", periode.fin)
         .order("version", { ascending: false }).limit(1);
       const version = (precedents?.[0]?.version ?? 0) + 1;
-      const chemin = `${appId}/${mois}-v${version}.pdf`;
+      const chemin = `${appId}/${periode.debut}_${periode.fin}-v${version}.pdf`;
 
       const { error: eUpload } = await admin.storage.from(BUCKET)
         .upload(chemin, octets, { contentType: "application/pdf", upsert: false });
@@ -118,7 +112,8 @@ serve(async (req) => {
       const { data: user } = await caller.auth.getUser();
       const { data, error } = await admin.schema("admin").from("rapports").insert({
         app_id: appId,
-        mois: `${mois}-01`,
+        debut: periode.debut,
+        fin: periode.fin,
         version,
         partenariat_id: contenu?.partenariat?.contrat?.id ?? null,
         contenu,
@@ -134,9 +129,10 @@ serve(async (req) => {
 
     if (action === "liste") {
       const { data, error } = await admin.schema("admin").from("rapports")
-        .select("id, mois, version, genere_le, pdf_path, evolutions, commentaire")
+        .select("id, debut, fin, version, genere_le, pdf_path")
         .eq("app_id", appId)
-        .order("mois", { ascending: false }).order("version", { ascending: false })
+        .order("fin", { ascending: false }).order("debut", { ascending: false })
+        .order("version", { ascending: false })
         .limit(60);
       if (error) throw new Error(error.message);
       const lignes = [];
@@ -144,7 +140,9 @@ serve(async (req) => {
         const { data: signe } = await admin.storage.from(BUCKET).createSignedUrl(r.pdf_path, 3600);
         lignes.push({
           id: r.id,
-          mois: String(r.mois).slice(0, 7),
+          debut: String(r.debut).slice(0, 10),
+          fin: String(r.fin).slice(0, 10),
+          libelle: libellePeriode({ debut: String(r.debut).slice(0, 10), fin: String(r.fin).slice(0, 10) }),
           version: r.version,
           genere_le: r.genere_le,
           url: signe?.signedUrl ?? null,
