@@ -68,7 +68,18 @@ export default function CreateUserModal({ isOpen, onClose, organizations, onCrea
             });
 
             if (fnError) {
-                throw new Error(fnError.message || 'Erreur lors de la création');
+                // Sur un statut non-2xx, supabase-js ne remonte qu'un message
+                // generique ; le vrai motif (email deja pris, role refuse...)
+                // est dans le corps JSON de la reponse.
+                let motif = null;
+                try {
+                    const corps = await fnError.context?.json?.();
+                    motif = corps?.error || null;
+                } catch { /* corps non JSON : on garde le message generique */ }
+                if (/already|exists|registered/i.test(motif || '')) {
+                    motif = "Un compte existe déjà avec cet email. Pour lui donner accès à un site, utilisez l'onglet « Accès console ».";
+                }
+                throw new Error(motif || fnError.message || 'Erreur lors de la création');
             }
 
             if (result?.error) {
