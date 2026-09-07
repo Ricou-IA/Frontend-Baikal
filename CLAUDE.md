@@ -4,6 +4,28 @@
 
 **Baikal** is a multi-tenant SaaS platform for the construction industry (BTP - Batiment et Travaux Publics). It provides AI-powered document analysis, RAG-based Q&A, and project management tools. The platform currently runs one vertical app: **ARPET** (Assistant de Recherche de Projet et Expertise Technique).
 
+### Positionnement produit (2026-09-07)
+
+Baikal est né console d'administration d'ARPET, puis est devenu la console de tous
+les sites de Confer. Décision d'Eric du 07/09/2026 : en faire un **produit vendable
+aux fondateurs qui vibecodent un SaaS** (pile Supabase + Stripe + Vercel + Resend) et
+n'ont pas l'énergie du backend — en gardant la règle « d'abord pour nous ».
+
+- On ne vend PAS « un admin panel » (Admin Pilot, Bricks.sh, Flashboard, Forest Admin
+  occupent le CRUD générique). On vend ce que personne ne fait : le **portefeuille**
+  (N sites, N projets Supabase, une console), le **contrat plutôt que le schéma**
+  (le site publie `baikal_dossiers` + funnel, Baikal en déduit ses capacités), la
+  **jointure base + Stripe + Search Console**, et l'**onboarding par l'agent du
+  client** (le contrat d'intégration livré comme prompt à coller dans Cursor / Claude
+  Code).
+- Séquence : contrat d'intégration public → 2-3 partenaires de conception branchés
+  à la main sur le Baikal hébergé → prix annoncé → l'étage locataire (compte au-dessus
+  des sites, secrets par compte, ARPET sorti en module) ne se construit que si ça paie.
+- Landing publique : `src/pages/marketing/Baikal.jsx` (route `/`). Demandes d'accès :
+  table `admin.demandes` + EF `baikal-demande` (verify_jwt off, honeypot, limite par
+  IP), lues dans l'étage Baikal (`/baikal?tab=demandes`). L'ancienne route marketing
+  `/baikal` a été retirée : elle masquait l'étage console du même chemin.
+
 - **Frontend:** React 18 + Vite + TailwindCSS (JSX, no TypeScript)
 - **Backend:** Supabase (Postgres, Edge Functions in Deno/TypeScript, Storage, Auth)
 - **Ingestion pipeline:** n8n workflows (FLUX 1-6) calling Supabase Edge Functions

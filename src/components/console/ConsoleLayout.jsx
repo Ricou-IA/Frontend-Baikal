@@ -16,7 +16,7 @@ import { useNavigate } from 'react-router-dom';
 import {
     LayoutDashboard, BookOpen, MessageSquareCode, Database, FolderOpen,
     TrendingUp, Mail, Users, Globe, Shield, Settings, LogOut, Euro, Target, FileText,
-    KeyRound, ListChecks, Tags, UserCog } from 'lucide-react';
+    KeyRound, ListChecks, Tags, UserCog, Inbox } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { AppProvider, useApp } from '../../contexts/AppContext';
 import SiteSidebar, { SiteBarre } from './SiteSidebar';
@@ -52,6 +52,7 @@ const MODULES_BAIKAL = [
     { id: 'baikal-superadmins', label: 'Super admins', icon: UserCog, route: '/baikal?tab=superadmins' },
     { id: 'baikal-registre', label: 'Registre des sites', icon: ListChecks, route: '/baikal?tab=registre' },
     { id: 'baikal-metiers', label: 'Métiers', icon: Tags, route: '/baikal?tab=metiers' },
+    { id: 'baikal-demandes', label: 'Demandes', icon: Inbox, route: '/baikal?tab=demandes' },
 ];
 
 // Page d'arrivee quand on quitte l'etage Baikal pour un site.

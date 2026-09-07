@@ -8,13 +8,15 @@
  *   - Registre des sites : lecture du registre config.apps ; la création d'un
  *     site reste une migration faite ensemble
  *   - Métiers : le vocabulaire commun (admin.metier)
- * Route : /baikal?tab=acces|superadmins|registre|metiers
+ *   - Demandes : les demandes d'accès déposées depuis la landing publique
+ *     (admin.demandes, EF baikal-demande)
+ * Route : /baikal?tab=acces|superadmins|registre|metiers|demandes
  * ============================================================================
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { KeyRound, UserCog, ListChecks, UserPlus, X, Check, Settings2, AlertCircle } from 'lucide-react';
+import { KeyRound, UserCog, ListChecks, UserPlus, X, Check, Settings2, AlertCircle, Inbox } from 'lucide-react';
 import ConsoleLayout from '../components/console/ConsoleLayout';
 import ModulesDroits, { MODULES_CONSOLE } from '../components/console/ModulesDroits';
 import SectionMetiers from '../components/console/SectionMetiers';
@@ -23,8 +25,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
 import { droitsService } from '../services/droits.service';
 import { sitesService } from '../services/sites.service';
+import { demandesService } from '../services/demandes.service';
 
-const ONGLETS = ['acces', 'superadmins', 'registre', 'metiers'];
+const ONGLETS = ['acces', 'superadmins', 'registre', 'metiers', 'demandes'];
 
 // ---------------------------------------------------------------------------
 // Accès par site
@@ -386,6 +389,93 @@ function Registre() {
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Demandes d'accès (landing publique)
+// ---------------------------------------------------------------------------
+const STATUTS_DEMANDE = [
+  ['nouvelle', 'Nouvelle'],
+  ['contactee', 'Contactée'],
+  ['branchee', 'Branchée'],
+  ['ecartee', 'Écartée'],
+];
+const PILES_DEMANDE = { supabase_stripe: 'Supabase + Stripe', supabase: 'Supabase', autre: 'Autre' };
+
+function Demandes() {
+  const [demandes, setDemandes] = useState([]);
+  const [chargement, setChargement] = useState(true);
+  const [erreur, setErreur] = useState(null);
+
+  const charger = useCallback(async () => {
+    setChargement(true);
+    const { data, error } = await demandesService.lister();
+    if (error) setErreur(error.message);
+    else setDemandes(data || []);
+    setChargement(false);
+  }, []);
+
+  useEffect(() => { charger(); }, [charger]);
+
+  const changerStatut = async (id, statut) => {
+    setDemandes((d) => d.map((x) => (x.id === id ? { ...x, statut } : x)));
+    const { error } = await demandesService.setStatut(id, statut);
+    if (error) { setErreur(error.message); charger(); }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-baikal-surface border border-baikal-border rounded-md p-4">
+        <p className="text-sm text-baikal-text">
+          Chaque ligne est une personne qui a déposé son adresse sur la landing. Une même
+          adresse ne compte qu'une fois : un second dépôt met la demande à jour.
+        </p>
+      </div>
+      {erreur && <p className="text-red-400 text-sm flex items-center gap-2"><AlertCircle className="w-4 h-4" />{erreur}</p>}
+      {chargement ? (
+        <p className="text-baikal-text text-sm font-mono">Chargement…</p>
+      ) : demandes.length === 0 ? (
+        <p className="text-baikal-text text-sm">Aucune demande pour l'instant.</p>
+      ) : (
+        <div className="bg-baikal-surface border border-baikal-border rounded-md overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-baikal-border text-left text-xs font-mono uppercase tracking-wider text-baikal-text">
+                <th className="px-3 py-2">Reçue</th>
+                <th className="px-3 py-2">Email</th>
+                <th className="px-3 py-2">Site</th>
+                <th className="px-3 py-2">Pile</th>
+                <th className="px-3 py-2">Message</th>
+                <th className="px-3 py-2">Statut</th>
+              </tr>
+            </thead>
+            <tbody>
+              {demandes.map((d) => (
+                <tr key={d.id} className="border-b border-baikal-border align-top">
+                  <td className="px-3 py-2 text-baikal-text font-mono whitespace-nowrap">
+                    {new Date(d.cree_le).toLocaleDateString('fr-FR')}
+                  </td>
+                  <td className="px-3 py-2 text-white font-mono">{d.email}</td>
+                  <td className="px-3 py-2 text-baikal-text break-all">{d.site || '—'}</td>
+                  <td className="px-3 py-2 text-baikal-text whitespace-nowrap">{PILES_DEMANDE[d.pile] || d.pile}</td>
+                  <td className="px-3 py-2 text-baikal-text max-w-md whitespace-pre-wrap">{d.message || '—'}</td>
+                  <td className="px-3 py-2">
+                    <select
+                      value={d.statut}
+                      onChange={(e) => changerStatut(d.id, e.target.value)}
+                      className="px-2 py-1 rounded border border-baikal-border bg-baikal-bg text-baikal-text focus:border-baikal-cyan outline-none text-xs"
+                    >
+                      {STATUTS_DEMANDE.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                    </select>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ContenuBaikal() {
   const { isSuperAdmin } = useAuth();
   const navigate = useNavigate();
@@ -413,6 +503,7 @@ function ContenuBaikal() {
     superadmins: ['Super admins', 'Tous les droits, partout'],
     registre: ['Registre des sites', 'Les sites déclarés dans Baikal'],
     metiers: ['Métiers', 'Le vocabulaire commun à tous les sites'],
+    demandes: ['Demandes', "Les demandes d'accès déposées sur withbaikal.io"],
   };
   const [titre, sousTitre] = titres[tab];
 
@@ -431,6 +522,7 @@ function ContenuBaikal() {
       {tab === 'superadmins' && <SuperAdmins />}
       {tab === 'registre' && <Registre />}
       {tab === 'metiers' && <SectionMetiers />}
+      {tab === 'demandes' && <Demandes />}
     </div>
   );
 }

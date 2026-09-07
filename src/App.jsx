@@ -67,11 +67,8 @@ function App() {
             element={<Confer />}
           />
           
-          {/* Baïkal Landing Page */}
-          <Route
-            path="/baikal"
-            element={<Baikal />}
-          />
+          {/* La landing Baikal vit sur "/" (voir REDIRECTIONS). Elle n'a plus de
+              route /baikal : ce chemin est l'étage console (ConsoleBaikal). */}
 
           {/* ============================================ */}
           {/* ROUTES PUBLIQUES */}

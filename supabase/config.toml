@@ -56,3 +56,12 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/import_map.json"
 entrypoint = "./functions/admin-desinscription/index.ts"
+
+# Demandes d'acces deposees depuis la landing publique : pas de JWT pour le
+# depot (honeypot + limite par IP), session super_admin exigee dans le code
+# pour lister et suivre.
+[functions.baikal-demande]
+enabled = true
+verify_jwt = false
+import_map = "./functions/import_map.json"
+entrypoint = "./functions/baikal-demande/index.ts"
