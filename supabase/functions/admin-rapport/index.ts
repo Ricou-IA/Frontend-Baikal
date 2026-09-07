@@ -20,7 +20,7 @@
 // deno-lint-ignore-file no-explicit-any
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { ErreurAcces, exigerSite, sitesAutorises } from "../_shared/droits.ts";
+import { ErreurAcces, droitsModules, exigerModule, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 import { construireFaits } from "./faits.ts";
 import { type Commit, commitsDuMois } from "./github.ts";
 import { libelleMois, libellePeriode, moisCouverts, type Periode, periodePrecedente, validerPeriode } from "./periode.ts";
@@ -114,6 +114,14 @@ serve(async (req) => {
     const appId = String(body.appId ?? "");
     const parId = ["audit-lire", "audit-supprimer", "supprimer"];
     if (!parId.includes(action)) exigerSite(autorises, appId);
+    // Droits par module : les audits SEO relevent du module seo, le reste du
+    // module rapports. Lecture = consultation ; tout ce qui genere (LLM),
+    // enregistre ou supprime est une ecriture.
+    const droits = await droitsModules(caller);
+    const moduleDe = (a: string) => (a.startsWith("audit") ? "seo" : "rapports");
+    const lectures = ["audits", "audit-lire", "liste", "chantiers"];
+    const niveauDe = (a: string) => (lectures.includes(a) ? "lecture" : "ecriture");
+    if (!parId.includes(action)) exigerModule(droits, appId, moduleDe(action), niveauDe(action));
 
     // --- Audit SEO : la lecture calculee et son texte, sans le reste du rapport.
     if (action === "audit") {
@@ -168,6 +176,7 @@ serve(async (req) => {
         .select("app_id").eq("id", String(body.id)).maybeSingle();
       if (!audit) return json({ data: null, error: "Audit introuvable" }, 404);
       exigerSite(autorises, audit.app_id);
+      exigerModule(droits, audit.app_id, "seo", "ecriture");
       const { error } = await admin.schema("admin").from("seo_audits").delete().eq("id", String(body.id));
       if (error) throw new Error(error.message);
       return json({ data: { supprime: true }, error: null });
@@ -180,6 +189,7 @@ serve(async (req) => {
         .select("app_id, pdf_path").eq("id", String(body.id)).maybeSingle();
       if (!rapport) return json({ data: null, error: "Rapport introuvable" }, 404);
       exigerSite(autorises, rapport.app_id);
+      exigerModule(droits, rapport.app_id, "rapports", "ecriture");
       const { error: eFichier } = await admin.storage.from(BUCKET).remove([rapport.pdf_path]);
       if (eFichier) throw new Error(`Suppression du PDF impossible : ${eFichier.message}`);
       const { error } = await admin.schema("admin").from("rapports").delete().eq("id", String(body.id));
@@ -205,6 +215,7 @@ serve(async (req) => {
       if (error) throw new Error(error.message);
       if (!data) return json({ data: null, error: "Audit introuvable" }, 404);
       exigerSite(autorises, data.app_id);
+      exigerModule(droits, data.app_id, "seo", "lecture");
       const p: Periode = { debut: String(data.debut).slice(0, 10), fin: String(data.fin).slice(0, 10) };
       return json({ data: { ...data, ...p, libelle: libellePeriode(p) }, error: null });
     }

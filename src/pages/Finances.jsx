@@ -22,6 +22,8 @@ import {
 import { Plus, Trash2, AlertTriangle, RefreshCw, Pencil, Check, X, Ban } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import ConsoleLayout from '../components/console/ConsoleLayout';
+import { useDroitModule } from '../hooks/useDroitModule';
+import LectureSeule from '../components/console/LectureSeule';
 import { useDonneesCachees } from '../hooks/useDonneesCachees';
 import {
   Chargement, ContenuEstompe, Erreur, LigneVide, Section, Vide,
@@ -84,7 +86,7 @@ function BandeauIncomplet({ fenetres }) {
   );
 }
 
-function Synthese({ appId }) {
+function Synthese({ appId, lectureSeule = false }) {
   const [version, setVersion] = useState(0);
   const [rafraichissement, setRafraichissement] = useState(false);
 
@@ -110,7 +112,7 @@ function Synthese({ appId }) {
     <Section
       titre="Synthèse"
       sousTitre="Archive alimentée toutes les 4 h — le montant fait foi côté Stripe, la TVA vient du registre des sites"
-      action={(
+      action={!lectureSeule && (
         <button
           onClick={rafraichir}
           disabled={rafraichissement || enCours}
@@ -357,7 +359,7 @@ return (
 );
 }
 
-function ChargesRecurrentes({ appId }) {
+function ChargesRecurrentes({ appId, lectureSeule = false }) {
   const [version, setVersion] = useState(0);
   const formVide = { libelle: '', montant: '', debut: '', finMode: 'revocation', fin: '', coutDirect: true };
   const [form, setForm] = useState(formVide);
@@ -470,10 +472,10 @@ function ChargesRecurrentes({ appId }) {
                           <input type="checkbox" checked={edition.coutDirect} onChange={(e) => setEdition({ ...edition, coutDirect: e.target.checked })} />
                         </td>
                         <td className="px-4 py-2 text-right whitespace-nowrap">
-                          <button onClick={enregistrer} disabled={occupe} title="Enregistrer" className="p-1 text-baikal-cyan hover:text-white disabled:opacity-50">
+                          <button onClick={enregistrer} disabled={occupe || lectureSeule} title="Enregistrer" className="p-1 text-baikal-cyan hover:text-white disabled:opacity-50">
                             <Check className="w-4 h-4" />
                           </button>
-                          <button onClick={() => setEdition(null)} disabled={occupe} title="Annuler" className="p-1 text-baikal-text hover:text-white disabled:opacity-50">
+                          <button onClick={() => setEdition(null)} disabled={occupe || lectureSeule} title="Annuler" className="p-1 text-baikal-text hover:text-white disabled:opacity-50">
                             <X className="w-4 h-4" />
                           </button>
                         </td>
@@ -495,10 +497,10 @@ function ChargesRecurrentes({ appId }) {
                               onChange={(e) => setRevocation({ ...revocation, fin: e.target.value })}
                               className={`${CHAMP} font-mono`}
                             />
-                            <button onClick={revoquer} disabled={occupe || !revocation.fin} title="Confirmer la révocation" className="p-1 text-baikal-cyan hover:text-white disabled:opacity-50">
+                            <button onClick={revoquer} disabled={lectureSeule || occupe || !revocation.fin} title="Confirmer la révocation" className="p-1 text-baikal-cyan hover:text-white disabled:opacity-50">
                               <Check className="w-4 h-4" />
                             </button>
-                            <button onClick={() => setRevocation(null)} disabled={occupe} title="Annuler" className="p-1 text-baikal-text hover:text-white disabled:opacity-50">
+                            <button onClick={() => setRevocation(null)} disabled={occupe || lectureSeule} title="Annuler" className="p-1 text-baikal-text hover:text-white disabled:opacity-50">
                               <X className="w-4 h-4" />
                             </button>
                           </span>
@@ -515,7 +517,7 @@ function ChargesRecurrentes({ appId }) {
                         {!c.fin && !enRevocation && (
                           <button
                             onClick={() => setRevocation({ id: c.id, fin: new Date().toISOString().slice(0, 10) })}
-                            disabled={occupe}
+                            disabled={occupe || lectureSeule}
                             title="Révoquer : poser la date de fin"
                             className="p-1 text-baikal-text hover:text-amber-400 transition-colors disabled:opacity-50"
                           >
@@ -532,7 +534,7 @@ function ChargesRecurrentes({ appId }) {
                             fin: c.fin || '',
                             coutDirect: c.cout_direct !== false,
                           })}
-                          disabled={occupe}
+                          disabled={occupe || lectureSeule}
                           title="Modifier"
                           className="p-1 text-baikal-text hover:text-baikal-cyan transition-colors disabled:opacity-50"
                         >
@@ -540,7 +542,7 @@ function ChargesRecurrentes({ appId }) {
                         </button>
                         <button
                           onClick={() => supprimer(c.id)}
-                          disabled={occupe}
+                          disabled={occupe || lectureSeule}
                           title="Supprimer"
                           className="p-1 text-baikal-text hover:text-red-400 transition-colors disabled:opacity-50"
                         >
@@ -583,7 +585,7 @@ function ChargesRecurrentes({ appId }) {
             </label>
             <button
               onClick={ajouter}
-              disabled={occupe || !form.libelle || !form.montant || !form.debut || !finValide(form)}
+              disabled={lectureSeule || occupe || !form.libelle || !form.montant || !form.debut || !finValide(form)}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-baikal-cyan text-baikal-cyan hover:bg-baikal-cyan/10 transition-colors disabled:opacity-50 text-sm"
             >
               <Plus className="w-4 h-4" />
@@ -602,7 +604,7 @@ function ChargesRecurrentes({ appId }) {
   );
 }
 
-function ChargesPonctuelles({ appId }) {
+function ChargesPonctuelles({ appId, lectureSeule = false }) {
   const [version, setVersion] = useState(0);
   const formVide = { libelle: '', montant: '', jour: new Date().toISOString().slice(0, 10), coutDirect: true };
   const [form, setForm] = useState(formVide);
@@ -679,7 +681,7 @@ function ChargesPonctuelles({ appId }) {
                     <td className="px-4 py-2 text-right">
                       <button
                         onClick={() => supprimer(c.id)}
-                        disabled={occupe}
+                        disabled={occupe || lectureSeule}
                         title="Supprimer"
                         className="p-1 text-baikal-text hover:text-red-400 transition-colors disabled:opacity-50"
                       >
@@ -719,7 +721,7 @@ function ChargesPonctuelles({ appId }) {
             </label>
             <button
               onClick={ajouter}
-              disabled={occupe || !form.libelle || !form.montant || !form.jour}
+              disabled={lectureSeule || occupe || !form.libelle || !form.montant || !form.jour}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-baikal-cyan text-baikal-cyan hover:bg-baikal-cyan/10 transition-colors disabled:opacity-50 text-sm"
             >
               <Plus className="w-4 h-4" />
@@ -964,15 +966,18 @@ function Partenariat({ appId }) {
 
 function FinancesContent() {
   const { currentApp } = useApp();
+  // Grille d'acces : en lecture, pas de rafraichissement ni de charges.
+  const { ecriture } = useDroitModule('finances');
   return (
     <div className="p-6 space-y-10">
-      <Synthese appId={currentApp} />
+      {!ecriture && <LectureSeule module="Finances" />}
+      <Synthese appId={currentApp} lectureSeule={!ecriture} />
       <Tendance appId={currentApp} />
       <CoutsParMois appId={currentApp} />
       <Ventes appId={currentApp} />
       <Partenariat appId={currentApp} />
-      <ChargesRecurrentes appId={currentApp} />
-      <ChargesPonctuelles appId={currentApp} />
+      <ChargesRecurrentes appId={currentApp} lectureSeule={!ecriture} />
+      <ChargesPonctuelles appId={currentApp} lectureSeule={!ecriture} />
     </div>
   );
 }

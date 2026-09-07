@@ -43,6 +43,7 @@ import Finances from './pages/Finances';
 import Rapports from './pages/Rapports';
 import Partenariats from './pages/Partenariats';
 import Sites from './pages/Sites';
+import ConsoleBaikal from './pages/ConsoleBaikal';
 import Clients from './pages/Clients';
 import Prospects from './pages/Prospects';
 
@@ -284,7 +285,17 @@ function App() {
             }
           />
 
-          {/* Admin - Parametrage des sites (super admin) */}
+          {/* Etage Baikal : super admins, acces par site, registre, metiers (super admin) */}
+          <Route
+            path="/baikal"
+            element={
+              <AdminRoute>
+                <ConsoleBaikal />
+              </AdminRoute>
+            }
+          />
+
+          {/* Admin - Parametrage du site selectionne (super admin) */}
           <Route
             path="/sites"
             element={

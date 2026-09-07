@@ -7,6 +7,7 @@
  *
  * Usage : <ConsoleLayout actif="seo">…contenu…</ConsoleLayout>
  * `actif` ∈ dashboard|knowledge|prompts|indexation|clients|prospects|finances|rapports|seo|partenariats|users|sites
+ *         ou, pour l'etage Baikal (/baikal), baikal-superadmins|baikal-acces|baikal-registre|baikal-metiers
  * `badges` optionnel : { knowledge: 3 } affiche un badge sur l'onglet.
  * ============================================================================
  */
@@ -14,7 +15,8 @@ import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     LayoutDashboard, BookOpen, MessageSquareCode, Database, FolderOpen,
-    TrendingUp, Mail, Users, Globe, Shield, Settings, LogOut, Euro, Target, FileText } from 'lucide-react';
+    TrendingUp, Mail, Users, Globe, Shield, Settings, LogOut, Euro, Target, FileText,
+    KeyRound, ListChecks, Tags, UserCog } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { AppProvider, useApp } from '../../contexts/AppContext';
 import SiteSidebar, { SiteBarre } from './SiteSidebar';
@@ -41,8 +43,21 @@ const MODULES_TRANSVERSES = [
     { id: 'seo', label: 'SEO', icon: TrendingUp, route: '/seo' },
     { id: 'partenariats', label: 'Partenariats', icon: Mail, route: '/partenariats' },
     { id: 'users', label: 'Utilisateurs', icon: Users, route: '/admin/users' },
-    { id: 'sites', label: 'Sites', icon: Globe, route: '/sites', superAdmin: true },
+    { id: 'sites', label: 'Paramétrage', icon: Globe, route: '/sites', superAdmin: true },
 ];
+
+// Etage Baikal (super_admin) : ce qui n'appartient a aucun site.
+const MODULES_BAIKAL = [
+    { id: 'baikal-acces', label: 'Accès par site', icon: KeyRound, route: '/baikal?tab=acces' },
+    { id: 'baikal-superadmins', label: 'Super admins', icon: UserCog, route: '/baikal?tab=superadmins' },
+    { id: 'baikal-registre', label: 'Registre des sites', icon: ListChecks, route: '/baikal?tab=registre' },
+    { id: 'baikal-metiers', label: 'Métiers', icon: Tags, route: '/baikal?tab=metiers' },
+];
+
+// Page d'arrivee quand on quitte l'etage Baikal pour un site.
+function routeAccueilSite(appId) {
+    return appId === 'arpet' ? '/admin' : '/clients';
+}
 
 function Onglet({ tab, actif, badge, onClick }) {
     const Icon = tab.icon;
@@ -68,8 +83,10 @@ function Onglet({ tab, actif, badge, onClick }) {
 
 function LayoutInterne({ actif, badges = {}, children }) {
     const navigate = useNavigate();
-    const { profile, isSuperAdmin, isOrgAdmin, sitesAdmin, isImpersonating, signOut } = useAuth();
+    const { profile, isSuperAdmin, isOrgAdmin, sitesAdmin, niveauModule, isImpersonating, signOut } = useAuth();
     const { currentApp, setCurrentApp, availableApps } = useApp();
+    // Etage Baikal : la page /baikal passe actif="baikal-<onglet>".
+    const estBaikal = typeof actif === 'string' && actif.startsWith('baikal');
 
     // Sites visibles dans le selecteur : super_admin -> tous ; sinon les
     // sites delegues (admin.droits_sites) + le site de sa propre org.
@@ -93,12 +110,21 @@ function LayoutInterne({ actif, badges = {}, children }) {
     const modulesSite = (peutModulesSite ? (MODULES_SITE[currentApp] || []) : [])
         .filter((t) => !t.superAdmin || isSuperAdmin);
 
-    // Modules transverses : droit delegue sur le site courant (ou super).
+    // Modules transverses : droit delegue sur le site courant (ou super), et
+    // module ouvert (lecture ou ecriture) dans la grille d'acces. Un module
+    // ferme disparait du menu ; l'EF le refuse de toute facon.
     // L'appartenance a une org ne donne jamais les transverses.
     const peutTransverses = isSuperAdmin || sitesAdmin.includes(currentApp);
     const transverses = peutTransverses
         ? MODULES_TRANSVERSES.filter((t) => !t.superAdmin || isSuperAdmin)
+            .filter((t) => t.superAdmin || niveauModule(currentApp, t.id) !== null)
         : [];
+
+    // Selection d'un site depuis l'etage Baikal : on quitte /baikal.
+    const choisirSite = (appId) => {
+        setCurrentApp(appId);
+        if (estBaikal) navigate(routeAccueilSite(appId));
+    };
 
     const handleSignOut = async () => {
         await signOut();
@@ -149,24 +175,31 @@ function LayoutInterne({ actif, badges = {}, children }) {
             </header>
 
             {/* Sous `xl`, la liste des sites se replie en une rangee defilante */}
-            <SiteBarre sites={sitesVisibles} actif={currentApp} onSelect={setCurrentApp} />
+            <SiteBarre sites={sitesVisibles} actif={currentApp} onSelect={choisirSite}
+                baikal={isSuperAdmin} baikalActif={estBaikal} onBaikal={() => navigate('/baikal')} />
 
             <div className="flex items-start">
-                <SiteSidebar sites={sitesVisibles} actif={currentApp} onSelect={setCurrentApp} />
+                <SiteSidebar sites={sitesVisibles} actif={currentApp} onSelect={choisirSite}
+                    baikal={isSuperAdmin} baikalActif={estBaikal} onBaikal={() => navigate('/baikal')} />
 
                 <div className="flex-1 min-w-0">
                     <div className="bg-baikal-surface border-b border-baikal-border">
                         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                             <nav className="flex gap-1 -mb-px overflow-x-auto items-center">
-                                {modulesSite.map((tab) => (
+                                {estBaikal && (
+                                    <span className="flex items-center gap-1.5 pr-3 mr-1 text-xs font-mono uppercase tracking-wider text-baikal-cyan border-r border-baikal-border">
+                                        <Shield className="w-3.5 h-3.5" /> Baikal
+                                    </span>
+                                )}
+                                {!estBaikal && modulesSite.map((tab) => (
                                     <Onglet key={tab.id} tab={tab} actif={actif}
                                         badge={badges[tab.id]}
                                         onClick={() => navigate(tab.route)} />
                                 ))}
-                                {modulesSite.length > 0 && (
+                                {!estBaikal && modulesSite.length > 0 && (
                                     <span className="mx-2 h-6 w-px bg-baikal-border" aria-hidden="true" />
                                 )}
-                                {transverses.map((tab) => (
+                                {(estBaikal ? MODULES_BAIKAL : transverses).map((tab) => (
                                     <Onglet key={tab.id} tab={tab} actif={actif}
                                         badge={badges[tab.id]}
                                         onClick={() => navigate(tab.route)} />

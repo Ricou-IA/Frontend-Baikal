@@ -18,7 +18,7 @@
 // deno-lint-ignore-file no-explicit-any
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { ErreurAcces, exigerSite, sitesAutorises } from "../_shared/droits.ts";
+import { ErreurAcces, droitsModules, exigerModule, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 import { captureJour, capturePeriode } from "./capture.ts";
 import { enrichirSite, sitesAvecVue } from "./enrichissement.ts";
 // Meme cascade que la page Clients (admin-dossiers/canal.ts) : l'origine
@@ -247,6 +247,14 @@ serve(async (req) => {
     // Les actions par identifiant verifient le site de la ligne, pas le body.
     const parId = ["charge-supprimer", "charge-modifier", "ponctuelle-supprimer"];
     if (!parId.includes(action)) exigerSite(autorises, appId);
+    // Module Finances : consultation en lecture ; rafraichissement et charges
+    // en ecriture. Les actions par identifiant verifient le module apres
+    // avoir resolu le site de la ligne.
+    const droits = await droitsModules(caller);
+    const ecritures = ["rafraichir", "charge-creer", "ponctuelle-creer"];
+    if (!parId.includes(action)) {
+      exigerModule(droits, appId, "finances", ecritures.includes(action) ? "ecriture" : "lecture");
+    }
 
     // Rafraichissement a la demande : meme travail que le cron, mais sur une
     // fenetre courte et declenche par un humain qui a les droits sur le site.
@@ -382,6 +390,7 @@ serve(async (req) => {
         .select("app_id").eq("id", String(body.id)).maybeSingle();
       if (!charge) return json({ data: null, error: "Charge introuvable" }, 404);
       exigerSite(autorises, charge.app_id);
+      exigerModule(droits, charge.app_id, "finances", "ecriture");
       // fin absente du body = inchangee ; fin: null = jusqu'a revocation.
       const patch: Record<string, unknown> = {};
       if (body.libelle !== undefined) patch.libelle = String(body.libelle).slice(0, 120);
@@ -421,6 +430,7 @@ serve(async (req) => {
         .select("app_id").eq("id", String(body.id)).maybeSingle();
       if (!charge) return json({ data: null, error: "Charge introuvable" }, 404);
       exigerSite(autorises, charge.app_id);
+      exigerModule(droits, charge.app_id, "finances", "ecriture");
       const { error } = await admin.schema("admin").from("charges_ponctuelles")
         .delete().eq("id", String(body.id));
       if (error) throw new Error(error.message);
@@ -432,6 +442,7 @@ serve(async (req) => {
         .select("app_id").eq("id", String(body.id)).maybeSingle();
       if (!charge) return json({ data: null, error: "Charge introuvable" }, 404);
       exigerSite(autorises, charge.app_id);
+      exigerModule(droits, charge.app_id, "finances", "ecriture");
       const { error } = await admin.schema("admin").from("charges_recurrentes")
         .delete().eq("id", String(body.id));
       if (error) throw new Error(error.message);

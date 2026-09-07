@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { buildUnsubscribeUrl, renderTemplate, sendOneEmail } from "./envoi.ts";
-import { ErreurAcces, exigerSite, sitesAutorises } from "../_shared/droits.ts";
+import { ErreurAcces, droitsModules, exigerModule, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -72,6 +72,12 @@ serve(async (req) => {
       return json({ data: null, error: "appId requis" }, 400);
     }
     if (appId) exigerSite(sites, appId);
+    // Module Partenariats : listes, apercu de segment et stats en lecture ;
+    // prospects, imports, campagnes et envois en ecriture.
+    const droits = await droitsModules(caller);
+    const ECRITURES = ["save-prospect", "delete-prospect", "import-csv", "sync-diagnostiqueurs",
+      "save-campagne", "send-test", "send-campaign"];
+    if (appId) exigerModule(droits, appId, "partenariats", ECRITURES.includes(action) ? "ecriture" : "lecture");
 
     // Expediteur du site, lu en base. Echoue fort si non configure.
     const chargerExpediteur = async (): Promise<

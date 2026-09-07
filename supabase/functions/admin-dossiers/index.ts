@@ -7,7 +7,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { chargerSite, ErreurSite, lecteurSite } from "../_shared/sites.ts";
-import { ErreurAcces, exigerSite, sitesAutorises } from "../_shared/droits.ts";
+import { ErreurAcces, droitsModules, exigerModule, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 import { normaliserCriteres } from "./filtres.ts";
 import { canalVente } from "./canal.ts";
 import { ErreurRelais, preparerRelais, relaisConfigure } from "./relais.ts";
@@ -139,6 +139,10 @@ serve(async (req) => {
     const { action, appId } = body;
     if (!appId) return json({ data: null, error: "appId requis" }, 400);
     exigerSite(sites, appId);
+    // Module Clients : consultation en lecture, action relayee au site en
+    // ecriture (renvoi d'email, extraction, credits, purge).
+    const droits = await droitsModules(caller);
+    exigerModule(droits, appId, "clients", action === "site-action" ? "ecriture" : "lecture");
 
     const admin = createClient(supabaseUrl, serviceKey, {
       auth: { autoRefreshToken: false, persistSession: false },

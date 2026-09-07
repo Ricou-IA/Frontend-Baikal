@@ -6,7 +6,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { chargerSite, ErreurSite, lecteurSite } from "../_shared/sites.ts";
-import { ErreurAcces, exigerSite, sitesAutorises } from "../_shared/droits.ts";
+import { ErreurAcces, droitsModules, exigerModule, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 import { normaliserCriteres } from "./filtres.ts";
 
 const corsHeaders = {
@@ -47,6 +47,10 @@ serve(async (req) => {
     const { action, appId } = body;
     if (!appId) return json({ data: null, error: "appId requis" }, 400);
     exigerSite(sites, appId);
+    // Module Prospects : liste et fiche en lecture, action et import en ecriture.
+    const droits = await droitsModules(caller);
+    exigerModule(droits, appId, "prospects",
+      ["action", "importer"].includes(String(action)) ? "ecriture" : "lecture");
 
     const admin = createClient(supabaseUrl, serviceKey, {
       auth: { autoRefreshToken: false, persistSession: false },

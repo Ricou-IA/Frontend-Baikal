@@ -48,6 +48,8 @@ export function AuthProvider({ children }) {
   const [profile, setProfile] = useState(null);
   const [organization, setOrganization] = useState(null);
   const [sitesAdmin, setSitesAdmin] = useState([]);
+  // Droits par module : {app_id: {module: 'lecture'|'ecriture'}} (mes_droits_modules)
+  const [droitsModules, setDroitsModules] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -111,6 +113,7 @@ export function AuthProvider({ children }) {
         if (profileError.code === 'PGRST116') {
           setProfile(null);
           setSitesAdmin([]);
+          setDroitsModules({});
           setOrganization(null);
           profileLoadedRef.current = true;
           return;
@@ -127,6 +130,14 @@ export function AuthProvider({ children }) {
         setSitesAdmin(Array.isArray(droits) ? droits : []);
       } catch {
         setSitesAdmin([]);
+      }
+      // Niveau par module et par site (admin.droits_sites.modules) :
+      // super_admin -> tout en ecriture partout ; module absent = ferme.
+      try {
+        const { data: modules } = await supabase.rpc('mes_droits_modules');
+        setDroitsModules(modules && typeof modules === 'object' ? modules : {});
+      } catch {
+        setDroitsModules({});
       }
 
       // Charger l'organisation si présente
@@ -217,6 +228,7 @@ export function AuthProvider({ children }) {
         } else if (event === 'SIGNED_OUT') {
           setProfile(null);
           setSitesAdmin([]);
+          setDroitsModules({});
           setOrganization(null);
           profileLoadedRef.current = false;
           loadingProfileRef.current = false;
@@ -428,6 +440,16 @@ export function AuthProvider({ children }) {
   const hasConsoleAccess = ['super_admin', 'org_admin'].includes(effectiveProfile?.app_role)
     || sitesAdmin.length > 0;
 
+  // Niveau d'un module sur un site : 'lecture' | 'ecriture' | null (ferme).
+  // Base sur le profil REEL (comme isSuperAdmin) : l'impersonation ne
+  // fabrique pas de droits.
+  const niveauModule = (appId, module) => {
+    if (isSuperAdmin) return 'ecriture';
+    const n = droitsModules?.[appId]?.[module];
+    return n === 'lecture' || n === 'ecriture' ? n : null;
+  };
+  const peutEcrire = (appId, module) => niveauModule(appId, module) === 'ecriture';
+
   // ========================================================================
   // VALEUR DU CONTEXTE
   // ========================================================================
@@ -449,6 +471,9 @@ export function AuthProvider({ children }) {
     isOrgAdmin,
     isSuperAdmin, // Toujours basé sur le profil réel
     sitesAdmin, // Sites où l'utilisateur est admin délégué (tous si super_admin)
+    droitsModules, // {app_id: {module: niveau}} — grille d'acces par module
+    niveauModule, // (appId, module) -> 'lecture' | 'ecriture' | null
+    peutEcrire, // (appId, module) -> bool
     hasProfile: !!effectiveProfile,
     hasConsoleAccess, // Nouveau flag pour accès admin
 

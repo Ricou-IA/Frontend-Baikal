@@ -19,6 +19,8 @@ import {
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import ConsoleLayout from '../components/console/ConsoleLayout';
+import { useDroitModule } from '../hooks/useDroitModule';
+import LectureSeule from '../components/console/LectureSeule';
 import { partenariatsService } from '../services/partenariats.service';
 import { parseCsv, versProspects } from '../utils/csv';
 
@@ -28,9 +30,11 @@ const TYPES = ['agence', 'diagnostiqueur', 'autre'];
 function PartenariatsContent() {
   const { currentApp } = useApp();
   const [onglet, setOnglet] = useState('prospects');
+  const { ecriture } = useDroitModule('partenariats');
 
   return (
     <div className="p-6 space-y-6">
+      {!ecriture && <LectureSeule module="Partenariats" />}
       <div className="flex items-center gap-4">
         <h1 className="text-2xl font-semibold text-baikal-text">Partenariats</h1>
         <div className="flex gap-2">
@@ -55,6 +59,7 @@ function PartenariatsContent() {
 }
 
 function Prospects({ appId }) {
+  const { ecriture } = useDroitModule('partenariats');
   const [prospects, setProspects] = useState([]);
   const [total, setTotal] = useState(0);
   const [filtres, setFiltres] = useState({ type: '', statut: '', recherche: '' });
@@ -130,22 +135,26 @@ function Prospects({ appId }) {
         </select>
         <span className="text-sm text-baikal-text opacity-70">{total} prospects</span>
         <div className="flex-1" />
-        <button
-          onClick={() => fichierRef.current?.click()}
-          disabled={occupe}
-          className="px-3 py-1 rounded border border-baikal-border text-baikal-text flex items-center gap-2"
-        >
-          <Upload className="w-4 h-4" /> Import CSV agences
-        </button>
-        <input ref={fichierRef} type="file" accept=".csv" className="hidden" onChange={importerCsv} />
-        <button
-          onClick={synchroniserDiagnostiqueurs}
-          disabled={occupe}
-          title="Tourne aussi automatiquement chaque nuit à 03h30"
-          className="px-3 py-1 rounded border border-baikal-border text-baikal-text flex items-center gap-2 disabled:opacity-50"
-        >
-          <RefreshCw className={`w-4 h-4 ${occupe ? 'animate-spin' : ''}`} /> Synchroniser les diagnostiqueurs
-        </button>
+        {ecriture && (
+          <>
+            <button
+              onClick={() => fichierRef.current?.click()}
+              disabled={occupe}
+              className="px-3 py-1 rounded border border-baikal-border text-baikal-text flex items-center gap-2"
+            >
+              <Upload className="w-4 h-4" /> Import CSV agences
+            </button>
+            <input ref={fichierRef} type="file" accept=".csv" className="hidden" onChange={importerCsv} />
+            <button
+              onClick={synchroniserDiagnostiqueurs}
+              disabled={occupe}
+              title="Tourne aussi automatiquement chaque nuit à 03h30"
+              className="px-3 py-1 rounded border border-baikal-border text-baikal-text flex items-center gap-2 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${occupe ? 'animate-spin' : ''}`} /> Synchroniser les diagnostiqueurs
+            </button>
+          </>
+        )}
       </div>
 
       {message && <p className="text-baikal-cyan text-sm">{message}</p>}
@@ -169,6 +178,7 @@ function Prospects({ appId }) {
                 <select
                   className="bg-baikal-bg border border-baikal-border rounded px-1"
                   value={p.statut}
+                  disabled={!ecriture}
                   onChange={async (e) => {
                     const { error } = await partenariatsService.saveProspect(appId, { ...p, statut: e.target.value });
                     if (error) setMessage(error.message);
@@ -187,6 +197,7 @@ function Prospects({ appId }) {
 }
 
 function Campagnes({ appId }) {
+  const { ecriture } = useDroitModule('partenariats');
   const [campagnes, setCampagnes] = useState([]);
   const [edition, setEdition] = useState(null); // campagne en cours d'edition
   const [apercu, setApercu] = useState(null);   // nb de destinataires du segment
@@ -300,11 +311,11 @@ function Campagnes({ appId }) {
         </div>
         <div className="flex gap-2">
           <button onClick={() => setEdition(null)} className="px-3 py-1 rounded border border-baikal-border text-baikal-text">Retour</button>
-          <button onClick={sauvegarder} disabled={occupe} className="px-3 py-1 rounded border border-baikal-cyan text-baikal-cyan">Enregistrer</button>
+          <button onClick={sauvegarder} disabled={occupe || !ecriture} className="px-3 py-1 rounded border border-baikal-cyan text-baikal-cyan">Enregistrer</button>
           {edition.id && edition.statut === 'brouillon' && (
             <>
-              <button onClick={envoyerTest} disabled={occupe} className="px-3 py-1 rounded border border-baikal-border text-baikal-text">Envoyer un test</button>
-              <button onClick={envoyer} disabled={occupe} className="px-3 py-1 rounded border border-red-400 text-red-400 flex items-center gap-2">
+              <button onClick={envoyerTest} disabled={occupe || !ecriture} className="px-3 py-1 rounded border border-baikal-border text-baikal-text">Envoyer un test</button>
+              <button onClick={envoyer} disabled={occupe || !ecriture} className="px-3 py-1 rounded border border-red-400 text-red-400 flex items-center gap-2">
                 <Send className="w-4 h-4" /> Envoyer la campagne
               </button>
             </>
@@ -317,12 +328,14 @@ function Campagnes({ appId }) {
   return (
     <div className="space-y-4">
       {message && <p className="text-baikal-cyan text-sm">{message}</p>}
-      <button
-        onClick={() => setEdition({ nom: '', objet: '', corps_html: '', segment: {}, statut: 'brouillon' })}
-        className="px-3 py-1 rounded border border-baikal-cyan text-baikal-cyan"
-      >
-        Nouvelle campagne
-      </button>
+      {ecriture && (
+        <button
+          onClick={() => setEdition({ nom: '', objet: '', corps_html: '', segment: {}, statut: 'brouillon' })}
+          className="px-3 py-1 rounded border border-baikal-cyan text-baikal-cyan"
+        >
+          Nouvelle campagne
+        </button>
+      )}
       <table className="w-full text-sm text-baikal-text">
         <thead>
           <tr className="border-b border-baikal-border text-left opacity-70">

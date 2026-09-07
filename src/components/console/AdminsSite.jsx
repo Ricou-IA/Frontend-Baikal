@@ -2,19 +2,60 @@
  * AdminsSite - Baikal Console
  * ============================================================================
  * Bloc « Accès console » d'un site : les personnes qui administrent ce site
- * depuis Baikal (admin.droits_sites). Liste, ajout par email d'un compte
- * existant, retrait. Super admin uniquement (EF admin-droits).
+ * depuis Baikal (admin.droits_sites), avec leur grille par module (ferme /
+ * lecture / ecriture). Liste, ajout par email d'un compte existant (tout en
+ * ecriture par defaut), reglage des modules, retrait. Super admin uniquement
+ * (EF admin-droits).
  *
- * Utilisé par la page Sites (fiche du site) et par la page Utilisateurs
- * (onglet « Accès console »). Extrait de Sites.jsx le 06/09/2026.
+ * Utilise par la page Paramétrage (fiche du site) et par la page Utilisateurs
+ * (onglet « Accès console »). La vue d'ensemble de tous les sites est dans
+ * l'etage Baikal (/baikal?tab=acces).
  * ============================================================================
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { UserPlus, X } from 'lucide-react';
+import { UserPlus, X, Check } from 'lucide-react';
 import { droitsService } from '../../services/droits.service';
+import ModulesDroits from './ModulesDroits';
 
-export default function AdminsSite({ appId, titre = 'Admins délégués', aide }) {
+function LigneAcces({ acces, appId, onChanged, onRevoke }) {
+  const [modules, setModules] = useState(acces.modules || {});
+  const [sauve, setSauve] = useState(false);
+  const [erreur, setErreur] = useState(null);
+
+  useEffect(() => { setModules(acces.modules || {}); }, [acces.modules]);
+
+  const changer = async (suivant) => {
+    setModules(suivant);
+    setErreur(null);
+    const { error } = await droitsService.setModules(appId, acces.userId, suivant);
+    if (error) { setErreur(error.message); return; }
+    setSauve(true);
+    setTimeout(() => setSauve(false), 1500);
+    onChanged?.();
+  };
+
+  return (
+    <li className="py-2 border-b border-baikal-border last:border-0 space-y-1.5">
+      <div className="flex items-center gap-2 text-sm text-baikal-text font-mono">
+        <span>{acces.email}</span>
+        {acces.nom && <span className="opacity-60">({acces.nom})</span>}
+        {sauve && <Check className="w-3.5 h-3.5 text-green-400" />}
+        <button
+          onClick={() => onRevoke(acces.userId)}
+          title="Retirer l'accès"
+          className="ml-auto p-1 text-baikal-text hover:text-red-400 transition-colors"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+      <ModulesDroits modules={modules} onChange={changer} />
+      {erreur && <p className="text-red-400 text-xs">{erreur}</p>}
+    </li>
+  );
+}
+
+export default function AdminsSite({ appId, titre = 'Accès console', aide }) {
   const [admins, setAdmins] = useState([]);
   const [email, setEmail] = useState('');
   const [occupe, setOccupe] = useState(false);
@@ -52,22 +93,12 @@ export default function AdminsSite({ appId, titre = 'Admins délégués', aide }
       {admins.length === 0 && (
         <p className="text-xs text-baikal-text opacity-50">Aucun — seul le super admin voit ce site.</p>
       )}
-      <ul className="space-y-1">
+      <ul>
         {admins.map((a) => (
-          <li key={a.userId} className="flex items-center gap-2 text-sm text-baikal-text font-mono">
-            <span>{a.email}</span>
-            {a.nom && <span className="opacity-60">({a.nom})</span>}
-            <button
-              onClick={() => retirer(a.userId)}
-              title="Retirer le droit"
-              className="p-1 text-baikal-text hover:text-red-400 transition-colors"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </li>
+          <LigneAcces key={a.userId} acces={a} appId={appId} onRevoke={retirer} />
         ))}
       </ul>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 pt-1">
         <input
           type="email"
           value={email}
@@ -84,6 +115,7 @@ export default function AdminsSite({ appId, titre = 'Admins délégués', aide }
           <UserPlus className="w-4 h-4" />
           Ajouter
         </button>
+        <span className="text-xs text-baikal-text opacity-50">Tout en écriture par défaut, à régler ensuite.</span>
       </div>
       {erreur && <p className="text-red-400 text-sm">{erreur}</p>}
     </div>

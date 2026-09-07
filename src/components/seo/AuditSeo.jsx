@@ -14,6 +14,7 @@ import { AlertTriangle, Sparkles, Save, Eye, Trash2 } from 'lucide-react';
 import { Chargement, Erreur, LigneVide, Section, Vide } from '../console/etats';
 import SelecteurPeriode, { libellePeriode, moisPeriode } from '../rapports/SelecteurPeriode';
 import { seoService } from '../../services/seo.service';
+import { useDroitModule } from '../../hooks/useDroitModule';
 import ConfirmModal from '../ui/ConfirmModal';
 import TableauTrafic from './TableauTrafic';
 
@@ -221,6 +222,8 @@ function Resultat({ audit, texte, setTexte, lectureSeule }) {
 }
 
 export default function AuditSeo({ appId }) {
+  // Grille d'acces : lancer, enregistrer et supprimer un audit sont des ecritures.
+  const { ecriture } = useDroitModule('seo');
   const [periode, setPeriode] = useState(moisPrecedent);
   const [audit, setAudit] = useState(null);
   const [texte, setTexte] = useState('');
@@ -301,7 +304,7 @@ export default function AuditSeo({ appId }) {
       action={(
         <div className="flex items-center gap-3 flex-wrap justify-end">
           <SelecteurPeriode valeur={periode} onChange={setPeriode} />
-          <button onClick={lancer} disabled={Boolean(occupe)} className={`${BOUTON} border-baikal-cyan text-baikal-cyan hover:bg-baikal-cyan/10`}>
+          <button onClick={lancer} disabled={Boolean(occupe) || !ecriture} className={`${BOUTON} border-baikal-cyan text-baikal-cyan hover:bg-baikal-cyan/10`}>
             <Sparkles className={`w-4 h-4 ${occupe === 'lancer' ? 'animate-pulse' : ''}`} />
             {occupe === 'lancer' ? 'Audit en cours…' : "Lancer l'audit"}
           </button>
@@ -322,7 +325,7 @@ export default function AuditSeo({ appId }) {
           <Resultat audit={audit} texte={texte} setTexte={setTexte} lectureSeule={audit.lectureSeule} />
           {!audit.lectureSeule && (
             <div className="flex items-center gap-3 flex-wrap">
-              <button onClick={enregistrer} disabled={Boolean(occupe)} className={`${BOUTON} border-baikal-cyan bg-baikal-cyan/10 text-baikal-cyan hover:bg-baikal-cyan/20 font-semibold`}>
+              <button onClick={enregistrer} disabled={Boolean(occupe) || !ecriture} className={`${BOUTON} border-baikal-cyan bg-baikal-cyan/10 text-baikal-cyan hover:bg-baikal-cyan/20 font-semibold`}>
                 <Save className="w-4 h-4" />
                 {occupe === 'enregistrer' ? 'Enregistrement…' : "Enregistrer l'audit"}
               </button>
@@ -346,9 +349,11 @@ export default function AuditSeo({ appId }) {
                   <button onClick={() => ouvrir(a.id)} className="inline-flex items-center gap-1 text-baikal-cyan hover:underline">
                     <Eye className="w-3.5 h-3.5" /> Voir
                   </button>
-                  <button onClick={() => setASupprimer(a)} title="Supprimer cet audit" className="ml-3 p-1 text-baikal-text hover:text-red-400 transition-colors align-middle">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  {ecriture && (
+                    <button onClick={() => setASupprimer(a)} title="Supprimer cet audit" className="ml-3 p-1 text-baikal-text hover:text-red-400 transition-colors align-middle">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}

@@ -11,7 +11,7 @@
 // deno-lint-ignore-file no-explicit-any
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { ErreurAcces, exigerSite, sitesAutorises } from "../_shared/droits.ts";
+import { ErreurAcces, droitsModules, exigerModule, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -118,6 +118,7 @@ serve(async (req) => {
     const autorises = await sitesAutorises(caller);
     const appId = String(body.appId ?? "");
     exigerSite(autorises, appId);
+    exigerModule(await droitsModules(caller), appId, "seo", "lecture");
 
     if (String(body.action ?? "serie") === "serie") {
       const [{ data: app }, { data, error }] = await Promise.all([

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import ConfirmModal from '../../ui/ConfirmModal';
 import { dossiersService } from '../../../services/dossiers.service';
+import { useDroitModule } from '../../../hooks/useDroitModule';
 
 const ICONES = {
   send: Send,
@@ -157,6 +158,8 @@ function choixManquant(valeurs, action) {
 }
 
 export default function BarreActions({ appId, dossierId, actions, isSuperAdmin, onFait }) {
+  // Grille d'acces : en lecture sur Clients, aucune action relayee au site.
+  const { ecriture } = useDroitModule('clients');
   // Array.isArray et pas `actions || []` : l'ancienne Edge Function renvoie
   // encore `actions` sous forme de BOOLEEN (relais configure ou non). Si le
   // front est deploye avant elle, `true.filter` leverait en plein rendu et la
@@ -174,7 +177,7 @@ export default function BarreActions({ appId, dossierId, actions, isSuperAdmin, 
   const [message, setMessage] = useState(null);
   const [confirmation, setConfirmation] = useState(null);
 
-  if (visibles.length === 0) return null;
+  if (visibles.length === 0 || !ecriture) return null;
 
   const lancer = async (action) => {
     // Le bouton est deja inactif dans ce cas ; cette garde est la barriere qui

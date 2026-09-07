@@ -22,6 +22,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, FileText, Download, Sparkles, Wand2, Trash2 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import ConsoleLayout from '../components/console/ConsoleLayout';
+import { useDroitModule } from '../hooks/useDroitModule';
+import LectureSeule from '../components/console/LectureSeule';
 import { Chargement, Erreur, LigneVide, Section, Vide } from '../components/console/etats';
 import SelecteurPeriode, { libellePeriode, moisPeriode } from '../components/rapports/SelecteurPeriode';
 import { rapportService } from '../services/rapport.service';
@@ -368,7 +370,7 @@ function Generateur({ appId, onGenere }) {
   );
 }
 
-function Archives({ appId, version }) {
+function Archives({ appId, version, lectureSeule = false }) {
   const [donnees, setDonnees] = useState(null);
   const [erreur, setErreur] = useState(null);
   const [rechargement, setRechargement] = useState(0);
@@ -428,9 +430,11 @@ function Archives({ appId, version }) {
                         <Download className="w-3.5 h-3.5" /> PDF
                       </a>
                     ) : <span className="opacity-40">—</span>}
-                    <button onClick={() => setASupprimer(r)} title="Supprimer ce rapport et son PDF" className="ml-3 p-1 text-baikal-text hover:text-red-400 transition-colors align-middle">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    {!lectureSeule && (
+                      <button onClick={() => setASupprimer(r)} title="Supprimer ce rapport et son PDF" className="ml-3 p-1 text-baikal-text hover:text-red-400 transition-colors align-middle">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -457,10 +461,14 @@ function Archives({ appId, version }) {
 function RapportsContent() {
   const { currentApp } = useApp();
   const [version, setVersion] = useState(0);
+  // Grille d'acces : en lecture, les archives seulement — generer, rediger
+  // et enregistrer sont des ecritures (et coutent un appel au modele).
+  const { ecriture } = useDroitModule('rapports');
   return (
     <div className="p-6 space-y-10">
-      <Generateur appId={currentApp} onGenere={() => setVersion((v) => v + 1)} />
-      <Archives appId={currentApp} version={version} />
+      {!ecriture && <LectureSeule module="Rapports" />}
+      {ecriture && <Generateur appId={currentApp} onGenere={() => setVersion((v) => v + 1)} />}
+      <Archives appId={currentApp} version={version} lectureSeule={!ecriture} />
     </div>
   );
 }

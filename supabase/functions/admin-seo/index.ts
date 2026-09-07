@@ -20,7 +20,7 @@ import {
   searchAnalytics,
   windowAnchored,
 } from "../_shared/gsc.ts";
-import { ErreurAcces, exigerSite, sitesAutorises } from "../_shared/droits.ts";
+import { ErreurAcces, droitsModules, exigerModule, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -93,6 +93,8 @@ serve(async (req) => {
 
     const body = await req.json();
     const { action, appId, days = 28 } = body;
+    // Module SEO : toutes les actions de cette EF sont des consultations.
+    const droits = await droitsModules(caller);
     const nbJours = [7, 28, 90].includes(days) ? days : 28;
 
     async function proprieteDe(id: string): Promise<string> {
@@ -108,6 +110,7 @@ serve(async (req) => {
     switch (action) {
       case "overview": {
         exigerSite(sites, appId);
+        exigerModule(droits, appId, "seo", "lecture");
         const site = await proprieteDe(appId);
         const cur = windowAnchored(nbJours);
         const prev = previousWindow(nbJours);
@@ -189,6 +192,7 @@ serve(async (req) => {
 
       case "compare": {
         exigerSite(sites, appId);
+        exigerModule(droits, appId, "seo", "lecture");
         const fenetre = [7, 28].includes(days) ? days : 28;
         const site = await proprieteDe(appId);
         const cur = windowAnchored(fenetre);
@@ -282,6 +286,7 @@ serve(async (req) => {
         // Serie quotidienne Google depuis l'archive (graphe Performances +
         // export). L'archive est la source : instantane, et analysable en SQL.
         exigerSite(sites, appId);
+        exigerModule(droits, appId, "seo", "lecture");
         const moisDemandes = [3, 6, 12, 16].includes(body.mois) ? body.mois : 16;
         const depuis = new Date();
         depuis.setUTCMonth(depuis.getUTCMonth() - moisDemandes);
@@ -312,6 +317,7 @@ serve(async (req) => {
         // l'API GSC (dimension date + filtre query equals) : l'archive par
         // requete est mensuelle, seule l'API fournit le quotidien (16 mois max).
         exigerSite(sites, appId);
+        exigerModule(droits, appId, "seo", "lecture");
         const requete = typeof body.requete === "string" ? body.requete.trim() : "";
         if (!requete) return json({ data: null, error: "Parametre requete manquant" }, 400);
         const moisDemandes = [3, 6, 12, 16].includes(body.mois) ? body.mois : 16;
@@ -357,6 +363,7 @@ serve(async (req) => {
         // Repartition mensuelle des clics et impressions Google par appareil
         // (dimension device de l'export GSC, archivee au mois).
         exigerSite(sites, appId);
+        exigerModule(droits, appId, "seo", "lecture");
         const nbMois = Math.min(Number(body.mois ?? 12), 24);
         const depuis = new Date();
         depuis.setUTCDate(1);
@@ -394,6 +401,7 @@ serve(async (req) => {
 
       case "bing-vs-google": {
         exigerSite(sites, appId);
+        exigerModule(droits, appId, "seo", "lecture");
         // Serie mensuelle : Google = somme des PAGES archivees (les requetes
         // detaillees rateraient les clics des recherches masquees — methode
         // PV) ; Bing = somme de la serie quotidienne (dimension site). Mois

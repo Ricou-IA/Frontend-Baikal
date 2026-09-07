@@ -18,6 +18,8 @@ import {
 } from '../components/console/etats';
 import KpiCarte from '../components/console/KpiCarte';
 import FicheProspect from '../components/console/FicheProspect';
+import { useDroitModule } from '../hooks/useDroitModule';
+import LectureSeule from '../components/console/LectureSeule';
 import ImportProspectsDialog from '../components/console/ImportProspectsDialog';
 import { prospectsService } from '../services/prospects.service';
 import {
@@ -75,6 +77,8 @@ function ProspectsContent() {
   // Dialogue d'import CSV ouvert ou non — un seul a la fois, comme emailOuvert.
   const [importOuvert, setImportOuvert] = useState(false);
   const [donnees, setDonnees] = useState(null);
+  // Grille d'acces : en lecture, ni import ni actions de fiche.
+  const { ecriture } = useDroitModule('prospects');
   const [erreur, setErreur] = useState(null);
   const [chargement, setChargement] = useState(true);
   // Incremente par FicheProspect apres une ecriture reussie (statut, note,
@@ -167,13 +171,15 @@ function ProspectsContent() {
   const aTelephone = (donnees.colonnes || []).includes('telephone');
 
   return (
+    <>
+    {!ecriture && <LectureSeule module="Prospects" />}
     <Section
       titre="Prospects"
       sousTitre="Lecture directe dans la base du site — le métier est un filtre, pas un onglet"
       // Meme garde que la barre d'actions de la fiche : proposer un import
       // qui echouerait a coup sur (site sans interface d'ecriture) est pire
       // que ne rien proposer.
-      action={donnees.actions === true && (
+      action={donnees.actions === true && ecriture && (
         <button
           onClick={() => setImportOuvert(true)}
           className="flex items-center gap-2 px-3 py-2 text-sm rounded-md border border-baikal-border
@@ -375,7 +381,7 @@ function ProspectsContent() {
         <FicheProspect
           appId={currentApp}
           email={emailOuvert}
-          actions={donnees.actions}
+          actions={donnees.actions === true && ecriture}
           metiers={donnees.metiers}
           onFerme={() => setEmailOuvert(null)}
           onChange={() => setVersionListe((v) => v + 1)}
@@ -393,6 +399,7 @@ function ProspectsContent() {
         />
       )}
     </Section>
+  </>
   );
 }
 
