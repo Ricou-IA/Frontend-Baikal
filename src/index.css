@@ -125,6 +125,6 @@
   main table:not(.tableau-large) td:first-child { padding-left: 0.75rem; }
   main table:not(.tableau-large) th:last-child,
   main table:not(.tableau-large) td:last-child { padding-right: 0.75rem; }
-  main table:not(.tableau-large) td { white-space: normal; overflow-wrap: anywhere; }
+  main table:not(.tableau-large) td { white-space: normal; }
   main table:not(.tableau-large) td .truncate { max-width: 44vw; }
 }

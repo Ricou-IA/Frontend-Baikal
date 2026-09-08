@@ -41,7 +41,7 @@ export function BadgeEtape({ statut, payeLe, funnel }) {
   const etape = (funnel || []).find((e) => e.slug === statut) || null;
   if (etape) {
     const badge = (
-      <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border ${COULEURS_ETAPES[etape.couleur] || COULEUR_DEFAUT}`}>
+      <span className={`inline-flex items-center whitespace-nowrap px-2 py-0.5 rounded-md text-xs font-medium border ${COULEURS_ETAPES[etape.couleur] || COULEUR_DEFAUT}`}>
         {etape.libelle}
       </span>
     );
@@ -52,7 +52,7 @@ export function BadgeEtape({ statut, payeLe, funnel }) {
     if (etape.apres_paiement && payeLe) {
       return (
         <span className="inline-flex items-center gap-1">
-          <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border ${COULEURS_ETAPES.emerald}`}>
+          <span className={`inline-flex items-center whitespace-nowrap px-2 py-0.5 rounded-md text-xs font-medium border ${COULEURS_ETAPES.emerald}`}>
             Payé
           </span>
           {badge}
@@ -64,13 +64,13 @@ export function BadgeEtape({ statut, payeLe, funnel }) {
   // Site sans funnel (statut null) ou slug hors registre : repli.
   if (statut) {
     return (
-      <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border ${COULEUR_DEFAUT}`}>
+      <span className={`inline-flex items-center whitespace-nowrap px-2 py-0.5 rounded-md text-xs font-medium border ${COULEUR_DEFAUT}`}>
         {statut}
       </span>
     );
   }
   return payeLe ? (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border ${COULEURS_ETAPES.emerald}`}>
+    <span className={`inline-flex items-center whitespace-nowrap px-2 py-0.5 rounded-md text-xs font-medium border ${COULEURS_ETAPES.emerald}`}>
       Payé
     </span>
   ) : (
@@ -85,14 +85,14 @@ export function BadgeCategorie({ categorie, perimetre, categories }) {
   const cat = categorie && (categories || []).find((c) => c.slug === categorie);
   if (cat) {
     return (
-      <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border ${COULEURS_ETAPES[cat.couleur] || COULEUR_DEFAUT}`}>
+      <span className={`inline-flex items-center whitespace-nowrap px-2 py-0.5 rounded-md text-xs font-medium border ${COULEURS_ETAPES[cat.couleur] || COULEUR_DEFAUT}`}>
         {cat.libelle}
       </span>
     );
   }
   if (categorie) {
     return (
-      <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border ${COULEUR_DEFAUT}`}>
+      <span className={`inline-flex items-center whitespace-nowrap px-2 py-0.5 rounded-md text-xs font-medium border ${COULEUR_DEFAUT}`}>
         {categorie}
       </span>
     );
@@ -114,23 +114,27 @@ export function BadgeCanal({ canal, attribution }) {
   const domaineBrut = attribution?.referrer_domaine || null;
   const domaine = domaineBrut && !DOMAINES_PAIEMENT_MASQUES.includes(domaineBrut) ? domaineBrut : null;
   return (
-    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-baikal-border text-[11px] ${classe}`}>
+    <span className={`inline-flex items-center whitespace-nowrap gap-1 px-1.5 py-0.5 rounded border border-baikal-border text-[11px] ${classe}`}>
       {libelle}
       {domaine && <span className="opacity-70">· {domaine}</span>}
     </span>
   );
 }
 
+// Date courte « 7/09/26 » (Eric, 08/09/2026 : plus court que « 7 sept. 26 »).
+function dateCourte(d) {
+  return `${d.getDate()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(-2)}`;
+}
+
 export function fmtDate(iso) {
   if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: '2-digit' });
+  return dateCourte(new Date(iso));
 }
 
 export function fmtDateHeure(iso) {
   if (!iso) return '—';
-  return new Date(iso).toLocaleString('fr-FR', {
-    day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit',
-  });
+  const d = new Date(iso);
+  return `${dateCourte(d)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
 // postgres-js renvoie les numeric en chaines : on coerce avant de formater.
