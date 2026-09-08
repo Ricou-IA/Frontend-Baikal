@@ -10,15 +10,14 @@
  */
 import { AlertTriangle, Database, Loader2 } from 'lucide-react';
 
-export function Section({ titre, sousTitre, action, children }) {
+// `sousTitre` est accepté mais n'est plus affiché : Eric ne veut pas de texte
+// d'explication dans la console (08/09/2026).
+export function Section({ titre, sousTitre, action, children }) { // eslint-disable-line no-unused-vars
   return (
     <section className="space-y-4">
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-xl font-semibold text-baikal-text">{titre}</h2>
-          {sousTitre && (
-            <p className="text-xs text-baikal-text opacity-60 mt-1">{sousTitre}</p>
-          )}
         </div>
         {action}
       </div>

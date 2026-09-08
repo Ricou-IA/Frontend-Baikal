@@ -197,10 +197,6 @@ function ProspectsContent() {
       <div className="space-y-2">
         <div>
           <h3 className="text-sm font-semibold text-baikal-text">Le parc du site</h3>
-          <p className="text-xs text-baikal-text opacity-60">
-            Vivier adressable complet, adresses de test exclues — ne coïncide pas avec le
-            total filtré ci-dessous (qui exclut aussi les clients par défaut), volontairement.
-          </p>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           <KpiCarte label="Adressables"

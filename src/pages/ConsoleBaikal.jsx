@@ -120,12 +120,6 @@ function AccesParSite() {
   return (
     <div className="space-y-4">
       <div className="bg-baikal-surface border border-baikal-border rounded-md p-4 space-y-3">
-        <p className="text-sm text-baikal-text">
-          Qui administre quel site depuis Baikal, et à quel niveau par module.
-          Fermé : le module n'apparaît pas. Lecture : consultation seule. Écriture :
-          toutes les actions. Le rôle dans une organisation ARPET est un autre axe,
-          réglé dans Utilisateurs.
-        </p>
         <div className="flex flex-wrap items-center gap-2">
           <input
             type="email"
@@ -237,11 +231,6 @@ function SuperAdmins() {
   return (
     <div className="space-y-4">
       <div className="bg-baikal-surface border border-baikal-border rounded-md p-4 space-y-3">
-        <p className="text-sm text-baikal-text">
-          Un super admin a tous les droits, sur tous les sites et sur cet étage.
-          Impossible de se retirer soi-même ni de retirer le dernier. Chaque
-          changement est journalisé.
-        </p>
         <div className="flex flex-wrap items-center gap-2">
           <input
             type="email"
@@ -336,10 +325,6 @@ function Registre() {
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-baikal-text">
-        Le registre config.apps. La création d'un site reste une migration faite
-        ensemble ; ses réglages s'éditent dans son Paramétrage.
-      </p>
       {erreur && <p className="text-red-400 text-sm">{erreur}</p>}
       <div className="bg-baikal-surface border border-baikal-border rounded-md overflow-x-auto">
         <table className="w-full">
@@ -423,12 +408,6 @@ function Demandes() {
 
   return (
     <div className="space-y-4">
-      <div className="bg-baikal-surface border border-baikal-border rounded-md p-4">
-        <p className="text-sm text-baikal-text">
-          Chaque ligne est une personne qui a déposé son adresse sur la landing. Une même
-          adresse ne compte qu'une fois : un second dépôt met la demande à jour.
-        </p>
-      </div>
       {erreur && <p className="text-red-400 text-sm flex items-center gap-2"><AlertCircle className="w-4 h-4" />{erreur}</p>}
       {chargement ? (
         <p className="text-baikal-text text-sm font-mono">Chargement…</p>
@@ -515,7 +494,6 @@ function ContenuBaikal() {
         </div>
         <div>
           <h1 className="text-lg font-mono font-bold text-white">BAIKAL · {titre.toUpperCase()}</h1>
-          <p className="text-xs text-baikal-text font-mono">{sousTitre}</p>
         </div>
       </div>
       {tab === 'acces' && <AccesParSite />}

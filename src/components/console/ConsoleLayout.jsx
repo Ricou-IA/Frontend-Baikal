@@ -108,6 +108,36 @@ function LayoutInterne({ actif, badges = {}, children }) {
         el?.scrollIntoView({ block: 'nearest', inline: 'center' });
     }, [actif]);
 
+    // Tableaux en cartes sous md (index.css) : chaque cellule reçoit en
+    // data-label le texte de son en-tête, pour que la carte lise
+    // « libellé : valeur ». Rejoué à chaque changement du DOM de la page.
+    const mainRef = useRef(null);
+    useEffect(() => {
+        const racine = mainRef.current;
+        if (!racine) return undefined;
+        const etiqueter = () => {
+            racine.querySelectorAll('table:not(.tableau-large)').forEach((table) => {
+                const entetes = [...(table.tHead?.rows?.[0]?.cells || [])].map((th) => th.innerText.trim());
+                if (entetes.length === 0) return;
+                for (const corps of table.tBodies) {
+                    for (const ligne of corps.rows) {
+                        let i = 0;
+                        for (const cellule of ligne.cells) {
+                            const libelle = cellule.colSpan > 1 ? '' : entetes[i];
+                            if (libelle) cellule.dataset.label = libelle;
+                            else delete cellule.dataset.label;
+                            i += cellule.colSpan || 1;
+                        }
+                    }
+                }
+            });
+        };
+        etiqueter();
+        const observateur = new MutationObserver(etiqueter);
+        observateur.observe(racine, { childList: true, subtree: true });
+        return () => observateur.disconnect();
+    }, []);
+
     // Si le site courant n'est pas visible, basculer sur le premier autorise.
     useEffect(() => {
         if (sitesVisibles.length > 0 && !sitesVisibles.some((a) => a.id === currentApp)) {
@@ -177,7 +207,7 @@ function LayoutInterne({ actif, badges = {}, children }) {
                         </div>
                         <BoutonSite libelle={libelleSite} ouvert={feuilleSites} onToggle={() => setFeuilleSites((o) => !o)} />
                         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                            {isSuperAdmin && !isImpersonating && <span className="hidden md:block"><ProfileSwitcher /></span>}
+                            {isSuperAdmin && !isImpersonating && !estBaikal && <span className="hidden md:block"><ProfileSwitcher /></span>}
                             {isImpersonating && (
                                 <div className="px-3 py-1.5 bg-amber-900/20 text-amber-300 border border-amber-500/50 rounded-md text-sm font-mono">
                                     👤 {profile?.full_name || profile?.email}
@@ -244,7 +274,7 @@ function LayoutInterne({ actif, badges = {}, children }) {
                         </div>
                     </div>
 
-                    <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8 pb-24 md:pb-8">
+                    <main ref={mainRef} className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8 pb-24 md:pb-8">
                         <p className="md:hidden mb-3 text-[11px] font-mono uppercase tracking-wider text-baikal-cyan truncate">
                             {libelleSite}
                             {isImpersonating && <span className="ml-2 text-amber-300 normal-case tracking-normal">· vu comme {profile?.email}</span>}

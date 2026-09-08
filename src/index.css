@@ -110,3 +110,46 @@
     min-width: 2.5rem;
   }
 }
+
+/* ------------------------------------------------------------------------
+   Tableaux en cartes sous 768px : chaque ligne devient un bloc, chaque
+   cellule une paire libellé / valeur (le libellé vient de l'en-tête, posé
+   en data-label par ConsoleLayout). Les tableaux `.tableau-large` (deux
+   rangées d'en-têtes, colonnes par mois) gardent le défilement horizontal.
+   ------------------------------------------------------------------------ */
+@media (max-width: 767px) {
+  main table:not(.tableau-large) { display: block; min-width: 0 !important; }
+  main table:not(.tableau-large) thead { display: none; }
+  main table:not(.tableau-large) tbody { display: block; }
+  main table:not(.tableau-large) tr {
+    display: block;
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid #2D3748;
+  }
+  main table:not(.tableau-large) tr:last-child { border-bottom: 0; }
+  main table:not(.tableau-large) td {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.75rem;
+    padding: 0.2rem 0 !important;
+    text-align: right;
+    white-space: normal;
+    max-width: none !important;
+  }
+  main table:not(.tableau-large) td[data-label]::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    max-width: 45%;
+    font-family: 'JetBrains Mono', Consolas, monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #94A3B8;
+    opacity: 0.7;
+    text-align: left;
+  }
+  main table:not(.tableau-large) td:not([data-label]) { justify-content: flex-start; text-align: left; }
+  main table:not(.tableau-large) td > .truncate { max-width: 60vw; }
+}

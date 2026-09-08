@@ -90,7 +90,7 @@ export function Autorite({ appId }) {
             <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
               <div className="px-4 py-2 text-xs opacity-60 uppercase tracking-wider text-baikal-text">Évolution — DA en gros, domaines référents en petit</div>
               <div className="overflow-x-auto">
-                <table className="w-full text-sm text-baikal-text">
+                <table className="tableau-large w-full text-sm text-baikal-text">
                   <thead>
                     <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
                       <th className="px-4 py-2">Domaine</th>

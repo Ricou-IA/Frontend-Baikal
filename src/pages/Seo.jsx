@@ -242,10 +242,6 @@ function SeriesQuotidiennes({ jours, defautActives }) {
             ))}
           </LineChart>
         </ResponsiveContainer>
-        <p className="text-[10px] text-baikal-text opacity-40 mt-2">
-          Chaque serie est tracee sur sa propre echelle (normalisee), comme dans
-          Search Console — survole pour lire les valeurs reelles.
-        </p>
       </div>
     </>
   );
@@ -369,13 +365,6 @@ function ModaleRequete({ appId, requete, onFermer }) {
             />
           </div>
         )}
-
-        <p className="text-[11px] text-baikal-text opacity-50 leading-relaxed">
-          Serie quotidienne interrogee en direct aupres de Search Console (l'archive
-          interne par requete est mensuelle). Fenetre ancree a J-3. La courbe demarre
-          a la premiere impression observee ; un jour sans impression vaut 0, et la
-          position n'existe que les jours avec impression (pas de mesure ≠ zero).
-        </p>
       </div>
     </div>
   );
@@ -485,9 +474,6 @@ function VueEnsemble({ appId }) {
           <div className="flex items-center justify-between mb-3">
             <p className="text-xs font-mono text-baikal-text uppercase">
               Distribution des impressions par position
-            </p>
-            <p className="text-[10px] text-baikal-text opacity-50">
-              Clique sur une ligne pour filtrer la table
             </p>
           </div>
           <div className="space-y-1">
@@ -651,16 +637,6 @@ function VueEnsemble({ appId }) {
           </div>
         </div>
       </div>
-
-      <p className="text-[11px] text-baikal-text opacity-50 leading-relaxed">
-        <strong className="opacity-100">Lecture</strong> · Top 3 = candidates au CTR maximal,
-        top 10 = premiere page Google. Au-dela de la position 20, capter du clic devient
-        difficile — cibler ces requetes via contenu + maillage interne.
-        {' '}« Recherches masquees » = requetes trop rares que Google ne detaille pas (vie
-        privee) : elles comptent dans les totaux mais pas dans le tableau — c'est l'ecart
-        avec le gros chiffre de l'interface Search Console. Les recherches en « phrase
-        exacte » (guillemets, outils de verification) sont ecartees des tops.
-      </p>
       </ContenuEstompe>
       )}
       {requeteModale && (
@@ -842,10 +818,6 @@ function Comparatif({ appId }) {
           </table>
         </div>
       </div>
-      <p className="text-[11px] text-baikal-text opacity-50">
-        Requetes de moins de 10 impressions cumulees ecartees (bruit). Δ position positif =
-        rang qui se degrade. Tri : pires regressions en tete.
-      </p>
       </ContenuEstompe>
       )}
       {requeteModale && (
@@ -893,11 +865,6 @@ function BingVsGoogle({ appId }) {
 
   return (
     <Section titre="Bing vs Google" sousTitre={sousTitre}>
-      <p className="text-[11px] text-baikal-text opacity-60">
-        Bing ne conserve aucun historique interrogeable : ses clics ne sont comptes que
-        depuis la mise en place du releve quotidien. Un « — » signifie
-        {' '}<strong className="opacity-100">pas de mesure</strong>, pas zero clic.
-      </p>
       <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
         <table className="w-full text-sm text-baikal-text">
           <thead>
@@ -963,13 +930,6 @@ function BingVsGoogle({ appId }) {
           </table>
         </div>
       )}
-
-      <p className="text-[11px] text-baikal-text opacity-50 leading-relaxed">
-        Les positions Bing sont un releve PONCTUEL{donnees.dernierReleve ? ` (dernier : ${donnees.dernierReleve})` : ''},
-        pas une moyenne mensuelle : l'API Bing n'accepte aucune plage de dates. Un mois sans
-        mesure Bing affiche « — », jamais 0 — Bing n'archive pas son historique, les mois
-        d'avant la mise en place des crons sont definitivement vides.
-      </p>
     </Section>
   );
 }

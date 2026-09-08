@@ -41,7 +41,7 @@ export default function TableauTrafic({ google = [], bing = [], titre = 'Trafic 
     <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
       {titre && <div className="px-4 py-2 text-xs opacity-60 uppercase tracking-wider text-baikal-text">{titre}</div>}
       <div className="overflow-x-auto">
-        <table className="w-full text-sm text-baikal-text">
+        <table className="tableau-large w-full text-sm text-baikal-text">
           <thead>
             <tr className="text-xs opacity-70 border-b border-baikal-border">
               <th className="text-left px-4 py-1.5" rowSpan={2}>Semaine</th>

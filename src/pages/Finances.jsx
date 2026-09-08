@@ -161,14 +161,6 @@ function Synthese({ appId, lectureSeule = false }) {
               </tbody>
             </table>
           </div>
-          <p className="text-xs text-baikal-text opacity-60 leading-relaxed">
-            <strong className="opacity-100">Lecture</strong> · Le résultat déduit du CA HT les frais
-            Stripe, les remboursements, le coût IA, les charges fixes au prorata journalier et les
-            charges ponctuelles le jour où elles tombent.
-            Une vente remboursée reste comptée dans les ventes — le remboursement apparaît à sa
-            propre ligne. « Google Ads » reste vide tant qu'aucun compte n'est branché : c'est une
-            absence de configuration, pas un jour manquant.
-          </p>
         </ContenuEstompe>
       )}
     </Section>
@@ -592,11 +584,6 @@ function ChargesRecurrentes({ appId, lectureSeule = false }) {
               Ajouter
             </button>
           </div>
-          <p className="text-xs text-baikal-text opacity-60 leading-relaxed">
-            <strong className="opacity-100">Lecture</strong> · Une charge « jusqu'à révocation »
-            court sans fin ; la révoquer, c'est lui poser sa date de fin, elle cesse d'être
-            déduite le lendemain. Chaque ligne se modifie en place.
-          </p>
           {erreurForm && <Erreur message={erreurForm} />}
         </ContenuEstompe>
       )}
@@ -804,13 +791,6 @@ function Ventes({ appId }) {
                   );
                 })}
               </div>
-              <p className="text-xs text-baikal-text opacity-60 leading-relaxed">
-                <strong className="opacity-100">Lecture</strong> · « Sans origine » est une catégorie
-                à part entière, jamais un reste à répartir : ces visiteurs sont arrivés sans que le
-                navigateur transmette d'où. « Origine perdue » est différent — la vente <em>avait</em>
-                une origine, effacée depuis par la purge RGPD du site. Les confondre ferait croire à
-                une baisse de l'organique là où il n'y a qu'un oubli de mesure.
-              </p>
             </>
           )}
           <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
@@ -948,16 +928,6 @@ function Partenariat({ appId }) {
               </tbody>
             </table>
           </div>
-          <p className="text-xs text-baikal-text opacity-60 leading-relaxed">
-            <strong className="opacity-100">Lecture</strong> · Contrat signé le 18/08/2026, article 7.
-            Une vente remboursée n'est pas une Vente : elle sort des ventes nettes, du seuil et du CA.
-            Les {contrat.franchise} premières ventes nettes de chaque mois civil reviennent à CONFER ; le
-            seuil ne se reporte pas. Les Coûts Directs (art. 8.1 : IA, Stripe, publicité, charges cochées
-            « coût direct ») sont pris pour tout le mois puis imputés au prorata des ventes partageables.
-            Un résultat négatif se reporte sur les mois suivants jusqu'à apurement. CA partageable = HT
-            effectivement encaissé sur les ventes au-delà du seuil. Les mois antérieurs au contrat donnent
-            la tendance, sans partage.
-          </p>
         </ContenuEstompe>
       )}
     </Section>

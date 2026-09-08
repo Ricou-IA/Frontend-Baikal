@@ -357,13 +357,6 @@ function Generateur({ appId, onGenere }) {
               </a>
             )}
           </div>
-          <p className="text-[11px] text-baikal-text opacity-50 leading-relaxed">
-            <strong className="opacity-100">Lecture</strong> · Les highlights sont calculés par règles fixes,
-            la trame est la même d'une période à l'autre. Les trois textes libres sont des propositions : c'est le
-            contenu des champs au moment de « Générer » qui est archivé avec le PDF. Régénérer une période crée
-            une nouvelle version, l'ancienne reste téléchargeable. Le compte de partage suit l'Annexe 2 du contrat
-            signé le 18/08/2026 ; il est dû dans les 15 jours suivant la fin du mois (art. 7.4).
-          </p>
         </div>
       )}
     </Section>

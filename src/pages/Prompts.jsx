@@ -329,9 +329,6 @@ function Prompts({ embedded = false }) {
               <MessageSquareCode className="w-5 h-5 text-baikal-cyan" />
               PROMPTS
             </h2>
-            <p className="text-baikal-text text-sm mt-1 font-sans">
-              Configurez les prompts système pour chaque type d'agent
-            </p>
           </div>
           <Button
             variant="primary"
@@ -340,17 +337,6 @@ function Prompts({ embedded = false }) {
           >
             Nouveau prompt
           </Button>
-        </div>
-
-        {/* Info hiérarchie */}
-        <div className="p-4 bg-baikal-cyan/10 border border-baikal-cyan/50 rounded-md">
-          <div className="flex items-start gap-3">
-            <Info className="w-5 h-5 text-baikal-cyan flex-shrink-0 mt-0.5" />
-            <div className="text-sm text-baikal-text">
-              <p className="font-medium mb-1 font-mono">HIÉRARCHIE_DES_PROMPTS</p>
-              <p className="font-sans">{HIERARCHY_EXPLANATION}</p>
-            </div>
-          </div>
         </div>
 
         {/* Erreur */}
@@ -418,7 +404,6 @@ function Prompts({ embedded = false }) {
                   <MessageSquareCode className="w-5 h-5 text-baikal-cyan" />
                   PROMPTS
                 </h1>
-                <p className="text-sm text-baikal-text font-sans">Configuration des prompts système</p>
               </div>
             </div>
 
@@ -435,16 +420,6 @@ function Prompts({ embedded = false }) {
 
       {/* Contenu */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Info hiérarchie */}
-        <div className="mb-8 p-4 bg-baikal-cyan/10 border border-baikal-cyan/50 rounded-md">
-          <div className="flex items-start gap-3">
-            <Info className="w-5 h-5 text-baikal-cyan flex-shrink-0 mt-0.5" />
-            <div className="text-sm text-baikal-text">
-              <p className="font-medium mb-1 font-mono">HIÉRARCHIE_DES_PROMPTS</p>
-              <p className="font-sans">{HIERARCHY_EXPLANATION}</p>
-            </div>
-          </div>
-        </div>
 
         {/* Erreur */}
         {error && (
