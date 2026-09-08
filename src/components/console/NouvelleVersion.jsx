@@ -54,7 +54,7 @@ export default function NouvelleVersion() {
 
   if (!disponible) return null;
   return (
-    <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:max-w-sm z-40 flex flex-wrap items-center justify-between gap-3 px-4 py-3 rounded-lg border border-baikal-cyan bg-baikal-surface shadow-xl text-sm text-baikal-text">
+    <div className="fixed bottom-20 md:bottom-4 left-4 right-4 sm:left-auto sm:max-w-sm z-40 flex flex-wrap items-center justify-between gap-3 px-4 py-3 rounded-lg border border-baikal-cyan bg-baikal-surface shadow-xl text-sm text-baikal-text">
       <span>Une nouvelle version de Baikal est en ligne.</span>
       <button
         onClick={() => window.location.reload()}

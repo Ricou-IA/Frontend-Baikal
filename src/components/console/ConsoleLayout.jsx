@@ -11,7 +11,7 @@
  * `badges` optionnel : { knowledge: 3 } affiche un badge sur l'onglet.
  * ============================================================================
  */
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     LayoutDashboard, BookOpen, MessageSquareCode, Database, FolderOpen,
@@ -21,6 +21,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { AppProvider, useApp } from '../../contexts/AppContext';
 import SiteSidebar, { SiteBarre } from './SiteSidebar';
 import NouvelleVersion from './NouvelleVersion';
+import { BoutonSite, FeuilleSites, BarreBasse, PRINCIPAUX_SITE, PRINCIPAUX_BAIKAL } from './NavMobile';
 import { ProfileSwitcher } from '../admin';
 import supabase from '../../lib/supabaseClient';
 
@@ -131,6 +132,23 @@ function LayoutInterne({ actif, badges = {}, children }) {
             .filter((t) => t.superAdmin || niveauModule(currentApp, t.id) !== null)
         : [];
 
+    // Navigation téléphone (sous md) : feuille des sites et feuille « Plus ».
+    const [feuilleSites, setFeuilleSites] = useState(false);
+    const [feuillePlus, setFeuillePlus] = useState(false);
+    useEffect(() => { setFeuilleSites(false); setFeuillePlus(false); }, [actif, currentApp]);
+
+    const ordrePrincipaux = estBaikal ? PRINCIPAUX_BAIKAL : PRINCIPAUX_SITE;
+    const tousTransverses = estBaikal ? MODULES_BAIKAL : transverses;
+    const principaux = ordrePrincipaux
+        .map((id) => tousTransverses.find((t) => t.id === id))
+        .filter(Boolean);
+    const secondaires = [
+        { titre: estBaikal ? 'Étage Baikal' : 'Modules', modules: tousTransverses.filter((t) => !ordrePrincipaux.includes(t.id)) },
+        { titre: 'Propres au site', modules: estBaikal ? [] : modulesSite },
+    ];
+    const siteCourant = availableApps.find((a) => a.id === currentApp);
+    const libelleSite = estBaikal ? 'Baikal' : (siteCourant?.name || 'Site');
+
     // Selection d'un site depuis l'etage Baikal : on quitte /baikal.
     const choisirSite = (appId) => {
         setCurrentApp(appId);
@@ -157,8 +175,9 @@ function LayoutInterne({ actif, badges = {}, children }) {
                                 BAIKAL_CONSOLE
                             </h1>
                         </div>
+                        <BoutonSite libelle={libelleSite} ouvert={feuilleSites} onToggle={() => setFeuilleSites((o) => !o)} />
                         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                            {isSuperAdmin && !isImpersonating && <ProfileSwitcher />}
+                            {isSuperAdmin && !isImpersonating && <span className="hidden md:block"><ProfileSwitcher /></span>}
                             {isImpersonating && (
                                 <div className="px-3 py-1.5 bg-amber-900/20 text-amber-300 border border-amber-500/50 rounded-md text-sm font-mono">
                                     👤 {profile?.full_name || profile?.email}
@@ -170,13 +189,13 @@ function LayoutInterne({ actif, badges = {}, children }) {
                             </div>
                             <button
                                 onClick={() => navigate('/settings')}
-                                className="p-2 text-baikal-text hover:text-baikal-cyan hover:bg-baikal-bg rounded-md transition-colors"
+                                className="hidden md:block p-2 text-baikal-text hover:text-baikal-cyan hover:bg-baikal-bg rounded-md transition-colors"
                             >
                                 <Settings className="w-5 h-5" />
                             </button>
                             <button
                                 onClick={handleSignOut}
-                                className="p-2 text-baikal-text hover:text-red-400 hover:bg-red-900/20 rounded-md transition-colors"
+                                className="hidden md:block p-2 text-baikal-text hover:text-red-400 hover:bg-red-900/20 rounded-md transition-colors"
                             >
                                 <LogOut className="w-5 h-5" />
                             </button>
@@ -185,8 +204,14 @@ function LayoutInterne({ actif, badges = {}, children }) {
                 </div>
             </header>
 
-            {/* Sous `xl`, la liste des sites se replie en une rangee defilante */}
-            <SiteBarre sites={sitesVisibles} actif={currentApp} onSelect={choisirSite}
+            {/* Entre md et xl, la liste des sites se replie en une rangee defilante.
+                Sous md, elle devient le bouton de site de l'en-tete (NavMobile). */}
+            <div className="hidden md:block">
+                <SiteBarre sites={sitesVisibles} actif={currentApp} onSelect={choisirSite}
+                    baikal={isSuperAdmin} baikalActif={estBaikal} onBaikal={() => navigate('/baikal')} />
+            </div>
+            <FeuilleSites ouverte={feuilleSites} onFermer={() => setFeuilleSites(false)}
+                sites={sitesVisibles} actif={currentApp} onSelect={choisirSite}
                 baikal={isSuperAdmin} baikalActif={estBaikal} onBaikal={() => navigate('/baikal')} />
 
             <div className="flex items-start">
@@ -194,7 +219,7 @@ function LayoutInterne({ actif, badges = {}, children }) {
                     baikal={isSuperAdmin} baikalActif={estBaikal} onBaikal={() => navigate('/baikal')} />
 
                 <div className="flex-1 min-w-0">
-                    <div className="bg-baikal-surface border-b border-baikal-border">
+                    <div className="hidden md:block bg-baikal-surface border-b border-baikal-border">
                         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                             <nav ref={navRef} className="flex gap-1 -mb-px overflow-x-auto items-center">
                                 {estBaikal && (
@@ -219,11 +244,20 @@ function LayoutInterne({ actif, badges = {}, children }) {
                         </div>
                     </div>
 
-                    <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
+                    <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8 pb-24 md:pb-8">
+                        <p className="md:hidden mb-3 text-[11px] font-mono uppercase tracking-wider text-baikal-cyan truncate">
+                            {libelleSite}
+                            {isImpersonating && <span className="ml-2 text-amber-300 normal-case tracking-normal">· vu comme {profile?.email}</span>}
+                        </p>
                         {children}
                     </main>
                 </div>
             </div>
+
+            <BarreBasse principaux={principaux} secondaires={secondaires} actif={actif} badges={badges}
+                onNavigate={(route) => navigate(route)}
+                plusOuvert={feuillePlus} onTogglePlus={() => setFeuillePlus((o) => !o)}
+                onSettings={() => navigate('/settings')} onSignOut={handleSignOut} />
         </div>
     );
 }
