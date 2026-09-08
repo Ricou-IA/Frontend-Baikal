@@ -48,15 +48,15 @@ function LigneMetier({ metier, onSaved, onDelete }) {
 
   return (
     <div className="py-2 border-b border-baikal-border last:border-0 space-y-1">
-      <div className="flex items-center gap-2">
-        <span className="w-32 font-mono text-sm text-baikal-text opacity-70 truncate" title={metier.slug}>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="w-full sm:w-32 font-mono text-sm text-baikal-text opacity-70 truncate" title={metier.slug}>
           {metier.slug}
         </span>
         <input
           type="text"
           value={libelle}
           onChange={(e) => setLibelle(e.target.value)}
-          className="flex-1 px-2 py-1.5 rounded border border-baikal-border bg-baikal-bg text-baikal-text focus:border-baikal-cyan outline-none text-sm"
+          className="flex-1 min-w-[10rem] px-2 py-1.5 rounded border border-baikal-border bg-baikal-bg text-baikal-text focus:border-baikal-cyan outline-none text-sm"
         />
         <select
           value={couleur}
@@ -77,14 +77,14 @@ function LigneMetier({ metier, onSaved, onDelete }) {
           onClick={enregistrer}
           disabled={enregistrement}
           title="Enregistrer"
-          className="p-1.5 rounded border border-baikal-cyan text-baikal-cyan hover:bg-baikal-cyan/10 transition-colors disabled:opacity-50"
+          className="p-2 rounded border border-baikal-cyan text-baikal-cyan hover:bg-baikal-cyan/10 transition-colors disabled:opacity-50"
         >
           <Save className="w-3.5 h-3.5" />
         </button>
         <button
           onClick={() => onDelete(metier)}
           title="Supprimer"
-          className="p-1.5 rounded border border-baikal-border text-baikal-text hover:text-red-400 hover:border-red-500/50 transition-colors"
+          className="p-2 rounded border border-baikal-border text-baikal-text hover:text-red-400 hover:border-red-500/50 transition-colors"
         >
           <Trash2 className="w-3.5 h-3.5" />
         </button>
@@ -124,7 +124,7 @@ function AjoutMetier({ onAdded }) {
 
   return (
     <div className="pt-3 space-y-1">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <input
           type="text"
           value={slug}
@@ -137,7 +137,7 @@ function AjoutMetier({ onAdded }) {
           value={libelle}
           onChange={(e) => setLibelle(e.target.value)}
           placeholder="Libellé"
-          className="flex-1 px-2 py-1.5 rounded border border-baikal-border bg-baikal-bg text-baikal-text focus:border-baikal-cyan outline-none text-sm"
+          className="flex-1 min-w-[10rem] px-2 py-1.5 rounded border border-baikal-border bg-baikal-bg text-baikal-text focus:border-baikal-cyan outline-none text-sm"
         />
         <button
           onClick={ajouter}

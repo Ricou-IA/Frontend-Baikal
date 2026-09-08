@@ -100,7 +100,7 @@ function BarreActions({
           value={prospect.statut}
           onChange={(e) => lancer('statut', { valeur: e.target.value })}
           disabled={enCours !== null || estDesinscrit}
-          className="px-2 py-1.5 bg-baikal-bg border border-baikal-border rounded-md text-xs text-baikal-text focus:outline-none focus:border-baikal-cyan disabled:opacity-50"
+          className="px-2 py-1.5 bg-baikal-bg border border-baikal-border rounded-md text-sm text-baikal-text focus:outline-none focus:border-baikal-cyan disabled:opacity-50"
         >
           {estDesinscrit ? (
             <option value="desinscrit">Désinscrit</option>
@@ -119,7 +119,7 @@ function BarreActions({
             icon: Ban,
           })}
           disabled={enCours !== null}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-baikal-border text-xs text-baikal-text hover:text-red-300 hover:border-red-500/50 disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-2 rounded-md border border-baikal-border text-sm text-baikal-text hover:text-red-300 hover:border-red-500/50 disabled:opacity-50"
         >
           <Ban className="w-3.5 h-3.5" />
           Désinscrire
@@ -136,7 +136,7 @@ function BarreActions({
               icon: Trash2,
             })}
             disabled={enCours !== null}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-red-500/50 text-xs text-red-300 hover:bg-red-900/20 disabled:opacity-50 ml-auto"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-md border border-red-500/50 text-sm text-red-300 hover:bg-red-900/20 disabled:opacity-50 sm:ml-auto"
           >
             <Trash2 className="w-3.5 h-3.5" />
             Supprimer
@@ -210,14 +210,14 @@ export default function FicheProspect({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center overflow-y-auto p-4"
+      className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center overflow-y-auto p-0 sm:p-4"
       onClick={onFerme}
     >
       <div
-        className="bg-baikal-surface border border-baikal-border rounded-lg w-full max-w-2xl my-8"
+        className="bg-baikal-surface border-y sm:border border-baikal-border sm:rounded-lg w-full max-w-2xl min-h-full sm:min-h-0 my-0 sm:my-8"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-4 p-4 border-b border-baikal-border">
+        <div className="flex items-start justify-between gap-4 p-4 border-b border-baikal-border sticky top-0 z-10 bg-baikal-surface">
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               {pro && <BadgeMetier slug={pro.metier} metiers={metiers} />}
@@ -228,7 +228,7 @@ export default function FicheProspect({
           </div>
           <button
             onClick={onFerme}
-            className="p-1.5 text-baikal-text hover:text-white rounded-md hover:bg-baikal-bg"
+            className="p-2 text-baikal-text hover:text-white rounded-md hover:bg-baikal-bg"
           >
             <X className="w-5 h-5" />
           </button>

@@ -335,7 +335,7 @@ export default function AuditSeo({ appId }) {
         </div>
       )}
 
-      <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
+      <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
         <div className="px-4 py-2 text-xs opacity-60 uppercase tracking-wider text-baikal-text">Audits archivés</div>
         <table className="w-full text-sm text-baikal-text">
           <tbody>
@@ -350,7 +350,7 @@ export default function AuditSeo({ appId }) {
                     <Eye className="w-3.5 h-3.5" /> Voir
                   </button>
                   {ecriture && (
-                    <button onClick={() => setASupprimer(a)} title="Supprimer cet audit" className="ml-3 p-1 text-baikal-text hover:text-red-400 transition-colors align-middle">
+                    <button onClick={() => setASupprimer(a)} title="Supprimer cet audit" className="ml-2 p-2 text-baikal-text hover:text-red-400 transition-colors align-middle">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   )}

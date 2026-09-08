@@ -11,7 +11,7 @@
  * `badges` optionnel : { knowledge: 3 } affiche un badge sur l'onglet.
  * ============================================================================
  */
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     LayoutDashboard, BookOpen, MessageSquareCode, Database, FolderOpen,
@@ -66,7 +66,8 @@ function Onglet({ tab, actif, badge, onClick }) {
     return (
         <button
             onClick={onClick}
-            className={`relative flex items-center gap-2 px-4 py-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap
+            data-actif={isActive ? 'true' : undefined}
+            className={`relative flex items-center gap-2 px-3 sm:px-4 py-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap
                 ${isActive
                     ? 'border-baikal-cyan text-baikal-cyan'
                     : 'border-transparent text-baikal-text hover:text-white hover:border-baikal-border'}`}
@@ -96,6 +97,14 @@ function LayoutInterne({ actif, badges = {}, children }) {
         ? availableApps
         : availableApps.filter((a) =>
             sitesAdmin.includes(a.id) || (isOrgAdmin && a.id === appOrg));
+
+    // Mobile : la barre d'onglets défile ; on amène l'onglet actif dans le
+    // champ de vision à chaque changement (sinon il peut être hors écran).
+    const navRef = useRef(null);
+    useEffect(() => {
+        const el = navRef.current?.querySelector('[data-actif="true"]');
+        el?.scrollIntoView({ block: 'nearest', inline: 'center' });
+    }, [actif]);
 
     // Si le site courant n'est pas visible, basculer sur le premier autorise.
     useEffect(() => {
@@ -139,7 +148,7 @@ function LayoutInterne({ actif, badges = {}, children }) {
                 <div className="px-4 sm:px-6 lg:px-8">
                     <div className="flex items-center justify-between h-16">
                         {/* Bloc identite, cale sur la largeur de la colonne des sites */}
-                        <div className="flex items-center gap-3 xl:w-64 xl:pr-6">
+                        <div className="flex items-center gap-3 min-w-0 shrink xl:w-64 xl:pr-6">
                             <div className="w-9 h-9 bg-baikal-cyan rounded-md flex items-center justify-center shrink-0">
                                 <Shield className="w-5 h-5 text-black" />
                             </div>
@@ -147,7 +156,7 @@ function LayoutInterne({ actif, badges = {}, children }) {
                                 BAIKAL_CONSOLE
                             </h1>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
                             {isSuperAdmin && !isImpersonating && <ProfileSwitcher />}
                             {isImpersonating && (
                                 <div className="px-3 py-1.5 bg-amber-900/20 text-amber-300 border border-amber-500/50 rounded-md text-sm font-mono">
@@ -186,7 +195,7 @@ function LayoutInterne({ actif, badges = {}, children }) {
                 <div className="flex-1 min-w-0">
                     <div className="bg-baikal-surface border-b border-baikal-border">
                         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                            <nav className="flex gap-1 -mb-px overflow-x-auto items-center">
+                            <nav ref={navRef} className="flex gap-1 -mb-px overflow-x-auto items-center">
                                 {estBaikal && (
                                     <span className="flex items-center gap-1.5 pr-3 mr-1 text-xs font-mono uppercase tracking-wider text-baikal-cyan border-r border-baikal-border">
                                         <Shield className="w-3.5 h-3.5" /> Baikal
@@ -209,7 +218,7 @@ function LayoutInterne({ actif, badges = {}, children }) {
                         </div>
                     </div>
 
-                    <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                    <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
                         {children}
                     </main>
                 </div>

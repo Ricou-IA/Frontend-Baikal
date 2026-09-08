@@ -54,11 +54,11 @@ export default function NouvelleVersion() {
 
   if (!disponible) return null;
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex items-center gap-3 px-4 py-3 rounded-lg border border-baikal-cyan bg-baikal-surface shadow-xl text-sm text-baikal-text">
+    <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:max-w-sm z-40 flex flex-wrap items-center justify-between gap-3 px-4 py-3 rounded-lg border border-baikal-cyan bg-baikal-surface shadow-xl text-sm text-baikal-text">
       <span>Une nouvelle version de Baikal est en ligne.</span>
       <button
         onClick={() => window.location.reload()}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-baikal-cyan text-baikal-cyan hover:bg-baikal-cyan/10 transition-colors"
+        className="flex items-center gap-1.5 px-3 py-2 rounded border border-baikal-cyan text-baikal-cyan hover:bg-baikal-cyan/10 transition-colors"
       >
         <RefreshCw className="w-4 h-4" />
         Recharger

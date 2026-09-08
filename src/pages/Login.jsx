@@ -288,9 +288,9 @@ export default function Login() {
   if (isResetPassword) {
     return (
       <PlatformLayout>
-        <div className="h-screen w-full flex items-center justify-center bg-black p-4">
+        <div className="min-h-screen w-full flex items-center justify-center bg-black p-4">
           <div className="w-full max-w-md">
-            <div className="bg-baikal-surface border border-baikal-border p-8">
+            <div className="bg-baikal-surface border border-baikal-border p-5 sm:p-8">
               {/* Header */}
               <div className="text-center mb-8">
                 <div className="font-mono text-baikal-cyan text-2xl mb-4">
@@ -374,9 +374,9 @@ export default function Login() {
   // Formulaire principal (Connexion / Inscription)
   return (
     <PlatformLayout>
-      <div className="h-screen w-full flex items-center justify-center bg-black p-4">
+      <div className="min-h-screen w-full flex items-center justify-center bg-black p-4">
         <div className="w-full max-w-md">
-          <div className="bg-baikal-surface border border-baikal-border p-8">
+          <div className="bg-baikal-surface border border-baikal-border p-5 sm:p-8">
             {/* Header */}
             <div className="text-center mb-8">
               <div className="font-mono text-baikal-cyan text-2xl mb-4">

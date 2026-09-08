@@ -42,7 +42,7 @@ function nombreSaisi(brut) {
 }
 
 function ChampParametre({ parametre, valeur, onChange }) {
-  const classe = 'px-2 py-1.5 bg-baikal-bg border border-baikal-border rounded-md text-xs '
+  const classe = 'px-2 py-1.5 bg-baikal-bg border border-baikal-border rounded-md text-sm '
     + 'text-baikal-text focus:outline-none focus:border-baikal-cyan';
   if (parametre.type === 'choix') {
     // Un choix sans defaut declare n'est PAS preselectionne : le site a decide
@@ -208,7 +208,7 @@ export default function BarreActions({ appId, dossierId, actions, isSuperAdmin, 
           const danger = action.variante === 'danger';
           const incomplet = choixManquant(valeurs, action);
           return (
-            <span key={action.id} className={`flex items-center gap-1.5 ${danger ? 'ml-auto' : ''}`}>
+            <span key={action.id} className={`flex items-center gap-1.5 flex-wrap ${danger ? 'sm:ml-auto' : ''}`}>
               {action.parametres.map((p) => (
                 <ChampParametre
                   key={p.id}
@@ -223,7 +223,7 @@ export default function BarreActions({ appId, dossierId, actions, isSuperAdmin, 
                   : lancer(action))}
                 disabled={enCours !== null || incomplet}
                 title={incomplet ? 'Choisissez une option avant de lancer cette action.' : undefined}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs disabled:opacity-50 ${
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-md border text-sm disabled:opacity-50 ${
                   danger
                     ? 'border-red-500/50 text-red-300 hover:bg-red-900/20'
                     : 'border-baikal-border text-baikal-text hover:text-baikal-cyan hover:border-baikal-cyan'

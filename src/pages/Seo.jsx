@@ -333,10 +333,10 @@ function ModaleRequete({ appId, requete, onFermer }) {
           </div>
           <button
             onClick={onFermer}
-            className="text-baikal-text hover:text-white shrink-0"
+            className="p-2 -m-2 rounded-md text-baikal-text hover:text-white shrink-0"
             aria-label="Fermer"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
@@ -447,7 +447,7 @@ function VueEnsemble({ appId }) {
       )}
       {donnees && !rienARemonter && (
       <ContenuEstompe enCours={enCours}>
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         <KpiCarte
           label="Clics SEO"
           valeur={fmtInt(totaux.clicks)}
@@ -497,7 +497,7 @@ function VueEnsemble({ appId }) {
               const actifB = filtreBucket === b.cle;
               const contenu = (
                 <>
-                  <span className={`w-56 text-xs ${b.cliquable
+                  <span className={`w-28 sm:w-56 truncate text-xs ${b.cliquable
                     ? (actifB ? 'text-white font-medium' : 'text-baikal-text')
                     : 'text-baikal-text opacity-50 italic'}`}
                   >
@@ -506,7 +506,7 @@ function VueEnsemble({ appId }) {
                   <span className="flex-1 h-2 bg-baikal-bg rounded-full overflow-hidden">
                     <span className={`block h-full ${b.couleur}`} style={{ width: `${part}%` }} />
                   </span>
-                  <span className="w-28 text-xs text-right tabular-nums text-baikal-text">
+                  <span className="w-20 sm:w-28 text-xs text-right tabular-nums text-baikal-text">
                     {part.toFixed(0)} % ({fmtInt(valeur)})
                   </span>
                 </>
@@ -538,8 +538,8 @@ function VueEnsemble({ appId }) {
 
       <div className="grid lg:grid-cols-2 gap-6 items-start">
         {/* Top requetes */}
-        <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
-          <div className="px-4 py-3 border-b border-baikal-border flex items-center justify-between gap-2">
+        <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
+          <div className="px-4 py-3 border-b border-baikal-border flex items-center justify-between gap-2 flex-wrap">
             <p className="text-xs font-mono text-baikal-text uppercase">
               {filtreBucket === 'all'
                 ? `Top ${requetesFiltrees.length} requetes par ${metriqueTop === 'impressions' ? 'impressions' : 'clics'}`
@@ -549,7 +549,7 @@ function VueEnsemble({ appId }) {
               {filtreBucket !== 'all' && (
                 <button
                   onClick={() => setFiltreBucket('all')}
-                  className="flex items-center gap-1 text-[11px] text-baikal-text hover:text-white"
+                  className="flex items-center gap-1 text-xs text-baikal-text hover:text-white"
                 >
                   <X className="w-3 h-3" /> Effacer le filtre
                 </button>
@@ -559,7 +559,7 @@ function VueEnsemble({ appId }) {
                   <button
                     key={m.cle}
                     onClick={() => setMetriqueTop(m.cle)}
-                    className={`px-2 py-0.5 rounded border text-[11px] ${metriqueTop === m.cle
+                    className={`px-2 py-1 rounded border text-xs ${metriqueTop === m.cle
                       ? 'border-baikal-cyan text-baikal-cyan'
                       : 'border-baikal-border text-baikal-text hover:text-white'}`}
                   >
@@ -569,7 +569,7 @@ function VueEnsemble({ appId }) {
               </div>
             </div>
           </div>
-          <div className="max-h-[420px] overflow-y-auto">
+          <div className="max-h-[420px] overflow-auto">
             <table className="w-full text-sm text-baikal-text">
               <thead className="sticky top-0 z-10 bg-baikal-surface">
                 <tr className="text-left text-xs opacity-70">
@@ -616,11 +616,11 @@ function VueEnsemble({ appId }) {
         </div>
 
         {/* Top pages */}
-        <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
+        <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
           <div className="px-4 py-3 border-b border-baikal-border">
             <p className="text-xs font-mono text-baikal-text uppercase">Top pages</p>
           </div>
-          <div className="max-h-[420px] overflow-y-auto">
+          <div className="max-h-[420px] overflow-auto">
             <table className="w-full text-sm text-baikal-text">
               <thead className="sticky top-0 z-10 bg-baikal-surface">
                 <tr className="text-left text-xs opacity-70">
@@ -775,9 +775,9 @@ function Comparatif({ appId }) {
         ))}
       </div>
 
-      <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
-        <div className="max-h-[480px] overflow-y-auto overflow-x-auto">
-          <table className="w-full text-sm text-baikal-text">
+      <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
+        <div className="max-h-[480px] overflow-auto">
+          <table className="w-full min-w-[640px] text-sm text-baikal-text">
             <thead className="sticky top-0 z-10 bg-baikal-surface">
               <tr className="text-left text-xs opacity-70">
                 <th className="px-4 py-2">Requete</th>
@@ -898,7 +898,7 @@ function BingVsGoogle({ appId }) {
         depuis la mise en place du releve quotidien. Un « — » signifie
         {' '}<strong className="opacity-100">pas de mesure</strong>, pas zero clic.
       </p>
-      <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
+      <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
         <table className="w-full text-sm text-baikal-text">
           <thead>
             <tr className="text-left text-xs opacity-70">
@@ -935,7 +935,7 @@ function BingVsGoogle({ appId }) {
       </div>
 
       {donnees.ecarts.length > 0 && (
-        <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
+        <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
           <div className="px-4 py-3 border-b border-baikal-border">
             <p className="text-xs font-mono text-baikal-text uppercase">
               Requetes ou Bing classe nettement mieux (≥ 5 rangs)
@@ -981,7 +981,7 @@ function BingVsGoogle({ appId }) {
 function SeoContent() {
   const { currentApp } = useApp();
   return (
-    <div className="p-6 space-y-10">
+    <div className="sm:p-6 space-y-10">
       <Performances appId={currentApp} />
       <VueEnsemble appId={currentApp} />
       <Appareils appId={currentApp} />

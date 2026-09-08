@@ -33,11 +33,11 @@ function PartenariatsContent() {
   const { ecriture } = useDroitModule('partenariats');
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="sm:p-6 space-y-6">
       {!ecriture && <LectureSeule module="Partenariats" />}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-4 flex-wrap">
         <h1 className="text-2xl font-semibold text-baikal-text">Partenariats</h1>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           {[['prospects', 'Prospects', Users], ['campagnes', 'Campagnes', Mail]].map(([id, label, Icone]) => (
             <button
               key={id}
@@ -134,7 +134,7 @@ function Prospects({ appId }) {
           {STATUTS.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
         <span className="text-sm text-baikal-text opacity-70">{total} prospects</span>
-        <div className="flex-1" />
+        <div className="hidden sm:block flex-1" />
         {ecriture && (
           <>
             <button
@@ -159,22 +159,22 @@ function Prospects({ appId }) {
 
       {message && <p className="text-baikal-cyan text-sm">{message}</p>}
 
-      <table className="w-full text-sm text-baikal-text">
+      <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-sm text-baikal-text">
         <thead>
           <tr className="border-b border-baikal-border text-left opacity-70">
-            <th className="py-2">Email</th><th>Nom</th><th>Entreprise</th>
-            <th>Type</th><th>CP</th><th>Statut</th>
+            <th className="px-2 py-2 text-left">Email</th><th className="px-2 py-2 text-left">Nom</th><th className="px-2 py-2 text-left">Entreprise</th>
+            <th className="px-2 py-2 text-left">Type</th><th className="px-2 py-2 text-left">CP</th><th className="px-2 py-2 text-left">Statut</th>
           </tr>
         </thead>
         <tbody>
           {prospects.map((p) => (
             <tr key={p.id} className="border-b border-baikal-border">
-              <td className="py-2">{p.email}</td>
-              <td>{[p.prenom, p.nom].filter(Boolean).join(' ')}</td>
-              <td>{p.entreprise}</td>
-              <td>{p.type}</td>
-              <td>{p.code_postal}</td>
-              <td>
+              <td className="px-2 py-2">{p.email}</td>
+              <td className="px-2 py-1">{[p.prenom, p.nom].filter(Boolean).join(' ')}</td>
+              <td className="px-2 py-1">{p.entreprise}</td>
+              <td className="px-2 py-1">{p.type}</td>
+              <td className="px-2 py-1">{p.code_postal}</td>
+              <td className="px-2 py-1">
                 <select
                   className="bg-baikal-bg border border-baikal-border rounded px-1"
                   value={p.statut}
@@ -191,7 +191,7 @@ function Prospects({ appId }) {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
     </div>
   );
 }
@@ -282,7 +282,7 @@ function Campagnes({ appId }) {
           value={edition.corps_html ?? ''}
           onChange={(e) => setEdition({ ...edition, corps_html: e.target.value })}
         />
-        <div className="flex gap-2 items-center">
+        <div className="flex gap-2 items-center flex-wrap">
           <select
             className="bg-baikal-bg border border-baikal-border rounded px-2 py-1 text-baikal-text"
             value={segment.type ?? ''}
@@ -309,7 +309,7 @@ function Campagnes({ appId }) {
             {apercu === null ? '…' : `${apercu} destinataires`}
           </span>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <button onClick={() => setEdition(null)} className="px-3 py-1 rounded border border-baikal-border text-baikal-text">Retour</button>
           <button onClick={sauvegarder} disabled={occupe || !ecriture} className="px-3 py-1 rounded border border-baikal-cyan text-baikal-cyan">Enregistrer</button>
           {edition.id && edition.statut === 'brouillon' && (
@@ -336,24 +336,26 @@ function Campagnes({ appId }) {
           Nouvelle campagne
         </button>
       )}
-      <table className="w-full text-sm text-baikal-text">
+      <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-sm text-baikal-text">
         <thead>
           <tr className="border-b border-baikal-border text-left opacity-70">
-            <th className="py-2">Nom</th><th>Statut</th><th>Envoyée le</th><th>Résultats</th><th></th>
+            <th className="px-2 py-2 text-left">Nom</th><th className="px-2 py-2 text-left">Statut</th><th className="px-2 py-2 text-left">Envoyée le</th><th className="px-2 py-2 text-left">Résultats</th><th className="px-2 py-2 text-left"></th>
           </tr>
         </thead>
         <tbody>
           {campagnes.map((c) => (
             <tr key={c.id} className="border-b border-baikal-border">
-              <td className="py-2">{c.nom}</td>
-              <td>{c.statut}</td>
-              <td>{c.envoyee_le ? new Date(c.envoyee_le).toLocaleDateString('fr-FR') : ''}</td>
-              <td>
-                {stats[c.id]
-                  ? Object.entries(stats[c.id]).map(([k, v]) => `${k}: ${v}`).join(', ')
-                  : ''}
+              <td className="px-2 py-2">{c.nom}</td>
+              <td className="px-2 py-1">{c.statut}</td>
+              <td className="px-2 py-1">{c.envoyee_le ? new Date(c.envoyee_le).toLocaleDateString('fr-FR') : ''}</td>
+              <td className="px-2 py-1">
+                <span className="block max-w-[280px] truncate" title={stats[c.id] ? Object.entries(stats[c.id]).map(([k, v]) => `${k}: ${v}`).join(', ') : ''}>
+                  {stats[c.id]
+                    ? Object.entries(stats[c.id]).map(([k, v]) => `${k}: ${v}`).join(', ')
+                    : ''}
+                </span>
               </td>
-              <td>
+              <td className="px-2 py-1">
                 <button onClick={() => setEdition(c)} className="text-baikal-cyan">
                   {c.statut === 'brouillon' ? 'Éditer' : 'Voir'}
                 </button>
@@ -361,7 +363,7 @@ function Campagnes({ appId }) {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
     </div>
   );
 }

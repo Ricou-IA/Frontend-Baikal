@@ -109,7 +109,7 @@ export default function ConfirmModal({
             />
 
             {/* Modal */}
-            <div className="relative w-full max-w-md bg-baikal-surface border border-baikal-border rounded-lg shadow-xl overflow-hidden">
+            <div className="relative w-full max-w-md max-h-[calc(100vh-2rem)] overflow-y-auto bg-baikal-surface border border-baikal-border rounded-lg shadow-xl">
                 {/* Header */}
                 <div className="flex items-center gap-3 px-6 py-4 border-b border-baikal-border">
                     <div className={`p-2 rounded-lg ${styles.iconBg}`}>
@@ -167,7 +167,7 @@ export default function ConfirmModal({
                 </div>
 
                 {/* Footer */}
-                <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-baikal-border bg-baikal-bg/50">
+                <div className="flex items-center justify-end gap-3 flex-wrap px-4 sm:px-6 py-4 border-t border-baikal-border bg-baikal-bg/50">
                     <button
                         type="button"
                         onClick={onClose}

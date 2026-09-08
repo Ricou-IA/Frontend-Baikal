@@ -411,7 +411,7 @@ function UsersContent() {
 
     return (
         <div>
-            <div className="mb-2 flex items-center justify-between">
+            <div className="mb-2 flex items-center justify-between gap-2 flex-wrap">
                 <div className="flex items-center gap-3">
                     <div className="p-2 bg-baikal-cyan/20 rounded-md">
                         <Users className="w-5 h-5 text-baikal-cyan" />
@@ -437,7 +437,7 @@ function UsersContent() {
             {/* Tabs */}
             <div className="bg-baikal-surface border-b border-baikal-border">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <nav className="flex gap-1 -mb-px">
+                    <nav className="flex gap-1 -mb-px overflow-x-auto">
                         {!siteClients && (
                         <button
                             onClick={() => setActiveTab('pending')}

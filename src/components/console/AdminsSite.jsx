@@ -37,14 +37,14 @@ function LigneAcces({ acces, appId, onChanged, onRevoke }) {
 
   return (
     <li className="py-2 border-b border-baikal-border last:border-0 space-y-1.5">
-      <div className="flex items-center gap-2 text-sm text-baikal-text font-mono">
+      <div className="flex items-center gap-2 flex-wrap text-sm text-baikal-text font-mono">
         <span>{acces.email}</span>
         {acces.nom && <span className="opacity-60">({acces.nom})</span>}
         {sauve && <Check className="w-3.5 h-3.5 text-green-400" />}
         <button
           onClick={() => onRevoke(acces.userId)}
           title="Retirer l'accès"
-          className="ml-auto p-1 text-baikal-text hover:text-red-400 transition-colors"
+          className="ml-auto p-2 text-baikal-text hover:text-red-400 transition-colors"
         >
           <X className="w-3.5 h-3.5" />
         </button>
@@ -98,14 +98,14 @@ export default function AdminsSite({ appId, titre = 'Accès console', aide }) {
           <LigneAcces key={a.userId} acces={a} appId={appId} onRevoke={retirer} />
         ))}
       </ul>
-      <div className="flex items-center gap-2 pt-1">
+      <div className="flex items-center gap-2 pt-1 flex-wrap">
         <input
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') ajouter(); }}
           placeholder="email d'un compte existant"
-          className="px-2 py-1.5 rounded border border-baikal-border bg-baikal-bg text-baikal-text focus:border-baikal-cyan outline-none font-mono text-sm w-64"
+          className="px-2 py-1.5 rounded border border-baikal-border bg-baikal-bg text-baikal-text focus:border-baikal-cyan outline-none font-mono text-sm w-full sm:w-64"
         />
         <button
           onClick={ajouter}

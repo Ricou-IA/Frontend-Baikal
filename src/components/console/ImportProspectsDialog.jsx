@@ -190,14 +190,14 @@ export default function ImportProspectsDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center overflow-y-auto p-4"
+      className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center overflow-y-auto p-0 sm:p-4"
       onClick={fermer}
     >
       <div
-        className="bg-baikal-surface border border-baikal-border rounded-lg w-full max-w-2xl my-8"
+        className="bg-baikal-surface border-y sm:border border-baikal-border sm:rounded-lg w-full max-w-2xl min-h-full sm:min-h-0 my-0 sm:my-8"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between gap-4 p-4 border-b border-baikal-border">
+        <div className="flex items-center justify-between gap-4 p-4 border-b border-baikal-border sticky top-0 z-10 bg-baikal-surface">
           <div className="flex items-center gap-2">
             <Upload className="w-5 h-5 text-baikal-cyan" />
             <h3 className="text-white font-semibold">Importer un CSV</h3>
@@ -205,7 +205,7 @@ export default function ImportProspectsDialog({
           <button
             onClick={fermer}
             disabled={enCours}
-            className="p-1.5 text-baikal-text hover:text-white rounded-md hover:bg-baikal-bg disabled:opacity-40"
+            className="p-2 text-baikal-text hover:text-white rounded-md hover:bg-baikal-bg disabled:opacity-40"
           >
             <X className="w-5 h-5" />
           </button>

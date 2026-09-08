@@ -10,6 +10,7 @@
  * ============================================================================
  */
 
+import { useEffect, useRef } from 'react';
 import { Shield } from 'lucide-react';
 
 /**
@@ -96,11 +97,19 @@ export default function SiteSidebar({ sites, actif, onSelect, baikal = false, ba
 
 /** Repli sous `xl` : rangee horizontale defilante. */
 export function SiteBarre({ sites, actif, onSelect, baikal = false, baikalActif = false, onBaikal }) {
+    // Avec dix sites et plus, le site actif peut être hors écran au chargement :
+    // on le ramène dans le champ de vision.
+    const barre = useRef(null);
+    useEffect(() => {
+        const el = barre.current?.querySelector('[aria-current="true"]');
+        el?.scrollIntoView({ block: 'nearest', inline: 'center' });
+    }, [actif, baikalActif]);
+
     if ((!sites || sites.length === 0) && !baikal) return null;
 
     return (
         <div className="xl:hidden bg-baikal-surface/60 border-b border-baikal-border">
-            <div className="flex gap-2 overflow-x-auto px-4 py-2 sm:px-6">
+            <div ref={barre} className="flex gap-2 overflow-x-auto px-4 py-2 sm:px-6">
                 {baikal && <EntreeBaikal compact actif={baikalActif} onSelect={onBaikal} />}
                 {sites.map((site) => {
                     const estActif = !baikalActif && site.id === actif;
@@ -109,7 +118,7 @@ export function SiteBarre({ sites, actif, onSelect, baikal = false, baikalActif 
                             key={site.id}
                             onClick={() => onSelect(site.id)}
                             aria-current={estActif ? 'true' : undefined}
-                            className={`px-3 py-1.5 rounded-md border text-sm whitespace-nowrap transition-colors
+                            className={`px-3 py-2 rounded-md border text-sm whitespace-nowrap transition-colors
                                 ${estActif
                                     ? 'border-baikal-cyan text-baikal-cyan bg-baikal-cyan/10'
                                     : 'border-baikal-border text-baikal-text hover:text-white'}`}

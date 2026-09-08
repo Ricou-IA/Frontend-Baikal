@@ -140,7 +140,7 @@ function Apercu({ contenu }) {
       {lecture?.trafic && (
         <div className="grid md:grid-cols-2 gap-4">
           <TableauTrafic google={lecture.trafic.google} bing={lecture.trafic.bing} titre="Trafic par semaine pleine — Google et Bing" />
-          <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
+          <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
             <div className="px-4 py-2 text-xs opacity-60 uppercase tracking-wider text-baikal-text">Requêtes suivies (requête × page)</div>
             <table className="w-full text-sm text-baikal-text">
               <thead>
@@ -153,7 +153,7 @@ function Apercu({ contenu }) {
                 </tr>
               </thead>
               <tbody>
-                {lecture.suivi.requetes.length === 0 && <LigneVide colonnes={4} message="Aucune requête suivie ou aucun relevé requête × page." />}
+                {lecture.suivi.requetes.length === 0 && <LigneVide colonnes={5} message="Aucune requête suivie ou aucun relevé requête × page." />}
                 {lecture.suivi.requetes.map((r) => (
                   <tr key={r.requete} className="border-t border-baikal-border/50">
                     <td className="px-4 py-1.5">{r.requete}</td>
@@ -407,7 +407,7 @@ function Archives({ appId, version, lectureSeule = false }) {
       {erreur && <Erreur message={erreur} />}
       {!donnees && !erreur && <Chargement />}
       {donnees && (
-        <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
+        <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
           <table className="w-full text-sm text-baikal-text">
             <thead>
               <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
@@ -431,7 +431,7 @@ function Archives({ appId, version, lectureSeule = false }) {
                       </a>
                     ) : <span className="opacity-40">—</span>}
                     {!lectureSeule && (
-                      <button onClick={() => setASupprimer(r)} title="Supprimer ce rapport et son PDF" className="ml-3 p-1 text-baikal-text hover:text-red-400 transition-colors align-middle">
+                      <button onClick={() => setASupprimer(r)} title="Supprimer ce rapport et son PDF" className="ml-2 p-2 text-baikal-text hover:text-red-400 transition-colors align-middle">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     )}
@@ -465,7 +465,7 @@ function RapportsContent() {
   // et enregistrer sont des ecritures (et coutent un appel au modele).
   const { ecriture } = useDroitModule('rapports');
   return (
-    <div className="p-6 space-y-10">
+    <div className="sm:p-6 space-y-10">
       {!ecriture && <LectureSeule module="Rapports" />}
       {ecriture && <Generateur appId={currentApp} onGenere={() => setVersion((v) => v + 1)} />}
       <Archives appId={currentApp} version={version} lectureSeule={!ecriture} />

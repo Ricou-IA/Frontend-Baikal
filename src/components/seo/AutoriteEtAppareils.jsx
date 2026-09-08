@@ -154,7 +154,7 @@ export function Appareils({ appId }) {
       {vide && <Vide message="Aucune répartition par appareil archivée." />}
       {donnees && !vide && (
         <ContenuEstompe enCours={enCours}>
-          <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
+          <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
             <table className="w-full text-sm text-baikal-text">
               <thead>
                 <tr className="text-left text-xs opacity-70 border-b border-baikal-border">

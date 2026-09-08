@@ -68,7 +68,7 @@ function FicheSite({ site, onSaved }) {
 
   return (
     <div className="border border-baikal-border rounded-lg p-4 bg-baikal-surface space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <h2 className="text-lg font-semibold text-baikal-text">
           {site.name}
           <span className="ml-2 text-sm font-mono opacity-60">{site.id}</span>
@@ -164,7 +164,7 @@ function SitesContent() {
   const site = sites.find((s) => s.id === currentApp);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="sm:p-6 space-y-6">
       <div>
         <h1 className="text-2xl font-semibold text-baikal-text">
           Paramétrage{site ? ` — ${site.name}` : ''}

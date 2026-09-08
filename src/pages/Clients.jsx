@@ -31,7 +31,7 @@ function Chip({ actif, onClick, children }) {
   return (
     <button
       onClick={onClick}
-      className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors
+      className={`px-2.5 py-1.5 rounded-md text-xs font-medium border transition-colors
         ${actif
           ? 'border-baikal-cyan text-baikal-cyan bg-baikal-cyan/10'
           : 'border-baikal-border text-baikal-text hover:text-white'}`}
@@ -150,7 +150,7 @@ function ClientsContent() {
               className="w-full pl-9 pr-3 py-2 bg-baikal-bg border border-baikal-border rounded-md text-sm text-white placeholder:text-baikal-text/50 focus:outline-none focus:border-baikal-cyan"
             />
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-xs text-baikal-text opacity-60 mr-1">Période</span>
             {PERIODES.map(([val, libelle]) => (
               <Chip key={libelle} actif={periodeJours === val}
@@ -160,7 +160,7 @@ function ClientsContent() {
             ))}
           </div>
           {categoriesSite && categoriesSite.length > 0 ? (
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-xs text-baikal-text opacity-60 mr-1">Catégorie</span>
               {categoriesSite.map((c) => (
                 <Chip key={c.slug} actif={categories.includes(c.slug)}
@@ -170,7 +170,7 @@ function ClientsContent() {
               ))}
             </div>
           ) : (
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-xs text-baikal-text opacity-60 mr-1">Type</span>
               {PERIMETRES.map(([val, libelle]) => (
                 <Chip key={libelle} actif={perimetre === val}
@@ -180,13 +180,13 @@ function ClientsContent() {
               ))}
             </div>
           )}
-          <span className="ml-auto text-sm text-baikal-text">
+          <span className="sm:ml-auto text-sm text-baikal-text">
             <span className="text-baikal-cyan font-semibold">{total}</span> dossiers
           </span>
         </div>
         <div className="flex items-center gap-4 flex-wrap">
           {funnel && funnel.length > 0 && (
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-xs text-baikal-text opacity-60 mr-1">Statut</span>
               {funnel.map((e) => (
                 <Chip key={e.slug} actif={statuts.includes(e.slug)}

@@ -131,8 +131,8 @@ function Synthese({ appId, lectureSeule = false }) {
       {donnees && !rienEncore && (
         <ContenuEstompe enCours={enCours}>
           <BandeauIncomplet fenetres={fenetres} />
-          <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
-            <table className="w-full text-sm text-baikal-text">
+          <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
+            <table className="w-full min-w-[560px] text-sm text-baikal-text">
               <thead>
                 <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
                   <th className="px-4 py-2">Indicateur</th>
@@ -161,7 +161,7 @@ function Synthese({ appId, lectureSeule = false }) {
               </tbody>
             </table>
           </div>
-          <p className="text-[11px] text-baikal-text opacity-50 leading-relaxed">
+          <p className="text-xs text-baikal-text opacity-60 leading-relaxed">
             <strong className="opacity-100">Lecture</strong> · Le résultat déduit du CA HT les frais
             Stripe, les remboursements, le coût IA, les charges fixes au prorata journalier et les
             charges ponctuelles le jour où elles tombent.
@@ -197,7 +197,7 @@ function Tendance({ appId }) {
       titre="Tendance"
       sousTitre="Série mensuelle, calculée depuis l'archive"
       action={(
-        <div className="flex gap-2 items-center">
+        <div className="flex gap-2 items-center flex-wrap">
           {[6, 12, 24].map((m) => (
             <button
               key={m}
@@ -221,7 +221,7 @@ function Tendance({ appId }) {
           <ResponsiveContainer width="100%" height={280}>
             <LineChart data={points} margin={{ top: 8, right: 12, bottom: 0, left: 12 }}>
               <CartesianGrid stroke="#1f2937" strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="mois" stroke="#6b7280" fontSize={11} tickLine={false} axisLine={false} />
+              <XAxis dataKey="mois" stroke="#6b7280" fontSize={11} tickLine={false} axisLine={false} minTickGap={32} />
               <YAxis stroke="#6b7280" fontSize={11} tickLine={false} axisLine={false}
                 tickFormatter={(v) => `${v} €`} />
               <Tooltip
@@ -266,7 +266,7 @@ function CoutsParMois({ appId }) {
       titre="Coûts par mois"
       sousTitre="Ce que chaque mois a coûté, poste par poste — la même série que la tendance"
       action={(
-        <div className="flex gap-2 items-center">
+        <div className="flex gap-2 items-center flex-wrap">
           {[6, 12, 24].map((m) => (
             <button
               key={m}
@@ -286,8 +286,8 @@ function CoutsParMois({ appId }) {
       {!donnees && !erreur && <Chargement />}
       {donnees && (
         <ContenuEstompe enCours={enCours}>
-          <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
-            <table className="w-full text-sm text-baikal-text">
+          <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
+            <table className="w-full min-w-[560px] text-sm text-baikal-text">
               <thead>
                 <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
                   <th className="px-4 py-2">Mois</th>
@@ -341,7 +341,7 @@ return (
     <select
       value={etat.finMode}
       onChange={(e) => setEtat({ ...etat, finMode: e.target.value })}
-      className={`${CHAMP} w-40`}
+      className={`${CHAMP} w-full sm:w-40`}
     >
       <option value="revocation">Jusqu'à révocation</option>
       <option value="date">Jusqu'au…</option>
@@ -436,8 +436,8 @@ function ChargesRecurrentes({ appId, lectureSeule = false }) {
       {!donnees && !erreur && <Chargement />}
       {donnees && (
         <ContenuEstompe enCours={enCours}>
-          <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
-            <table className="w-full text-sm text-baikal-text">
+          <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
+            <table className="w-full min-w-[560px] text-sm text-baikal-text">
               <thead>
                 <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
                   <th className="px-4 py-2">Libellé</th>
@@ -472,10 +472,10 @@ function ChargesRecurrentes({ appId, lectureSeule = false }) {
                           <input type="checkbox" checked={edition.coutDirect} onChange={(e) => setEdition({ ...edition, coutDirect: e.target.checked })} />
                         </td>
                         <td className="px-4 py-2 text-right whitespace-nowrap">
-                          <button onClick={enregistrer} disabled={occupe || lectureSeule} title="Enregistrer" className="p-1 text-baikal-cyan hover:text-white disabled:opacity-50">
+                          <button onClick={enregistrer} disabled={occupe || lectureSeule} title="Enregistrer" className="p-2 text-baikal-cyan hover:text-white disabled:opacity-50">
                             <Check className="w-4 h-4" />
                           </button>
-                          <button onClick={() => setEdition(null)} disabled={occupe || lectureSeule} title="Annuler" className="p-1 text-baikal-text hover:text-white disabled:opacity-50">
+                          <button onClick={() => setEdition(null)} disabled={occupe || lectureSeule} title="Annuler" className="p-2 text-baikal-text hover:text-white disabled:opacity-50">
                             <X className="w-4 h-4" />
                           </button>
                         </td>
@@ -497,10 +497,10 @@ function ChargesRecurrentes({ appId, lectureSeule = false }) {
                               onChange={(e) => setRevocation({ ...revocation, fin: e.target.value })}
                               className={`${CHAMP} font-mono`}
                             />
-                            <button onClick={revoquer} disabled={lectureSeule || occupe || !revocation.fin} title="Confirmer la révocation" className="p-1 text-baikal-cyan hover:text-white disabled:opacity-50">
+                            <button onClick={revoquer} disabled={lectureSeule || occupe || !revocation.fin} title="Confirmer la révocation" className="p-2 text-baikal-cyan hover:text-white disabled:opacity-50">
                               <Check className="w-4 h-4" />
                             </button>
-                            <button onClick={() => setRevocation(null)} disabled={occupe || lectureSeule} title="Annuler" className="p-1 text-baikal-text hover:text-white disabled:opacity-50">
+                            <button onClick={() => setRevocation(null)} disabled={occupe || lectureSeule} title="Annuler" className="p-2 text-baikal-text hover:text-white disabled:opacity-50">
                               <X className="w-4 h-4" />
                             </button>
                           </span>
@@ -519,9 +519,9 @@ function ChargesRecurrentes({ appId, lectureSeule = false }) {
                             onClick={() => setRevocation({ id: c.id, fin: new Date().toISOString().slice(0, 10) })}
                             disabled={occupe || lectureSeule}
                             title="Révoquer : poser la date de fin"
-                            className="p-1 text-baikal-text hover:text-amber-400 transition-colors disabled:opacity-50"
+                            className="p-2 text-baikal-text hover:text-amber-400 transition-colors disabled:opacity-50"
                           >
-                            <Ban className="w-3.5 h-3.5" />
+                            <Ban className="w-4 h-4" />
                           </button>
                         )}
                         <button
@@ -536,17 +536,17 @@ function ChargesRecurrentes({ appId, lectureSeule = false }) {
                           })}
                           disabled={occupe || lectureSeule}
                           title="Modifier"
-                          className="p-1 text-baikal-text hover:text-baikal-cyan transition-colors disabled:opacity-50"
+                          className="p-2 text-baikal-text hover:text-baikal-cyan transition-colors disabled:opacity-50"
                         >
-                          <Pencil className="w-3.5 h-3.5" />
+                          <Pencil className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => supprimer(c.id)}
                           disabled={occupe || lectureSeule}
                           title="Supprimer"
-                          className="p-1 text-baikal-text hover:text-red-400 transition-colors disabled:opacity-50"
+                          className="p-2 text-baikal-text hover:text-red-400 transition-colors disabled:opacity-50"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </td>
                     </tr>
@@ -561,7 +561,7 @@ function ChargesRecurrentes({ appId, lectureSeule = false }) {
               value={form.libelle}
               onChange={(e) => setForm({ ...form, libelle: e.target.value })}
               placeholder="Libellé (hébergement, API…)"
-              className={`${CHAMP} w-64`}
+              className={`${CHAMP} w-full sm:w-64`}
             />
             <input
               type="number"
@@ -592,7 +592,7 @@ function ChargesRecurrentes({ appId, lectureSeule = false }) {
               Ajouter
             </button>
           </div>
-          <p className="text-[11px] text-baikal-text opacity-50 leading-relaxed">
+          <p className="text-xs text-baikal-text opacity-60 leading-relaxed">
             <strong className="opacity-100">Lecture</strong> · Une charge « jusqu'à révocation »
             court sans fin ; la révoquer, c'est lui poser sa date de fin, elle cesse d'être
             déduite le lendemain. Chaque ligne se modifie en place.
@@ -655,8 +655,8 @@ function ChargesPonctuelles({ appId, lectureSeule = false }) {
       {!donnees && !erreur && <Chargement />}
       {donnees && (
         <ContenuEstompe enCours={enCours}>
-          <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
-            <table className="w-full text-sm text-baikal-text">
+          <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
+            <table className="w-full min-w-[560px] text-sm text-baikal-text">
               <thead>
                 <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
                   <th className="px-4 py-2">Date</th>
@@ -683,9 +683,9 @@ function ChargesPonctuelles({ appId, lectureSeule = false }) {
                         onClick={() => supprimer(c.id)}
                         disabled={occupe || lectureSeule}
                         title="Supprimer"
-                        className="p-1 text-baikal-text hover:text-red-400 transition-colors disabled:opacity-50"
+                        className="p-2 text-baikal-text hover:text-red-400 transition-colors disabled:opacity-50"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     </td>
                   </tr>
@@ -705,7 +705,7 @@ function ChargesPonctuelles({ appId, lectureSeule = false }) {
               value={form.libelle}
               onChange={(e) => setForm({ ...form, libelle: e.target.value })}
               placeholder="Libellé (nom de domaine, prestation…)"
-              className={`${CHAMP} w-72`}
+              className={`${CHAMP} w-full sm:w-72`}
             />
             <input
               type="number"
@@ -804,7 +804,7 @@ function Ventes({ appId }) {
                   );
                 })}
               </div>
-              <p className="text-[11px] text-baikal-text opacity-50 leading-relaxed">
+              <p className="text-xs text-baikal-text opacity-60 leading-relaxed">
                 <strong className="opacity-100">Lecture</strong> · « Sans origine » est une catégorie
                 à part entière, jamais un reste à répartir : ces visiteurs sont arrivés sans que le
                 navigateur transmette d'où. « Origine perdue » est différent — la vente <em>avait</em>
@@ -813,9 +813,9 @@ function Ventes({ appId }) {
               </p>
             </>
           )}
-          <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
-            <div className="max-h-[420px] overflow-y-auto">
-              <table className="w-full text-sm text-baikal-text">
+          <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
+            <div className="max-h-[420px] overflow-auto">
+              <table className="w-full min-w-[560px] text-sm text-baikal-text">
                 <thead className="sticky top-0 z-10 bg-baikal-surface">
                   <tr className="text-left text-xs opacity-70">
                     <th className="px-4 py-2">Payée le</th>
@@ -884,8 +884,8 @@ function Partenariat({ appId }) {
       )}
       {contrat && (
         <ContenuEstompe enCours={enCours}>
-          <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-hidden">
-            <table className="w-full text-sm text-baikal-text">
+          <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
+            <table className="w-full min-w-[560px] text-sm text-baikal-text">
               <thead>
                 <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
                   <th className="px-4 py-2">Mois</th>
@@ -948,7 +948,7 @@ function Partenariat({ appId }) {
               </tbody>
             </table>
           </div>
-          <p className="text-[11px] text-baikal-text opacity-50 leading-relaxed">
+          <p className="text-xs text-baikal-text opacity-60 leading-relaxed">
             <strong className="opacity-100">Lecture</strong> · Contrat signé le 18/08/2026, article 7.
             Une vente remboursée n'est pas une Vente : elle sort des ventes nettes, du seuil et du CA.
             Les {contrat.franchise} premières ventes nettes de chaque mois civil reviennent à CONFER ; le
@@ -969,7 +969,7 @@ function FinancesContent() {
   // Grille d'acces : en lecture, pas de rafraichissement ni de charges.
   const { ecriture } = useDroitModule('finances');
   return (
-    <div className="p-6 space-y-10">
+    <div className="sm:p-6 space-y-10">
       {!ecriture && <LectureSeule module="Finances" />}
       <Synthese appId={currentApp} lectureSeule={!ecriture} />
       <Tendance appId={currentApp} />

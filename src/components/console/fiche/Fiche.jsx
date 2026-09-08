@@ -157,16 +157,16 @@ export default function Fiche({ appId, dossierId, onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center overflow-y-auto p-4"
+      className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center overflow-y-auto p-0 sm:p-4"
       onClick={onClose}
     >
       <div
         role="dialog"
         aria-modal="true"
-        className="bg-baikal-surface border border-baikal-border rounded-lg w-full max-w-4xl my-8"
+        className="bg-baikal-surface border-y sm:border border-baikal-border sm:rounded-lg w-full max-w-4xl min-h-full sm:min-h-0 my-0 sm:my-8"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-4 p-4 border-b border-baikal-border">
+        <div className="flex items-start justify-between gap-4 p-4 border-b border-baikal-border sticky top-0 z-10 bg-baikal-surface">
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               {d && <BadgeEtape statut={d.statut} payeLe={d.paye_le} funnel={donnees?.funnel} />}
@@ -180,7 +180,7 @@ export default function Fiche({ appId, dossierId, onClose }) {
           <button
             onClick={onClose}
             aria-label="Fermer"
-            className="p-1.5 text-baikal-text hover:text-white rounded-md hover:bg-baikal-bg"
+            className="p-2 text-baikal-text hover:text-white rounded-md hover:bg-baikal-bg"
           >
             <X className="w-5 h-5" />
           </button>

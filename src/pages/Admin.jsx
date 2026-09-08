@@ -120,7 +120,7 @@ function VueSite({ appId }) {
 
     if (stats.mode === 'generique') {
         return (
-            <div className="bg-baikal-surface border border-baikal-border rounded-lg p-6">
+            <div className="bg-baikal-surface border border-baikal-border rounded-lg p-4 sm:p-6 overflow-x-auto">
                 <h3 className="text-sm font-mono text-baikal-text mb-3">
                     TABLES DU SITE (volumes estimes)
                 </h3>
@@ -144,7 +144,7 @@ function VueSite({ appId }) {
                 {stats.kpis.map((kpi) => (
                     <div key={kpi.cle} className="bg-baikal-surface border border-baikal-border rounded-lg p-4">
                         <p className="text-xs font-mono text-baikal-text uppercase">{kpi.libelle}</p>
-                        <p className="text-2xl font-semibold text-white mt-1">{fmtValeur(kpi)}</p>
+                        <p className="text-xl sm:text-2xl font-semibold text-white mt-1">{fmtValeur(kpi)}</p>
                     </div>
                 ))}
             </div>

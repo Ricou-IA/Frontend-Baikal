@@ -69,7 +69,7 @@ function Interrupteur({ module, niveau, onChange, disabled }) {
             disabled={disabled}
             title={`${module.label} · ${label}`}
             onClick={() => { if (!enfonce) onChange(valeur); }}
-            className={`flex items-center gap-1 px-2 py-1 rounded border text-xs font-mono transition-colors disabled:opacity-50
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded border text-xs font-mono transition-colors disabled:opacity-50
               ${enfonce ? actif : INACTIF}`}
           >
             <Icone className="w-3.5 h-3.5" />

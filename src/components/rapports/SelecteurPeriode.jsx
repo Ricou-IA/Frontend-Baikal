@@ -45,7 +45,7 @@ export function libellePeriode({ debut, fin }) {
   return `du ${j(a, a.getUTCFullYear() !== b.getUTCFullYear())} au ${j(b, true)}`;
 }
 
-const CHIP = 'px-2.5 py-1 rounded border text-xs transition-colors';
+const CHIP = 'px-2.5 py-1.5 rounded border text-xs transition-colors';
 const CHIP_ACTIF = `${CHIP} border-baikal-cyan text-baikal-cyan`;
 const CHIP_INACTIF = `${CHIP} border-baikal-border text-baikal-text hover:text-white`;
 const CHAMP = 'px-2 py-1.5 rounded border border-baikal-border bg-baikal-bg text-baikal-text focus:border-baikal-cyan outline-none text-sm';
@@ -135,7 +135,7 @@ export default function SelecteurPeriode({ valeur, onChange }) {
       )}
 
       {mode === 'libre' && (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <input
             type="date"
             value={valeur.debut}
@@ -156,7 +156,7 @@ export default function SelecteurPeriode({ valeur, onChange }) {
       )}
 
       {ouvert && mode !== 'libre' && (
-        <div className="absolute right-0 top-full mt-2 z-20 w-64 p-3 rounded-lg border border-baikal-border bg-baikal-surface shadow-xl space-y-3">
+        <div className="absolute left-0 sm:left-auto sm:right-0 top-full mt-2 z-30 w-64 max-w-[calc(100vw-2rem)] p-3 rounded-lg border border-baikal-border bg-baikal-surface shadow-xl space-y-3">
           <div className="flex items-center justify-between">
             <Fleche sens={-1} onClick={() => setAnneeGrille((a) => a - 1)} />
             <span className="text-white text-sm font-semibold tabular-nums">{anneeGrille}</span>

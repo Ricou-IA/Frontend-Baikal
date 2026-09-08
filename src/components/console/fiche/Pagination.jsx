@@ -16,7 +16,7 @@ export default function Pagination({ total, page, parPage, onPage }) {
   const pages = Math.max(1, Math.ceil(total / parPage));
   if (pages <= 1 && page <= 1) return null;
   return (
-    <div className="flex items-center justify-between text-xs text-baikal-text">
+    <div className="flex items-center justify-between gap-2 flex-wrap text-sm text-baikal-text">
       <span>
         Page {page} sur {pages} · {(page - 1) * parPage + 1}–
         {Math.min(page * parPage, total)} / {total}
@@ -25,14 +25,14 @@ export default function Pagination({ total, page, parPage, onPage }) {
         <button
           onClick={() => onPage(page - 1)}
           disabled={page <= 1}
-          className="px-2 py-1 rounded-md border border-baikal-border disabled:opacity-40 hover:border-baikal-cyan"
+          className="px-3 py-2 rounded-md border border-baikal-border disabled:opacity-40 hover:border-baikal-cyan"
         >
           Précédent
         </button>
         <button
           onClick={() => onPage(page + 1)}
           disabled={page >= pages}
-          className="px-2 py-1 rounded-md border border-baikal-border disabled:opacity-40 hover:border-baikal-cyan"
+          className="px-3 py-2 rounded-md border border-baikal-border disabled:opacity-40 hover:border-baikal-cyan"
         >
           Suivant
         </button>

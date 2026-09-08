@@ -40,7 +40,7 @@ function Chip({ actif, onClick, children }) {
   return (
     <button
       onClick={onClick}
-      className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors
+      className={`px-2.5 py-1.5 rounded-md text-xs font-medium border transition-colors
         ${actif
           ? 'border-baikal-cyan text-baikal-cyan bg-baikal-cyan/10'
           : 'border-baikal-border text-baikal-text hover:text-white'}`}
@@ -202,7 +202,7 @@ function ProspectsContent() {
             total filtré ci-dessous (qui exclut aussi les clients par défaut), volontairement.
           </p>
         </div>
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           <KpiCarte label="Adressables"
             valeur={<span className="tabular-nums">{fmtNombre(donnees.kpi?.adressables)}</span>} />
           <KpiCarte label="Nouveaux"
@@ -252,7 +252,7 @@ function ProspectsContent() {
           />
         </div>
         <div className="flex items-center gap-4 flex-wrap">
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-xs text-baikal-text opacity-60 mr-1">Statut</span>
             {STATUTS.map(([slug, libelle]) => (
               <Chip key={slug} actif={statuts.includes(slug)}
@@ -261,7 +261,7 @@ function ProspectsContent() {
               </Chip>
             ))}
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-xs text-baikal-text opacity-60 mr-1">Provenance</span>
             {PROVENANCES.map(([slug, libelle]) => (
               <Chip key={slug} actif={provenances.includes(slug)}
@@ -342,7 +342,7 @@ function ProspectsContent() {
                     {p.commune || <span className="opacity-50">—</span>}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <BadgeClient depuis={p.client_depuis} />
                       <BadgeStatut statut={p.statut} />
                     </div>
