@@ -398,7 +398,7 @@ const STATUTS_DEMANDE = [
   ['branchee', 'Branchée'],
   ['ecartee', 'Écartée'],
 ];
-const PILES_DEMANDE = { supabase_stripe: 'Supabase + Stripe', supabase: 'Supabase', autre: 'Autre' };
+const PILES_DEMANDE = { postgres_stripe: 'Postgres + Stripe', postgres: 'Postgres', autre_base: 'Autre base', autre: 'Autre' };
 
 function Demandes() {
   const [demandes, setDemandes] = useState([]);

@@ -8,8 +8,12 @@
 
 Baikal est né console d'administration d'ARPET, puis est devenu la console de tous
 les sites de Confer. Décision d'Eric du 07/09/2026 : en faire un **produit vendable
-aux fondateurs qui vibecodent un SaaS** (pile Supabase + Stripe + Vercel + Resend) et
-n'ont pas l'énergie du backend — en gardant la règle « d'abord pour nous ».
+aux fondateurs qui vibecodent un SaaS** et n'ont pas l'énergie du backend — en gardant
+la règle « d'abord pour nous ». Exigence réelle : **une base Postgres, où qu'elle soit**
+(connexion directe via `baikal_reader`) ; Stripe ne sert qu'au module Finances ; MySQL,
+Mongo ou SQLite ne marchent pas. Ne pas présenter Baikal comme « Supabase + Stripe »
+(correction d'Eric du 08/09/2026). Décision du 08/09 : la console doit être utilisable
+sur un téléphone (usage « compagnon »).
 
 - On ne vend PAS « un admin panel » (Admin Pilot, Bricks.sh, Flashboard, Forest Admin
   occupent le CRUD générique). On vend ce que personne ne fait : le **portefeuille**

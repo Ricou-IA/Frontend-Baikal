@@ -31,8 +31,8 @@ const MODULES = [
     code: 'FINANCES',
     titre: 'Finances',
     texte:
-      "Les ventes Stripe rapprochées de vos dossiers, les frais réels, les remboursements, " +
-      "vos charges. Une archive quotidienne qui retrouve les ventes que votre base comptait pour zéro.",
+      "Les ventes rapprochées de vos dossiers, vos charges, et avec Stripe les frais réels et les " +
+      "remboursements. Une archive quotidienne qui retrouve les ventes que votre base comptait pour zéro.",
   },
   {
     code: 'SEO',
@@ -63,7 +63,7 @@ const ETAPES = [
     titre: 'Un rôle en lecture seule',
     texte:
       "Baikal lit votre base avec un rôle Postgres qui ne peut rien écrire, et Stripe avec une clé " +
-      "restreinte. Les actions qui modifient passent par vos propres Edge Functions, jamais par nous.",
+      "restreinte. Les actions qui modifient passent par une route de votre backend, avec votre secret.",
   },
   {
     n: '03',
@@ -96,10 +96,11 @@ where d.deleted_at is null;
 
 grant select on public.baikal_dossiers to baikal_reader;`;
 
+// Même liste que PILES dans l'EF baikal-demande.
 const PILES = [
-  ['supabase_stripe', 'Supabase + Stripe'],
-  ['supabase', 'Supabase, sans Stripe'],
-  ['autre', 'Autre pile'],
+  ['postgres_stripe', 'Postgres + Stripe'],
+  ['postgres', 'Postgres, sans Stripe'],
+  ['autre_base', 'Autre base (MySQL, Mongo…)'],
 ];
 
 // ---------------------------------------------------------------------------
@@ -167,7 +168,7 @@ function origineDepuisNavigateur() {
 function FormulaireDemande() {
   const [email, setEmail] = useState('');
   const [site, setSite] = useState('');
-  const [pile, setPile] = useState('supabase_stripe');
+  const [pile, setPile] = useState('postgres_stripe');
   const [message, setMessage] = useState('');
   const [siteWeb, setSiteWeb] = useState(''); // honeypot
   const [etat, setEtat] = useState('idle'); // idle | envoi | ok | erreur
@@ -350,7 +351,7 @@ export default function Baikal() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
             <div className="lg:col-span-7">
               <div className="font-mono text-[11px] tracking-[0.25em] text-baikal-cyan mb-6 animate-fadeInUp" style={apparition(0)}>
-                BACK-OFFICE · SUPABASE · STRIPE · SEARCH CONSOLE
+                BACK-OFFICE · POSTGRES · STRIPE · SEARCH CONSOLE
               </div>
               <h1
                 className="font-serif text-white text-[2.6rem] leading-[1.05] sm:text-6xl lg:text-[4.4rem] mb-8 animate-fadeInUp"
@@ -361,9 +362,9 @@ export default function Baikal() {
                 <span className="italic text-baikal-cyan">Vous n'avez pas de back-office.</span>
               </h1>
               <p className="text-lg sm:text-xl leading-relaxed max-w-xl mb-10 animate-fadeInUp" style={apparition(160)}>
-                Baikal lit vos bases, vos ventes Stripe et votre Search Console, et vous rend une
-                console : clients, finances, SEO, rapports. Pour tous vos sites. Sans une ligne
-                d'admin à écrire.
+                Baikal lit vos bases Postgres, où qu'elles soient, vos ventes Stripe et votre Search
+                Console, et vous rend une console : clients, finances, SEO, rapports. Pour tous vos
+                sites. Sans une ligne d'admin à écrire.
               </p>
               <div className="flex flex-col sm:flex-row gap-3 animate-fadeInUp" style={apparition(240)}>
                 <a
@@ -391,7 +392,7 @@ export default function Baikal() {
           <div className="max-w-6xl mx-auto px-5 sm:px-8 py-14 grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
               ['SEMAINE 1', 'Le front est en ligne. Cursor, Lovable ou Claude Code ont fait le travail.'],
-              ['SEMAINE 2', 'Supabase tient la base, Stripe encaisse. Première vente.'],
+              ['SEMAINE 2', 'Postgres tient la base, Stripe encaisse. Première vente.'],
               ['SEMAINE 3', "Combien de clients ont payé ? D'où viennent-ils ? Vous ouvrez trois onglets et une requête SQL."],
             ].map(([k, v]) => (
               <div key={k}>
@@ -433,12 +434,13 @@ export default function Baikal() {
             <div className="lg:col-span-5">
               <div className="font-mono text-[11px] tracking-[0.25em] text-baikal-cyan mb-4">UN PORTEFEUILLE, PAS UN SITE</div>
               <h2 className="font-serif text-white text-3xl sm:text-4xl leading-tight mb-6">
-                Vous avez lancé trois produits cette année. Ils vivent dans trois projets Supabase.
+                Vous avez lancé trois produits cette année. Ils vivent dans trois bases différentes.
               </h2>
               <p className="leading-relaxed">
                 Tout le marché fait « une app, un admin ». Baikal fait « N sites, une console ». Chaque
-                site garde sa base, ses secrets et son déploiement. Vous changez de site en haut à gauche,
-                les mêmes modules s'ouvrent, avec le vocabulaire de ce site-là.
+                site garde sa base, ses secrets et son hébergement : Supabase, Neon, un serveur à vous,
+                peu importe tant que c'est Postgres. Vous changez de site en haut à gauche, les mêmes
+                modules s'ouvrent, avec le vocabulaire de ce site-là.
               </p>
             </div>
             <div className="lg:col-span-7 lg:pl-8">
@@ -446,7 +448,7 @@ export default function Baikal() {
                 {[
                   ['Un compte, des portes', "Le compte est unique. On lui ouvre un site, un module, en lecture ou en écriture. Un associé voit les finances de son produit et rien d'autre."],
                   ['Chaque site déclare ses capacités', "Pas de vue abonnement ? Pas d'onglet abonnement. Baikal ne montre que ce que le site publie, et ne tombe jamais en erreur sur ce qu'il n'a pas."],
-                  ['Les actions restent chez vous', "Renvoyer un email, relancer une extraction, créditer un compte : Baikal appelle votre Edge Function, avec votre secret. Il n'écrit jamais lui-même."],
+                  ['Les actions restent chez vous', "Renvoyer un email, relancer une extraction, créditer un compte : Baikal appelle une route de votre backend, avec votre secret. Il n'écrit jamais lui-même."],
                 ].map(([t, d]) => (
                   <li key={t} className="flex gap-4 border border-baikal-border/70 rounded-md p-5 bg-baikal-surface/30">
                     <span className="font-mono text-baikal-cyan mt-1">▸</span>
@@ -543,7 +545,7 @@ export default function Baikal() {
             <div className="lg:col-span-5">
               <div className="grid grid-cols-2 gap-px bg-baikal-border/70 border border-baikal-border/70 rounded-md overflow-hidden font-mono">
                 {[
-                  ['3', 'projets Supabase lus'],
+                  ['3', 'bases Postgres lues'],
                   ['1', 'compte Stripe rapproché'],
                   ['J-3', 'fenêtre Search Console'],
                   ['0', 'écriture dans vos bases'],
@@ -568,7 +570,8 @@ export default function Baikal() {
               </h2>
               <p className="leading-relaxed text-sm">
                 Vous recevez une réponse humaine, le contrat d'intégration à donner à votre agent, et un
-                accès à la console une fois la vue publiée. Si votre pile ne colle pas, on vous le dit.
+                accès à la console une fois la vue publiée. Il faut une base Postgres ; Stripe ne sert
+                qu'au module Finances. Si votre pile ne colle pas, on vous le dit.
               </p>
             </div>
             <div className="lg:col-span-7 relative">

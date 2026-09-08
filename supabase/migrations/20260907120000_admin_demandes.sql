@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS admin.demandes (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   email       text NOT NULL,
   site        text,                     -- URL ou nom du SaaS du demandeur
-  pile        text NOT NULL DEFAULT 'autre',  -- supabase_stripe | supabase | autre
+  pile        text NOT NULL DEFAULT 'autre',  -- postgres_stripe | postgres | autre_base | autre
   message     text,
   origine     text,                     -- referrer ou utm, brut
   statut      text NOT NULL DEFAULT 'nouvelle'

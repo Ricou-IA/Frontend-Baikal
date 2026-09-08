@@ -20,7 +20,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const PILES = ["supabase_stripe", "supabase", "autre"];
+const PILES = ["postgres_stripe", "postgres", "autre_base", "autre"];
 const STATUTS = ["nouvelle", "contactee", "branchee", "ecartee"];
 
 function json(payload: unknown, status = 200): Response {
