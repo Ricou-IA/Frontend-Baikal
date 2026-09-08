@@ -1064,7 +1064,7 @@ export default function IngestionContent({ orgId, isSuperAdmin }) {
     return (
         <div className="space-y-6">
             {/* Header uniforme style Dashboard */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-3">
                 <div>
                     <h2 className="text-xl font-mono font-semibold text-white flex items-center gap-2">
                         <BookOpen className="w-5 h-5 text-baikal-cyan" />
