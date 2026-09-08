@@ -7,7 +7,7 @@
  *
  * Usage : <ConsoleLayout actif="seo">…contenu…</ConsoleLayout>
  * `actif` ∈ dashboard|knowledge|prompts|indexation|clients|prospects|finances|rapports|seo|partenariats|users|sites
- *         ou, pour l'etage Baikal (/baikal), baikal-superadmins|baikal-acces|baikal-registre|baikal-metiers
+ *         ou, pour l'etage Baikal (/baikal), baikal-comptes|baikal-acces|baikal-superadmins|baikal-registre|baikal-metiers
  * `badges` optionnel : { knowledge: 3 } affiche un badge sur l'onglet.
  * ============================================================================
  */
@@ -48,6 +48,7 @@ const MODULES_TRANSVERSES = [
 
 // Etage Baikal (super_admin) : ce qui n'appartient a aucun site.
 const MODULES_BAIKAL = [
+    { id: 'baikal-comptes', label: 'Comptes', icon: Users, route: '/baikal?tab=comptes' },
     { id: 'baikal-acces', label: 'Accès par site', icon: KeyRound, route: '/baikal?tab=acces' },
     { id: 'baikal-superadmins', label: 'Super admins', icon: UserCog, route: '/baikal?tab=superadmins' },
     { id: 'baikal-registre', label: 'Registre des sites', icon: ListChecks, route: '/baikal?tab=registre' },
@@ -67,7 +68,7 @@ function Onglet({ tab, actif, badge, onClick }) {
         <button
             onClick={onClick}
             data-actif={isActive ? 'true' : undefined}
-            className={`relative flex items-center gap-2 px-3 sm:px-4 py-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap
+            className={`relative shrink-0 flex items-center gap-2 px-3 sm:px-4 py-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap
                 ${isActive
                     ? 'border-baikal-cyan text-baikal-cyan'
                     : 'border-transparent text-baikal-text hover:text-white hover:border-baikal-border'}`}

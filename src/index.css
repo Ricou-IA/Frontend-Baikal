@@ -101,12 +101,12 @@
 }
 
 @media (pointer: coarse) {
-  button,
+  button:not([role=switch]):not(.rounded-full),
   select,
   input:not([type=checkbox]):not([type=radio]):not([type=file]) {
     min-height: 2.5rem;
   }
-  button:has(> svg:only-child) {
+  button:not([role=switch]):not(.rounded-full):has(> svg:only-child) {
     min-width: 2.5rem;
   }
 }

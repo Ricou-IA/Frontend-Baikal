@@ -23,7 +23,7 @@ function EntreeBaikal({ actif, onSelect, compact = false }) {
             <button
                 onClick={onSelect}
                 aria-current={actif ? 'true' : undefined}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-sm whitespace-nowrap transition-colors
+                className={`shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-md border text-sm whitespace-nowrap transition-colors
                     ${actif
                         ? 'border-baikal-cyan text-baikal-cyan bg-baikal-cyan/10'
                         : 'border-baikal-border text-baikal-text hover:text-white'}`}
@@ -118,7 +118,7 @@ export function SiteBarre({ sites, actif, onSelect, baikal = false, baikalActif 
                             key={site.id}
                             onClick={() => onSelect(site.id)}
                             aria-current={estActif ? 'true' : undefined}
-                            className={`px-3 py-2 rounded-md border text-sm whitespace-nowrap transition-colors
+                            className={`shrink-0 px-3 py-2 rounded-md border text-sm whitespace-nowrap transition-colors
                                 ${estActif
                                     ? 'border-baikal-cyan text-baikal-cyan bg-baikal-cyan/10'
                                     : 'border-baikal-border text-baikal-text hover:text-white'}`}
