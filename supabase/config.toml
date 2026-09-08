@@ -42,6 +42,12 @@ verify_jwt = true
 import_map = "./functions/import_map.json"
 entrypoint = "./functions/admin-droits/index.ts"
 
+[functions.admin-comptes]
+enabled = true
+verify_jwt = true
+import_map = "./functions/import_map.json"
+entrypoint = "./functions/admin-comptes/index.ts"
+
 # Archivage SEO appele par pg_cron : pas de JWT, auth par X-Cron-Secret.
 [functions.admin-seo-snapshot]
 enabled = true

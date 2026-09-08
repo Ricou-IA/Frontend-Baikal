@@ -7,7 +7,7 @@
  *
  * Usage : <ConsoleLayout actif="seo">…contenu…</ConsoleLayout>
  * `actif` ∈ dashboard|knowledge|prompts|indexation|clients|prospects|finances|rapports|seo|partenariats|users|sites
- *         ou, pour l'etage Baikal (/baikal), baikal-comptes|baikal-acces|baikal-superadmins|baikal-registre|baikal-metiers
+ *         ou, pour l'etage Baikal (/baikal), baikal-comptes|baikal-sites
  * `badges` optionnel : { knowledge: 3 } affiche un badge sur l'onglet.
  * ============================================================================
  */
@@ -16,7 +16,7 @@ import { useNavigate } from 'react-router-dom';
 import {
     LayoutDashboard, BookOpen, MessageSquareCode, Database, FolderOpen,
     TrendingUp, Mail, Users, Globe, Shield, Settings, LogOut, Euro, Target, FileText,
-    KeyRound, ListChecks, Tags, UserCog, Inbox } from 'lucide-react';
+    ListChecks } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { AppProvider, useApp } from '../../contexts/AppContext';
 import SiteSidebar, { SiteBarre } from './SiteSidebar';
@@ -50,11 +50,7 @@ const MODULES_TRANSVERSES = [
 // Etage Baikal (super_admin) : ce qui n'appartient a aucun site.
 const MODULES_BAIKAL = [
     { id: 'baikal-comptes', label: 'Comptes', icon: Users, route: '/baikal?tab=comptes' },
-    { id: 'baikal-acces', label: 'Accès par site', icon: KeyRound, route: '/baikal?tab=acces' },
-    { id: 'baikal-superadmins', label: 'Super admins', icon: UserCog, route: '/baikal?tab=superadmins' },
-    { id: 'baikal-registre', label: 'Registre des sites', icon: ListChecks, route: '/baikal?tab=registre' },
-    { id: 'baikal-metiers', label: 'Métiers', icon: Tags, route: '/baikal?tab=metiers' },
-    { id: 'baikal-demandes', label: 'Demandes', icon: Inbox, route: '/baikal?tab=demandes' },
+    { id: 'baikal-sites', label: 'Sites', icon: ListChecks, route: '/baikal?tab=sites' },
 ];
 
 // Page d'arrivee quand on quitte l'etage Baikal pour un site.

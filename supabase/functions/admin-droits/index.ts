@@ -11,8 +11,8 @@
 //   super-admin-set {email, actif}    -> promotion / rétrogradation, journalisée
 //                                        dans core.role_changes_log. Jamais soi-même,
 //                                        jamais le dernier.
-// Le compte doit déjà exister (core.profiles) : la création passe par la page
-// Utilisateurs (EF create-user), pas par ici.
+// Le compte doit déjà exister (core.profiles) : la création passe par l'onglet
+// Comptes (EF admin-comptes) ou la page Utilisateurs (EF create-user), pas par ici.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -154,7 +154,7 @@ serve(async (req) => {
         if (cErr) throw cErr;
         if (!cible) {
           return json(
-            { data: null, error: `Aucun compte pour ${email} — creer le compte d'abord (Nouvel user)` },
+            { data: null, error: `Aucun compte pour ${email} — creer le compte d'abord (Baikal → Comptes)` },
             404,
           );
         }
@@ -209,7 +209,7 @@ serve(async (req) => {
           .from("profiles").select("id, email, app_role, org_id").ilike("email", email).maybeSingle();
         if (cErr) throw cErr;
         if (!cible) {
-          return json({ data: null, error: `Aucun compte pour ${email} — creer le compte d'abord (Nouvel user)` }, 404);
+          return json({ data: null, error: `Aucun compte pour ${email} — creer le compte d'abord (Baikal → Comptes)` }, 404);
         }
         if (cible.id === user.id) {
           return json({ data: null, error: "Vous ne pouvez pas modifier votre propre statut" }, 400);

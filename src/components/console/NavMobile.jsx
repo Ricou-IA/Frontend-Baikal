@@ -22,7 +22,7 @@ import { ChevronDown, MoreHorizontal, Settings, LogOut, Shield, Check } from 'lu
 // Modules affichés dans la barre du bas, dans cet ordre, s'ils sont
 // ouverts pour la personne et le site. Les autres passent dans « Plus ».
 export const PRINCIPAUX_SITE = ['clients', 'finances', 'seo', 'rapports'];
-export const PRINCIPAUX_BAIKAL = ['baikal-acces', 'baikal-registre', 'baikal-demandes', 'baikal-metiers'];
+export const PRINCIPAUX_BAIKAL = ['baikal-comptes', 'baikal-sites'];
 
 /** Feuille depuis le bas : fond assombri, panneau bordé à la hauteur de l'écran. */
 function Feuille({ ouverte, onFermer, titre, children }) {

@@ -10,6 +10,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useApp } from '../../contexts/AppContext';
 import { supabase } from '../../lib/supabaseClient';
 import {
     User,
@@ -38,20 +39,26 @@ export default function ProfileSwitcher() {
     const [allUsers, setAllUsers] = useState([]);
     const [loadingUsers, setLoadingUsers] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    // « Voir comme » ne porte que sur les clients du site courant : un
+    // utilisateur d'ARPET n'a rien à faire dans la liste quand on est sur
+    // Majord'home, et l'étage Baikal n'affiche pas ce sélecteur.
+    const { currentApp } = useApp();
 
-    // Charger tous les utilisateurs depuis la base
     useEffect(() => {
-        if (isSuperAdmin) {
-            loadAllUsers();
+        if (isSuperAdmin && currentApp) {
+            loadAllUsers(currentApp);
         }
-    }, [isSuperAdmin]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isSuperAdmin, currentApp]);
 
-    const loadAllUsers = async () => {
+    const loadAllUsers = async (appId) => {
+        setLoadingUsers(true);
         try {
             // Tables dans search_path: core
             const { data, error } = await supabase
                 .from('profiles')
                 .select('id, email, full_name, app_role, business_role')
+                .eq('app_id', appId)
                 .order('created_at', { ascending: false })
                 .limit(100); // Limiter à 100 utilisateurs pour les performances
 
@@ -169,7 +176,7 @@ export default function ProfileSwitcher() {
                     <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-xl border border-slate-200 py-2 z-50">
                         <div className="px-3 py-2 border-b border-slate-200 flex items-center justify-between">
                             <p className="text-xs font-semibold text-slate-500 uppercase">
-                                {isImpersonating ? 'Mode impersonation' : 'Tous les utilisateurs'}
+                                {isImpersonating ? 'Mode impersonation' : 'Voir comme un client du site'}
                             </p>
                             {isImpersonating && (
                                 <button

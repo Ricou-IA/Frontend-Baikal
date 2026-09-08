@@ -11,7 +11,9 @@
  * - Créer un utilisateur (super_admin)
  * - Assigner un utilisateur à une organisation (super_admin)
  * - Modifier le rôle d'un utilisateur
- * - Renvoyer un email de réinitialisation de mot de passe
+ * - Actions compte (mot de passe, lien de réinitialisation, nom, email,
+ *   blocage) via l'EF admin-comptes, périmètre = le site courant :
+ *   le propriétaire du site voit tout, l'org_admin son organisation
  * - Retirer un utilisateur de son organisation
  * - Recherche et filtres
  *
@@ -32,7 +34,8 @@ import { useApp } from '@contexts/AppContext';
 import ConsoleLayout from '../../components/console/ConsoleLayout';
 import AdminsSite from '../../components/console/AdminsSite';
 import { usersService, organizationService } from '@services';
-import { supabase } from '@lib/supabaseClient';
+import { comptesService } from '../../services/comptes.service';
+import ModalesCompte from '../../components/console/comptes/ModalesCompte';
 import {
     Users,
     UserPlus,
@@ -113,6 +116,10 @@ function UsersContent() {
     const [editingUser, setEditingUser] = useState(null);
     const [removingUser, setRemovingUser] = useState(null);
     const [deletingUser, setDeletingUser] = useState(null);
+    // Actions compte (modales partagées) et état auth des comptes du site
+    // (bloqué ou non), lu par l'EF admin-comptes dans le périmètre du site.
+    const [modaleCompte, setModaleCompte] = useState(null);
+    const [etatsComptes, setEtatsComptes] = useState({});
 
     // Charger les organisations
     useEffect(() => {
@@ -179,13 +186,21 @@ function UsersContent() {
         }
     }, [isSuperAdmin, orgFilter, search, profile?.org_id, currentApp]);
 
+    // État auth (bloqué) des comptes du site, pour les lignes et les modales
+    const loadEtats = useCallback(async () => {
+        if (!peutAgir || siteClients) return;
+        const { data } = await comptesService.lister(currentApp);
+        if (data) setEtatsComptes(Object.fromEntries(data.map((c) => [c.userId, c])));
+    }, [peutAgir, siteClients, currentApp]);
+
     // Charger les données initiales
     useEffect(() => {
         if (peutVoirAttente) {
             loadPendingUsers();
         }
         loadUsers();
-    }, [peutVoirAttente, loadPendingUsers, loadUsers]);
+        loadEtats();
+    }, [peutVoirAttente, loadPendingUsers, loadUsers, loadEtats]);
 
     // Auto-hide feedback
     useEffect(() => {
@@ -208,28 +223,32 @@ function UsersContent() {
         setRemovingUser(user);
     };
 
-    const handleResetPassword = async (user) => {
-        try {
-            const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
-                redirectTo: `${window.location.origin}/reset-password`,
-            });
-
-            if (error) {
-                throw new Error(error.message);
-            }
-
-            setFeedback({
-                type: 'success',
-                message: `Email de réinitialisation envoyé à ${user.email}`,
-            });
-        } catch (err) {
-            console.error('[handleResetPassword] Error:', err);
-            setFeedback({
-                type: 'error',
-                message: err.message || 'Erreur lors de l\'envoi de l\'email',
-            });
-        }
+    // Ouvre une modale compte (mot de passe, lien, nom, email, blocage)
+    const ouvrirCompte = (type, user) => {
+        setModaleCompte({
+            type,
+            compte: {
+                userId: user.id,
+                email: user.email,
+                nom: user.full_name,
+                bloque: !!etatsComptes[user.id]?.bloque,
+            },
+        });
     };
+
+    const modalesCompte = (
+        <ModalesCompte
+            scope={currentApp}
+            modale={modaleCompte}
+            onClose={() => setModaleCompte(null)}
+            onFait={(message) => {
+                loadUsers();
+                loadEtats();
+                if (message) setFeedback({ type: 'success', message });
+            }}
+            onErreur={(message) => setFeedback({ type: 'error', message })}
+        />
+    );
 
     const handleUserCreated = () => {
         loadUsers();
@@ -358,7 +377,8 @@ function UsersContent() {
                                                 user={user}
                                                 showOrg={false}
                                                 onEditRole={handleEditRole}
-                                                onResetPassword={handleResetPassword}
+                                                onCompte={ouvrirCompte}
+                                                bloque={!!etatsComptes[user.id]?.bloque}
                                                 onRemove={handleRemove}
                                                 canEdit={peutAgir && user.app_role !== 'org_admin' && user.app_role !== 'super_admin'}
                                             />
@@ -401,6 +421,7 @@ function UsersContent() {
                     user={removingUser}
                     onConfirm={handleRemoved}
                 />
+                {modalesCompte}
             </div>
         );
     }
@@ -419,7 +440,7 @@ function UsersContent() {
                     <div>
                         <h1 className="text-lg font-mono font-bold text-white">UTILISATEURS</h1>
                         <p className="text-xs text-baikal-text font-mono">
-                            Comptes de la console et des organisations du site — les clients d'un site se lisent dans Clients
+                            Les clients du site et leurs organisations — les comptes qui administrent des sites depuis Baikal sont dans Baikal → Comptes
                         </p>
                     </div>
                 </div>
@@ -674,7 +695,8 @@ function UsersContent() {
                                                     user={user}
                                                     showOrg={true}
                                                     onEditRole={handleEditRole}
-                                                    onResetPassword={handleResetPassword}
+                                                    onCompte={ouvrirCompte}
+                                                    bloque={!!etatsComptes[user.id]?.bloque}
                                                     onRemove={handleRemove}
                                                     onDelete={handleDelete}
                                                     isSuperAdmin={true}

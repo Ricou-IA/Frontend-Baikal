@@ -1,22 +1,27 @@
 /**
  * UserRow - Baikal Console
  * ============================================================================
- * Ligne de tableau pour un utilisateur standard.
+ * Ligne de tableau pour un utilisateur standard (un client du site).
+ * Les actions COMPTE (mot de passe, lien, nom, email, blocage) ouvrent les
+ * modales partagées comptes/ModalesCompte via onCompte(type, user) ; les
+ * actions d'organisation (rôle, retrait, suppression) restent ici.
  * ============================================================================
  */
 
-import React, { useState } from 'react';
-import { Building2, Pencil, Trash2, UserX, KeyRound, Loader2, Shield } from 'lucide-react';
+import { Building2, Pencil, Trash2, UserX, KeyRound, Link2, AtSign, UserPen, Ban, ShieldOff, Shield } from 'lucide-react';
 import { formatDate } from '@shared/utils/dateFormatter';
 import UserAvatar from './UserAvatar';
 import AppRoleBadge from './AppRoleBadge';
+
+const ICONE = 'inline-flex items-center justify-center w-8 h-8 rounded border transition-colors';
 
 /**
  * Ligne utilisateur standard
  * @param {Object} props
  * @param {Object} props.user - Utilisateur
  * @param {Function} props.onEditRole - Callback pour éditer le rôle
- * @param {Function} props.onResetPassword - Callback pour reset password
+ * @param {Function} props.onCompte - (type, user) : mdp | lien | nom | email | bloquer | debloquer
+ * @param {boolean} [props.bloque] - Le compte est bloqué (état auth)
  * @param {Function} props.onRemove - Callback pour retirer l'utilisateur de son org
  * @param {Function} [props.onDelete] - Callback pour supprimer le compte (super_admin)
  * @param {boolean} [props.isSuperAdmin] - L'utilisateur courant est super_admin
@@ -26,30 +31,28 @@ import AppRoleBadge from './AppRoleBadge';
 export default function UserRow({
     user,
     onEditRole,
-    onResetPassword,
+    onCompte,
+    bloque = false,
     onRemove,
     onDelete,
     isSuperAdmin = false,
     showOrg = true,
     canEdit = true
 }) {
-    const [resetting, setResetting] = useState(false);
-
-    const handleResetPassword = async () => {
-        setResetting(true);
-        await onResetPassword(user);
-        setResetting(false);
-    };
-
     return (
-        <tr className="border-b border-baikal-border hover:bg-baikal-surface/50 transition-colors">
+        <tr className={`border-b border-baikal-border hover:bg-baikal-surface/50 transition-colors ${bloque ? 'opacity-70' : ''}`}>
             {/* User */}
             <td className="px-4 py-4">
                 <div className="flex items-center gap-3">
                     <UserAvatar user={user} />
                     <div>
-                        <p className="font-medium text-white">
+                        <p className="font-medium text-white flex items-center gap-2">
                             {user.full_name || 'Sans nom'}
+                            {bloque && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-red-500/50 text-red-400 text-[11px] font-mono">
+                                    <Ban className="w-3 h-3" />bloqué
+                                </span>
+                            )}
                         </p>
                         <p className="text-xs text-baikal-text">{user.email}</p>
                     </div>
@@ -81,7 +84,7 @@ export default function UserRow({
             {/* Actions */}
             <td className="px-4 py-4">
                 {canEdit ? (
-                    <div className="flex items-center justify-end gap-2">
+                    <div className="flex items-center justify-end gap-1.5 flex-wrap">
                         <button
                             onClick={() => onEditRole(user)}
                             className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-mono text-baikal-text hover:text-white hover:bg-baikal-bg border border-baikal-border rounded transition-colors"
@@ -90,22 +93,51 @@ export default function UserRow({
                             <Pencil className="w-3.5 h-3.5" />
                             Modifier
                         </button>
-                        <button
-                            onClick={handleResetPassword}
-                            disabled={resetting}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-mono text-blue-400 hover:text-white hover:bg-blue-900/30 border border-blue-500/30 rounded transition-colors disabled:opacity-50"
-                            title="Renvoyer email de mot de passe"
-                        >
-                            {resetting ? (
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                                <KeyRound className="w-3.5 h-3.5" />
-                            )}
-                        </button>
+                        {onCompte && (
+                            <>
+                                <button
+                                    onClick={() => onCompte('mdp', user)}
+                                    className={`${ICONE} text-blue-400 border-blue-500/30 hover:text-white hover:bg-blue-900/30`}
+                                    title="Nouveau mot de passe"
+                                >
+                                    <KeyRound className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                    onClick={() => onCompte('lien', user)}
+                                    className={`${ICONE} text-blue-400 border-blue-500/30 hover:text-white hover:bg-blue-900/30`}
+                                    title="Lien de réinitialisation à transmettre"
+                                >
+                                    <Link2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                    onClick={() => onCompte('nom', user)}
+                                    className={`${ICONE} text-baikal-text border-baikal-border hover:text-white hover:bg-baikal-bg`}
+                                    title="Renommer"
+                                >
+                                    <UserPen className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                    onClick={() => onCompte('email', user)}
+                                    className={`${ICONE} text-baikal-text border-baikal-border hover:text-white hover:bg-baikal-bg`}
+                                    title="Changer l'adresse email"
+                                >
+                                    <AtSign className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                    onClick={() => onCompte(bloque ? 'debloquer' : 'bloquer', user)}
+                                    className={`${ICONE} ${bloque
+                                        ? 'text-emerald-400 border-emerald-500/40 hover:bg-emerald-900/20'
+                                        : 'text-amber-400 border-amber-500/40 hover:bg-amber-900/20'}`}
+                                    title={bloque ? 'Débloquer : rendre la connexion possible' : 'Bloquer : empêcher toute connexion, sans rien supprimer'}
+                                >
+                                    {bloque ? <ShieldOff className="w-3.5 h-3.5" /> : <Ban className="w-3.5 h-3.5" />}
+                                </button>
+                            </>
+                        )}
                         {user.org_id ? (
                             <button
                                 onClick={() => onRemove(user)}
-                                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-mono text-red-400 hover:text-white hover:bg-red-900/30 border border-red-500/30 rounded transition-colors"
+                                className={`${ICONE} text-red-400 border-red-500/30 hover:text-white hover:bg-red-900/30`}
                                 title="Retirer de l'organisation"
                             >
                                 <Trash2 className="w-3.5 h-3.5" />
