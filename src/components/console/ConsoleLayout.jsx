@@ -108,32 +108,50 @@ function LayoutInterne({ actif, badges = {}, children }) {
         el?.scrollIntoView({ block: 'nearest', inline: 'center' });
     }, [actif]);
 
-    // Tableaux en cartes sous md (index.css) : chaque cellule reçoit en
-    // data-label le texte de son en-tête, pour que la carte lise
-    // « libellé : valeur ». Rejoué à chaque changement du DOM de la page.
+    // Tableaux sur téléphone (index.css) : seules les colonnes déclarées par
+    // data-mobile="1,4,-1" restent visibles sous md ; sans attribut, les trois
+    // premières plus la dernière si son en-tête est vide ou « Actions ». Les
+    // cellules sur plusieurs colonnes (messages « aucune ligne ») restent.
     const mainRef = useRef(null);
     useEffect(() => {
         const racine = mainRef.current;
         if (!racine) return undefined;
-        const etiqueter = () => {
+        const colonnesGardees = (table) => {
+            const entetes = [...(table.tHead?.rows?.[0]?.cells || [])];
+            const total = entetes.length || (table.tBodies[0]?.rows?.[0]?.cells.length ?? 0);
+            if (!total) return null;
+            const declare = table.dataset.mobile;
+            if (declare) {
+                return new Set(declare.split(',').map((x) => {
+                    const n = parseInt(x, 10);
+                    return n < 0 ? total + 1 + n : n;
+                }));
+            }
+            const gardees = new Set([1, 2, 3]);
+            const dernier = entetes[entetes.length - 1];
+            if (dernier && (dernier.innerText.trim() === '' || /^actions?$/i.test(dernier.innerText.trim()))) gardees.add(total);
+            return gardees;
+        };
+        const masquer = () => {
             racine.querySelectorAll('table:not(.tableau-large)').forEach((table) => {
-                const entetes = [...(table.tHead?.rows?.[0]?.cells || [])].map((th) => th.innerText.trim());
-                if (entetes.length === 0) return;
-                for (const corps of table.tBodies) {
-                    for (const ligne of corps.rows) {
-                        let i = 0;
+                const gardees = colonnesGardees(table);
+                if (!gardees) return;
+                const sections = [...(table.tHead ? [table.tHead] : []), ...table.tBodies];
+                for (const section of sections) {
+                    for (const ligne of section.rows) {
+                        let i = 1;
                         for (const cellule of ligne.cells) {
-                            const libelle = cellule.colSpan > 1 ? '' : entetes[i];
-                            if (libelle) cellule.dataset.label = libelle;
-                            else delete cellule.dataset.label;
+                            const large = cellule.colSpan > 1;
+                            if (!large && !gardees.has(i)) cellule.setAttribute('data-masque', '');
+                            else cellule.removeAttribute('data-masque');
                             i += cellule.colSpan || 1;
                         }
                     }
                 }
             });
         };
-        etiqueter();
-        const observateur = new MutationObserver(etiqueter);
+        masquer();
+        const observateur = new MutationObserver(masquer);
         observateur.observe(racine, { childList: true, subtree: true });
         return () => observateur.disconnect();
     }, []);

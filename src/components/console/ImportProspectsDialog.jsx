@@ -265,7 +265,7 @@ export default function ImportProspectsDialog({
                     {analyse.lignes.length > 5 ? ' — 5 premières lignes' : ''}
                   </p>
                   <div className="border border-baikal-border rounded-md overflow-x-auto">
-                    <table className="w-full text-xs text-baikal-text">
+                    <table data-mobile="1,2,3" className="w-full text-xs text-baikal-text">
                       <thead>
                         <tr className="text-left opacity-70 border-b border-baikal-border">
                           <th className="px-2 py-1.5">Email</th>

@@ -556,7 +556,7 @@ function VueEnsemble({ appId }) {
             </div>
           </div>
           <div className="max-h-[420px] overflow-auto">
-            <table className="w-full text-sm text-baikal-text">
+            <table data-mobile="1,2,5" className="w-full text-sm text-baikal-text">
               <thead className="sticky top-0 z-10 bg-baikal-surface">
                 <tr className="text-left text-xs opacity-70">
                   <th className="px-4 py-2">Requete</th>
@@ -607,7 +607,7 @@ function VueEnsemble({ appId }) {
             <p className="text-xs font-mono text-baikal-text uppercase">Top pages</p>
           </div>
           <div className="max-h-[420px] overflow-auto">
-            <table className="w-full text-sm text-baikal-text">
+            <table data-mobile="1,2,4" className="w-full text-sm text-baikal-text">
               <thead className="sticky top-0 z-10 bg-baikal-surface">
                 <tr className="text-left text-xs opacity-70">
                   <th className="px-4 py-2">Page</th>
@@ -753,7 +753,7 @@ function Comparatif({ appId }) {
 
       <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
         <div className="max-h-[480px] overflow-auto">
-          <table className="w-full min-w-[640px] text-sm text-baikal-text">
+          <table data-mobile="1,3,7,8" className="w-full min-w-[640px] text-sm text-baikal-text">
             <thead className="sticky top-0 z-10 bg-baikal-surface">
               <tr className="text-left text-xs opacity-70">
                 <th className="px-4 py-2">Requete</th>
@@ -866,7 +866,7 @@ function BingVsGoogle({ appId }) {
   return (
     <Section titre="Bing vs Google" sousTitre={sousTitre}>
       <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
-        <table className="w-full text-sm text-baikal-text">
+        <table data-mobile="1,2,3" className="w-full text-sm text-baikal-text">
           <thead>
             <tr className="text-left text-xs opacity-70">
               <th className="px-4 py-2">Mois</th>
@@ -908,7 +908,7 @@ function BingVsGoogle({ appId }) {
               Requetes ou Bing classe nettement mieux (≥ 5 rangs)
             </p>
           </div>
-          <table className="w-full text-sm text-baikal-text">
+          <table data-mobile="1,2,3,4" className="w-full text-sm text-baikal-text">
             <thead>
               <tr className="text-left text-xs opacity-70">
                 <th className="px-4 py-2">Requete</th>

@@ -224,7 +224,7 @@ function ClientsContent() {
       {donnees && donnees.disponible !== false && (
         <ContenuEstompe enCours={enCours}>
           <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
-            <table className="w-full text-sm text-baikal-text">
+            <table data-mobile={aAbonnement ? '2,4,7' : '2,4,6'} className="w-full text-sm text-baikal-text">
               <thead>
                 <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
                   <th className="px-4 py-2">ID</th>

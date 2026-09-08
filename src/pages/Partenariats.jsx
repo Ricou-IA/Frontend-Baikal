@@ -159,7 +159,7 @@ function Prospects({ appId }) {
 
       {message && <p className="text-baikal-cyan text-sm">{message}</p>}
 
-      <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-sm text-baikal-text">
+      <div className="overflow-x-auto"><table data-mobile="1,2,6" className="w-full min-w-[560px] text-sm text-baikal-text">
         <thead>
           <tr className="border-b border-baikal-border text-left opacity-70">
             <th className="px-2 py-2 text-left">Email</th><th className="px-2 py-2 text-left">Nom</th><th className="px-2 py-2 text-left">Entreprise</th>
@@ -336,7 +336,7 @@ function Campagnes({ appId }) {
           Nouvelle campagne
         </button>
       )}
-      <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-sm text-baikal-text">
+      <div className="overflow-x-auto"><table data-mobile="1,2,-1" className="w-full min-w-[560px] text-sm text-baikal-text">
         <thead>
           <tr className="border-b border-baikal-border text-left opacity-70">
             <th className="px-2 py-2 text-left">Nom</th><th className="px-2 py-2 text-left">Statut</th><th className="px-2 py-2 text-left">Envoyée le</th><th className="px-2 py-2 text-left">Résultats</th><th className="px-2 py-2 text-left"></th>

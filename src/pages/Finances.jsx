@@ -279,7 +279,7 @@ function CoutsParMois({ appId }) {
       {donnees && (
         <ContenuEstompe enCours={enCours}>
           <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
-            <table className="w-full min-w-[560px] text-sm text-baikal-text">
+            <table data-mobile="1,2,-1" className="w-full min-w-[560px] text-sm text-baikal-text">
               <thead>
                 <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
                   <th className="px-4 py-2">Mois</th>
@@ -429,7 +429,7 @@ function ChargesRecurrentes({ appId, lectureSeule = false }) {
       {donnees && (
         <ContenuEstompe enCours={enCours}>
           <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
-            <table className="w-full min-w-[560px] text-sm text-baikal-text">
+            <table data-mobile="1,2,-1" className="w-full min-w-[560px] text-sm text-baikal-text">
               <thead>
                 <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
                   <th className="px-4 py-2">Libellé</th>
@@ -643,7 +643,7 @@ function ChargesPonctuelles({ appId, lectureSeule = false }) {
       {donnees && (
         <ContenuEstompe enCours={enCours}>
           <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
-            <table className="w-full min-w-[560px] text-sm text-baikal-text">
+            <table data-mobile="1,2,3,-1" className="w-full min-w-[560px] text-sm text-baikal-text">
               <thead>
                 <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
                   <th className="px-4 py-2">Date</th>
@@ -795,7 +795,7 @@ function Ventes({ appId }) {
           )}
           <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
             <div className="max-h-[420px] overflow-auto">
-              <table className="w-full min-w-[560px] text-sm text-baikal-text">
+              <table data-mobile="1,3,4" className="w-full min-w-[560px] text-sm text-baikal-text">
                 <thead className="sticky top-0 z-10 bg-baikal-surface">
                   <tr className="text-left text-xs opacity-70">
                     <th className="px-4 py-2">Payée le</th>
@@ -865,7 +865,7 @@ function Partenariat({ appId }) {
       {contrat && (
         <ContenuEstompe enCours={enCours}>
           <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
-            <table className="w-full min-w-[560px] text-sm text-baikal-text">
+            <table data-mobile="1,4,11,12" className="w-full min-w-[560px] text-sm text-baikal-text">
               <thead>
                 <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
                   <th className="px-4 py-2">Mois</th>

@@ -142,7 +142,7 @@ function Apercu({ contenu }) {
           <TableauTrafic google={lecture.trafic.google} bing={lecture.trafic.bing} titre="Trafic par semaine pleine — Google et Bing" />
           <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
             <div className="px-4 py-2 text-xs opacity-60 uppercase tracking-wider text-baikal-text">Requêtes suivies (requête × page)</div>
-            <table className="w-full text-sm text-baikal-text">
+            <table data-mobile="1,3,5" className="w-full text-sm text-baikal-text">
               <thead>
                 <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
                   <th className="px-4 py-1.5">Requête</th>
@@ -401,7 +401,7 @@ function Archives({ appId, version, lectureSeule = false }) {
       {!donnees && !erreur && <Chargement />}
       {donnees && (
         <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
-          <table className="w-full text-sm text-baikal-text">
+          <table data-mobile="1,3,-1" className="w-full text-sm text-baikal-text">
             <thead>
               <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
                 <th className="px-4 py-2">Période</th>
