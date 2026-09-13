@@ -327,6 +327,7 @@ export interface SourceItem {
   section_title?: string | null
   hierarchy_level?: number
   page?: number
+  page_end?: number
 }
 
 // ============================================================================
