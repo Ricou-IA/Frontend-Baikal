@@ -265,6 +265,7 @@ serve(async (req) => {
               project_id, context.effectiveAppId, config.librarian,
               layerFlags, filter_source_types,
               fastAnalysis.search_config, fastAnalysis.intent, intentStrategy, config.features,
+              fastAnalysis.cross_ref?.detected_norms ?? [],
             )
           }
           metrics.timings.search = timer.mark('search')

@@ -119,6 +119,7 @@ export interface LibrarianConfig {
   scoring_method: string
   boost_on_mention: number
   min_chunks_for_inclusion: number
+  app_layer_weight: number          // Sprint 1 : poids RRF des chunks 'app' dans un projet (0.1–1, défaut 0.5)
 }
 
 export interface RetrievalConfig {

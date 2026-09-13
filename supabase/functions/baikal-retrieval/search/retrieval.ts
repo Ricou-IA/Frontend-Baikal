@@ -8,6 +8,7 @@ import type {
 } from "../types.ts"
 import { CROSS_REF_CONFIG, MATCH_DOCUMENTS_FN } from "../config.ts"
 import { extractSearchTerms, buildFtsQuery } from "./keywords.ts"
+import { resolveAppLayerWeight } from "./layer-weight.ts"
 
 /** Requête full-text OR-isée ; retombe sur la question brute si aucun terme n'est extrait. */
 export function toFtsQuery(queryText: string): string {
@@ -33,17 +34,23 @@ export async function executeSearch(
   intent: string | undefined,
   intentStrategy: IntentStrategy,
   features: FeatureFlags,
+  detectedNorms: string[] = [],
 ): Promise<SearchResult> {
 
   const ftsQuery = toFtsQuery(queryText)
   console.log(`[retrieval] FTS query: ${ftsQuery}`)
+
+  const appLayerWeight = resolveAppLayerWeight({
+    projectId, detectedNorms, queryText, configuredWeight: config.app_layer_weight,
+  })
+  console.log(`[retrieval] app_layer_weight=${appLayerWeight}`)
 
   // v1.1.1: EXACT copy of librarian-v4 search logic
   const intentParams = intent ? (config.intent_config[intent] || null) : null
   const effectiveMatchCount = intentParams?.match_count || config.match_count
   const effectiveThreshold = intentParams?.min_similarity || config.match_threshold
 
-  console.log(`[retrieval] Search v14: match_count=${effectiveMatchCount}, threshold=${effectiveThreshold}`)
+  console.log(`[retrieval] Search v15: match_count=${effectiveMatchCount}, threshold=${effectiveThreshold}`)
   console.log(`[retrieval] Hierarchy: levels=${JSON.stringify(intentStrategy.hierarchy_levels)}, include_children=${intentStrategy.include_children}`)
 
   // v1.1.1: Like librarian-v4: filter_filenames=null, filter_file_ids used if provided
@@ -66,6 +73,8 @@ export async function executeSearch(
     enable_concept_expansion: config.enable_concept_expansion,
     p_hierarchy_levels: intentStrategy.hierarchy_levels,
     p_include_children: intentStrategy.include_children,
+    p_app_layer_weight: appLayerWeight,
+    p_children_per_parent: 3,
   })
 
   if (error) throw new Error(`Search error: ${error.message}`)

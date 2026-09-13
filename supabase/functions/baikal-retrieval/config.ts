@@ -68,6 +68,7 @@ const FALLBACK_LIBRARIAN: LibrarianConfig = {
   scoring_method: 'chunks_weighted',
   boost_on_mention: 2.0,
   min_chunks_for_inclusion: 1,
+  app_layer_weight: 0.5,
 }
 
 const FALLBACK_FEATURES: FeatureFlags = {
@@ -335,6 +336,7 @@ function parseLibrarianConfig(data: Record<string, unknown> | null): LibrarianCo
     scoring_method: scoring.method as string || FALLBACK_LIBRARIAN.scoring_method,
     boost_on_mention: scoring.boost_on_mention as number || FALLBACK_LIBRARIAN.boost_on_mention,
     min_chunks_for_inclusion: scoring.min_chunks_for_inclusion as number || FALLBACK_LIBRARIAN.min_chunks_for_inclusion,
+    app_layer_weight: typeof search.app_layer_weight === 'number' ? search.app_layer_weight : FALLBACK_LIBRARIAN.app_layer_weight,
     llm_model: FALLBACK_LIBRARIAN.llm_model,
     max_context_length: search.max_context_length as number || FALLBACK_LIBRARIAN.max_context_length,
     google_file_ttl_hours: FALLBACK_LIBRARIAN.google_file_ttl_hours,
