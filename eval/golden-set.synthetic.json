@@ -1,0 +1,1033 @@
+{
+  "version": "synth-v1.1-2026-09-13",
+  "description": "Jeu synthétique complémentaire au golden set réel (35 entrées). 60 questions écrites à partir d'une lecture des chunks en base (rag.documents, status=approved), formulées comme un conducteur de travaux les poserait à l'oral, sans reprendre le vocabulaire exact des chunks. Chaque attendu (document, page_start, faits) a été vérifié dans le chunk cité en 'origine'. Couvre deux projets absents du set réel : CMP (5 CCTP de lots + CCAP) et Citroen (CCAG + CR de chantier). Les scores de ce fichier ne se mélangent jamais avec ceux du set réel : lancer avec --golden eval/golden-set.synthetic.json --tag <tag>-synth.",
+  "entries": [
+    {
+      "id": "SC1-001",
+      "classe": "C1",
+      "project_ref": "cmp",
+      "question": "Sur CMP, c'est quoi la retenue qu'ils nous prennent sur chaque situation ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCAP",
+        "source_page": 26,
+        "answer_must_contain": ["5 %"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunk #40943, CCAP.pdf p.26 §5.1 : retenue de garantie 5 % sur chaque acompte, remplaçable par une garantie à première demande. Critère « garantie » retiré après run 1 (réponse juste sans le mot)."
+    },
+    {
+      "id": "SC1-002",
+      "classe": "C1",
+      "project_ref": "cmp",
+      "question": "On est payés sous combien de temps sur le marché CMP ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCAP",
+        "source_page": 20,
+        "answer_must_contain": ["30 jours"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunk #40927, CCAP.pdf p.20 §3.7 : délai global de paiement à 30 jours (L. 2192-10 CCP)"
+    },
+    {
+      "id": "SC1-003",
+      "classe": "C1",
+      "project_ref": "cmp",
+      "question": "Si on rend un plan d'exécution en retard sur CMP, ça nous coûte combien ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCAP",
+        "source_page": 25,
+        "answer_must_contain": ["200"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunk #40941, CCAP.pdf p.25 : pénalité forfaitaire 200 € par jour calendaire de retard et par document EXE, sans mise en demeure"
+    },
+    {
+      "id": "SC1-004",
+      "classe": "C1",
+      "project_ref": "cmp",
+      "question": "Les moteurs des volets roulants sur CMP, ils veulent quelle marque et quelle vitesse ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "LOT 06",
+        "source_page": 43,
+        "answer_must_contain": ["SOMFY", "17 tours"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunk #41157, CCTP lot 06 p.43 §3.6.2 : moteurs type SOMFY ou équivalent, motorisation 17 tours/mn"
+    },
+    {
+      "id": "SC1-005",
+      "classe": "C1",
+      "project_ref": "citroen",
+      "question": "Sur Citroën, si on est en retard sur le planning, la pénalité c'est combien par jour ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCAG CITROEN",
+        "source_page": 27,
+        "answer_must_contain": ["1/1000"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunk #40784, CCAG CITROEN p.27 §4.4.1 : 1/1000e du montant du marché par jour calendaire, minimum 30 € par jour et par logement"
+    },
+    {
+      "id": "SC1-006",
+      "classe": "C1",
+      "project_ref": "citroen",
+      "question": "Le dernier compte rendu de chantier, le 41, il date de quand ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "n°41",
+        "source_page": 1,
+        "answer_must_contain": ["21/10/2025"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — L0 CR réunion de chantier n°41 p.1 : réunion datée du 21/10/2025 (Résidence TLSE 142 Av des Etats Unis – CITROEN, Bâtiment C)"
+    },
+    {
+      "id": "SC1-007",
+      "classe": "C1",
+      "project_ref": "ehpad",
+      "question": "Sur l'EHPAD, en toiture terrasse accessible sur plots (le complexe type 1), l'isolant fait quelle épaisseur ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "Lot N°02",
+        "source_page": 9,
+        "answer_must_contain": ["130"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunk #41883, Lot N°02 ETANCHEITE p.9 : complexe type 1, isolant PIR 130 mm en 2 lits (le type 2 est à 30 mm — piège de précision)"
+    },
+    {
+      "id": "SC1-008",
+      "classe": "C1",
+      "project_ref": "golfpark",
+      "question": "C'est qui le maître d'ouvrage sur Golf Park, et qui le représente sur l'opération ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "Engagement",
+        "source_page": 1,
+        "answer_must_contain": ["PRIMOPIERRE", "SEFAL"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunks #40486-40487, Acte d'Engagement p.1 : MO = société PRIMOPIERRE (SCPI), MOD = SEFAL PROPERTY représentée par M. POINSARD"
+    },
+
+    {
+      "id": "SC2-001",
+      "classe": "C2",
+      "project_ref": "cmp",
+      "question": "Une fois réceptionné sur CMP, on est engagés sur quelles garanties et pendant combien de temps ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCAP",
+        "source_page": 32,
+        "answer_must_contain": ["parfait achèvement", "bon fonctionnement", "décennale"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunk #40968, CCAP.pdf p.32 §9.5 : GPA 1 an à compter de chaque réception partielle, biennale 2 ans, décennale 10 ans. Durées en lettres au run 1 (« deux ans ») : critères passés sur les noms des garanties."
+    },
+    {
+      "id": "SC2-002",
+      "classe": "C2",
+      "project_ref": "cmp",
+      "question": "Sur le lot fluides de CMP, on distribue à quelles pressions selon les fluides ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "LOT 15",
+        "source_page": 5,
+        "answer_must_contain": ["6 bar", "5 bar", "7 bar"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunk #41185, CCTP lot 15 p.5 §2.1 : air comprimé 6 bars, azote/argon 5 bars, autres gaz 7 bars"
+    },
+    {
+      "id": "SC2-003",
+      "classe": "C2",
+      "project_ref": "citroen",
+      "question": "Chez Citroën, le compte prorata, qui le tient et comment il est calculé selon les lots ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCAG CITROEN",
+        "source_page": 19,
+        "answer_must_contain": ["prorata", "gros"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunk #40765, CCAG CITROEN p.19 §3.3 : géré par l'entreprise de GROS ŒUVRE, 1,5 % HT des travaux TCE, 0 % démolition, 0,5 % VRD/réseaux secs/espaces verts (le nombre n'est pas exigé à cause de la virgule vs point)"
+    },
+    {
+      "id": "SC2-004",
+      "classe": "C2",
+      "project_ref": "ehpad",
+      "question": "Sur l'EHPAD, comment on est réglés chaque mois et à quelle date il faut envoyer la situation ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "2139_CCAP",
+        "source_page": 34,
+        "answer_must_contain": ["25"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunk #41618, 2139_CCAP p.34 §13.1 : acompte en fin de mois, situations cumulatives arrêtées et remises au 25 de chaque mois en 4 exemplaires"
+    },
+    {
+      "id": "SC2-005",
+      "classe": "C2",
+      "project_ref": "golfpark",
+      "question": "Qu'est-ce que la charte chantier vert nous impose sur les déchets ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CHARTE CHANTIER VERT",
+        "source_page": 6,
+        "answer_must_contain": ["50 %", "valoris"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunks #40336 (p.4 §4.4 processus, prestataire déchets, état des lieux) et #40341 (p.6 §5.4 : au moins 50 % des déchets valorisés, filières REP)"
+    },
+    {
+      "id": "SC2-006",
+      "classe": "C2",
+      "project_ref": "cmp",
+      "question": "Le sol en résine du lot peinture CMP, c'est quel système en couches et quelles consommations ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "LOT 10",
+        "source_page": 14,
+        "answer_must_contain": ["primaire", "150 g", "auto-lissant"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunks #41012-41014, CCTP lot 10 p.14-15 §3.2.1 : primaire époxy 150 g/m², résine auto-lissante 1 mm (recouvrement 48 h), finition polyuréthane 200 g/m²"
+    },
+
+    {
+      "id": "SC3-001",
+      "classe": "C3",
+      "project_ref": "cmp",
+      "question": "Sur CMP, quelles garanties s'appliquent aux peintures du lot 10 par rapport aux garanties générales du CCAP ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "LOT 10",
+        "source_page": 12,
+        "answer_must_contain": ["2 ans", "10 ans"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — croisement CCTP lot 10 p.12 (#41005 : 2 ans peintures décoratives, 10 ans revêtements façade classe I et T) × CCAP p.32 (#40968 : GPA 1 an, biennale 2 ans, décennale 10 ans). Les deux documents doivent être cités."
+    },
+    {
+      "id": "SC3-002",
+      "classe": "C3",
+      "project_ref": "cmp",
+      "question": "Sur CMP, le contrôle d'accès SALTO : qui fournit les serrures et qui les pose, entre le lot 06, le lot 07 et l'électricien ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "LOT 07",
+        "source_page": 32,
+        "answer_must_contain": ["SALTO", "electric"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — croisement CCTP lot 07 p.32 (#41350 : pose des coffres de serrure par le lot 07, serrures fournies par le lot électricité) × CCTP lot 06 p.49 (#41176 : pose des serrures électromécaniques extérieures par le lot 06, équipements fournis par l'électricien). Question de limite de prestations inter-lots."
+    },
+    {
+      "id": "SC3-003",
+      "classe": "C3",
+      "project_ref": "cmp",
+      "question": "Sur CMP, le déplacement du générateur d'azote qui est dans le MHT : ça tombe dans quelle réception partielle prévue au CCAP ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "LOT 15",
+        "source_page": 24,
+        "answer_must_contain": ["MHT", "réception partielle"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — croisement CCTP lot 15 p.24 (#41229 : générateur d'azote existant en MHT déplacé en sous-sol du bâtiment B) × CCAP p.31 (#40965 : réception partielle bâtiment CMP 24 mois, démolition MHT + réserve de chimie 8,5 mois). Réponse attendue : la réception partielle liée à la démolition du MHT."
+    },
+    {
+      "id": "SC3-004",
+      "classe": "C3",
+      "project_ref": "cmp",
+      "question": "Sur CMP, pour la tranche optionnelle de fermeture des passerelles entre les ailes A et B, qu'est-ce qui revient au lot 06 et qu'est-ce qui revient au lot 07 ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "LOT 06",
+        "source_page": 50,
+        "answer_must_contain": ["va-et-vient", "33.1"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — croisement CCTP lot 06 p.50 (#41178 : remplacement des garde-corps par du vitrage en mur rideau, DTU 33.1, ISO 14001) × CCTP lot 07 p.67 (#41417 : blocs portes va-et-vient PF 1/2h). Les deux lots doivent être cités."
+    },
+    {
+      "id": "SC3-005",
+      "classe": "C3",
+      "project_ref": "citroen",
+      "question": "Sur Citroën, qu'est-ce que le CCAG impose sur les réunions de chantier, et qu'est-ce que le dernier CR rappelle à toutes les entreprises ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCAG CITROEN",
+        "source_page": 41,
+        "answer_must_contain": ["semaine", "PPSPS"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — croisement CCAG CITROEN p.41 (#40825 : réunions chaque semaine, présence obligatoire, absence ou retard pénalisés art. 4.4.2) × CR n°41 p.3 (#40667 : VIC et PPSPS avant intervention, chiffrages sous une semaine, projet NF Habitat)"
+    },
+    {
+      "id": "SC3-006",
+      "classe": "C3",
+      "project_ref": "citroen",
+      "question": "Sur Citroën, qui paie les bennes à gravats d'après le CCAG, et qu'est-ce que le CR 41 demande côté rangement en fin de journée ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCAG CITROEN",
+        "source_page": 40,
+        "answer_must_contain": ["gros", "polystyr"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — croisement CCAG CITROEN p.40 (#40821 : bennes et évacuation à la charge du lot GROS ŒUVRE sauf gravois de plâtrerie) × CR n°41 p.3 (#40665 : fermeture chantier, remise des GC provisoires, ramassage des polystyrènes, fermeture des fenêtres et grilles)"
+    },
+    {
+      "id": "SC3-007",
+      "classe": "C3",
+      "project_ref": "ehpad",
+      "question": "Sur l'EHPAD, l'étancheur réceptionne ses supports comment, et s'il y a des réserves à la réception, il a combien de temps pour les lever d'après le CCAP ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "2139_CCAP",
+        "source_page": 31,
+        "answer_must_contain": ["mois", "sans réserve"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — croisement Lot N°02 p.6 (#41875 : intervenir sur les supports vaut réception sans réserve, observations consignées au PV de rendez-vous de chantier) × 2139_CCAP p.31 (#41612 §11.7.1 : levée des réserves dans un délai maximal d'un (1) mois après notification du PV)"
+    },
+    {
+      "id": "SC3-008",
+      "classe": "C3",
+      "project_ref": "golfpark",
+      "question": "Sur Golf Park, la charte chantier vert doit être signée à quel moment, et l'acte d'engagement dit quoi sur les pièces du marché ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CHARTE CHANTIER VERT",
+        "source_page": 4,
+        "answer_must_contain": ["avant", "1.3"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — croisement CHARTE CHANTIER VERT p.4 (#40333 : signature obligatoire avant tout démarrage de travaux, document d'application Annexe 2) × Acte d'Engagement p.2 (#40490 : pièces constitutives = celles de l'article 1.3 du CCAP)"
+    },
+    {
+      "id": "SC3-009",
+      "classe": "C3",
+      "project_ref": "bessieres",
+      "question": "Sur Bessières, si on dépasse les 9 mois annoncés dans le mémoire, le CCAP prévoit quoi comme pénalité ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCAP",
+        "source_page": 19,
+        "answer_must_contain": ["100", "150"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — croisement Mémoire Technique p.19 (#32418 : délai global compris préparation 9 mois) × CCAP p.19 (#32620 §13 : 100 € par jour pendant 10 jours puis 150 € au-delà)"
+    },
+    {
+      "id": "SC3-010",
+      "classe": "C3",
+      "project_ref": "ehpad",
+      "question": "Sur l'EHPAD, quels DTU sont cités pour l'étanchéité d'un côté et pour la plâtrerie de l'autre ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "Lot N°02",
+        "source_page": 9,
+        "answer_must_contain": ["43.1", "25.41"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — croisement Lot N°02 p.9 (#41883 : NF P 84-204 et DTU 43.1) × Lot N°07 p.14 (#41491 : renforts selon DTU 25.41). Deux CCTP de lots distincts à citer."
+    },
+
+    {
+      "id": "SC4-001",
+      "classe": "C4",
+      "project_ref": "golfpark",
+      "question": "Fais-moi un résumé de la charte chantier vert en une dizaine de lignes",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CHARTE CHANTIER VERT",
+        "source_page": null,
+        "answer_must_contain": ["déchets", "nuisances"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — critère « SEFAL » remplacé par « nuisances » après run 1 (résumé juste sans nommer le contrôleur) — CHARTE CHANTIER VERT (24 chunks, 8 pages) : objet, aspects contractuels, 3 phases, rôles, déchets (50 %), nuisances, contrôle SEFAL PROPERTY, sanctions, annexes"
+    },
+    {
+      "id": "SC4-002",
+      "classe": "C4",
+      "project_ref": "golfpark",
+      "question": "Résume-moi l'acte d'engagement de Golf Park",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "Engagement",
+        "source_page": null,
+        "answer_must_contain": ["GTB", "SEFAL"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — Acte d'Engagement (8 chunks, 3 pages) : MO PRIMOPIERRE, MOD SEFAL PROPERTY, objet = système GTB, pièces art. 1.3 CCAP, prix via DPGF tranche ferme. Petit document : test de synthèse sans L0 exploitable."
+    },
+    {
+      "id": "SC4-003",
+      "classe": "C4",
+      "project_ref": "cmp",
+      "question": "Résume le CCAP de CMP : les points qu'une entreprise doit absolument connaître",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCAP",
+        "source_page": null,
+        "answer_must_contain": ["pénalit", "réception"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — CCAP.pdf CMP (100 chunks, 36 pages, 19 L0) : prix révisables, paiement 30 jours, pénalités, retenue 5 %, réceptions partielles, garanties, assurances"
+    },
+    {
+      "id": "SC4-004",
+      "classe": "C4",
+      "project_ref": "cmp",
+      "question": "Résume-moi le CCTP du lot 15 fluides spéciaux",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "LOT 15",
+        "source_page": null,
+        "answer_must_contain": ["gaz spéciaux"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — CCTP lot 15 (102 chunks, 50 pages, 14 L0) : air comprimé, gaz spéciaux, marquage, détection/alarme, reports bouteilles, déplacement azote MHT"
+    },
+    {
+      "id": "SC4-005",
+      "classe": "C4",
+      "project_ref": "citroen",
+      "question": "Synthèse du compte rendu de chantier n°41 : les points importants pour moi",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "n°41",
+        "source_page": null,
+        "answer_must_contain": ["GIRAUD"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — CR réunion de chantier n°41 (70 chunks, 19 pages, 36 L0) : intempéries, sécurité, généralités (VIC/PPSPS), points par entreprise dont GIRAUD gros œuvre, dates clés"
+    },
+    {
+      "id": "SC4-006",
+      "classe": "C4",
+      "project_ref": "ehpad",
+      "question": "Résume le CCTP du lot étanchéité de l'EHPAD",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "Lot N°02",
+        "source_page": null,
+        "answer_must_contain": ["dalles sur plots", "végétalis"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — Lot N°02 ETANCHEITE (28 chunks, 14 pages) : complexes bicouche dalles sur plots type 1/2, végétalisé, gravillons, auto-protégé, lanterneau désenfumage, sorties en toiture, couvertines"
+    },
+
+    {
+      "id": "SC5-001",
+      "classe": "C5",
+      "project_ref": "cmp",
+      "question": "et si le maître d'ouvrage paie en retard ?",
+      "conversation_context": [{ "question": "Quel est le délai de paiement sur le marché CMP ?" }],
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCAP",
+        "source_page": 20,
+        "answer_must_contain": ["intérêts moratoires", "40"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunk #40927, CCAP.pdf p.20 §3.7 : intérêts moratoires (taux BCE + 8 points) et indemnité forfaitaire 40 € pour frais de recouvrement. Suivi elliptique : le sujet « paiement » vient de la question précédente."
+    },
+    {
+      "id": "SC5-002",
+      "classe": "C5",
+      "project_ref": "cmp",
+      "question": "on peut la remplacer par autre chose ?",
+      "conversation_context": [{ "question": "Quelle retenue de garantie est prévue au CCAP de CMP ?" }],
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCAP",
+        "source_page": 26,
+        "answer_must_contain": ["première demande"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunk #40943, CCAP.pdf p.26 §5.1 : remplaçable au gré du titulaire par une garantie à première demande. Pronom « la » sans antécédent dans la question."
+    },
+    {
+      "id": "SC5-003",
+      "classe": "C5",
+      "project_ref": "cmp",
+      "question": "et le câblage jusqu'au moteur, c'est qui qui le fait ?",
+      "conversation_context": [{ "question": "Les volets roulants du lot 06 sur CMP sont-ils motorisés ?" }],
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "LOT 06",
+        "source_page": 43,
+        "answer_must_contain": ["electric"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunk #41157, CCTP lot 06 p.43 §3.6.2 : l'électricien amène l'alimentation protégée jusqu'au treuil, le raccordement et les câblages de commande sont au lot 06"
+    },
+    {
+      "id": "SC5-004",
+      "classe": "C5",
+      "project_ref": "citroen",
+      "question": "et dans l'autre sens, si c'est le maître d'ouvrage qui paie en retard ?",
+      "conversation_context": [{ "question": "Quelle est la pénalité de retard d'exécution dans le CCAG Citroën ?" }],
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCAG CITROEN",
+        "source_page": 24,
+        "answer_must_contain": ["40"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunk #40778, CCAG CITROEN p.24 §3.4.8 : taux le plus bas entre BCE + 10 points et 3 fois le taux légal, indemnité forfaitaire 40 €"
+    },
+    {
+      "id": "SC5-005",
+      "classe": "C5",
+      "project_ref": "citroen",
+      "question": "combien de jours de gel en janvier ?",
+      "conversation_context": [{ "question": "Que dit le CR de chantier n°41 sur les intempéries ?" }],
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "n°41",
+        "source_page": 3,
+        "answer_must_contain": ["5 jours"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunk #40664, CR n°41 p.3 §3.1 tableau intempéries : 13/01/2025 → 17/01/2025, 5 jours, gel, demande GIRAUD. Lecture de tableau après un suivi."
+    },
+    {
+      "id": "SC5-006",
+      "classe": "C5",
+      "project_ref": "ehpad",
+      "question": "et si on n'y va pas ?",
+      "conversation_context": [{ "question": "À quelle fréquence ont lieu les réunions de chantier sur l'EHPAD ?" }],
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "2139_CCAP",
+        "source_page": 26,
+        "answer_must_contain": ["pénalit"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunks #41595 (2139_CCAP p.26 §10.12 : réunion hebdomadaire, pénalités pour absence et pour retard) et #41542 (p.10 §3.4 : représentant sans pouvoir = absence)"
+    },
+    {
+      "id": "SC5-007",
+      "classe": "C5",
+      "project_ref": "golfpark",
+      "question": "et qui vérifie que c'est respecté ?",
+      "conversation_context": [{ "question": "Que prévoit la charte chantier vert sur la valorisation des déchets ?" }],
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CHARTE CHANTIER VERT",
+        "source_page": 7,
+        "answer_must_contain": ["SEFAL", "audit"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunk #40343, CHARTE CHANTIER VERT p.7 §6 : SEFAL PROPERTY peut auditer ou visiter le chantier, non-conformité enregistrée, actions correctives aux frais de l'entreprise"
+    },
+    {
+      "id": "SC5-008",
+      "classe": "C5",
+      "project_ref": "bessieres",
+      "question": "et si on le dépasse, le CCAP dit quoi ?",
+      "conversation_context": [{ "question": "Quel est le délai global des travaux d'après le mémoire technique ?" }],
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCAP",
+        "source_page": 19,
+        "answer_must_contain": ["100"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — suivi qui change de document : Mémoire Technique p.19 (9 mois) → CCAP p.19 (#32620 : 100 € par jour pendant 10 jours puis 150 €)"
+    },
+
+    {
+      "id": "SC6-001",
+      "classe": "C6",
+      "project_ref": "cmp",
+      "question": "Sur CMP, les garde-corps vitrés de la passerelle entre les ailes, ils doivent répondre à quelles normes ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "LOT 06",
+        "source_page": 48,
+        "answer_must_contain": ["01-012"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunks #41173-41174, CCTP lot 06 p.48 §3.14 : NFP 01-012 et NFP 01-013, vitrage STADIP 55.2 mini, 4,50 m² max, DTU 39"
+    },
+    {
+      "id": "SC6-002",
+      "classe": "C6",
+      "project_ref": "cmp",
+      "question": "La fermeture des passerelles en tranche optionnelle, la pose doit suivre quel DTU ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "LOT 06",
+        "source_page": 50,
+        "answer_must_contain": ["33.1"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunk #41178, CCTP lot 06 p.50 §4.1 : mise en œuvre conforme au DTU 33.1, fabricant certifié ISO 14001"
+    },
+    {
+      "id": "SC6-003",
+      "classe": "C6",
+      "project_ref": "cmp",
+      "question": "Le primaire époxy du sol résine sur CMP, c'est quelle classification AFNOR ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "LOT 10",
+        "source_page": 14,
+        "answer_must_contain": ["6b"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunk #41012, CCTP lot 10 p.14 §3.2.1 : Famille I – Classe 6b (NFT 36-005), émissions air intérieur A+"
+    },
+    {
+      "id": "SC6-004",
+      "classe": "C6",
+      "project_ref": "cmp",
+      "question": "Les stores screen intérieurs du lot 06, quel classement feu est exigé ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "LOT 06",
+        "source_page": 44,
+        "answer_must_contain": ["M1", "13501"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunk #41159, CCTP lot 06 p.44 §3.7 : réaction au feu B,s2,d0 (Euroclasse EN 13501-1) / M1 (NF 92503)"
+    },
+    {
+      "id": "SC6-005",
+      "classe": "C6",
+      "project_ref": "cmp",
+      "question": "Sur le lot 15, les centrales de détection gaz doivent être conformes à quelles normes, et quel indice de protection ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "LOT 15",
+        "source_page": 22,
+        "answer_must_contain": ["50054", "IP45"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunk #41220, CCTP lot 15 p.22 §3.4.1 : boîtier IP45, normes européennes 50054, 50081, 50082, type Dräger Unigard"
+    },
+    {
+      "id": "SC6-006",
+      "classe": "C6",
+      "project_ref": "bessieres",
+      "question": "Sur Bessières, pour les installations électriques basse tension, le CCTP renvoie à quelle norme ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCTP TCE",
+        "source_page": 11,
+        "answer_must_contain": ["15-100"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunk #39801, CCTP TCE p.11 §1.2.4 : N.F.C. 15.100 (installations électriques basse tension), U.T.E. 15.121. Run 1 : réponse juste écrite « NF C 15-100 » → critère aligné sur la graphie du modèle (le tiret est supprimé par normalize, « 15.100 » ne matcherait pas)."
+    },
+    {
+      "id": "SC6-007",
+      "classe": "C6",
+      "project_ref": "ehpad",
+      "question": "Sur l'EHPAD, l'étanchéité bicouche en terrasse doit être conforme à quoi ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "Lot N°02",
+        "source_page": 9,
+        "answer_must_contain": ["84-204", "43.1"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunks #41883, #41884, #41887, Lot N°02 p.9-11 : norme NF P 84-204 et D.T.U. 43.1"
+    },
+    {
+      "id": "SC6-008",
+      "classe": "C6",
+      "project_ref": "ehpad",
+      "question": "Le lanterneau de désenfumage de l'EHPAD, il est prévu sous quelle norme et de quel type ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "Lot N°02",
+        "source_page": 12,
+        "answer_must_contain": ["12101", "SL 250"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunk #41890, Lot N°02 p.12 : DENFC conforme EN 12101-2, type SL 250, éclairant polycarbonate 20 mm"
+    },
+    {
+      "id": "SC6-009",
+      "classe": "C6",
+      "project_ref": "ehpad",
+      "question": "Sur l'EHPAD, les renforts dans les cloisons en plaques de plâtre pour accrocher les barres de maintien, quel DTU ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "Lot N°07",
+        "source_page": 14,
+        "answer_must_contain": ["25.41"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunk #41491, Lot N°07 PLÂTRERIE p.14 : renforts métalliques, charges admissibles selon DTU 25.41"
+    },
+    {
+      "id": "SC6-010",
+      "classe": "C6",
+      "project_ref": "bessieres",
+      "question": "Sur Bessières, quel DTU couvre les dispositifs de sécurité des installations générales ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCTP TCE",
+        "source_page": 13,
+        "answer_must_contain": ["65.11"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunk #39840, CCTP TCE p.13 §1.2.5 : DTU 65.11 – Cahier des Charges de dispositifs de sécurité"
+    },
+
+    {
+      "id": "SC7-001",
+      "classe": "C7",
+      "project_ref": "golfpark",
+      "question": "Combien d'ascenseurs sont prévus sur Golf Park et pour quelle charge ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": null,
+        "source_page": null,
+        "answer_must_contain": [],
+        "answer_must_not_contain": ["630 kg", "1000 kg", "8 personnes"],
+        "must_refuse": true
+      },
+      "origine": "synthétique 2026-09-13 — vérifié : 0 occurrence de « ascenseur » dans les 311 chunks Golf Park. Question BTP plausible dont la réponse n'existe pas dans le corpus — doit refuser sans inventer une charge."
+    },
+    {
+      "id": "SC7-002",
+      "classe": "C7",
+      "project_ref": "citroen",
+      "question": "Que dit le diagnostic amiante avant travaux sur Citroën ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": null,
+        "source_page": null,
+        "answer_must_contain": [],
+        "answer_must_not_contain": [],
+        "must_refuse": true
+      },
+      "origine": "synthétique 2026-09-13 — vérifié : 0 occurrence de « amiante » dans les 303 chunks Citroen (29 dans Bessières : test d'étanchéité entre projets)"
+    },
+    {
+      "id": "SC7-003",
+      "classe": "C7",
+      "project_ref": "cmp",
+      "question": "Que prévoit la charte chantier vert sur CMP ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": null,
+        "source_page": null,
+        "answer_must_contain": [],
+        "answer_must_not_contain": ["SEFAL", "50 %"],
+        "must_refuse": true
+      },
+      "origine": "synthétique 2026-09-13 — vérifié : 0 occurrence de « chantier vert » dans les 538 chunks CMP (37 dans Golf Park). Sentinelle anti-fuite inter-projets : citer SEFAL ou le taux de 50 % serait une contamination."
+    },
+    {
+      "id": "SC7-004",
+      "classe": "C7",
+      "project_ref": "ehpad",
+      "question": "Le CCTP prévoit-il un paratonnerre sur l'EHPAD ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": null,
+        "source_page": null,
+        "answer_must_contain": [],
+        "answer_must_not_contain": [],
+        "must_refuse": true
+      },
+      "origine": "synthétique 2026-09-13 — vérifié : 0 occurrence de « paratonnerre » dans tout le corpus (EHPAD : 499 chunks)"
+    },
+    {
+      "id": "SC7-005",
+      "classe": "C7",
+      "project_ref": "bessieres",
+      "question": "Y a-t-il un système de sprinklage prévu dans le CCTP TCE de Bessières ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": null,
+        "source_page": null,
+        "answer_must_contain": [],
+        "answer_must_not_contain": [],
+        "must_refuse": true
+      },
+      "origine": "synthétique 2026-09-13 — vérifié : 0 occurrence de « sprinkl » dans tout le corpus. Question fermée : « non, pas trouvé » attendu, pas d'extrapolation depuis la sécurité incendie"
+    },
+    {
+      "id": "SC7-006",
+      "classe": "C7",
+      "project_ref": "cmp",
+      "question": "Le bâtiment CMP est-il chauffé par géothermie ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": null,
+        "source_page": null,
+        "answer_must_contain": [],
+        "answer_must_not_contain": [],
+        "must_refuse": true
+      },
+      "origine": "synthétique 2026-09-13 — vérifié : 0 occurrence de « géothermie » dans tout le corpus ; aucun CCTP lot 12 CVC ingéré pour CMP (seul le CCAP cite l'index BT du lot 12)"
+    },
+
+    {
+      "id": "SC8-001",
+      "classe": "C8",
+      "project_ref": "cmp",
+      "question": "Que dit l'article 3.7 du CCAP CMP ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCAP",
+        "source_page": 20,
+        "answer_must_contain": ["30 jours", "40"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunk #40927, CCAP.pdf p.20 « 3.7. Délai de paiement – Taux des intérêts moratoires » : 30 jours, 40 € de frais de recouvrement, taux BCE + 8 points"
+    },
+    {
+      "id": "SC8-002",
+      "classe": "C8",
+      "project_ref": "cmp",
+      "question": "Cite-moi l'article 9.5 du CCAP de CMP",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCAP",
+        "source_page": 32,
+        "answer_must_contain": ["parfait achèvement", "10 ans"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunk #40968, CCAP.pdf p.32 « 9.5. Délai de garantie » : GPA un an, biennale 2 ans, décennale 10 ans"
+    },
+    {
+      "id": "SC8-003",
+      "classe": "C8",
+      "project_ref": "cmp",
+      "question": "Qu'est-ce qu'il y a dans le 3.6 du CCTP du lot 06 ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "LOT 06",
+        "source_page": 43,
+        "answer_must_contain": ["volets roulants", "SOMFY"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunks #41156-41157, CCTP lot 06 p.43 « 3.6 Volets roulants électriques » : coffres monoblocs alu, tablier alu laqué, motorisation SOMFY 17 tours/mn, commande filaire"
+    },
+    {
+      "id": "SC8-004",
+      "classe": "C8",
+      "project_ref": "citroen",
+      "question": "Reprends-moi le texte de l'article 3.3 du CCAG Citroën",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CCAG CITROEN",
+        "source_page": 19,
+        "answer_must_contain": ["prorata", "gros"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunk #40765, CCAG CITROEN p.19 « Article 3.3 Compte prorata » : norme P03.001 non applicable, 1,5 % HT TCE, gestion par le GROS ŒUVRE"
+    },
+    {
+      "id": "SC8-005",
+      "classe": "C8",
+      "project_ref": "ehpad",
+      "question": "Que dit l'article 8.2 du CCAP de l'EHPAD ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "2139_CCAP",
+        "source_page": 20,
+        "answer_must_contain": ["1/500"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunk #41576, 2139_CCAP p.20 « 8.2. PENALITES DE RETARD » : 1/500e du montant du marché par jour calendaire, sans mise en demeure, seuil de 15 jours"
+    },
+    {
+      "id": "SC8-006",
+      "classe": "C8",
+      "project_ref": "golfpark",
+      "question": "Que dit le point 5.4 de la charte chantier vert ?",
+      "conversation_context": null,
+      "synthetic": true,
+      "a_valider": false,
+      "expected": {
+        "source_doc_contains": "CHARTE CHANTIER VERT",
+        "source_page": 6,
+        "answer_must_contain": ["50 %", "valoris"],
+        "answer_must_not_contain": [],
+        "must_refuse": false
+      },
+      "origine": "synthétique 2026-09-13 — chunk #40341, CHARTE CHANTIER VERT p.6 « 5.4. Valorisation des déchets » : au moins 50 % valorisés (matière ou énergétique), filières REP ≥ 50 %"
+    }
+  ]
+}
