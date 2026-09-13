@@ -1,5 +1,5 @@
 // ============================================================================
-// baikal-retrieval v2.0.0 - "Agentic RAG"
+// baikal-retrieval v2.1.0 - "Agentic RAG" + Sprint 1 (S1.1–S1.5, S4.4, P11)
 // ============================================================================
 //
 // Evolution from v1.3.0 "Search-First, Analyze-Later":
