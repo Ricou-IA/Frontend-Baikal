@@ -239,7 +239,9 @@ serve(async (req) => {
               await logQuery(supabase, {
                 conversation_id: context.conversationId, user_id,
                 org_id: memoryOrgId, project_id: project_id || null, app_id,
-                query, intent: fastAnalysis.intent, answer_format: fastAnalysis.answer_format,
+                query,
+                rewritten_query: effectiveQuery !== query ? effectiveQuery : null,
+                intent: fastAnalysis.intent, answer_format: fastAnalysis.answer_format,
                 fast_path: true, generation_mode: 'memory', memory_hit: true,
                 top_similarities: [memoryResult.similarity],
                 timings: metrics.timings, processing_time_ms: processingTime,

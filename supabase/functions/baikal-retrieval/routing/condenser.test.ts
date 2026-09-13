@@ -20,6 +20,7 @@ Deno.test("pronom sans antécédent en tête → elliptique", () => {
 Deno.test("question autonome → pas elliptique", () => {
   assertEquals(isElliptical("Quel est le délai global d'exécution des travaux d'après le mémoire technique ?"), false)
   assertEquals(isElliptical("Sur CMP, c'est quoi la retenue qu'ils nous prennent sur chaque situation ?"), false)
+  assertEquals(isElliptical("Le CCAP prévoit-il un délai de paiement dans ce marché ?"), false)
 })
 
 Deno.test("prompt : historique borné, question en dernier, consigne de réécriture", () => {

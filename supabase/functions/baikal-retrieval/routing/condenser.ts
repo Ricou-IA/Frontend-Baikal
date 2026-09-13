@@ -10,7 +10,7 @@
 import type { ConversationMessage } from "../types.ts"
 
 const FOLLOW_UP_OPENERS = /^(et|puis|ensuite|pareil|idem|aussi|donc|ok et|d'accord et|dans l'autre sens|même chose|meme chose)\b/i
-const PRONOUN_OPENERS = /^(il|elle|ils|elles|on|ça|ca|c'est|c est|la|le|les|lui|celui|celle|ceux|celles|y)\b/i
+const PRONOUN_OPENERS = /^(il|elle|ils|elles|on|ça|ca|c'est|c est|lui|celui|celle|ceux|celles|y)\b/i
 const SHORT_WORDS = 8
 const PRONOUN_MAX_WORDS = 12
 const HISTORY_MESSAGES = 4
