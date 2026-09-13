@@ -400,6 +400,7 @@ export interface PipelineMetrics {
     memory_hit: boolean
     agentic_triggered: boolean
     agentic_iterations: number
+    agentic_gate_reason: string
   }
   counts: {
     total_chunks: number

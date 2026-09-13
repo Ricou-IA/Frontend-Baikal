@@ -43,7 +43,8 @@ import { generateSuggestions } from "./generation/suggestions.ts"
 import { logQuery, slimSources, chunkStats } from "./logging.ts"
 
 // v2.0: Agentic imports
-import { runAgenticLoop, shouldTriggerAgentic } from "./agentic/orchestrator.ts"
+import { runAgenticLoop } from "./agentic/orchestrator.ts"
+import { evaluateAgenticGate } from "./agentic/gate.ts"
 import type { ToolExecutionContext } from "./agentic/tools.ts"
 
 // ============================================================================
@@ -134,7 +135,7 @@ serve(async (req) => {
             safe_override_applied: false, generation_mode: '',
             reranking_applied: false, adaptive_threshold_applied: false,
             no_results_detected: false, memory_hit: false,
-            agentic_triggered: false, agentic_iterations: 0,
+            agentic_triggered: false, agentic_iterations: 0, agentic_gate_reason: '',
           },
           counts: {
             total_chunks: 0, l0_chunks: 0, l1_chunks: 0,
@@ -296,7 +297,10 @@ serve(async (req) => {
           // DECISION: Fast Path (v1.3) vs Agentic (v2.0)
           // =============================================================
 
-          const useAgentic = shouldTriggerAgentic(searchResult.chunks, config.agentic)
+          const gate = evaluateAgenticGate(searchResult.chunks, config.agentic)
+          metrics.decisions.agentic_gate_reason = gate.reason
+          console.log(`[agentic] gate: ${gate.reason} (n_vector=${gate.n_vector}, max_sim=${gate.max_sim.toFixed(3)}, avg=${gate.avg_sim.toFixed(3)})`)
+          const useAgentic = gate.trigger
 
           if (useAgentic && GEMINI_API_KEY) {
             // ===========================================================
@@ -372,7 +376,7 @@ serve(async (req) => {
               intent: fastAnalysis.intent, answer_format: fastAnalysis.answer_format,
               fast_path: false, generation_mode: 'agentic', model: config.agentic.model,
               reranked: metrics.decisions.reranking_applied,
-              agentic: { triggered: true, iterations: agenticResult.iterations, timed_out: agenticResult.timedOut, steps: agenticResult.steps },
+              agentic: { triggered: true, reason: gate.reason, n_vector: gate.n_vector, max_sim: gate.max_sim, iterations: agenticResult.iterations, timed_out: agenticResult.timedOut, steps: agenticResult.steps },
               counts: { ...metrics.counts },
               top_similarities: agStats.top_similarities, match_sources: agStats.match_sources,
               sources: slimSources(agenticResult.sources),
@@ -568,7 +572,7 @@ serve(async (req) => {
             fast_path: true, generation_mode: effectiveMode,
             model: effectiveMode === 'gemini' ? effectiveGenParams.model : config.librarian.llm_model,
             memory_hit: false, reranked: metrics.decisions.reranking_applied,
-            agentic: null,
+            agentic: { triggered: false, reason: gate.reason, n_vector: gate.n_vector, max_sim: gate.max_sim },
             counts: { ...metrics.counts },
             top_similarities: fpStats.top_similarities, match_sources: fpStats.match_sources,
             sources: slimSources(finalSources),

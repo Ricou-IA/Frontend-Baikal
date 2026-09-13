@@ -31,6 +31,9 @@ export interface QueryLogEntry {
   reranked?: boolean
   agentic?: {
     triggered: boolean
+    reason?: string
+    n_vector?: number
+    max_sim?: number
     iterations?: number
     timed_out?: boolean
     steps?: unknown[]

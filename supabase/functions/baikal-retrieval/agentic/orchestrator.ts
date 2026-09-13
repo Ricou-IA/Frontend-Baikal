@@ -189,41 +189,6 @@ export async function runAgenticLoop(
 }
 
 // ============================================================================
-// QUALITY GATE: Should we trigger agentic or use fast path?
-// ============================================================================
-
-export function shouldTriggerAgentic(
-  chunks: ChunkResult[],
-  agenticConfig: AgenticConfig,
-): boolean {
-  if (!agenticConfig.enabled) return false
-
-  // Not enough chunks → agentic
-  if (chunks.length < agenticConfig.quality_threshold) {
-    console.log(`[agentic] Triggered: only ${chunks.length} chunks (threshold: ${agenticConfig.quality_threshold})`)
-    return true
-  }
-
-  // Low average similarity → agentic
-  // v2.0.1: seuls les chunks vector/intersection portent une vraie similarité cosine.
-  // graphrag (ratio de concepts), fulltext (ts_rank) et child (héritée) sont sur
-  // d'autres échelles et faussaient la moyenne dans les deux sens.
-  const cosineChunks = chunks.filter(c => c.match_source === 'vector' || c.match_source === 'intersection')
-  if (cosineChunks.length === 0) {
-    console.log(`[agentic] Triggered: no vector-backed chunks (${chunks.length} total from other sources)`)
-    return true
-  }
-  const avgSimilarity = cosineChunks.reduce((sum, c) => sum + c.similarity, 0) / cosineChunks.length
-  if (avgSimilarity < agenticConfig.similarity_threshold) {
-    console.log(`[agentic] Triggered: avg cosine similarity ${avgSimilarity.toFixed(3)} < ${agenticConfig.similarity_threshold} (${cosineChunks.length}/${chunks.length} vector chunks)`)
-    return true
-  }
-
-  console.log(`[agentic] Fast path OK: ${chunks.length} chunks, avg cosine similarity ${avgSimilarity.toFixed(3)} (${cosineChunks.length} vector)`)
-  return false
-}
-
-// ============================================================================
 // HELPERS
 // ============================================================================
 
