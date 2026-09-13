@@ -88,8 +88,8 @@ const FALLBACK_AGENTIC: AgenticConfig = {
   max_iterations: 3,
   timeout_ms: 8000,
   temperature: 0.2,
-  quality_threshold: 3,           // Min chunks to consider fast path sufficient
-  similarity_threshold: 0.45,     // Min avg similarity to consider fast path sufficient
+  quality_threshold: 3,           // Nombre minimal de chunks vectoriels (vector/intersection) pour rester en chemin rapide
+  similarity_threshold: 0.45,     // Meilleure similarité cosine (max, pas la moyenne) minimale pour rester en chemin rapide
 }
 
 const FALLBACK_SUGGESTIONS: SuggestionsConfig = {

@@ -340,8 +340,8 @@ export interface AgenticConfig {
   max_iterations: number           // Max tool calls (default: 3)
   timeout_ms: number               // Budget total (default: 8000)
   temperature: number              // For orchestrator reasoning (default: 0.2)
-  quality_threshold: number        // Min chunks to skip agentic (default: 3)
-  similarity_threshold: number     // Min avg similarity to skip agentic (default: 0.45)
+  quality_threshold: number        // Nombre minimal de chunks vectoriels (vector/intersection) pour rester en chemin rapide (défaut : 3)
+  similarity_threshold: number     // Meilleure similarité cosine (max, pas la moyenne) minimale pour rester en chemin rapide (défaut : 0.45)
 }
 
 export interface ToolCall {

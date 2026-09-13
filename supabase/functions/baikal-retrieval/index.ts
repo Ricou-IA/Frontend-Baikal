@@ -36,6 +36,7 @@ import { getAgentContext, addMessage } from "./context.ts"
 import { buildFallbackAnalysis } from "./routing/analyzer.ts"
 import { isElliptical, condenseQuery } from "./routing/condenser.ts"
 import { resolveRoute, buildConversationalResponse } from "./routing/router.ts"
+import { isTrueSalutation } from "./routing/safety.ts"
 import { generateEmbedding } from "./search/embedding.ts"
 import { searchQAMemory, incrementQAUsage } from "./search/memory.ts"
 import { executeSearch, executeCrossRefSearch } from "./search/retrieval.ts"
@@ -49,7 +50,7 @@ import { logQuery, slimSources, chunkStats } from "./logging.ts"
 
 // v2.0: Agentic imports
 import { runAgenticLoop } from "./agentic/orchestrator.ts"
-import { evaluateAgenticGate } from "./agentic/gate.ts"
+import { evaluateAgenticGate, type GateReason } from "./agentic/gate.ts"
 import type { ToolExecutionContext } from "./agentic/tools.ts"
 
 // ============================================================================
@@ -172,9 +173,9 @@ serve(async (req) => {
 
           await addMessage(supabase, context.conversationId, 'user', query)
 
-          // A2b. CONDENSATION (Sprint 1, S1.4) — questions de suivi elliptiques uniquement
+          // A2b. CONDENSATION (Sprint 1, S1.4) — questions de suivi elliptiques uniquement, salutations exclues
           let effectiveQuery = query
-          if (GEMINI_API_KEY && context.recentMessages.length > 0 && isElliptical(query)) {
+          if (GEMINI_API_KEY && context.recentMessages.length > 0 && !isTrueSalutation(query) && isElliptical(query)) {
             const condensed = await condenseQuery(query, context.recentMessages, GEMINI_API_KEY)
             if (condensed !== query) {
               effectiveQuery = condensed
@@ -303,9 +304,10 @@ serve(async (req) => {
           // =============================================================
 
           const gate = evaluateAgenticGate(searchResult.chunks, config.agentic)
-          metrics.decisions.agentic_gate_reason = gate.reason
           console.log(`[agentic] gate: ${gate.reason} (n_vector=${gate.n_vector}, max_sim=${gate.max_sim.toFixed(3)}, avg=${gate.avg_sim.toFixed(3)})`)
           const useAgentic = gate.trigger
+          const gateReason: GateReason = gate.trigger && !GEMINI_API_KEY ? 'no_gemini_key' : gate.reason
+          metrics.decisions.agentic_gate_reason = gateReason
 
           if (useAgentic && GEMINI_API_KEY) {
             // ===========================================================
@@ -577,7 +579,7 @@ serve(async (req) => {
             fast_path: true, generation_mode: effectiveMode,
             model: effectiveMode === 'gemini' ? effectiveGenParams.model : config.librarian.llm_model,
             memory_hit: false, reranked: metrics.decisions.reranking_applied,
-            agentic: { triggered: false, reason: gate.reason, n_vector: gate.n_vector, max_sim: gate.max_sim },
+            agentic: { triggered: false, reason: gateReason, n_vector: gate.n_vector, max_sim: gate.max_sim },
             counts: { ...metrics.counts },
             top_similarities: fpStats.top_similarities, match_sources: fpStats.match_sources,
             sources: slimSources(finalSources),

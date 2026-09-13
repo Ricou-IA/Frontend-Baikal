@@ -9,7 +9,7 @@
 
 import type { ChunkResult, AgenticConfig } from "../types.ts"
 
-export type GateReason = 'disabled' | 'too_few_vector_chunks' | 'low_max_similarity' | 'fast_path_ok'
+export type GateReason = 'disabled' | 'too_few_vector_chunks' | 'low_max_similarity' | 'fast_path_ok' | 'no_gemini_key'
 
 export interface GateDecision {
   trigger: boolean
