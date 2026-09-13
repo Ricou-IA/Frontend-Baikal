@@ -7,6 +7,12 @@ import type {
   SearchConfig, ChunkResult, FileInfo, SearchResult, CrossRefAnalysis,
 } from "../types.ts"
 import { CROSS_REF_CONFIG } from "../config.ts"
+import { extractSearchTerms, buildFtsQuery } from "./keywords.ts"
+
+/** Requête full-text OR-isée ; retombe sur la question brute si aucun terme n'est extrait. */
+export function toFtsQuery(queryText: string): string {
+  return buildFtsQuery(extractSearchTerms(queryText)) || queryText
+}
 
 // ============================================================================
 // EXECUTE SEARCH
@@ -29,6 +35,9 @@ export async function executeSearch(
   features: FeatureFlags,
 ): Promise<SearchResult> {
 
+  const ftsQuery = toFtsQuery(queryText)
+  console.log(`[retrieval] FTS query: ${ftsQuery}`)
+
   // v1.1.1: EXACT copy of librarian-v4 search logic
   const intentParams = intent ? (config.intent_config[intent] || null) : null
   const effectiveMatchCount = intentParams?.match_count || config.match_count
@@ -40,7 +49,7 @@ export async function executeSearch(
   // v1.1.1: Like librarian-v4: filter_filenames=null, filter_file_ids used if provided
   const { data, error } = await supabase.schema('rag').rpc('match_documents_v14', {
     query_embedding: queryEmbedding,
-    query_text: queryText,
+    query_text: ftsQuery,
     p_user_id: userId,
     p_org_id: effectiveOrgId,
     p_project_id: projectId || null,
@@ -206,6 +215,9 @@ export async function executeCrossRefSearch(
   intentStrategy: IntentStrategy,
   crossRef: CrossRefAnalysis,
 ): Promise<SearchResult> {
+  const ftsQuery = toFtsQuery(queryText)
+  console.log(`[retrieval] FTS query: ${ftsQuery}`)
+
   const intentParams = intent ? (config.intent_config[intent] || null) : null
   const effectiveMatchCount = intentParams?.match_count || config.match_count
   const effectiveThreshold = intentParams?.min_similarity || config.match_threshold
@@ -220,7 +232,7 @@ export async function executeCrossRefSearch(
       // Search 1: Project layer only
       supabase.schema('rag').rpc('match_documents_v14', {
         query_embedding: queryEmbedding,
-        query_text: queryText,
+        query_text: ftsQuery,
         p_user_id: userId,
         p_org_id: effectiveOrgId,
         p_project_id: projectId || null,
@@ -241,7 +253,7 @@ export async function executeCrossRefSearch(
       // Search 2: App layer filtered by norm filenames
       supabase.schema('rag').rpc('match_documents_v14', {
         query_embedding: queryEmbedding,
-        query_text: queryText,
+        query_text: ftsQuery,
         p_user_id: userId,
         p_org_id: effectiveOrgId,
         p_project_id: projectId || null,
@@ -279,7 +291,7 @@ export async function executeCrossRefSearch(
 
     const { data, error } = await supabase.schema('rag').rpc('match_documents_v14', {
       query_embedding: queryEmbedding,
-      query_text: queryText,
+      query_text: ftsQuery,
       p_user_id: userId,
       p_org_id: effectiveOrgId,
       p_project_id: projectId || null,
@@ -311,7 +323,7 @@ export async function executeCrossRefSearch(
 
   const { data: projectData, error: projectError } = await supabase.schema('rag').rpc('match_documents_v14', {
     query_embedding: queryEmbedding,
-    query_text: queryText,
+    query_text: ftsQuery,
     p_user_id: userId,
     p_org_id: effectiveOrgId,
     p_project_id: projectId || null,
@@ -346,7 +358,7 @@ export async function executeCrossRefSearch(
   // Search app layer with extracted norms
   const { data: appData, error: appError } = await supabase.schema('rag').rpc('match_documents_v14', {
     query_embedding: queryEmbedding,
-    query_text: queryText,
+    query_text: ftsQuery,
     p_user_id: userId,
     p_org_id: effectiveOrgId,
     p_project_id: projectId || null,
