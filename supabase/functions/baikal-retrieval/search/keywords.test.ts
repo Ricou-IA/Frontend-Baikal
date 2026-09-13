@@ -42,3 +42,20 @@ Deno.test("buildFtsQuery : termes entre guillemets joints par OR", () => {
   assertEquals(buildFtsQuery(["3.7", "nf en 1154", "pétanque"]), '"3.7" OR "nf en 1154" OR "pétanque"')
   assertEquals(buildFtsQuery([]), "")
 })
+
+Deno.test("« en » seul n'est pas une norme (préposition « en 2025 »)", () => {
+  assertEquals(extractSearchTerms("Les travaux ont débuté en 2025 sur le chantier"), ["travaux", "débuté"])
+})
+
+Deno.test("pas de doublon sur un numéro pointé déjà capturé dans une norme", () => {
+  assertEquals(extractSearchTerms("Que dit le CCTP sur la NF EN 1154 et le DTU 25.41 ?"), ["nf en 1154", "dtu 25.41"])
+})
+
+Deno.test("question composée uniquement de mots-outils : aucun terme", () => {
+  assertEquals(extractSearchTerms("Quel est le point ?"), [])
+  assertEquals(buildFtsQuery([]), "")
+})
+
+Deno.test("buildFtsQuery : guillemet intégré au terme retiré avant enrobage", () => {
+  assertEquals(buildFtsQuery(['a"b']), '"ab"')
+})

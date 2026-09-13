@@ -32,8 +32,11 @@ const STOPWORDS = new Set([
 // Codes à conserver comme phrases (minuscules, espaces normalisés). L'ordre compte :
 // les normes passent avant le motif numérique générique pour que « DTU 25.41 »
 // reste entier au lieu de donner « 25.41 » seul.
+// Note : « en » seul est retiré de l'alternation préfixe (la préposition française
+// « en 2025 » n'est pas une norme) — « NF EN 1154 » reste capturé en entier car les
+// 1 à 3 lettres optionnelles après « nf » absorbent le « EN ».
 const CODE_PATTERNS: RegExp[] = [
-  /\b(?:nf|en|iso|dtu|bt)\s*(?:[a-z]{1,3}\s*)?\d+(?:[.\-]\d+)*[a-z]?\b/gi,   // NF EN 1154, NF P 03-001, NF C 15-100, DTU 25.41, BT43
+  /\b(?:nf|iso|dtu|bt)\s*(?:[a-z]{1,3}\s*)?\d+(?:[.\-]\d+)*[a-z]?\b/gi,     // NF EN 1154, NF P 03-001, NF C 15-100, DTU 25.41, BT43
   /\blots?\s*(?:n\s*°?\s*)?\d{1,2}\b/gi,                                   // lot 06, lot n°7
   /\b[lrd]\.?\s?(\d{3,4}(?:-\d+)+)\b/gi,                                   // L. 8221-3 → groupe 1 « 8221-3 »
   /\b\d+(?:\.\d+)+\b/g,                                                    // 3.7, 2.3.9, 25.41
@@ -50,7 +53,11 @@ export function extractSearchTerms(query: string): string[] {
 
   for (const pattern of CODE_PATTERNS) {
     pattern.lastIndex = 0
-    for (const m of query.matchAll(pattern)) {
+    // Chaque motif est appliqué sur le résidu (déjà amputé des correspondances
+    // précédentes), pas sur la question d'origine, pour éviter qu'un numéro
+    // pointé déjà capturé dans une norme (ex. « DTU 25.41 ») ne soit ré-extrait
+    // seul par le motif générique suivant (« 25.41 »).
+    for (const m of residue.matchAll(pattern)) {
       const term = normalizeSpaces(m[1] ?? m[0])
       if (!seen.has(term)) { seen.add(term); codes.push(term) }
       residue = residue.replace(m[0], " ")
