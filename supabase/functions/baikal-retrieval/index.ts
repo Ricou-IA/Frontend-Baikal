@@ -29,6 +29,7 @@ import { createTimer } from "./utils.ts"
 import { loadConfig, getIntentStrategy, getEffectiveGenerationParams } from "./config.ts"
 import { getAgentContext, addMessage } from "./context.ts"
 import { buildFallbackAnalysis } from "./routing/analyzer.ts"
+import { isElliptical, condenseQuery } from "./routing/condenser.ts"
 import { resolveRoute, buildConversationalResponse } from "./routing/router.ts"
 import { generateEmbedding } from "./search/embedding.ts"
 import { searchQAMemory, incrementQAUsage } from "./search/memory.ts"
@@ -156,16 +157,28 @@ serve(async (req) => {
           // A2. PARALLEL: context + embedding
           sendSSE(controller, 'step', { step: 'analyzing', message: 'Analyse de la question...' })
 
-          const [context, queryEmbedding] = await Promise.all([
+          const [context, initialEmbedding] = await Promise.all([
             getAgentContext(supabase, user_id, org_id, project_id, app_id, conversation_id, config.brain),
             generateEmbedding(query, OPENAI_API_KEY),
           ])
+          let queryEmbedding = initialEmbedding
           metrics.timings.context_embed = timer.mark('context_embed')
 
           await addMessage(supabase, context.conversationId, 'user', query)
 
-          // A3. FAST ANALYSIS (synchronous, ~0ms)
-          const fastAnalysis = buildFallbackAnalysis(query, context.documentsCles)
+          // A2b. CONDENSATION (Sprint 1, S1.4) — questions de suivi elliptiques uniquement
+          let effectiveQuery = query
+          if (GEMINI_API_KEY && context.recentMessages.length > 0 && isElliptical(query)) {
+            const condensed = await condenseQuery(query, context.recentMessages, GEMINI_API_KEY)
+            if (condensed !== query) {
+              effectiveQuery = condensed
+              queryEmbedding = await generateEmbedding(condensed, OPENAI_API_KEY)
+            }
+            metrics.timings.condense = timer.mark('condense')
+          }
+
+          // A3. FAST ANALYSIS (synchronous, ~0ms) — sur la question effective
+          const fastAnalysis = buildFallbackAnalysis(effectiveQuery, context.documentsCles)
           const intentStrategy = getIntentStrategy(fastAnalysis.intent)
 
           metrics.decisions.intent = fastAnalysis.intent
@@ -190,7 +203,9 @@ serve(async (req) => {
             await logQuery(supabase, {
               conversation_id: context.conversationId, user_id,
               org_id: context.effectiveOrgId || org_id || null, project_id: project_id || null, app_id,
-              query, intent: fastAnalysis.intent, answer_format: fastAnalysis.answer_format,
+              query,
+              rewritten_query: effectiveQuery !== query ? effectiveQuery : null,
+              intent: fastAnalysis.intent, answer_format: fastAnalysis.answer_format,
               fast_path: true, generation_mode: 'conversational',
               timings: metrics.timings, processing_time_ms: processingTime,
             })
@@ -253,7 +268,7 @@ serve(async (req) => {
           if (fastAnalysis.cross_ref?.is_cross_ref) {
             console.log(`[retrieval] Cross-ref search activated`)
             searchResult = await executeCrossRefSearch(
-              supabase, queryEmbedding, query, user_id, context.effectiveOrgId,
+              supabase, queryEmbedding, effectiveQuery, user_id, context.effectiveOrgId,
               project_id, context.effectiveAppId, config.librarian,
               filter_source_types,
               fastAnalysis.search_config, fastAnalysis.intent, intentStrategy,
@@ -261,7 +276,7 @@ serve(async (req) => {
             )
           } else {
             searchResult = await executeSearch(
-              supabase, queryEmbedding, query, user_id, context.effectiveOrgId,
+              supabase, queryEmbedding, effectiveQuery, user_id, context.effectiveOrgId,
               project_id, context.effectiveAppId, config.librarian,
               layerFlags, filter_source_types,
               fastAnalysis.search_config, fastAnalysis.intent, intentStrategy, config.features,
@@ -271,7 +286,7 @@ serve(async (req) => {
           metrics.timings.search = timer.mark('search')
 
           // A7. RERANKING (feature-flagged)
-          searchResult = await rerankIfEnabled(searchResult, query, config.features)
+          searchResult = await rerankIfEnabled(searchResult, effectiveQuery, config.features)
           metrics.decisions.reranking_applied = searchResult.reranked
           metrics.timings.rerank = timer.mark('rerank')
 
@@ -310,7 +325,7 @@ serve(async (req) => {
             const sseSender = (event: string, data: unknown) => sendSSE(controller, event, data)
 
             const agenticResult = await runAgenticLoop(
-              query, context, config.agentic, toolCtx,
+              effectiveQuery, context, config.agentic, toolCtx,
               GEMINI_API_KEY, sseSender, timer.startTime,
             )
 
@@ -350,7 +365,9 @@ serve(async (req) => {
             await logQuery(supabase, {
               conversation_id: context.conversationId, user_id,
               org_id: context.effectiveOrgId || org_id || null, project_id: project_id || null, app_id,
-              query, intent: fastAnalysis.intent, answer_format: fastAnalysis.answer_format,
+              query,
+              rewritten_query: effectiveQuery !== query ? effectiveQuery : null,
+              intent: fastAnalysis.intent, answer_format: fastAnalysis.answer_format,
               fast_path: false, generation_mode: 'agentic', model: config.agentic.model,
               reranked: metrics.decisions.reranking_applied,
               agentic: { triggered: true, iterations: agenticResult.iterations, timed_out: agenticResult.timedOut, steps: agenticResult.steps },
