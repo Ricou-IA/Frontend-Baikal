@@ -406,6 +406,9 @@ export const CROSS_REF_CONFIG = {
   },
 }
 
+// Sprint 1 : fonction de recherche hybride (v15 = pool ×4, enfants hors LIMIT, poids de couche)
+export const MATCH_DOCUMENTS_FN = 'match_documents_v15'
+
 // ============================================================================
 // HELPERS
 // ============================================================================

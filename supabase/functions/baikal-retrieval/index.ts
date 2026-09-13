@@ -10,7 +10,7 @@
 //     The LLM iteratively searches, evaluates, and refines until satisfied
 //
 // Agentic tools:
-//   - search_documents:  Hybrid search (reuses match_documents_v14)
+//   - search_documents:  Hybrid search (reuses match_documents_v15)
 //   - list_project_files: List available files in the project
 //   - search_in_file:    Search within a specific file (cross-doc)
 //
