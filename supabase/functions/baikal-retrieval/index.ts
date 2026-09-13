@@ -18,6 +18,11 @@
 //   - step: agent_thinking / agent_searching / agent_found / generating
 //   - token: streaming response tokens
 //   - sources: final citations + metrics
+//
+// Sprint 1 (v2.1.0) :
+//   - Condensation des suivis (routing/condenser.ts), gate agentique (agentic/gate.ts),
+//     FTS OR-isé (search/keywords.ts), match_documents_v15 (pool ×4, enfants L1, poids couche app),
+//     page des sources depuis page_start (sources.ts)
 // ============================================================================
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
@@ -120,7 +125,7 @@ serve(async (req) => {
     if (!query?.trim()) return errorResponse("Query is required")
     if (!user_id) return errorResponse("user_id is required")
 
-    console.log(`[retrieval] === v2.0.0 Agentic === Query: "${query.substring(0, 60)}..."`)
+    console.log(`[retrieval] === v2.1.0 Sprint 1 === Query: "${query.substring(0, 60)}..."`)
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     const timer = createTimer()
