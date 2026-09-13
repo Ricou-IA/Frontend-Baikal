@@ -230,7 +230,7 @@
       "question": "Est-ce qu'il y a des incohérences entre le mémoire technique et le CCTP ?",
       "conversation_context": null,
       "synthetic": false,
-      "a_valider": true,
+      "a_valider": false,
       "expected": {
         "source_doc_contains": "Mémoire Technique",
         "source_page": null,
@@ -239,7 +239,7 @@
         "must_refuse": false
       },
       "origine": "conversation réelle du 2026-01-14 (4 runs aux réponses contradictoires : « aucune incohérence », tableau comparatif, ou « extrapolation du désamiantage à la résidence Dunant » — réponse de référence à définir par Eric)",
-      "resolution": "2026-08-15 — PROPOSITION à confirmer par Eric : en base, le désamiantage est traité au CCTP TCE (§2.2, pages 3 et 50) mais n'apparaît nulle part dans les 171 chunks du Mémoire Technique. L'« incohérence » de référence serait donc une omission : le CCTP prévoit le désamiantage, le mémoire technique n'en parle pas. Si tu valides cette lecture, passe a_valider à false."
+      "resolution": "2026-09-13 — VALIDÉ par Eric : l'incohérence de référence est une omission — le désamiantage est prévu au CCTP TCE (§2.2, pages 3 et 50) et absent des 171 chunks du Mémoire Technique. Les deux documents doivent être cités."
     },
     {
       "id": "C3-002",
@@ -248,15 +248,16 @@
       "question": "Quels sont les délais de pénalité prévus dans le CCAP et comment se comparent-ils aux obligations de la charte chantier vert ?",
       "conversation_context": null,
       "synthetic": false,
-      "a_valider": true,
+      "a_valider": false,
       "expected": {
         "source_doc_contains": "CCAP Travaux",
         "source_page": null,
-        "answer_must_contain": [],
+        "answer_must_contain": ["5 mois"],
         "answer_must_not_contain": [],
         "must_refuse": false
       },
-      "origine": "conversation réelle du 2026-02-11 (croisement CCAP × Charte Chantier Vert ; réponse d'époque : délai d'exécution 5 mois à compter de la notification — volet comparatif charte non visible dans l'extrait, à valider)"
+      "origine": "conversation réelle du 2026-02-11 (croisement CCAP × Charte Chantier Vert ; réponse d'époque : délai d'exécution 5 mois à compter de la notification — volet comparatif charte non visible dans l'extrait, à valider)",
+      "resolution": "2026-09-13 — VALIDÉ par Eric : attendu « 5 mois » (délai d'exécution du CCAP Travaux) et les deux documents cités (CCAP Travaux, Charte Chantier Vert). À durcir si la charte porte des délais ou pénalités propres."
     },
     {
       "id": "C3-003",
@@ -282,7 +283,7 @@
       "question": "Peux-tu me donner les limites de prestations des autres lots avec le gros-œuvre ?",
       "conversation_context": null,
       "synthetic": false,
-      "a_valider": true,
+      "a_valider": false,
       "expected": {
         "source_doc_contains": "CCTP TCE",
         "source_page": null,
@@ -290,7 +291,8 @@
         "answer_must_not_contain": [],
         "must_refuse": false
       },
-      "origine": "conversations réelles du 2026-01-15, 2026-01-16 et 2026-01-30 (réponses instables : tableau comparatif CCAP/CCTP ou « non explicitement définies » — le CCTP étant TCE, la notion de limites de prestations inter-lots est diffuse ; réponse de référence à définir)"
+      "origine": "conversations réelles du 2026-01-15, 2026-01-16 et 2026-01-30 (réponses instables : tableau comparatif CCAP/CCTP ou « non explicitement définies » — le CCTP étant TCE, la notion de limites de prestations inter-lots est diffuse ; réponse de référence à définir)",
+      "resolution": "2026-09-13 — VALIDÉ par Eric : attendu minimal (CCTP TCE cité, pas de refus, réponse structurée par lot). À durcir après le premier run baseline."
     },
     {
       "id": "C4-001",
