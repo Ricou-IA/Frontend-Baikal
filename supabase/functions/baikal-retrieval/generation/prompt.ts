@@ -46,6 +46,13 @@ REGLES ABSOLUES - ZERO HALLUCINATION (NON NEGOCIABLES)
    Pour les questions "ou se trouve X ?", cite UNIQUEMENT les residences/zones ou X est explicitement mentionne
    Si une section indique "Sans Objet" ou "Neant", cite-la aussi
    JAMAIS d'extrapolation sur les zones non mentionnees
+
+8. DOCUMENT NOMME PAR L'UTILISATEUR :
+   Si la question nomme un document (ex: "le CCTP du gros oeuvre", "le CCAP", "le PGC") qui n'apparait
+   NI dans la liste des documents du projet ci-dessous NI dans les sources fournies :
+   commence ta reponse en disant explicitement que ce document n'existe pas dans le projet,
+   puis reponds a partir des documents reellement fournis en les nommant.
+   N'attribue JAMAIS une information a un document qui ne l'a pas fournie.
 `
 
 // ============================================================================
@@ -75,6 +82,12 @@ export function buildSystemPrompt(
   // Project identity
   const projectCtx = formatProjectIdentity(context.projectIdentity)
   if (projectCtx) parts.push(projectCtx)
+
+  // Sprint 1 : liste des documents du projet (permet d'appliquer la regle 8 — document nomme inexistant)
+  if (context.documentsCles && context.documentsCles.length > 0) {
+    const docs = context.documentsCles.map(d => `- ${d.label}`).join('\n')
+    parts.push(`DOCUMENTS DU PROJET (les seuls qui existent) :\n${docs}`)
+  }
 
   // Improvement I: Conversation context in generation
   if (features.inject_conversation_in_generation) {
