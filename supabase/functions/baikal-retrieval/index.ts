@@ -32,7 +32,7 @@ import type { RequestBody, PipelineMetrics, SourceItem, AnalysisResult } from ".
 import { corsHeaders, sseHeaders, sendSSE, errorResponse } from "./utils.ts"
 import { createTimer } from "./utils.ts"
 import { loadConfig, getIntentStrategy, getEffectiveGenerationParams } from "./config.ts"
-import { getAgentContext, addMessage } from "./context.ts"
+import { getAgentContext, addMessage, getProjectDocumentNames } from "./context.ts"
 import { buildFallbackAnalysis } from "./routing/analyzer.ts"
 import { isElliptical, condenseQuery } from "./routing/condenser.ts"
 import { resolveRoute, buildConversationalResponse } from "./routing/router.ts"
@@ -164,10 +164,12 @@ serve(async (req) => {
           // A2. PARALLEL: context + embedding
           sendSSE(controller, 'step', { step: 'analyzing', message: 'Analyse de la question...' })
 
-          const [context, initialEmbedding] = await Promise.all([
+          const [context, initialEmbedding, projectDocuments] = await Promise.all([
             getAgentContext(supabase, user_id, org_id, project_id, app_id, conversation_id, config.brain),
             generateEmbedding(query, OPENAI_API_KEY),
+            getProjectDocumentNames(supabase, project_id),
           ])
+          context.projectDocuments = projectDocuments
           let queryEmbedding = initialEmbedding
           metrics.timings.context_embed = timer.mark('context_embed')
 

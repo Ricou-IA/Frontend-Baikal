@@ -83,9 +83,9 @@ export function buildSystemPrompt(
   const projectCtx = formatProjectIdentity(context.projectIdentity)
   if (projectCtx) parts.push(projectCtx)
 
-  // Sprint 1 : liste des documents du projet (permet d'appliquer la regle 8 — document nomme inexistant)
-  if (context.documentsCles && context.documentsCles.length > 0) {
-    const docs = context.documentsCles.map(d => `- ${d.label}`).join('\n')
+  // Sprint 1 : liste des fichiers reellement ingeres dans le projet (regle 8 — document nomme inexistant)
+  if (context.projectDocuments && context.projectDocuments.length > 0) {
+    const docs = context.projectDocuments.map(d => `- ${d}`).join('\n')
     parts.push(`DOCUMENTS DU PROJET (les seuls qui existent) :\n${docs}`)
   }
 

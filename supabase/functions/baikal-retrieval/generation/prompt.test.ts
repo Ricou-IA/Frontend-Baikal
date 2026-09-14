@@ -8,12 +8,12 @@ const features: FeatureFlags = {
   use_response_format_json: true, inject_conversation_in_generation: false,
 }
 
-function ctx(documentsCles: { slug: string; label: string }[]): AgentContext {
+function ctx(projectDocuments: string[], documentsCles: { slug: string; label: string }[] = []): AgentContext {
   return {
     effectiveOrgId: null, effectiveAppId: "arpet", systemPrompt: null, geminiSystemPrompt: null,
     parameters: {}, configSource: "test", projectIdentity: null, conversationId: "c",
     conversationSummary: null, conversationFirstMessage: null, recentMessages: [], messageCount: 0,
-    previousSourceFileIds: [], documentsCles,
+    previousSourceFileIds: [], documentsCles, projectDocuments,
   }
 }
 
@@ -24,10 +24,15 @@ Deno.test("regle 8 : document nomme inexistant presente dans le prompt", () => {
 })
 
 Deno.test("liste des documents du projet injectee quand elle existe, absente sinon", () => {
-  const avec = buildSystemPrompt(null, ctx([{ slug: "ccap", label: "CCAP" }, { slug: "cctp-lot-07", label: "CCTP - Lot N°07 PLÂTRERIE" }]), [], "factual", "paragraph", [], false, features)
+  const avec = buildSystemPrompt(null, ctx(["2139_CCAP.pdf", "CCTP - Lot N°07 PLÂTRERIE.pdf"]), [], "factual", "paragraph", [], false, features)
   assertStringIncludes(avec, "DOCUMENTS DU PROJET (les seuls qui existent) :")
-  assertStringIncludes(avec, "- CCAP")
-  assertStringIncludes(avec, "- CCTP - Lot N°07 PLÂTRERIE")
+  assertStringIncludes(avec, "- 2139_CCAP.pdf")
+  assertStringIncludes(avec, "- CCTP - Lot N°07 PLÂTRERIE.pdf")
   const sans = buildSystemPrompt(null, ctx([]), [], "factual", "paragraph", [], false, features)
   assert(!sans.includes("DOCUMENTS DU PROJET"))
+})
+
+Deno.test("liste de concepts (documentsCles) non vide ne doit jamais etre presentee comme la liste des documents du projet", () => {
+  const p = buildSystemPrompt(null, ctx([], [{ slug: "cctp", label: "CCTP" }]), [], "factual", "paragraph", [], false, features)
+  assert(!p.includes("DOCUMENTS DU PROJET"))
 })
