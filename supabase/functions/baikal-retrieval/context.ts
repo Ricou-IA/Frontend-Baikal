@@ -57,39 +57,8 @@ export async function getAgentContext(
     messageCount: ctx.out_message_count || 0,
     previousSourceFileIds: ctx.out_previous_source_file_ids || [],
     documentsCles,
-    projectDocuments: [],
+    namedDocuments: [],
   }
-}
-
-// ============================================================================
-// GET PROJECT DOCUMENT NAMES
-// ============================================================================
-
-/**
- * Sprint 1 : noms des documents réellement présents dans le projet (sources.files, statut completed).
- * Sert au prompt (règle 8 : document nommé inexistant). Ne lève jamais : liste vide en cas d'erreur.
- */
-export async function getProjectDocumentNames(
-  supabase: Supabase,
-  projectId: string | undefined,
-): Promise<string[]> {
-  if (!projectId) return []
-  const { data, error } = await supabase
-    .schema('sources')
-    .from('files')
-    .select('display_name, original_filename')
-    .eq('project_id', projectId)
-    .eq('processing_status', 'completed')
-    .order('original_filename')
-    .limit(50)
-  if (error) {
-    console.warn('[retrieval] getProjectDocumentNames:', error.message)
-    return []
-  }
-  const names = (data || [])
-    .map(f => (f.display_name as string | null) || (f.original_filename as string | null))
-    .filter((n): n is string => typeof n === 'string' && n.trim().length > 0)
-  return [...new Set(names)]
 }
 
 // ============================================================================

@@ -5,6 +5,7 @@
 import type {
   ChunkResult, FileInfo, AgentContext, FeatureFlags,
 } from "../types.ts"
+import { formatNamedDocumentsBlock } from "../routing/named-documents.ts"
 
 // ============================================================================
 // ZERO HALLUCINATION PROMPT
@@ -48,11 +49,13 @@ REGLES ABSOLUES - ZERO HALLUCINATION (NON NEGOCIABLES)
    JAMAIS d'extrapolation sur les zones non mentionnees
 
 8. DOCUMENT NOMME PAR L'UTILISATEUR :
-   Si la question nomme un document (ex: "le CCTP du gros oeuvre", "le CCAP", "le PGC") qui n'apparait
-   NI dans la liste des documents du projet ci-dessous NI dans les sources fournies :
-   commence ta reponse en disant explicitement que ce document n'existe pas dans le projet,
-   puis reponds a partir des documents reellement fournis en les nommant.
-   N'attribue JAMAIS une information a un document qui ne l'a pas fournie.
+   Quand la question nomme un document (ex: "le CCTP du gros oeuvre", "le CCAP", "le PGC"), le bloc
+   "DOCUMENTS NOMMES DANS LA QUESTION" ci-dessous indique le fichier du projet qui lui correspond, ou AUCUN.
+   - Si un document nomme est marque AUCUN : commence ta reponse en disant explicitement que ce document
+     n'existe pas dans le projet (cite les fichiers proches s'il y en a), puis reponds a partir des sources
+     reellement fournies en les nommant.
+   - N'attribue JAMAIS une information a un document qui ne l'a pas fournie : chaque affirmation est
+     rattachee au fichier du chunk d'ou elle vient (header DOCUMENT), jamais au document nomme par l'utilisateur.
 `
 
 // ============================================================================
@@ -83,11 +86,9 @@ export function buildSystemPrompt(
   const projectCtx = formatProjectIdentity(context.projectIdentity)
   if (projectCtx) parts.push(projectCtx)
 
-  // Sprint 1 : liste des fichiers reellement ingeres dans le projet (regle 8 — document nomme inexistant)
-  if (context.projectDocuments && context.projectDocuments.length > 0) {
-    const docs = context.projectDocuments.map(d => `- ${d}`).join('\n')
-    parts.push(`DOCUMENTS DU PROJET (les seuls qui existent) :\n${docs}`)
-  }
+  // Sprint 1 (fin) : resolution des documents nommes dans la question (regle 8)
+  const namedBlock = formatNamedDocumentsBlock(context.namedDocuments || [])
+  if (namedBlock) parts.push(namedBlock)
 
   // Improvement I: Conversation context in generation
   if (features.inject_conversation_in_generation) {

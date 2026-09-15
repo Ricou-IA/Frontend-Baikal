@@ -20,6 +20,7 @@ import type {
   ChunkResult, FileInfo, SearchResult, AgentContext,
   AgenticStep, SourceItem, DocumentCle,
 } from "../types.ts"
+import { formatNamedDocumentsBlock } from "../routing/named-documents.ts"
 import {
   callGeminiAgent,
   streamGeminiAgentResponse,
@@ -82,6 +83,10 @@ export async function runAgenticLoop(
   }
   if (context.documentsCles?.length > 0) {
     contextParts.push(`Documents clés disponibles: ${context.documentsCles.map(d => d.label).join(', ')}`)
+  }
+  const namedBlock = formatNamedDocumentsBlock(context.namedDocuments || [])
+  if (namedBlock) {
+    contextParts.push(`${namedBlock}\nSi un document nommé est marqué AUCUN, dis-le explicitement en début de réponse et n'attribue jamais une information à ce document.`)
   }
 
   let history = buildInitialMessages(query, contextParts.join('\n\n'))

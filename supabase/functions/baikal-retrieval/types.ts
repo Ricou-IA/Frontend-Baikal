@@ -149,7 +149,7 @@ export interface AgentContext {
   messageCount: number
   previousSourceFileIds: string[]
   documentsCles: DocumentCle[]
-  projectDocuments: string[]        // Sprint 1 : noms des fichiers réellement ingérés dans le projet (sources.files)
+  namedDocuments: NamedDocumentResolution[]   // Sprint 1 (fin) : documents nommés dans la question, résolus sur sources.files
 }
 
 export interface ConversationMessage {
