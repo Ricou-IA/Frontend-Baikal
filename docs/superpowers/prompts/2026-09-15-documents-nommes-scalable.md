@@ -1,6 +1,6 @@
 # Prompt de reprise — Documents nommés dans la question, résolution scalable (fin du Sprint 1 RAG)
 
-> À coller tel quel dans une nouvelle session Claude Code ouverte sur **`C:\Dev\Frontend-Baikal\.claude\worktrees\sprint1-rag-retrieval`** (worktree git, branche `sprint1/rag-retrieval`). Ne pas travailler dans `C:\Dev\Frontend-Baikal` (main) : le code du sprint n'y est pas.
+> À coller tel quel dans une nouvelle session Claude Code ouverte sur **`C:\Dev\Frontend-Baikal`**, branche `main`. La branche `sprint1/rag-retrieval` a été fusionnée dans `main` le 2026-09-15 (merge `51dc191`) et le worktree supprimé : tout le code du sprint est sur `main`.
 
 ---
 
@@ -8,7 +8,7 @@
 
 Le Sprint 1 « Colmater le retrieval » de la spec `C:\Dev\Frontend-ARPET\docs\SPEC_RAG_OPTIM_V1.md` est codé, revu tâche par tâche et par une revue de branche complète, et déployé en production sur l'Edge Function `baikal-retrieval` (projet Supabase `odspcxgafcqxjzrarsqf`), sauf le dernier commit.
 
-Branche `sprint1/rag-retrieval`, 14 commits depuis `fe53f2b` (plan). Registre détaillé de l'exécution : `.superpowers/sdd/2026-09-13-sprint1-rag-retrieval/progress.md` (lire en premier : décisions, régressions, minors différés).
+Branche `sprint1/rag-retrieval` (15 commits depuis `fe53f2b`, le plan), fusionnée dans `main` en `51dc191`. Registre détaillé de l'exécution : `.superpowers/sdd/2026-09-13-sprint1-rag-retrieval/progress.md` (lire en premier : décisions, régressions, minors différés).
 
 | Commit | Contenu | Déployé ? |
 |---|---|---|
@@ -59,9 +59,9 @@ Remplacer la liste de fichiers du prompt par une **résolution ciblée du docume
 - Pas de Cohere, pas de changement d'embedding, pas de push GitHub sans accord, Eric déploie (ou donne un « ok » explicite).
 
 ### Méthode
-- Plan écrit puis exécution par sous-agents avec revue par tâche (`superpowers:writing-plans` puis `superpowers:subagent-driven-development`), comme pour le reste du sprint. Le registre `.superpowers/sdd/2026-09-13-sprint1-rag-retrieval/progress.md` est à continuer (ne pas en créer un second).
+- Plan écrit puis exécution par sous-agents avec revue par tâche (`superpowers:writing-plans` puis `superpowers:subagent-driven-development`), comme pour le reste du sprint. Le registre `.superpowers/sdd/2026-09-13-sprint1-rag-retrieval/progress.md` (copié sur `main`, exclu du suivi git) est à continuer (ne pas en créer un second).
 - Tests Deno à côté des modules (`https://deno.land/std@0.224.0/assert/mod.ts`), TDD. `deno check supabase/functions/baikal-retrieval/index.ts` a **11 erreurs préexistantes** dans `routing/analyzer.ts:62-78` (fonction morte `analyzeQuery`) : le critère est « aucune erreur nouvelle ».
-- `eval/config.json` et `eval/.env` sont présents dans le worktree (copiés, gitignorés). `GEMINI_API_KEY` y est vide : le juge de fidélité ne tourne pas tant qu'Eric ne l'a pas collée.
+- `eval/config.json` et `eval/.env` sont présents sur `main` (gitignorés). `GEMINI_API_KEY` y est vide : le juge de fidélité ne tourne pas tant qu'Eric ne l'a pas collée.
 
 ### Critères de fin
 1. `deno test` sur les 7 fichiers de test du module retrieval : tout vert ; nouveau `routing/named-documents.test.ts` couvrant les 4 exemples d'extraction ci-dessus, l'appariement (trouvé / non trouvé avec proches / aucun candidat / sans qualifiant), et le bloc de prompt.
@@ -73,7 +73,7 @@ Remplacer la liste de fichiers du prompt par une **résolution ciblée du docume
    Attendu : **C7-004 refusé** (« ce document n'existe pas dans le projet »), C7 réel 4/4 et synthétique 6/6, aucune autre classe en recul de plus d'une question par rapport à `s1b-*`. Lire chaque échec restant (`node -e` sur le JSON du rapport) et le classer : critère à revoir / Sprint 2 / corpus (Sprint 4).
 3. Figer : les fichiers `eval/reports/baseline-v2.1.0.*` sont suivis par git (`eval/.gitignore` autorise `baseline-*`) → commit.
 4. Docs : `C:\Dev\Frontend-ARPET\docs\SPEC_RAG_OPTIM_V1.md` §7 (tableau : Sprint 1 ✅, baseline avant `v2.0.0`, après `v2.1.0`), nouvelle sous-section « 7.3 Sprint 1 — résultats » (tableaux réel + synthétique, gains/pertes nominatifs, enseignements : condensation, gate, poids couche app, C2-003 qui répond désormais depuis le CCAP projet au lieu du plafond CCAG — réponse plus utile, critère du set réel à documenter), §3 P11 corrigé ; `C:\Dev\Frontend-ARPET\CLAUDE.md` § « État Courant » (date, prod = `baikal-retrieval v2.1.0`, résumé du sprint, prochaine étape Sprint 2). Commit ARPET.
-5. Fusion de `sprint1/rag-retrieval` dans `main` (Baikal) avec l'accord d'Eric — `superpowers:finishing-a-development-branch` ; le worktree peut ensuite être supprimé (`git worktree remove`). **Attention** : `main` de Baikal porte des modifications non commitées d'Eric (admin-rapport, SEO, AppContext) — ne pas y toucher.
+5. La fusion dans `main` est déjà faite (`51dc191`). On travaille directement sur `main`, sans worktree. **Attention** : `main` porte des modifications non commitées d'Eric (admin-rapport, SEO, AppContext) — ne pas les toucher ni les committer.
 6. Ménage optionnel, sur demande d'Eric : ~300 conversations de test créées par les runs d'éval dans `rag.conversations` (listées dans `eval/reports/*.conversations.json`).
 
 ### Minors différés (revue finale) à garder en tête, pas à traiter maintenant
