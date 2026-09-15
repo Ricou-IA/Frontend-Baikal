@@ -62,7 +62,7 @@ Deno.test("extraction : charte chantier vert (chantier est un mot-outil, vert un
 })
 
 Deno.test("extraction : apostrophe typographique (U+2019) reconnue comme l'apostrophe droite", () => {
-  assertEquals(extractNamedDocuments("Que dit l'acte d'engagement sur le délai ?"),
-    [{ type: "acte_engagement", phrase: "acte d'engagement", qualifiers: [] }])
-  assertEquals(extractNamedDocuments("Le CCTP de l'EHPAD prévoit-il un paratonnerre ?")[0].qualifiers, ["ehpad"])
+  assertEquals(extractNamedDocuments("Que dit l’acte d’engagement sur le délai ?"),
+    [{ type: "acte_engagement", phrase: "acte d’engagement", qualifiers: [] }])
+  assertEquals(extractNamedDocuments("Le CCTP de l’EHPAD prévoit-il un paratonnerre ?")[0].qualifiers, ["ehpad"])
 })
