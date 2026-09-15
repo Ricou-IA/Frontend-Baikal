@@ -20,7 +20,7 @@ const DOC_TYPE_PATTERNS: Array<{ type: NamedDocumentType; regex: RegExp }> = [
   { type: 'memoire',         regex: /\bm[eé]moires?\s+techniques?\b/gi },
   { type: 'cr',              regex: /\bcomptes?[\s-]rendus?\b/gi },
   { type: 'cr',              regex: /\bproc[eè]s[\s-]verba(?:l|ux)\b/gi },
-  { type: 'acte_engagement', regex: /\bactes?\s+d['']engagement\b/gi },
+  { type: 'acte_engagement', regex: /\bactes?\s+d[’']engagement\b/gi },
   { type: 'cctp',            regex: /\bCCTP\b/gi },
   { type: 'ccap',            regex: /\bCCAP\b/gi },
   { type: 'ccag',            regex: /\bCCAG\b/gi },
@@ -51,10 +51,11 @@ const PHRASE_BREAKERS = new Set([
   "quelles", "combien", "quand", "comment", "où", "et", "ou", "avec", "dans", "en", "par", "selon",
 ])
 
-// Mots-outils que la mention peut contenir sans qu'ils soient des qualifiants
-// (ceux de moins de 3 lettres sont de toute façon écartés par isQualifier).
-const TOOL_WORDS = new Set([
-  "des", "les", "une", "aux", "cet", "cette", "ces", "son", "ses", "mon", "mes", "notre", "nos",
+// Complément de STOPWORDS (liste de recherche full-text, qui ignore déjà les mots < 4 lettres) :
+// déterminants et possessifs de 3 lettres ou plus qu'une mention de document peut contenir
+// sans qu'ils soient des qualifiants. Aucune entrée ne doit exister aussi dans STOPWORDS.
+const DETERMINERS = new Set([
+  "des", "les", "une", "aux", "cet", "ces", "son", "ses", "mon", "mes", "notre", "nos",
   "votre", "vos", "numero", "numéro",
 ])
 
@@ -67,12 +68,12 @@ function cleanToken(raw: string): string {
 
 /** « l'EHPAD » → « ehpad », « n°07 » → « 07 ». */
 function toQualifier(word: string): string {
-  return word.toLowerCase().replace(/^[ldcjmnst]['']/, "").replace(/^n[°º]/, "")
+  return word.toLowerCase().replace(/^[ldcjmnst][’']/, "").replace(/^n[°º]/, "")
 }
 
 function isQualifier(q: string): boolean {
   if (/^\d+$/.test(q)) return true
-  return q.length >= 3 && !TOOL_WORDS.has(q) && !STOPWORDS.has(q)
+  return q.length >= 3 && !DETERMINERS.has(q) && !STOPWORDS.has(q)
 }
 
 /**
