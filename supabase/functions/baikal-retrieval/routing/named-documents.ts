@@ -183,6 +183,22 @@ export function projectNameTokens(identity: Record<string, unknown> | null): str
   return [...new Set(tokens)]
 }
 
+/**
+ * Nom du projet lu dans core.projects (out_project_identity n'a pas de clé name).
+ * Une requête par clé primaire, uniquement quand la question nomme un document. Ne lève jamais : [] en cas d'erreur.
+ */
+export async function fetchProjectNameTokens(supabase: Supabase, projectId: string | undefined): Promise<string[]> {
+  if (!projectId) return []
+  try {
+    const { data, error } = await supabase.schema('core').from('projects').select('name').eq('id', projectId).maybeSingle()
+    if (error) { console.warn('[named-documents] core.projects:', error.message); return [] }
+    return projectNameTokens({ name: data?.name })
+  } catch (err) {
+    console.warn('[named-documents] core.projects error:', err)
+    return []
+  }
+}
+
 function qualifierMatches(qualifier: string, normalizedName: string): boolean {
   const q = normalizeName(qualifier)
   if (/^\d+$/.test(q)) {

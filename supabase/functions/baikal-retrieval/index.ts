@@ -33,7 +33,7 @@ import { corsHeaders, sseHeaders, sendSSE, errorResponse } from "./utils.ts"
 import { createTimer } from "./utils.ts"
 import { loadConfig, getIntentStrategy, getEffectiveGenerationParams } from "./config.ts"
 import { getAgentContext, addMessage } from "./context.ts"
-import { extractNamedDocuments, fetchNamedDocumentCandidates, resolveNamedDocuments, projectNameTokens } from "./routing/named-documents.ts"
+import { extractNamedDocuments, fetchNamedDocumentCandidates, resolveNamedDocuments, projectNameTokens, fetchProjectNameTokens } from "./routing/named-documents.ts"
 import { buildFallbackAnalysis } from "./routing/analyzer.ts"
 import { isElliptical, condenseQuery } from "./routing/condenser.ts"
 import { resolveRoute, buildConversationalResponse } from "./routing/router.ts"
@@ -166,13 +166,14 @@ serve(async (req) => {
           sendSSE(controller, 'step', { step: 'analyzing', message: 'Analyse de la question...' })
 
           const initialNamed = extractNamedDocuments(query)
-          const [context, initialEmbedding, namedCandidates] = await Promise.all([
+          const [context, initialEmbedding, namedCandidates, projectTokens] = await Promise.all([
             getAgentContext(supabase, user_id, org_id, project_id, app_id, conversation_id, config.brain),
             generateEmbedding(query, OPENAI_API_KEY),
             fetchNamedDocumentCandidates(supabase, project_id, initialNamed),
+            initialNamed.length > 0 ? fetchProjectNameTokens(supabase, project_id) : Promise.resolve([]),
           ])
-          // L'appariement est pur : il a besoin du nom du projet, connu seulement une fois le contexte chargé.
-          context.namedDocuments = resolveNamedDocuments(initialNamed, namedCandidates, projectNameTokens(context.projectIdentity))
+          // L'appariement est pur : il a besoin du nom du projet, lu dans core.projects (out_project_identity n'en a pas).
+          context.namedDocuments = resolveNamedDocuments(initialNamed, namedCandidates, [...projectTokens, ...projectNameTokens(context.projectIdentity)])
           let queryEmbedding = initialEmbedding
           metrics.timings.context_embed = timer.mark('context_embed')
 
@@ -191,7 +192,7 @@ serve(async (req) => {
                 context.namedDocuments = resolveNamedDocuments(
                   condensedNamed,
                   await fetchNamedDocumentCandidates(supabase, project_id, condensedNamed),
-                  projectNameTokens(context.projectIdentity),
+                  [...(projectTokens.length > 0 ? projectTokens : await fetchProjectNameTokens(supabase, project_id)), ...projectNameTokens(context.projectIdentity)],
                 )
               }
             }

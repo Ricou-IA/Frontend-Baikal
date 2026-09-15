@@ -1,7 +1,7 @@
 import { assertEquals, assert } from "https://deno.land/std@0.224.0/assert/mod.ts"
 import {
   extractNamedDocuments, matchNamedDocument, formatNamedDocumentsBlock, normalizeName,
-  projectNameTokens, resolveNamedDocuments, fetchNamedDocumentCandidates,
+  projectNameTokens, resolveNamedDocuments, fetchNamedDocumentCandidates, fetchProjectNameTokens,
   buildFilenameFilter, TYPE_FILENAME_PATTERNS,
 } from "./named-documents.ts"
 import type { CandidatesByType, NamedCandidate, NamedDocumentStatus, NamedDocumentType, Supabase } from "../types.ts"
@@ -411,6 +411,39 @@ Deno.test("résolution : aucune requête sans project_id ni mention", async () =
   const supabase = {} as unknown as Supabase
   assertEquals((await fetchNamedDocumentCandidates(supabase, undefined, extractNamedDocuments("Que dit le CCAP ?"))).size, 0)
   assertEquals((await fetchNamedDocumentCandidates(supabase, "p1", [])).size, 0)
+})
+
+// ============================================================================
+// NOM DU PROJET (core.projects — out_project_identity n'a pas de clé name)
+// ============================================================================
+
+function fakeProjectsClient(result: { data: { name: string } | null; error: { message: string } | null }): Supabase {
+  return {
+    schema: () => ({
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: () => Promise.resolve(result),
+          }),
+        }),
+      }),
+    }),
+  } as unknown as Supabase
+}
+
+Deno.test("fetchProjectNameTokens : lit core.projects par id, tokenise le nom", async () => {
+  const supabase = fakeProjectsClient({ data: { name: "Golf Park" }, error: null })
+  assertEquals(await fetchProjectNameTokens(supabase, "p1"), ["golf", "park"])
+})
+
+Deno.test("fetchProjectNameTokens : erreur PostgREST → []", async () => {
+  const supabase = fakeProjectsClient({ data: null, error: { message: "boom" } })
+  assertEquals(await fetchProjectNameTokens(supabase, "p1"), [])
+})
+
+Deno.test("fetchProjectNameTokens : sans project_id → [] sans appel", async () => {
+  const supabase = {} as unknown as Supabase
+  assertEquals(await fetchProjectNameTokens(supabase, undefined), [])
 })
 
 // ============================================================================
