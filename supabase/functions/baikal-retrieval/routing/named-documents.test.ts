@@ -1,5 +1,5 @@
 import { assertEquals, assert } from "https://deno.land/std@0.224.0/assert/mod.ts"
-import { extractNamedDocuments, matchNamedDocument, formatNamedDocumentsBlock, normalizeName } from "./named-documents.ts"
+import { extractNamedDocuments, matchNamedDocument, formatNamedDocumentsBlock, normalizeName, buildFilenameFilter, TYPE_FILENAME_PATTERNS } from "./named-documents.ts"
 
 Deno.test("extraction : CCTP avec qualifiant, arrêt sur le verbe de la question", () => {
   const r = extractNamedDocuments("Dans le CCTP du gros œuvre, aborde-t-on le nettoyage extérieur ?")
@@ -145,4 +145,15 @@ Deno.test("bloc de prompt : une ligne par statut, unknown omis, null si vide", (
   assert(block.includes("e.pdf (+1 autre)"))
   assertEquals(formatNamedDocumentsBlock([]), null)
   assertEquals(formatNamedDocumentsBlock([{ phrase: "DOE", type: "doe", found: [], similar: [], status: "unknown", total: 0 }]), null)
+})
+
+Deno.test("filtre PostgREST : deux colonnes par motif, imatch, aucune virgule ni parenthèse dans les motifs", () => {
+  assertEquals(buildFilenameFilter("ccap"), "original_filename.imatch.ccap,display_name.imatch.ccap")
+  const cr = buildFilenameFilter("cr")
+  assert(cr.includes("original_filename.imatch.\\mcr\\M"))
+  assert(cr.includes("display_name.imatch.compte.?s?.?rendu"))
+  assert(cr.includes("proc[eèé]s.?verba"))
+  for (const patterns of Object.values(TYPE_FILENAME_PATTERNS)) {
+    for (const p of patterns) assert(!/[,()]/.test(p), `motif interdit dans .or() : ${p}`)
+  }
 })

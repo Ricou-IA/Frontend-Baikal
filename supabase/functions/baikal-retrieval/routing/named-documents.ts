@@ -8,7 +8,7 @@
 // à un document absent (régression C7-004). Même coût pour 5 ou 5 000 fichiers.
 // ============================================================================
 
-import type { NamedDocument, NamedDocumentType, NamedDocumentResolution } from "../types.ts"
+import type { Supabase, NamedDocument, NamedDocumentType, NamedDocumentResolution } from "../types.ts"
 import { STOPWORDS } from "../search/keywords.ts"
 
 const MAX_QUALIFIER_WORDS = 4
@@ -189,4 +189,85 @@ export function formatNamedDocumentsBlock(resolutions: NamedDocumentResolution[]
   }
   if (lines.length === 0) return null
   return `DOCUMENTS NOMMES DANS LA QUESTION (resolus sur les fichiers reellement ingeres du projet) :\n${lines.join('\n')}`
+}
+
+// ============================================================================
+// RÉSOLUTION (une requête par type nommé, limitée, jamais de liste complète)
+// ============================================================================
+
+const MAX_CANDIDATES = 20
+
+/** Regex Postgres (~*) sur le nom de fichier, par type. \m et \M = limites de mot. Ni virgule ni parenthèse (contrainte .or()). */
+export const TYPE_FILENAME_PATTERNS: Record<NamedDocumentType, string[]> = {
+  cctp:            ['cctp'],
+  ccap:            ['ccap'],
+  ccag:            ['ccag'],
+  doe:             ['\\mdoe\\M', 'dossier.?d.?ouvrages?.?ex'],
+  dpgf:            ['dpgf'],
+  planning:        ['planning'],
+  pv:              ['\\mpv\\M', 'proc[eèé]s.?verba'],
+  memoire:         ['m[eéè]moire'],
+  pgc:             ['\\mpgc\\M'],
+  rict:            ['\\mrict\\M'],
+  charte:          ['charte'],
+  cr:              ['\\mcr\\M', 'compte.?s?.?rendu', '\\mpv\\M', 'proc[eèé]s.?verba'],
+  acte_engagement: ['acte.?d.?engagement', '\\mae\\M'],
+  plan:            ['\\mplans?\\M'],
+  notice:          ['notice'],
+}
+
+/** Argument de .or() PostgREST : chaque motif sur les deux colonnes de nom. */
+export function buildFilenameFilter(type: NamedDocumentType): string {
+  return TYPE_FILENAME_PATTERNS[type]
+    .flatMap(p => [`original_filename.imatch.${p}`, `display_name.imatch.${p}`])
+    .join(',')
+}
+
+/** Noms des fichiers du projet d'un type donné ; null en cas d'erreur (→ statut unknown). */
+async function fetchCandidates(supabase: Supabase, projectId: string, type: NamedDocumentType): Promise<string[] | null> {
+  const { data, error } = await supabase
+    .schema('sources')
+    .from('files')
+    .select('original_filename, display_name')
+    .eq('project_id', projectId)
+    .eq('processing_status', 'completed')
+    .or(buildFilenameFilter(type))
+    .order('original_filename')
+    .limit(MAX_CANDIDATES)
+  if (error) {
+    console.warn(`[named-documents] ${type}:`, error.message)
+    return null
+  }
+  const names = (data || [])
+    .map(f => (f.display_name as string | null) || (f.original_filename as string | null))
+    .filter((n): n is string => typeof n === 'string' && n.trim().length > 0)
+  return [...new Set(names)]
+}
+
+function unknownResolution(n: NamedDocument): NamedDocumentResolution {
+  return { phrase: n.phrase, type: n.type, found: [], similar: [], status: 'unknown', total: 0 }
+}
+
+/**
+ * Résout chaque mention contre les fichiers du projet. Une requête par TYPE nommé
+ * (deux mentions du même type partagent la même requête). Ne lève jamais.
+ */
+export async function resolveNamedDocuments(
+  supabase: Supabase,
+  projectId: string | undefined,
+  named: NamedDocument[],
+): Promise<NamedDocumentResolution[]> {
+  if (!projectId || named.length === 0) return []
+  try {
+    const types = [...new Set(named.map(n => n.type))]
+    const lists = await Promise.all(types.map(t => fetchCandidates(supabase, projectId, t)))
+    const byType = new Map(types.map((t, i) => [t, lists[i]]))
+    return named.map(n => {
+      const candidates = byType.get(n.type)
+      return candidates ? matchNamedDocument(n, candidates) : unknownResolution(n)
+    })
+  } catch (err) {
+    console.warn('[named-documents] resolve error:', err)
+    return named.map(unknownResolution)
+  }
 }
