@@ -181,14 +181,25 @@ export interface NamedDocument {
 
 export type NamedDocumentStatus = 'found' | 'not_found' | 'no_candidate' | 'unknown'
 
+/** Un fichier candidat : le nom montré au modèle, et le texte sur lequel on apparie les qualifiants. */
+export interface NamedCandidate {
+  name: string            // display_name || original_filename (nom présenté)
+  searchText: string      // normalizeName(original_filename + " " + display_name) : les deux noms
+}
+
+/** Candidats par type, résultat du réseau. `null` = requête en erreur → statut unknown. */
+export type CandidatesByType = Map<NamedDocumentType, { candidates: NamedCandidate[]; truncated: boolean } | null>
+
 /** Résolution d'une mention contre les fichiers du projet (sources.files). */
 export interface NamedDocumentResolution {
   phrase: string
   type: NamedDocumentType
-  found: string[]         // fichiers dont le nom contient tous les qualifiants (max 5)
-  similar: string[]       // à défaut : fichiers du même type (max 5)
+  qualifiers: string[]    // qualifiants effectifs (mots du nom du projet retirés) — affichés dans le bloc
+  found: string[]         // fichiers dont le nom contient tous les qualifiants (max MAX_LISTED)
+  similar: string[]       // à défaut : fichiers du même type (max MAX_LISTED)
   status: NamedDocumentStatus
   total: number           // nombre réel de fichiers derrière found (si found) ou similar, avant troncature
+  truncated: boolean      // la liste des candidats a atteint MAX_CANDIDATES : elle ne prouve aucune absence
 }
 
 // ============================================================================

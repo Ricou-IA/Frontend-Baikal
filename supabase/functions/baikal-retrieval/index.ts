@@ -33,7 +33,7 @@ import { corsHeaders, sseHeaders, sendSSE, errorResponse } from "./utils.ts"
 import { createTimer } from "./utils.ts"
 import { loadConfig, getIntentStrategy, getEffectiveGenerationParams } from "./config.ts"
 import { getAgentContext, addMessage } from "./context.ts"
-import { extractNamedDocuments, resolveNamedDocuments } from "./routing/named-documents.ts"
+import { extractNamedDocuments, fetchNamedDocumentCandidates, resolveNamedDocuments, projectNameTokens } from "./routing/named-documents.ts"
 import { buildFallbackAnalysis } from "./routing/analyzer.ts"
 import { isElliptical, condenseQuery } from "./routing/condenser.ts"
 import { resolveRoute, buildConversationalResponse } from "./routing/router.ts"
@@ -166,12 +166,13 @@ serve(async (req) => {
           sendSSE(controller, 'step', { step: 'analyzing', message: 'Analyse de la question...' })
 
           const initialNamed = extractNamedDocuments(query)
-          const [context, initialEmbedding, namedDocuments] = await Promise.all([
+          const [context, initialEmbedding, namedCandidates] = await Promise.all([
             getAgentContext(supabase, user_id, org_id, project_id, app_id, conversation_id, config.brain),
             generateEmbedding(query, OPENAI_API_KEY),
-            resolveNamedDocuments(supabase, project_id, initialNamed),
+            fetchNamedDocumentCandidates(supabase, project_id, initialNamed),
           ])
-          context.namedDocuments = namedDocuments
+          // L'appariement est pur : il a besoin du nom du projet, connu seulement une fois le contexte chargé.
+          context.namedDocuments = resolveNamedDocuments(initialNamed, namedCandidates, projectNameTokens(context.projectIdentity))
           let queryEmbedding = initialEmbedding
           metrics.timings.context_embed = timer.mark('context_embed')
 
@@ -187,7 +188,11 @@ serve(async (req) => {
               // La question réécrite peut nommer un document que l'ellipse ne nommait pas
               const condensedNamed = extractNamedDocuments(condensed)
               if (condensedNamed.length > 0 && JSON.stringify(condensedNamed) !== JSON.stringify(initialNamed)) {
-                context.namedDocuments = await resolveNamedDocuments(supabase, project_id, condensedNamed)
+                context.namedDocuments = resolveNamedDocuments(
+                  condensedNamed,
+                  await fetchNamedDocumentCandidates(supabase, project_id, condensedNamed),
+                  projectNameTokens(context.projectIdentity),
+                )
               }
             }
             metrics.timings.condense = timer.mark('condense')

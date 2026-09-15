@@ -22,15 +22,18 @@ Deno.test("regle 8 : document nomme absent → refus explicite, s'appuie sur le 
   assertStringIncludes(p, "8. DOCUMENT NOMME PAR L'UTILISATEUR")
   assertStringIncludes(p, "n'existe pas dans le projet")
   assertStringIncludes(p, "DOCUMENTS NOMMES DANS LA QUESTION")
+  // R3 : une liste tronquee ne vaut pas absence
+  assertStringIncludes(p, '"(liste partielle)" ne prouve pas une absence')
   assert(!p.includes("liste des documents du projet"))
 })
 
 Deno.test("bloc des documents nommes injecte quand il y a des resolutions, absent sinon", () => {
   const avec = buildSystemPrompt(null, ctx([
-    { phrase: "CCTP du gros œuvre", type: "cctp", found: [], similar: ["CCTP - Lot N°07 PLÂTRERIE.pdf"], status: "not_found", total: 1 },
+    { phrase: "CCTP du gros œuvre", type: "cctp", qualifiers: ["gros", "œuvre"], found: [], similar: ["CCTP - Lot N°07 PLÂTRERIE.pdf"], status: "not_found", total: 1, truncated: false },
   ]), [], "factual", "paragraph", [], false, features)
   assertStringIncludes(avec, "DOCUMENTS NOMMES DANS LA QUESTION (resolus")
-  assertStringIncludes(avec, "- « CCTP du gros œuvre » → AUCUN fichier correspondant dans le projet ; fichiers proches : CCTP - Lot N°07 PLÂTRERIE.pdf")
+  assertStringIncludes(avec, "- « CCTP du gros œuvre » → aucun fichier cctp ne porte « gros », « œuvre » ; fichiers cctp du projet : CCTP - Lot N°07 PLÂTRERIE.pdf")
+  assert(!avec.includes("AUCUN fichier correspondant"))
   const sans = buildSystemPrompt(null, ctx([]), [], "factual", "paragraph", [], false, features)
   assert(!sans.includes("DOCUMENTS NOMMES DANS LA QUESTION (resolus"))
   assert(!sans.includes("DOCUMENTS DU PROJET"))

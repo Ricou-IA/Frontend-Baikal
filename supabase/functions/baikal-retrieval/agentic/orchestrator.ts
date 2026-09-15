@@ -86,7 +86,7 @@ export async function runAgenticLoop(
   }
   const namedBlock = formatNamedDocumentsBlock(context.namedDocuments || [])
   if (namedBlock) {
-    contextParts.push(`${namedBlock}\nSi un document nommé est marqué AUCUN, dis-le explicitement en début de réponse et n'attribue jamais une information à ce document.`)
+    contextParts.push(`${namedBlock}\nSi un document nommé est marqué "AUCUN fichier de ce type", dis-le explicitement en début de réponse ; si des fichiers du type existent mais aucun ne porte le qualificatif, vérifie s'il figure dans la liste sous un autre nom avant de conclure ; n'attribue jamais une information à un document qui ne l'a pas fournie.`)
   }
 
   let history = buildInitialMessages(query, contextParts.join('\n\n'))

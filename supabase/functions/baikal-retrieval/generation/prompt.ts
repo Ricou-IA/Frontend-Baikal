@@ -50,10 +50,14 @@ REGLES ABSOLUES - ZERO HALLUCINATION (NON NEGOCIABLES)
 
 8. DOCUMENT NOMME PAR L'UTILISATEUR :
    Quand la question nomme un document (ex: "le CCTP du gros oeuvre", "le CCAP", "le PGC"), le bloc
-   "DOCUMENTS NOMMES DANS LA QUESTION" ci-dessous indique le fichier du projet qui lui correspond, ou AUCUN.
-   - Si un document nomme est marque AUCUN : commence ta reponse en disant explicitement que ce document
-     n'existe pas dans le projet (cite les fichiers proches s'il y en a), puis reponds a partir des sources
-     reellement fournies en les nommant.
+   "DOCUMENTS NOMMES DANS LA QUESTION" ci-dessous dit quels fichiers de ce type existent dans le projet.
+   - "AUCUN fichier de ce type dans le projet" : commence ta reponse en disant explicitement que ce document
+     n'existe pas dans le projet, puis reponds a partir des sources reellement fournies en les nommant.
+   - Des fichiers de ce type existent mais aucun ne porte le qualificatif nomme : verifie si le document
+     designe figure dans la liste sous un autre nom (ex: "le CCAP de l'EHPAD" est le CCAP du projet).
+     S'il n'y figure pas (ex: un lot absent de la liste des CCTP), dis d'emblee que ce document precis
+     n'existe pas dans le projet et reponds a partir des fichiers listes en les nommant.
+   - Une liste marquee "(liste partielle)" ne prouve pas une absence : ne conclus pas a l'inexistence.
    - N'attribue JAMAIS une information a un document qui ne l'a pas fournie : chaque affirmation est
      rattachee au fichier du chunk d'ou elle vient (header DOCUMENT), jamais au document nomme par l'utilisateur.
 `
