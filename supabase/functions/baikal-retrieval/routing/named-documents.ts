@@ -261,8 +261,9 @@ const MAX_CANDIDATES = 20
 
 /**
  * Regex Postgres (~*) sur le nom de fichier, par type. Ni virgule ni parenthèse (contrainte .or()).
- * R6 — les bornes de mot \m/\M de Postgres considèrent « _ » comme un caractère de mot :
- * '2139_PGC.pdf' ~* '\mpgc\M' est faux. On borne donc à la main sur les non-alphanumériques,
+ * R6 — les bornes de mot de Postgres (antislash + m / antislash + M) considèrent « _ » comme un
+ * caractère de mot : ainsi bornée, la recherche de « pgc » rate '2139_PGC.pdf' (vérifié en SQL).
+ * On borne donc à la main sur les caractères non alphanumériques,
  * en quatre variantes (milieu, début, fin, nom entier) faute de pouvoir grouper avec des parenthèses.
  */
 function bounded(core: string): string[] {
