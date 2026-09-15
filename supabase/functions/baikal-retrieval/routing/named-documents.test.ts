@@ -1,5 +1,5 @@
 import { assertEquals, assert } from "https://deno.land/std@0.224.0/assert/mod.ts"
-import { extractNamedDocuments } from "./named-documents.ts"
+import { extractNamedDocuments, matchNamedDocument, formatNamedDocumentsBlock, normalizeName } from "./named-documents.ts"
 
 Deno.test("extraction : CCTP avec qualifiant, arrêt sur le verbe de la question", () => {
   const r = extractNamedDocuments("Dans le CCTP du gros œuvre, aborde-t-on le nettoyage extérieur ?")
@@ -65,4 +65,84 @@ Deno.test("extraction : apostrophe typographique (U+2019) reconnue comme l'apost
   assertEquals(extractNamedDocuments("Que dit l’acte d’engagement sur le délai ?"),
     [{ type: "acte_engagement", phrase: "acte d’engagement", qualifiers: [] }])
   assertEquals(extractNamedDocuments("Le CCTP de l’EHPAD prévoit-il un paratonnerre ?")[0].qualifiers, ["ehpad"])
+})
+
+// Noms réels du projet EHPAD (eval/config.json → ehpad), vérifiés en base le 2026-09-15
+const EHPAD_CCTP = [
+  "CCTP -  N°12 PEINTURE.pdf",
+  "CCTP - Lot N°02 ETANCHEITE.pdf",
+  "CCTP - Lot N°03 REVÊTEMENT DE FACADES.pdf",
+  "CCTP - Lot N°05 MENUISERIES EXTERIEURES ALUMINIUM.pdf",
+  "CCTP - Lot N°07 PLÂTRERIE.pdf",
+  "CCTP - Lot N°08 FAUX-PLAFONDS.pdf",
+]
+const EHPAD_PV = [
+  "72 PROCES VERBAL CHANTIER_Lézignan-Corbières_EHPAD.pdf.pdf",
+  "73 PROCES VERBAL CHANTIER_Lézignan-Corbières_EHPAD.pdf.pdf",
+]
+
+Deno.test("normalizeName : accents, œ, casse", () => {
+  assertEquals(normalizeName("GROS ŒUVRE Lézignan"), "gros oeuvre lezignan")
+})
+
+Deno.test("appariement : trouvé quand tous les qualifiants sont dans le nom (accents et n° ignorés)", () => {
+  const r = matchNamedDocument({ type: "cctp", phrase: "CCTP du lot 7", qualifiers: ["lot", "7"] }, EHPAD_CCTP)
+  assertEquals(r.status, "found")
+  assertEquals(r.found, ["CCTP - Lot N°07 PLÂTRERIE.pdf"])
+  assertEquals(r.total, 1)
+})
+
+Deno.test("appariement : qualifiant numérique apparié comme nombre entier (07 ≠ 070, 7 = 07)", () => {
+  const cand = ["CR 07.pdf", "CR 070.pdf", "CR 107.pdf"]
+  const r = matchNamedDocument({ type: "cr", phrase: "CR 7", qualifiers: ["7"] }, cand)
+  assertEquals(r.found, ["CR 07.pdf"])
+})
+
+Deno.test("appariement : non trouvé → fichiers proches (max 5) du même type", () => {
+  const r = matchNamedDocument({ type: "cctp", phrase: "CCTP du gros œuvre", qualifiers: ["gros", "œuvre"] }, EHPAD_CCTP)
+  assertEquals(r.status, "not_found")
+  assertEquals(r.found, [])
+  assertEquals(r.similar.length, 5)
+  assertEquals(r.total, 6)
+})
+
+Deno.test("appariement : aucun candidat", () => {
+  const r = matchNamedDocument({ type: "pgc", phrase: "PGC", qualifiers: [] }, [])
+  assertEquals(r.status, "no_candidate")
+  assertEquals(r.total, 0)
+})
+
+Deno.test("appariement : sans qualifiant, un seul candidat → trouvé", () => {
+  const r = matchNamedDocument({ type: "ccap", phrase: "CCAP", qualifiers: [] }, ["2139_CCAP.pdf"])
+  assertEquals(r, { phrase: "CCAP", type: "ccap", found: ["2139_CCAP.pdf"], similar: [], status: "found", total: 1 })
+})
+
+Deno.test("appariement : sans qualifiant, plusieurs candidats → tous (max 5), total réel", () => {
+  const r = matchNamedDocument({ type: "cctp", phrase: "CCTP", qualifiers: [] }, EHPAD_CCTP)
+  assertEquals(r.status, "found")
+  assertEquals(r.found.length, 5)
+  assertEquals(r.total, 6)
+})
+
+Deno.test("appariement : compte rendu 72 trouvé parmi les procès-verbaux", () => {
+  const r = matchNamedDocument({ type: "cr", phrase: "compte rendu de chantier, le 72", qualifiers: ["72"] }, EHPAD_PV)
+  assertEquals(r.found, ["72 PROCES VERBAL CHANTIER_Lézignan-Corbières_EHPAD.pdf.pdf"])
+})
+
+Deno.test("bloc de prompt : une ligne par statut, unknown omis, null si vide", () => {
+  const block = formatNamedDocumentsBlock([
+    { phrase: "CCAP", type: "ccap", found: ["2139_CCAP.pdf"], similar: [], status: "found", total: 1 },
+    { phrase: "CCTP du gros œuvre", type: "cctp", found: [], similar: ["CCTP - Lot N°07 PLÂTRERIE.pdf", "CCTP - Lot N°02 ETANCHEITE.pdf"], status: "not_found", total: 6 },
+    { phrase: "PGC", type: "pgc", found: [], similar: [], status: "no_candidate", total: 0 },
+    { phrase: "DOE", type: "doe", found: [], similar: [], status: "unknown", total: 0 },
+    { phrase: "CCTP", type: "cctp", found: ["a.pdf", "b.pdf", "c.pdf", "d.pdf", "e.pdf"], similar: [], status: "found", total: 6 },
+  ])!
+  assert(block.startsWith("DOCUMENTS NOMMES DANS LA QUESTION"))
+  assert(block.includes("- « CCAP » → 2139_CCAP.pdf"))
+  assert(block.includes("- « CCTP du gros œuvre » → AUCUN fichier correspondant dans le projet ; fichiers proches : CCTP - Lot N°07 PLÂTRERIE.pdf, CCTP - Lot N°02 ETANCHEITE.pdf"))
+  assert(block.includes("- « PGC » → AUCUN fichier de ce type dans le projet"))
+  assert(!block.includes("DOE"))
+  assert(block.includes("e.pdf (+1 autre)"))
+  assertEquals(formatNamedDocumentsBlock([]), null)
+  assertEquals(formatNamedDocumentsBlock([{ phrase: "DOE", type: "doe", found: [], similar: [], status: "unknown", total: 0 }]), null)
 })

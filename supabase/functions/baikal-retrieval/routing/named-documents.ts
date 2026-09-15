@@ -8,7 +8,7 @@
 // à un document absent (régression C7-004). Même coût pour 5 ou 5 000 fichiers.
 // ============================================================================
 
-import type { NamedDocument, NamedDocumentType } from "../types.ts"
+import type { NamedDocument, NamedDocumentType, NamedDocumentResolution } from "../types.ts"
 import { STOPWORDS } from "../search/keywords.ts"
 
 const MAX_QUALIFIER_WORDS = 4
@@ -125,4 +125,68 @@ export function extractNamedDocuments(query: string): NamedDocument[] {
     results.push({ type: span.type, phrase, qualifiers })
   }
   return results
+}
+
+// ============================================================================
+// APPARIEMENT (pur)
+// ============================================================================
+
+const MAX_LISTED = 5
+
+/** Minuscules, sans diacritiques, ligatures dépliées : « GROS ŒUVRE » → « gros oeuvre ». */
+export function normalizeName(s: string): string {
+  return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/œ/g, "oe").replace(/æ/g, "ae")
+}
+
+function qualifierMatches(qualifier: string, normalizedName: string): boolean {
+  const q = normalizeName(qualifier)
+  if (/^\d+$/.test(q)) {
+    const n = q.replace(/^0+(?=\d)/, "")                // « 07 » → « 7 »
+    return new RegExp(`(?<!\\d)0*${n}(?!\\d)`).test(normalizedName)
+  }
+  return normalizedName.includes(q)
+}
+
+export function matchNamedDocument(named: NamedDocument, candidateNames: string[]): NamedDocumentResolution {
+  const base = { phrase: named.phrase, type: named.type }
+  if (candidateNames.length === 0) {
+    return { ...base, found: [], similar: [], status: 'no_candidate', total: 0 }
+  }
+  if (named.qualifiers.length === 0) {
+    return { ...base, found: candidateNames.slice(0, MAX_LISTED), similar: [], status: 'found', total: candidateNames.length }
+  }
+  const found = candidateNames.filter(name => {
+    const n = normalizeName(name)
+    return named.qualifiers.every(q => qualifierMatches(q, n))
+  })
+  if (found.length > 0) {
+    return { ...base, found: found.slice(0, MAX_LISTED), similar: [], status: 'found', total: found.length }
+  }
+  return { ...base, found: [], similar: candidateNames.slice(0, MAX_LISTED), status: 'not_found', total: candidateNames.length }
+}
+
+// ============================================================================
+// BLOC DE PROMPT (pur) — sans accents dans le texte fixe, comme le reste du prompt
+// ============================================================================
+
+function withRemainder(list: string[], total: number): string {
+  const rest = total - list.length
+  const suffix = rest > 0 ? ` (+${rest} autre${rest > 1 ? 's' : ''})` : ''
+  return `${list.join(', ')}${suffix}`
+}
+
+export function formatNamedDocumentsBlock(resolutions: NamedDocumentResolution[]): string | null {
+  const lines: string[] = []
+  for (const r of resolutions) {
+    if (r.status === 'unknown') continue
+    if (r.status === 'found') {
+      lines.push(`- « ${r.phrase} » → ${withRemainder(r.found, r.total)}`)
+    } else if (r.status === 'not_found') {
+      lines.push(`- « ${r.phrase} » → AUCUN fichier correspondant dans le projet ; fichiers proches : ${withRemainder(r.similar, r.total)}`)
+    } else {
+      lines.push(`- « ${r.phrase} » → AUCUN fichier de ce type dans le projet`)
+    }
+  }
+  if (lines.length === 0) return null
+  return `DOCUMENTS NOMMES DANS LA QUESTION (resolus sur les fichiers reellement ingeres du projet) :\n${lines.join('\n')}`
 }
