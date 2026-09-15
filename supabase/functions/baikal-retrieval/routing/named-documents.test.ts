@@ -67,6 +67,14 @@ Deno.test("extraction R7 : plan et notice ne sont plus des documents nommés", (
   assertEquals(extractNamedDocuments("Que dit la notice de sécurité ?"), [])
 })
 
+// Hotfix 2026-09-15 : le CCAG est un document de la couche application (sources.files layer='app',
+// project_id null), pas un fichier du projet — la résolution par projet répondrait « aucun » à tort.
+// Réactivation au Sprint 2 avec la résolution couche application.
+Deno.test("extraction : CCAG (couche application) n'est pas extrait pour ce déploiement", () => {
+  assertEquals(extractNamedDocuments("Résume le CCAG"), [])
+  assertEquals(extractNamedDocuments("Que dit le CCAG sur les pénalités de retard ?"), [])
+})
+
 // R1 : les qualifiants ne sont collectés que derrière un lien (de/du/des/d’/lot/n°/chiffre).
 Deno.test("extraction R1 : un verbe après la mention n'est pas un qualifiant", () => {
   assertEquals(extractNamedDocuments("Qu'est-ce que le dernier CR rappelle sur les délais ?"),

@@ -29,7 +29,6 @@ const DOC_TYPE_PATTERNS: Array<{ type: NamedDocumentType; regex: RegExp }> = [
   { type: 'acte_engagement', regex: /\bactes?\s+d[’']engagement\b/gi },
   { type: 'cctp',            regex: /\bCCTP\b/gi },
   { type: 'ccap',            regex: /\bCCAP\b/gi },
-  { type: 'ccag',            regex: /\bCCAG\b/gi },
   { type: 'doe',             regex: /\bDOE\b/gi },
   { type: 'dpgf',            regex: /\bDPGF\b/gi },
   { type: 'pgc',             regex: /\bPGC\b/gi },
@@ -42,6 +41,9 @@ const DOC_TYPE_PATTERNS: Array<{ type: NamedDocumentType; regex: RegExp }> = [
   // R7 : « plan » et « notice » sont des mots trop courants (« plan de paiement », « notice explicative »).
   // Les types restent définis et interrogeables, mais l'extraction ne les produit plus (réactivation
   // au Sprint 2 sur preuve des logs named_documents).
+  // ccag : document de la couche application (sources.files layer='app', project_id null), pas un
+  // fichier du projet — la résolution par projet répondrait « aucun » à tort ; réactivation au
+  // Sprint 2 avec la résolution couche app (DTU, normes).
 ]
 
 // Mots qui terminent la mention : verbes de la question, pronoms, prépositions.
