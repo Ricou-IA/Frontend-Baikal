@@ -126,6 +126,8 @@ const REFUSAL_PATTERNS = [
   /ne (sont|est) pas (explicitement |clairement |précisément |precisement )?(d[ée]taill|mentionn|pr[ée]cis|indiqu|d[ée]crit|abord)/i,
   /pas (explicitement|clairement) (d[ée]taill|mentionn|pr[ée]cis|indiqu|abord)/i,
   /n['’]existe pas (dans|parmi)/i, /aucun (fichier|document)[^.]{0,60}(projet|corpus)/i,
+  /ne (sp[ée]cifie|d[ée]taille|pr[ée]cise|fournit|indique) pas (de |d['’]|la |le |les )/i,
+  /ne (sp[ée]cifie|d[ée]taille|pr[ée]cise|fournit|indique) pas (de|d['’]|la |le |les )/i,
 ]
 
 function detectRefusal(answer: string): boolean {
