@@ -26,6 +26,12 @@ export function buildSourcesFromFiles(files: FileInfo[]): SourceItem[] {
 // v1.1.1: EXACT copy from librarian-v4 buildSourcesFromChunks
 // ============================================================================
 
+/** P11 : le pipeline d'ingestion écrit page_start/page_end, pas page. */
+function toPage(value: unknown): number | undefined {
+  const n = typeof value === 'number' ? value : typeof value === 'string' ? parseInt(value, 10) : NaN
+  return Number.isFinite(n) && n > 0 ? n : undefined
+}
+
 export function buildSourcesFromChunks(chunks: ChunkResult[]): SourceItem[] {
   const sourcesMap = new Map<string, SourceItem>()
 
@@ -57,7 +63,8 @@ export function buildSourcesFromChunks(chunks: ChunkResult[]): SourceItem[] {
         // v4: Ajout des infos de sourçage
         section_title: chunk.section_title,
         hierarchy_level: chunk.hierarchy_level,
-        page: chunk.metadata?.page as number | undefined,
+        page: toPage(chunk.metadata?.page) ?? toPage(chunk.metadata?.page_start),
+        page_end: toPage(chunk.metadata?.page_end),
       })
     }
   }

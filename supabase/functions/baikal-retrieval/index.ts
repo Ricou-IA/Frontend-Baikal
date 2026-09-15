@@ -1,5 +1,5 @@
 // ============================================================================
-// baikal-retrieval v2.0.0 - "Agentic RAG"
+// baikal-retrieval v2.1.0 - "Agentic RAG" + Sprint 1 (S1.1–S1.5, S4.4, P11)
 // ============================================================================
 //
 // Evolution from v1.3.0 "Search-First, Analyze-Later":
@@ -10,7 +10,7 @@
 //     The LLM iteratively searches, evaluates, and refines until satisfied
 //
 // Agentic tools:
-//   - search_documents:  Hybrid search (reuses match_documents_v14)
+//   - search_documents:  Hybrid search (reuses match_documents_v15)
 //   - list_project_files: List available files in the project
 //   - search_in_file:    Search within a specific file (cross-doc)
 //
@@ -18,6 +18,11 @@
 //   - step: agent_thinking / agent_searching / agent_found / generating
 //   - token: streaming response tokens
 //   - sources: final citations + metrics
+//
+// Sprint 1 (v2.1.0) :
+//   - Condensation des suivis (routing/condenser.ts), gate agentique (agentic/gate.ts),
+//     FTS OR-isé (search/keywords.ts), match_documents_v15 (pool ×4, enfants L1, poids couche app),
+//     page des sources depuis page_start (sources.ts)
 // ============================================================================
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
@@ -27,9 +32,11 @@ import type { RequestBody, PipelineMetrics, SourceItem, AnalysisResult } from ".
 import { corsHeaders, sseHeaders, sendSSE, errorResponse } from "./utils.ts"
 import { createTimer } from "./utils.ts"
 import { loadConfig, getIntentStrategy, getEffectiveGenerationParams } from "./config.ts"
-import { getAgentContext, addMessage } from "./context.ts"
+import { getAgentContext, addMessage, getProjectDocumentNames } from "./context.ts"
 import { buildFallbackAnalysis } from "./routing/analyzer.ts"
+import { isElliptical, condenseQuery } from "./routing/condenser.ts"
 import { resolveRoute, buildConversationalResponse } from "./routing/router.ts"
+import { isTrueSalutation } from "./routing/safety.ts"
 import { generateEmbedding } from "./search/embedding.ts"
 import { searchQAMemory, incrementQAUsage } from "./search/memory.ts"
 import { executeSearch, executeCrossRefSearch } from "./search/retrieval.ts"
@@ -42,7 +49,8 @@ import { generateSuggestions } from "./generation/suggestions.ts"
 import { logQuery, slimSources, chunkStats } from "./logging.ts"
 
 // v2.0: Agentic imports
-import { runAgenticLoop, shouldTriggerAgentic } from "./agentic/orchestrator.ts"
+import { runAgenticLoop } from "./agentic/orchestrator.ts"
+import { evaluateAgenticGate, type GateReason } from "./agentic/gate.ts"
 import type { ToolExecutionContext } from "./agentic/tools.ts"
 
 // ============================================================================
@@ -118,7 +126,7 @@ serve(async (req) => {
     if (!query?.trim()) return errorResponse("Query is required")
     if (!user_id) return errorResponse("user_id is required")
 
-    console.log(`[retrieval] === v2.0.0 Agentic === Query: "${query.substring(0, 60)}..."`)
+    console.log(`[retrieval] === v2.1.0 Sprint 1 === Query: "${query.substring(0, 60)}..."`)
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     const timer = createTimer()
@@ -133,7 +141,7 @@ serve(async (req) => {
             safe_override_applied: false, generation_mode: '',
             reranking_applied: false, adaptive_threshold_applied: false,
             no_results_detected: false, memory_hit: false,
-            agentic_triggered: false, agentic_iterations: 0,
+            agentic_triggered: false, agentic_iterations: 0, agentic_gate_reason: '',
           },
           counts: {
             total_chunks: 0, l0_chunks: 0, l1_chunks: 0,
@@ -156,16 +164,30 @@ serve(async (req) => {
           // A2. PARALLEL: context + embedding
           sendSSE(controller, 'step', { step: 'analyzing', message: 'Analyse de la question...' })
 
-          const [context, queryEmbedding] = await Promise.all([
+          const [context, initialEmbedding, projectDocuments] = await Promise.all([
             getAgentContext(supabase, user_id, org_id, project_id, app_id, conversation_id, config.brain),
             generateEmbedding(query, OPENAI_API_KEY),
+            getProjectDocumentNames(supabase, project_id),
           ])
+          context.projectDocuments = projectDocuments
+          let queryEmbedding = initialEmbedding
           metrics.timings.context_embed = timer.mark('context_embed')
 
           await addMessage(supabase, context.conversationId, 'user', query)
 
-          // A3. FAST ANALYSIS (synchronous, ~0ms)
-          const fastAnalysis = buildFallbackAnalysis(query, context.documentsCles)
+          // A2b. CONDENSATION (Sprint 1, S1.4) — questions de suivi elliptiques uniquement, salutations exclues
+          let effectiveQuery = query
+          if (GEMINI_API_KEY && context.recentMessages.length > 0 && !isTrueSalutation(query) && isElliptical(query)) {
+            const condensed = await condenseQuery(query, context.recentMessages, GEMINI_API_KEY)
+            if (condensed !== query) {
+              effectiveQuery = condensed
+              queryEmbedding = await generateEmbedding(condensed, OPENAI_API_KEY)
+            }
+            metrics.timings.condense = timer.mark('condense')
+          }
+
+          // A3. FAST ANALYSIS (synchronous, ~0ms) — sur la question effective
+          const fastAnalysis = buildFallbackAnalysis(effectiveQuery, context.documentsCles)
           const intentStrategy = getIntentStrategy(fastAnalysis.intent)
 
           metrics.decisions.intent = fastAnalysis.intent
@@ -190,7 +212,9 @@ serve(async (req) => {
             await logQuery(supabase, {
               conversation_id: context.conversationId, user_id,
               org_id: context.effectiveOrgId || org_id || null, project_id: project_id || null, app_id,
-              query, intent: fastAnalysis.intent, answer_format: fastAnalysis.answer_format,
+              query,
+              rewritten_query: effectiveQuery !== query ? effectiveQuery : null,
+              intent: fastAnalysis.intent, answer_format: fastAnalysis.answer_format,
               fast_path: true, generation_mode: 'conversational',
               timings: metrics.timings, processing_time_ms: processingTime,
             })
@@ -224,7 +248,9 @@ serve(async (req) => {
               await logQuery(supabase, {
                 conversation_id: context.conversationId, user_id,
                 org_id: memoryOrgId, project_id: project_id || null, app_id,
-                query, intent: fastAnalysis.intent, answer_format: fastAnalysis.answer_format,
+                query,
+                rewritten_query: effectiveQuery !== query ? effectiveQuery : null,
+                intent: fastAnalysis.intent, answer_format: fastAnalysis.answer_format,
                 fast_path: true, generation_mode: 'memory', memory_hit: true,
                 top_similarities: [memoryResult.similarity],
                 timings: metrics.timings, processing_time_ms: processingTime,
@@ -253,7 +279,7 @@ serve(async (req) => {
           if (fastAnalysis.cross_ref?.is_cross_ref) {
             console.log(`[retrieval] Cross-ref search activated`)
             searchResult = await executeCrossRefSearch(
-              supabase, queryEmbedding, query, user_id, context.effectiveOrgId,
+              supabase, queryEmbedding, effectiveQuery, user_id, context.effectiveOrgId,
               project_id, context.effectiveAppId, config.librarian,
               filter_source_types,
               fastAnalysis.search_config, fastAnalysis.intent, intentStrategy,
@@ -261,16 +287,17 @@ serve(async (req) => {
             )
           } else {
             searchResult = await executeSearch(
-              supabase, queryEmbedding, query, user_id, context.effectiveOrgId,
+              supabase, queryEmbedding, effectiveQuery, user_id, context.effectiveOrgId,
               project_id, context.effectiveAppId, config.librarian,
               layerFlags, filter_source_types,
               fastAnalysis.search_config, fastAnalysis.intent, intentStrategy, config.features,
+              fastAnalysis.cross_ref?.detected_norms ?? [],
             )
           }
           metrics.timings.search = timer.mark('search')
 
           // A7. RERANKING (feature-flagged)
-          searchResult = await rerankIfEnabled(searchResult, query, config.features)
+          searchResult = await rerankIfEnabled(searchResult, effectiveQuery, config.features)
           metrics.decisions.reranking_applied = searchResult.reranked
           metrics.timings.rerank = timer.mark('rerank')
 
@@ -278,7 +305,11 @@ serve(async (req) => {
           // DECISION: Fast Path (v1.3) vs Agentic (v2.0)
           // =============================================================
 
-          const useAgentic = shouldTriggerAgentic(searchResult.chunks, config.agentic)
+          const gate = evaluateAgenticGate(searchResult.chunks, config.agentic)
+          console.log(`[agentic] gate: ${gate.reason} (n_vector=${gate.n_vector}, max_sim=${gate.max_sim.toFixed(3)}, avg=${gate.avg_sim.toFixed(3)})`)
+          const useAgentic = gate.trigger
+          const gateReason: GateReason = gate.trigger && !GEMINI_API_KEY ? 'no_gemini_key' : gate.reason
+          metrics.decisions.agentic_gate_reason = gateReason
 
           if (useAgentic && GEMINI_API_KEY) {
             // ===========================================================
@@ -309,7 +340,7 @@ serve(async (req) => {
             const sseSender = (event: string, data: unknown) => sendSSE(controller, event, data)
 
             const agenticResult = await runAgenticLoop(
-              query, context, config.agentic, toolCtx,
+              effectiveQuery, context, config.agentic, toolCtx,
               GEMINI_API_KEY, sseSender, timer.startTime,
             )
 
@@ -349,10 +380,12 @@ serve(async (req) => {
             await logQuery(supabase, {
               conversation_id: context.conversationId, user_id,
               org_id: context.effectiveOrgId || org_id || null, project_id: project_id || null, app_id,
-              query, intent: fastAnalysis.intent, answer_format: fastAnalysis.answer_format,
+              query,
+              rewritten_query: effectiveQuery !== query ? effectiveQuery : null,
+              intent: fastAnalysis.intent, answer_format: fastAnalysis.answer_format,
               fast_path: false, generation_mode: 'agentic', model: config.agentic.model,
               reranked: metrics.decisions.reranking_applied,
-              agentic: { triggered: true, iterations: agenticResult.iterations, timed_out: agenticResult.timedOut, steps: agenticResult.steps },
+              agentic: { triggered: true, reason: gate.reason, n_vector: gate.n_vector, max_sim: gate.max_sim, iterations: agenticResult.iterations, timed_out: agenticResult.timedOut, steps: agenticResult.steps },
               counts: { ...metrics.counts },
               top_similarities: agStats.top_similarities, match_sources: agStats.match_sources,
               sources: slimSources(agenticResult.sources),
@@ -548,7 +581,7 @@ serve(async (req) => {
             fast_path: true, generation_mode: effectiveMode,
             model: effectiveMode === 'gemini' ? effectiveGenParams.model : config.librarian.llm_model,
             memory_hit: false, reranked: metrics.decisions.reranking_applied,
-            agentic: null,
+            agentic: { triggered: false, reason: gateReason, n_vector: gate.n_vector, max_sim: gate.max_sim },
             counts: { ...metrics.counts },
             top_similarities: fpStats.top_similarities, match_sources: fpStats.match_sources,
             sources: slimSources(finalSources),

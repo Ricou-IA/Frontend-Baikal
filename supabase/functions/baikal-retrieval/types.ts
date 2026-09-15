@@ -119,6 +119,7 @@ export interface LibrarianConfig {
   scoring_method: string
   boost_on_mention: number
   min_chunks_for_inclusion: number
+  app_layer_weight: number          // Sprint 1 : poids RRF des chunks 'app' dans un projet (0.1–1, défaut 0.5)
 }
 
 export interface RetrievalConfig {
@@ -148,6 +149,7 @@ export interface AgentContext {
   messageCount: number
   previousSourceFileIds: string[]
   documentsCles: DocumentCle[]
+  projectDocuments: string[]        // Sprint 1 : noms des fichiers réellement ingérés dans le projet (sources.files)
 }
 
 export interface ConversationMessage {
@@ -326,6 +328,7 @@ export interface SourceItem {
   section_title?: string | null
   hierarchy_level?: number
   page?: number
+  page_end?: number
 }
 
 // ============================================================================
@@ -338,8 +341,8 @@ export interface AgenticConfig {
   max_iterations: number           // Max tool calls (default: 3)
   timeout_ms: number               // Budget total (default: 8000)
   temperature: number              // For orchestrator reasoning (default: 0.2)
-  quality_threshold: number        // Min chunks to skip agentic (default: 3)
-  similarity_threshold: number     // Min avg similarity to skip agentic (default: 0.45)
+  quality_threshold: number        // Nombre minimal de chunks vectoriels (vector/intersection) pour rester en chemin rapide (défaut : 3)
+  similarity_threshold: number     // Meilleure similarité cosine (max, pas la moyenne) minimale pour rester en chemin rapide (défaut : 0.45)
 }
 
 export interface ToolCall {
@@ -399,6 +402,7 @@ export interface PipelineMetrics {
     memory_hit: boolean
     agentic_triggered: boolean
     agentic_iterations: number
+    agentic_gate_reason: string
   }
   counts: {
     total_chunks: number

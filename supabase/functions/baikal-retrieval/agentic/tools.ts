@@ -13,9 +13,9 @@ import type {
   SearchConfig, ChunkResult, FileInfo, SearchResult, ToolResult,
   AgentContext, DocumentCle,
 } from "../types.ts"
-import { executeSearch } from "../search/retrieval.ts"
+import { executeSearch, toFtsQuery } from "../search/retrieval.ts"
 import { generateEmbedding } from "../search/embedding.ts"
-import { getIntentStrategy } from "../config.ts"
+import { getIntentStrategy, MATCH_DOCUMENTS_FN } from "../config.ts"
 
 // ============================================================================
 // GEMINI FUNCTION DECLARATIONS (for API)
@@ -275,9 +275,9 @@ async function executeSearchInFileTool(
   const embedding = await generateEmbedding(query, ctx.openaiApiKey)
 
   // Search with file filter
-  const { data, error } = await ctx.supabase.schema('rag').rpc('match_documents_v14', {
+  const { data, error } = await ctx.supabase.schema('rag').rpc(MATCH_DOCUMENTS_FN, {
     query_embedding: embedding,
-    query_text: query,
+    query_text: toFtsQuery(query),
     p_user_id: ctx.userId,
     p_org_id: ctx.effectiveOrgId,
     p_project_id: ctx.projectId || null,

@@ -68,6 +68,7 @@ const FALLBACK_LIBRARIAN: LibrarianConfig = {
   scoring_method: 'chunks_weighted',
   boost_on_mention: 2.0,
   min_chunks_for_inclusion: 1,
+  app_layer_weight: 0.5,
 }
 
 const FALLBACK_FEATURES: FeatureFlags = {
@@ -87,8 +88,8 @@ const FALLBACK_AGENTIC: AgenticConfig = {
   max_iterations: 3,
   timeout_ms: 8000,
   temperature: 0.2,
-  quality_threshold: 3,           // Min chunks to consider fast path sufficient
-  similarity_threshold: 0.45,     // Min avg similarity to consider fast path sufficient
+  quality_threshold: 3,           // Nombre minimal de chunks vectoriels (vector/intersection) pour rester en chemin rapide
+  similarity_threshold: 0.45,     // Meilleure similarité cosine (max, pas la moyenne) minimale pour rester en chemin rapide
 }
 
 const FALLBACK_SUGGESTIONS: SuggestionsConfig = {
@@ -335,6 +336,7 @@ function parseLibrarianConfig(data: Record<string, unknown> | null): LibrarianCo
     scoring_method: scoring.method as string || FALLBACK_LIBRARIAN.scoring_method,
     boost_on_mention: scoring.boost_on_mention as number || FALLBACK_LIBRARIAN.boost_on_mention,
     min_chunks_for_inclusion: scoring.min_chunks_for_inclusion as number || FALLBACK_LIBRARIAN.min_chunks_for_inclusion,
+    app_layer_weight: typeof search.app_layer_weight === 'number' ? search.app_layer_weight : FALLBACK_LIBRARIAN.app_layer_weight,
     llm_model: FALLBACK_LIBRARIAN.llm_model,
     max_context_length: search.max_context_length as number || FALLBACK_LIBRARIAN.max_context_length,
     google_file_ttl_hours: FALLBACK_LIBRARIAN.google_file_ttl_hours,
@@ -405,6 +407,9 @@ export const CROSS_REF_CONFIG = {
     projectLayerLimit: 10,
   },
 }
+
+// Sprint 1 : fonction de recherche hybride (v15 = pool ×4, enfants hors LIMIT, poids de couche)
+export const MATCH_DOCUMENTS_FN = 'match_documents_v15'
 
 // ============================================================================
 // HELPERS

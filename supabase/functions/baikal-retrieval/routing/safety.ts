@@ -3,6 +3,7 @@
 // ============================================================================
 
 import type { Intent, SafeAnalysisOverride } from "../types.ts"
+import { extractSearchTerms } from "../search/keywords.ts"
 
 // ============================================================================
 // SALUTATION DETECTION
@@ -115,10 +116,7 @@ export function detectIntentByKeywords(query: string): Intent {
   return 'factual'
 }
 
+/** Conservé pour `key_concepts` (analyse fallback) — même extracteur que le full-text. */
 export function extractKeywords(query: string): string[] {
-  const stopwords = ['dans', 'pour', 'avec', 'cette', 'quel', 'quelle', 'comment', 'pourquoi']
-  return query.toLowerCase()
-    .split(/\s+/)
-    .filter(w => w.length > 4 && !stopwords.includes(w))
-    .slice(0, 5)
+  return extractSearchTerms(query).slice(0, 5)
 }

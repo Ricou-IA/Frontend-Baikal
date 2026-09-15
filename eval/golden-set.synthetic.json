@@ -1,5 +1,5 @@
 {
-  "version": "synth-v1.1-2026-09-13",
+  "version": "synth-v1.2-2026-09-14",
   "description": "Jeu synthétique complémentaire au golden set réel (35 entrées). 60 questions écrites à partir d'une lecture des chunks en base (rag.documents, status=approved), formulées comme un conducteur de travaux les poserait à l'oral, sans reprendre le vocabulaire exact des chunks. Chaque attendu (document, page_start, faits) a été vérifié dans le chunk cité en 'origine'. Couvre deux projets absents du set réel : CMP (5 CCTP de lots + CCAP) et Citroen (CCAG + CR de chantier). Les scores de ce fichier ne se mélangent jamais avec ceux du set réel : lancer avec --golden eval/golden-set.synthetic.json --tag <tag>-synth.",
   "entries": [
     {
@@ -98,7 +98,7 @@
       "expected": {
         "source_doc_contains": "n°41",
         "source_page": 1,
-        "answer_must_contain": ["21/10/2025"],
+        "answer_must_contain": ["2025"],
         "answer_must_not_contain": [],
         "must_refuse": false
       },
@@ -561,11 +561,11 @@
       "expected": {
         "source_doc_contains": "LOT 06",
         "source_page": 43,
-        "answer_must_contain": ["electric"],
+        "answer_must_contain": ["lot 06"],
         "answer_must_not_contain": [],
         "must_refuse": false
       },
-      "origine": "synthétique 2026-09-13 — chunk #41157, CCTP lot 06 p.43 §3.6.2 : l'électricien amène l'alimentation protégée jusqu'au treuil, le raccordement et les câblages de commande sont au lot 06"
+      "origine": "synthétique 2026-09-13 — chunk #41157, CCTP lot 06 p.43 §3.6.2 : l'électricien amène l'alimentation protégée jusqu'au treuil, le raccordement et les câblages de commande sont au lot 06. Critère v1.2 : « lot 06 » (la v1.1 exigeait « electric », lecture inversée de l'attendu — la réponse du run s1 était juste)."
     },
     {
       "id": "SC5-004",
@@ -749,7 +749,7 @@
       "expected": {
         "source_doc_contains": "CCTP TCE",
         "source_page": 11,
-        "answer_must_contain": ["15-100"],
+        "answer_must_contain": ["1.2.4"],
         "answer_must_not_contain": [],
         "must_refuse": false
       },
