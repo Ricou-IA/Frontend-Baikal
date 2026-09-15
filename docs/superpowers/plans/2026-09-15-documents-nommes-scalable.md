@@ -1052,3 +1052,23 @@ Optionnel, sur demande : suppression des ~300 conversations de test dans `rag.co
 Hérités de la revue finale du Sprint 1 : 11 erreurs `deno check` dans `routing/analyzer.ts` (code mort `analyzeQuery`) ; entier nu « article 12 » non extrait par `keywords.ts` ; `p_children_per_parent` en dur ; `SECURITY DEFINER` sans `search_path` / `REVOKE PUBLIC` sur v14 et v15 (migration de hardening à part) ; pool graphrag non ×4 ; clé Gemini en query string ; `condenseQuery` sans test réseau ; regex de refus « ne est pas » du harnais ; le condenser recopie parfois la réponse précédente dans la question réécrite (prompt à corriger au Sprint 2).
 
 Nouveaux, propres à ce plan : `plan`/`notice`/`charte` sont des mots courants — la liste `PLAN_NON_DOCUMENT` est un garde-fou minimal, à enrichir si les logs `named_documents` montrent des faux positifs ; `\mcr\M` en regex Postgres ne distingue pas « CR » d'un sigle homonyme dans un nom de fichier ; la résolution ignore `display_name` quand il est `null` (cas général aujourd'hui).
+
+---
+
+## Amendement après revue finale de branche (2026-09-15, avant les portes G1'/G2')
+
+La revue finale (relecteur de branche, sur les commits `a357c90..228a861`) a mesuré sur les deux golden sets que l'heuristique des qualifiants des Tasks 1-2 produit une affirmation d'absence **fausse** sur ~9 questions synthétiques sur 60 (verbe pris pour un qualifiant : « le dernier CR **rappelle** » ; nom de projet : « le CCAP **de CMP** » ; mot absent du nom de fichier : « le CCAP **de l'EHPAD** » vs `2139_CCAP.pdf`, projet nommé « Ephad Lezignan » en base). C'est un défaut du plan, pas de l'implémentation. Décisions du contrôleur, appliquées en une vague de correction (brief : `.superpowers/sdd/2026-09-15-documents-nommes-scalable/final-fix-brief.md`) :
+
+| Réf. | Décision | Remplace |
+|---|---|---|
+| R1 | Garde positive : qualifiants collectés seulement si la mention est suivie d'un lien (`de`, `du`, `des`, `d’`, `lot`, `n°`, `numéro`) ou d'un chiffre ; inversion interrogative (`-t-il`, `-on`…) rompt la mention | liste noire seule (Task 1, Step 5) |
+| R2 | `projectNameTokens(identity)` : les mots du nom du projet sont retirés des qualifiants avant appariement | — |
+| R3 | Le bloc n'affirme « AUCUN » que pour `no_candidate`. `not_found` devient factuel : « aucun fichier ccap ne porte « ehpad » ; fichiers ccap du projet : … ». Règle 8 : vérifier la liste avant de conclure ; « (liste partielle) » ne prouve rien. `MAX_LISTED` 5 → 12 | Task 2 Step 3, Task 4 Step 5 |
+| R4 | `truncated` (20 candidats atteints) porté par la résolution et affiché « (liste partielle) » | — |
+| R5 | Appariement sur `original_filename + display_name` (`NamedCandidate { name, searchText }`), affichage du nom présenté | Task 2 (`candidateNames: string[]`) |
+| R6 | Motifs SQL bornés `[^a-z0-9]X[^a-z0-9]` / `^X[^a-z0-9]` / `[^a-z0-9]X$` (le `\m` de Postgres ne coupe pas sur `_`) | Task 3 `\mX\M` |
+| R7 | `plan` et `notice` retirés de l'extraction pour ce déploiement (types conservés) | Task 1 `DOC_TYPE_PATTERNS` |
+| R8 | `fetchNamedDocumentCandidates` (réseau, dans le `Promise.all`) séparé de `resolveNamedDocuments` (pur, après contexte, avec `ignoreTokens`) | Task 3/4 signature `resolveNamedDocuments(supabase, …)` |
+| R9 | Table de non-régression sur les phrasés réels des golden sets avec les listes de fichiers réelles des 4 projets d'éval | — |
+
+Vérifié en SQL avant la vague : `'2139_PGC.pdf' ~* '\mpgc\M'` = false, `'2139_PGC.pdf' ~* '[^a-z0-9]pgc[^a-z0-9]'` = true ; index `idx_sources_files_project_id` présent (coût de la requête : scan filtré par projet, acceptable). Reporté au Sprint 2 : re-résolution post-condensation en parallèle de l'embedding ; `similar` trié par proximité ; vérifier que `get_agent_context` contrôle l'appartenance `user_id`/`project_id` (le client est en service_role — pré-existant).
