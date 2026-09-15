@@ -165,6 +165,33 @@ export interface DocumentCle {
 }
 
 // ============================================================================
+// NAMED DOCUMENTS (Sprint 1, fin) — documents nommés dans la question
+// ============================================================================
+
+export type NamedDocumentType =
+  | 'cctp' | 'ccap' | 'ccag' | 'doe' | 'dpgf' | 'planning' | 'pv' | 'memoire'
+  | 'pgc' | 'rict' | 'charte' | 'cr' | 'acte_engagement' | 'plan' | 'notice'
+
+/** Une mention de document dans la question : « CCTP du gros œuvre » → type cctp, qualifiants [gros, œuvre]. */
+export interface NamedDocument {
+  type: NamedDocumentType
+  phrase: string          // texte exact de la question, du nom du document au dernier qualifiant
+  qualifiers: string[]    // mots significatifs qui suivent la mention (numéros toujours conservés)
+}
+
+export type NamedDocumentStatus = 'found' | 'not_found' | 'no_candidate' | 'unknown'
+
+/** Résolution d'une mention contre les fichiers du projet (sources.files). */
+export interface NamedDocumentResolution {
+  phrase: string
+  type: NamedDocumentType
+  found: string[]         // fichiers dont le nom contient tous les qualifiants (max 5)
+  similar: string[]       // à défaut : fichiers du même type (max 5)
+  status: NamedDocumentStatus
+  total: number           // nombre réel de fichiers derrière found (si found) ou similar, avant troncature
+}
+
+// ============================================================================
 // ROUTING / ANALYSIS
 // ============================================================================
 

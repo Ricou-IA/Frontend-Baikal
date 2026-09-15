@@ -15,7 +15,7 @@ const MAX_TERMS = 8
 // Mots-outils français fréquents dans une question (le dictionnaire 'french'
 // de Postgres en retire déjà beaucoup, mais pas tous) + mots-document qui
 // apparaissent dans presque tous les chunks et n'aident pas à discriminer.
-const STOPWORDS = new Set([
+export const STOPWORDS = new Set([
   "dans", "pour", "avec", "sans", "sous", "vers", "chez", "entre", "cette", "cela",
   "quel", "quelle", "quels", "quelles", "comment", "pourquoi", "combien", "quand",
   "sont", "être", "avoir", "faut", "peut", "peux", "doit", "dois", "fait", "fais",
