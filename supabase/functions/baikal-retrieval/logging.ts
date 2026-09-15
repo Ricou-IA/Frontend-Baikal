@@ -8,7 +8,7 @@
 // Spec : Frontend-ARPET/docs/SPEC_RAG_OPTIM_V1.md §4.5
 // ============================================================================
 
-import type { Supabase } from "./types.ts"
+import type { Supabase, NamedDocumentResolution } from "./types.ts"
 
 // ============================================================================
 // TYPES
@@ -38,6 +38,7 @@ export interface QueryLogEntry {
     timed_out?: boolean
     steps?: unknown[]
   } | null
+  named_documents?: NamedDocumentResolution[] | null   // Sprint 1 (fin) : documents nommés dans la question et leur résolution
   counts?: Record<string, number>
   top_similarities?: number[]
   match_sources?: string[]
