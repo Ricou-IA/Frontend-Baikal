@@ -87,18 +87,23 @@ async function serieSite(admin: any, appId: string, source: string, p: Periode):
   return totaux(data ?? []);
 }
 
-// Impressions Google hors bruit, au mois : total des pages du mois moins les
-// requetes entre guillemets (is_noise), qui font des milliers d'impressions a
-// 0 clic. Sur une periode partielle, c'est le cumul des mois couverts : dit
-// dans le rapport. Null si aucun mois archive.
+// Impressions Google hors bruit, au mois : total du site moins les requetes
+// entre guillemets (is_noise), qui font des milliers d'impressions a 0 clic.
+// Le total est la somme des APPAREILS du mois (agregation par propriete,
+// celle de Search Console et de la serie quotidienne), pas celle des pages :
+// Search Console agrege « par page » des que la dimension page est demandee
+// et sort 15-20 % plus haut — le hors bruit depassait alors le total (aout
+// 2026 : 11 846 « hors bruit » pour 9 819 impressions). Sur une periode
+// partielle, c'est le cumul des mois couverts : dit dans le rapport. Null si
+// aucun mois archive.
 async function impressionsHorsBruit(admin: any, appId: string, mois: string[]): Promise<number | null> {
   if (mois.length === 0) return null;
   const debuts = mois.map((m) => `${m}-01`);
-  const [pages, bruit] = await Promise.all([
+  const [total, bruit] = await Promise.all([
     admin.schema("admin").from("seo_snapshots")
       .select("impressions")
       .eq("app_id", appId).eq("source", "google")
-      .eq("granularity", "month").eq("dimension", "page")
+      .eq("granularity", "month").eq("dimension", "device")
       .in("period_start", debuts).limit(5000),
     admin.schema("admin").from("seo_snapshots")
       .select("impressions")
@@ -106,11 +111,11 @@ async function impressionsHorsBruit(admin: any, appId: string, mois: string[]): 
       .eq("granularity", "month").eq("dimension", "query")
       .in("period_start", debuts).eq("is_noise", true).limit(5000),
   ]);
-  if (pages.error) throw new Error(pages.error.message);
+  if (total.error) throw new Error(total.error.message);
   if (bruit.error) throw new Error(bruit.error.message);
-  if (!pages.data || pages.data.length === 0) return null;
+  if (!total.data || total.data.length === 0) return null;
   const somme = (rows: any[]) => rows.reduce((a, r) => a + Number(r.impressions), 0);
-  return Math.max(0, somme(pages.data) - somme(bruit.data ?? []));
+  return Math.max(0, somme(total.data) - somme(bruit.data ?? []));
 }
 
 // Lignes mensuelles (requetes ou pages) cumulees sur les mois couverts :

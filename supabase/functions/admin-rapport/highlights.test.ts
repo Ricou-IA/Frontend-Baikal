@@ -10,8 +10,8 @@ function base(): FaitsHighlights {
     franchise: { seuil: 15, ventes: 13, partageables: 0, quote_part: 0 },
     seo: {
       google: {
-        periode: { clics: 523, impressions: 9819, impressions_hors_bruit: 11846, ctr: 0.053, position: 15.2 },
-        precedent: { clics: 644, impressions: 10412, impressions_hors_bruit: 11600, ctr: 0.062, position: 10.0 },
+        periode: { clics: 523, impressions: 9819, impressions_hors_bruit: 9752, ctr: 0.053, position: 15.2 },
+        precedent: { clics: 644, impressions: 10412, impressions_hors_bruit: 9871, ctr: 0.062, position: 10.0 },
       },
       bing: { periode: { clics: 137, impressions: 2245, impressions_hors_bruit: null, ctr: 0.06, position: 0 }, precedent: null },
       requetes_periode: [
@@ -56,8 +56,8 @@ Deno.test("trame complete pour un mois ordinaire", () => {
   assertEquals(h[0], "13 ventes en août 2026 contre 14 en juillet 2026 (−1).");
   assertEquals(h[1], "Seuil de 15 ventes non atteint (13 sur 15) : aucune vente partageable ce mois.");
   assertEquals(h[2], "523 clics Google contre 644 (−121, −19 %).");
-  assertEquals(h[3], "11 846 impressions Google hors bruit contre 11 600 (+246, +2 %).");
-  assertEquals(h[4], "CTR Google hors bruit 4,4 % contre 5,6 % (−1,1 point).");
+  assertEquals(h[3], "9 752 impressions Google hors bruit contre 9 871 (−119, −1 %).");
+  assertEquals(h[4], "CTR Google hors bruit 5,4 % contre 6,5 % (−1,2 point).");
   // Jamais de position moyenne globale ni d'impressions brutes (annexe 2, B.2).
   assert(!h.some((p) => p.includes("Position moyenne")));
   assert(!h.some((p) => p.includes("9 819")));
