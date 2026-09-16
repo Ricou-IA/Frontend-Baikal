@@ -5,11 +5,16 @@
  *   1. Vue d'ensemble : KPIs a accents metier, distribution des impressions
  *      par bucket de position (barres cliquables filtrant la table), top 50
  *      requetes, top pages, notes de lecture.
- *   2. Comparatif periode vs periode : statuts Regression / Disparue /
+ *   2. Bing vs Google : archive mensuelle admin.seo_snapshots, comparaison
+ *      par requete (dernier releve Bing vs dernier mois complet Google),
+ *      ecarts de position. Passe AVANT les appareils : ceux-ci ne detaillent
+ *      que Google.
+ *   3. Mobile et ordinateur (dimension device, memes lignes que le total
+ *      Google du tableau precedent).
+ *   4. Comparatif periode vs periode : statuts Regression / Disparue /
  *      Nouvelle / Progression / Stable (logique PV, ±1 rang).
- *   3. Bing vs Google : archive mensuelle admin.seo_snapshots + ecarts.
- *   4. Mobile et ordinateur (dimension device), Autorite (releve Moz mensuel,
- *      nous et les concurrents), Audit SEO (grille du flash audit, archive).
+ *   5. Autorite (releve Moz mensuel, nous et les concurrents), Audit SEO
+ *      (grille du flash audit, archive).
  * Enrobage et selecteur de site fournis par ConsoleLayout (useApp).
  * ============================================================================
  */
@@ -61,6 +66,14 @@ function fmtPos(n) {
 function fmtSigne(n) {
   if (n === null || n === undefined) return '—';
   return n > 0 ? `+${fmtInt(n)}` : fmtInt(n);
+}
+function dateFr(iso) {
+  return iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '—';
+}
+function libelleMois(iso) {
+  if (!iso) return '—';
+  return new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+    .format(new Date(`${iso.slice(0, 7)}-01T00:00:00Z`));
 }
 
 function accentCtr(ctrFraction) {
@@ -901,11 +914,66 @@ function BingVsGoogle({ appId }) {
         </table>
       </div>
 
+      {donnees.requetes?.length > 0 && (
+        <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
+          <div className="px-4 py-3 border-b border-baikal-border">
+            <p className="text-xs font-mono text-baikal-text uppercase">Par requete — top 50 par clics cumules</p>
+            <p className="text-[11px] text-baikal-text opacity-60 mt-0.5">
+              Google : {libelleMois(donnees.moisGoogle)} (dernier mois complet) · Bing : releve du{' '}
+              {dateFr(donnees.dernierReleve)}, agregat glissant que l&apos;API ne date pas — les clics des deux
+              colonnes ne couvrent donc pas la meme periode, les positions se comparent.
+            </p>
+          </div>
+          <table data-mobile="1,2,3" className="w-full text-sm text-baikal-text">
+            <thead>
+              <tr className="text-left text-xs opacity-70">
+                <th className="px-4 py-2">Requete</th>
+                <th className="text-right px-2 py-2">Clics Google</th>
+                <th className="text-right px-2 py-2">Clics Bing</th>
+                <th className="text-right px-2 py-2">Pos. Google</th>
+                <th className="text-right px-2 py-2">Pos. Bing</th>
+                <th
+                  className="text-right px-4 py-2"
+                  title="Rangs gagnes sur Bing (position Google moins position Bing) ; positif = Bing classe mieux"
+                >
+                  Ecart
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {donnees.requetes.map((q) => (
+                <tr key={q.requete} className="border-t border-baikal-border/50">
+                  <td className="px-4 py-1.5">{q.requete}</td>
+                  <td className="text-right px-2 py-1.5 tabular-nums">
+                    {q.clicksGoogle === null ? <span className="opacity-40">—</span> : fmtInt(q.clicksGoogle)}
+                  </td>
+                  <td className="text-right px-2 py-1.5 tabular-nums">
+                    {q.clicksBing === null ? <span className="opacity-40">—</span> : fmtInt(q.clicksBing)}
+                  </td>
+                  <td className={`text-right px-2 py-1.5 tabular-nums ${classePosition(q.positionGoogle)}`}>
+                    {fmtPos(q.positionGoogle)}
+                  </td>
+                  <td className={`text-right px-2 py-1.5 tabular-nums ${classePosition(q.positionBing)}`}>
+                    {fmtPos(q.positionBing)}
+                  </td>
+                  <td className={`text-right px-4 py-1.5 tabular-nums font-medium ${q.delta === null ? 'opacity-40' : q.delta >= 5 ? 'text-emerald-400' : q.delta <= -5 ? 'text-red-400' : 'opacity-60'}`}>
+                    {q.delta === null ? '—' : `${q.delta > 0 ? '+' : ''}${q.delta.toFixed(1)}`}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {donnees.ecarts.length > 0 && (
         <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
           <div className="px-4 py-3 border-b border-baikal-border">
             <p className="text-xs font-mono text-baikal-text uppercase">
               Requetes ou Bing classe nettement mieux (≥ 5 rangs)
+            </p>
+            <p className="text-[11px] text-baikal-text opacity-60 mt-0.5">
+              Memes bases que le tableau precedent, toutes requetes confondues.
             </p>
           </div>
           <table data-mobile="1,2,3,4" className="w-full text-sm text-baikal-text">
@@ -944,9 +1012,9 @@ function SeoContent() {
     <div className="sm:p-6 space-y-10">
       <Performances appId={currentApp} />
       <VueEnsemble appId={currentApp} />
+      <BingVsGoogle appId={currentApp} />
       <Appareils appId={currentApp} />
       <Comparatif appId={currentApp} />
-      <BingVsGoogle appId={currentApp} />
       <Autorite appId={currentApp} />
       <AuditSeo appId={currentApp} />
     </div>

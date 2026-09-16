@@ -7,7 +7,9 @@
 //                                       impressions), top 25 pages
 //   compare         { appId, days }   → periode vs periode par requete, statuts
 //                                       regression/lost/new/progress/stable (logique PV)
-//   bing-vs-google  { appId }         → serie mensuelle Google/Bing + ecarts de position
+//   bing-vs-google  { appId }         → serie mensuelle Google/Bing, comparaison par
+//                                       requete (dernier releve Bing vs dernier mois
+//                                       complet Google) + ecarts de position
 //   serie-requete   { appId, requete, mois } → historique quotidien d'UNE requete,
 //                                       en direct de l'API GSC (filtre query equals)
 // Droits par site appliques partout (exigerSite / liste sites).
@@ -21,6 +23,12 @@ import {
   windowAnchored,
 } from "../_shared/gsc.ts";
 import { ErreurAcces, droitsModules, exigerModule, exigerSite, sitesAutorises } from "../_shared/droits.ts";
+import {
+  comparerRequetes,
+  dernierMoisComplet,
+  ecartsPosition,
+  serieMensuelle,
+} from "../_shared/seo-bing-google.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -402,16 +410,18 @@ serve(async (req) => {
       case "bing-vs-google": {
         exigerSite(sites, appId);
         exigerModule(droits, appId, "seo", "lecture");
-        // Serie mensuelle : Google = somme des PAGES archivees (les requetes
-        // detaillees rateraient les clics des recherches masquees — methode
-        // PV) ; Bing = somme de la serie quotidienne (dimension site). Mois
-        // sans mesure Bing = null, JAMAIS 0 (Bing n'a pas d'historique : les
-        // mois d'avant le cron sont definitivement vides).
+        // Serie mensuelle : Google = somme des APPAREILS archives = total du
+        // site par propriete, les memes lignes que « Mobile et ordinateur »
+        // (la somme des pages est agregee « par page » par Search Console et
+        // sort plus haute — cf. _shared/seo-bing-google.ts) ; Bing = somme
+        // de la serie quotidienne (dimension site). Mois sans mesure Bing =
+        // null, JAMAIS 0 (Bing n'a pas d'historique : les mois d'avant le
+        // cron sont definitivement vides).
         const [gRes, bRes, obsRes] = await Promise.all([
           admin.schema("admin").from("seo_snapshots")
             .select("period_start, clicks, impressions")
             .eq("app_id", appId).eq("source", "google")
-            .eq("dimension", "page").eq("granularity", "month"),
+            .eq("dimension", "device").eq("granularity", "month"),
           admin.schema("admin").from("seo_snapshots")
             .select("period_start, clicks")
             .eq("app_id", appId).eq("source", "bing")
@@ -427,78 +437,39 @@ serve(async (req) => {
         if (bRes.error) throw bRes.error;
         if (obsRes.error) throw obsRes.error;
 
-        const mois = (d: string) => d.slice(0, 7);
-        const google = new Map<string, { clicks: number; impressions: number }>();
-        for (const r of gRes.data ?? []) {
-          const m = mois(r.period_start);
-          const cur = google.get(m) ?? { clicks: 0, impressions: 0 };
-          cur.clicks += r.clicks;
-          cur.impressions += r.impressions;
-          google.set(m, cur);
-        }
-        const bing = new Map<string, number>();
-        for (const r of bRes.data ?? []) {
-          bing.set(mois(r.period_start), (bing.get(mois(r.period_start)) ?? 0) + r.clicks);
-        }
         const moisCourant = new Date().toISOString().slice(0, 7);
-        const tousMois = [...new Set([...google.keys(), ...bing.keys()])].sort();
-        const mensuel = tousMois.map((m) => {
-          const g = google.get(m) ?? { clicks: 0, impressions: 0 };
-          const b = bing.has(m) ? bing.get(m)! : null;
-          return {
-            mois: `${m}-01`,
-            google: g.clicks,
-            impressionsGoogle: g.impressions,
-            bing: b,
-            partBingPct: b !== null && g.clicks + b > 0
-              ? Number(((b / (g.clicks + b)) * 100).toFixed(0))
-              : null,
-            enCours: m === moisCourant,
-          };
-        });
+        const mensuel = serieMensuelle(gRes.data ?? [], bRes.data ?? [], moisCourant);
 
-        // Ecarts de position : dernier releve Bing vs dernier mois Google —
-        // requetes ou Bing classe nettement mieux (>= 5 rangs).
+        // Par requete : dernier releve Bing (agregat glissant, l'API ne le
+        // date pas) contre le dernier mois COMPLET Google — le mois en cours
+        // ne couvre que quelques jours, comparer ses clics n'aurait pas de
+        // sens. Meme base Google pour le tableau complet et pour les ecarts
+        // de position, sinon une requete afficherait deux positions Google.
         const obs = obsRes.data ?? [];
         const dernierReleve = obs[0]?.period_start ?? null;
         const bingDernier = obs.filter((r) => r.period_start === dernierReleve);
 
-        const { data: gDernierMoisRows, error: gmErr } = await admin
+        const { data: gMoisRows, error: gmErr } = await admin
           .schema("admin").from("seo_snapshots")
-          .select("period_start, key, position, clicks")
+          .select("period_start, key, clicks, impressions, position")
           .eq("app_id", appId).eq("source", "google")
           .eq("dimension", "query").eq("granularity", "month")
           .eq("is_noise", false)
           .order("period_start", { ascending: false })
-          .limit(2000);
+          .limit(3000);
         if (gmErr) throw gmErr;
-        const gDernierMois = gDernierMoisRows?.[0]?.period_start ?? null;
-        const googleParRequete = new Map(
-          (gDernierMoisRows ?? [])
-            .filter((r) => r.period_start === gDernierMois && r.position !== null)
-            .map((r) => [r.key, r]),
+        const moisGoogle = dernierMoisComplet(
+          (gMoisRows ?? []).map((r) => String(r.period_start)),
+          moisCourant,
         );
+        const googleMois = (gMoisRows ?? []).filter((r) => r.period_start === moisGoogle);
 
-        const ecarts = bingDernier
-          .filter((b) => b.position !== null && googleParRequete.has(b.key))
-          .map((b) => {
-            const g = googleParRequete.get(b.key)!;
-            return {
-              requete: b.key,
-              positionBing: Number(b.position),
-              positionGoogle: Number(g.position),
-              delta: Number((Number(g.position) - Number(b.position)).toFixed(1)),
-              clicksBing: b.clicks,
-              clicksGoogle: g.clicks,
-            };
-          })
-          .filter((e) => e.delta >= 5)
-          .sort((a, b) => b.delta - a.delta)
-          .slice(0, 15);
+        const requetes = comparerRequetes(bingDernier, googleMois, 50);
+        const ecarts = ecartsPosition(bingDernier, googleMois, 5, 15);
 
         const disponible = mensuel.length > 0 || bingDernier.length > 0;
         return json({
-          data: { disponible, mensuel, ecarts, dernierReleve },
+          data: { disponible, mensuel, requetes, ecarts, dernierReleve, moisGoogle },
           error: null,
         });
       }
