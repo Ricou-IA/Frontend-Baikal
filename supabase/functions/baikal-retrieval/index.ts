@@ -143,7 +143,7 @@ serve(async (req) => {
       const access = await resolveAccess(supabase, caller.userId, project_id, bodyOrgId)
       if (!access.allowed) {
         console.warn(`[auth] 403 (${access.reason}) user=${caller.userId} project=${project_id ?? '-'} org=${bodyOrgId ?? '-'}`)
-        return errorResponse("Acces refuse", 403)
+        return errorResponse("Accès refusé", 403)
       }
       org_id = access.effectiveOrgId ?? undefined
     }
