@@ -31,6 +31,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import type { RequestBody, PipelineMetrics, SourceItem, AnalysisResult } from "./types.ts"
 import { corsHeaders, sseHeaders, sendSSE, errorResponse } from "./utils.ts"
 import { createTimer } from "./utils.ts"
+import { bearerToken, resolveCaller, getUserIdFromJwt, resolveAccess } from "./auth.ts"
 import { loadConfig, getIntentStrategy, getEffectiveGenerationParams } from "./config.ts"
 import { getAgentContext, addMessage } from "./context.ts"
 import { extractNamedDocuments, fetchNamedDocumentCandidates, resolveNamedDocuments, projectNameTokens, fetchProjectNameTokens } from "./routing/named-documents.ts"
@@ -62,6 +63,7 @@ const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY")!
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY")!
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!
 
 // ============================================================================
 // MODE LABELS
@@ -111,7 +113,7 @@ serve(async (req) => {
   try {
     const body: RequestBody = await req.json()
     const {
-      query, user_id, org_id, project_id,
+      query, user_id: bodyUserId, org_id: bodyOrgId, project_id,
       app_id = 'arpet', conversation_id,
       generation_mode = 'auto', stream = true,
       include_app_layer = true, include_org_layer = true,
@@ -121,12 +123,37 @@ serve(async (req) => {
     } = body
 
     if (!query?.trim()) return errorResponse("Query is required")
-    if (!user_id) return errorResponse("user_id is required")
-
-    console.log(`[retrieval] === v2.2.0 Sprint 2 === Query: "${query.substring(0, 60)}..."`)
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     const timer = createTimer()
+
+    // Sprint 2 (T2) — identité et appartenance AVANT d'ouvrir le flux SSE :
+    // un refus est une réponse HTTP (401 / 403), jamais un événement.
+    const caller = await resolveCaller(
+      bearerToken(req),
+      { serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY, anonKey: SUPABASE_ANON_KEY },
+      (jwt) => getUserIdFromJwt(supabase, jwt),
+    )
+    if (caller.kind === 'anonymous') {
+      console.warn(`[auth] 401 (${caller.reason})`)
+      return errorResponse("Authentification requise", 401)
+    }
+    let org_id: string | undefined = bodyOrgId
+    if (caller.kind === 'user') {
+      const access = await resolveAccess(supabase, caller.userId, project_id, bodyOrgId)
+      if (!access.allowed) {
+        console.warn(`[auth] 403 (${access.reason}) user=${caller.userId} project=${project_id ?? '-'} org=${bodyOrgId ?? '-'}`)
+        return errorResponse("Acces refuse", 403)
+      }
+      org_id = access.effectiveOrgId ?? undefined
+    }
+    // `const` de type string : un `let` perdrait son rétrécissement de type dans la closure start(controller)
+    const user_id: string = caller.kind === 'user' ? caller.userId : (bodyUserId ?? '')
+    if (!user_id) return errorResponse("user_id is required")
+    const authMs = timer.mark('auth')
+    console.log(`[auth] ${caller.kind} en ${authMs}ms`)
+
+    console.log(`[retrieval] === v2.2.0 Sprint 2 === Query: "${query.substring(0, 60)}..."`)
     const layerFlags = { app: include_app_layer, org: include_org_layer, project: include_project_layer, user: include_user_layer }
 
     const sseStream = new ReadableStream({
@@ -145,6 +172,7 @@ serve(async (req) => {
             child_chunks: 0, files_count: 0, total_pages: 0, sources_count: 0,
           },
         }
+        metrics.timings.auth = authMs
 
         try {
           sendSSE(controller, 'step', { step: 'received', message: 'Question reçue' })

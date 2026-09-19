@@ -180,12 +180,16 @@ function delay(ms: number): Promise<void> {
 // Appel SSE de baikal-retrieval
 // ----------------------------------------------------------------------------
 
+// Sprint 2 (T2) : le bearer devient la clé service_role (voir main()), mais le header
+// `apikey` doit rester la clé anon publique ; lue une fois dans main(), affectée ici.
+let ANON_KEY = ''
+
 async function callRetrieval(
   question: string,
   ctx: EvalContext,
   conversationId: string | null,
   cfg: EvalConfig,
-  anonKey: string,
+  bearer: string,
 ): Promise<CallResult> {
   const started = Date.now()
   const result: CallResult = {
@@ -202,8 +206,8 @@ async function callRetrieval(
       signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${anonKey}`,
-        'apikey': anonKey,
+        'Authorization': `Bearer ${bearer}`,
+        'apikey': ANON_KEY,
       },
       body: JSON.stringify({
         query: question,
@@ -283,7 +287,7 @@ async function callRetrieval(
 async function evalEntry(
   entry: GoldenEntry,
   cfg: EvalConfig,
-  anonKey: string,
+  bearer: string,
 ): Promise<EvalResult> {
   const ctx = cfg.contexts[entry.project_ref]
   if (!ctx) throw new Error(`project_ref inconnu dans config.json: ${entry.project_ref} (entrée ${entry.id})`)
@@ -295,12 +299,12 @@ async function evalEntry(
   const convId = crypto.randomUUID()
   if (entry.conversation_context?.length) {
     for (const pre of entry.conversation_context) {
-      await callRetrieval(pre.question, ctx, convId, cfg, anonKey)
+      await callRetrieval(pre.question, ctx, convId, cfg, bearer)
       await delay(cfg.defaults.delay_between_calls_ms)
     }
   }
 
-  const call = await callRetrieval(entry.question, ctx, convId, cfg, anonKey)
+  const call = await callRetrieval(entry.question, ctx, convId, cfg, bearer)
   const exp = entry.expected || {}
   const answerNorm = normalize(call.answer)
   const topK = call.sources.slice(0, cfg.defaults.top_k_for_recall)
@@ -444,12 +448,19 @@ async function main() {
     console.error('❌ SUPABASE_ANON_KEY manquant (eval/.env — voir eval/.env.example)')
     Deno.exit(1)
   }
+  ANON_KEY = anonKey
+  // Sprint 2 (T2) : baikal-retrieval refuse la clé anon (401) ; le banc s'authentifie en service_role
+  // et l'EF prend alors user_id / org_id / project_id du corps (contextes d'eval/config.json).
+  const bearer = env.SUPABASE_SERVICE_ROLE_KEY || anonKey
+  if (!env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.warn('⚠️  SUPABASE_SERVICE_ROLE_KEY absente de eval/.env : depuis v2.2.0 l\'EF répondra 401 avec la clé anon')
+  }
 
   // --smoke : une question, affichage direct, pas de rapport
   if (args.smoke) {
     const ctx = cfg.contexts.bessieres
     console.log('🔥 Smoke test (bessieres) : "Quel est le délai global d\'exécution des travaux ?"')
-    const r = await callRetrieval("Quel est le délai global d'exécution des travaux ?", ctx, null, cfg, anonKey)
+    const r = await callRetrieval("Quel est le délai global d'exécution des travaux ?", ctx, null, cfg, bearer)
     console.log(`\n⏱  ${r.latency_ms}ms — mode=${r.generation_mode} fast_path=${r.fast_path} intent=${r.intent} error=${r.error}`)
     console.log(`\n📄 Sources (${r.sources.length}):`)
     for (const s of r.sources) console.log(`   - ${s.document_name} (p.${s.page ?? '?'}, score=${s.score?.toFixed?.(3) ?? s.score})`)
@@ -475,7 +486,7 @@ async function main() {
   for (const [i, entry] of entries.entries()) {
     const label = `[${i + 1}/${entries.length}] ${entry.id}`
     try {
-      const r = await evalEntry(entry, cfg, anonKey)
+      const r = await evalEntry(entry, cfg, bearer)
       const status = r.error ? '💥' : r.ok_criteria && r.ok_recall_doc !== false ? '✅' : '❌'
       console.log(`${status} ${label} ${r.mode} ${r.latency_ms}ms recall=${r.ok_recall_doc} critères=${r.ok_criteria}`)
       results.push(r)
