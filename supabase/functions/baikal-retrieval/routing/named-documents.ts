@@ -13,7 +13,7 @@
 // ============================================================================
 
 import type {
-  Supabase, NamedDocument, NamedDocumentType, NamedDocumentResolution, NamedCandidate, CandidatesByType,
+  Supabase, NamedDocument, NamedDocumentType, NamedDocumentResolution, NamedCandidate, NamedDocumentLayer, CandidatesByType,
 } from "../types.ts"
 import { STOPWORDS } from "../search/keywords.ts"
 
@@ -29,6 +29,7 @@ const DOC_TYPE_PATTERNS: Array<{ type: NamedDocumentType; regex: RegExp }> = [
   { type: 'acte_engagement', regex: /\bactes?\s+d[’']engagement\b/gi },
   { type: 'cctp',            regex: /\bCCTP\b/gi },
   { type: 'ccap',            regex: /\bCCAP\b/gi },
+  { type: 'ccag',            regex: /\bCCAG\b/gi },
   { type: 'doe',             regex: /\bDOE\b/gi },
   { type: 'dpgf',            regex: /\bDPGF\b/gi },
   { type: 'pgc',             regex: /\bPGC\b/gi },
@@ -41,9 +42,7 @@ const DOC_TYPE_PATTERNS: Array<{ type: NamedDocumentType; regex: RegExp }> = [
   // R7 : « plan » et « notice » sont des mots trop courants (« plan de paiement », « notice explicative »).
   // Les types restent définis et interrogeables, mais l'extraction ne les produit plus (réactivation
   // au Sprint 2 sur preuve des logs named_documents).
-  // ccag : document de la couche application (sources.files layer='app', project_id null), pas un
-  // fichier du projet — la résolution par projet répondrait « aucun » à tort ; réactivation au
-  // Sprint 2 avec la résolution couche app (DTU, normes).
+  // ccag résolu depuis le Sprint 2 par le repli couche application.
 ]
 
 // Mots qui terminent la mention : verbes de la question, pronoms, prépositions.
@@ -220,21 +219,21 @@ export function matchNamedDocument(
 ): NamedDocumentResolution {
   const ignore = new Set(ignoreTokens)
   const qualifiers = named.qualifiers.filter(q => !ignore.has(normalizeName(q)))
-  const base = { phrase: named.phrase, type: named.type, qualifiers, truncated: false }
+  const layer = candidates[0]?.layer ?? null
+  const base = { phrase: named.phrase, type: named.type, qualifiers, truncated: false, layer }
   if (candidates.length === 0) {
-    return { ...base, found: [], similar: [], status: 'no_candidate', total: 0 }
+    return { ...base, found: [], found_file_ids: [], similar: [], status: 'no_candidate', total: 0 }
   }
-  const names = candidates.map(c => c.name)
   if (qualifiers.length === 0) {
-    return { ...base, found: names.slice(0, MAX_LISTED), similar: [], status: 'found', total: names.length }
+    const listed = candidates.slice(0, MAX_LISTED)
+    return { ...base, found: listed.map(c => c.name), found_file_ids: listed.map(c => c.fileId), similar: [], status: 'found', total: candidates.length }
   }
-  const found = candidates
-    .filter(c => qualifiers.every(q => qualifierMatches(q, c.searchText)))
-    .map(c => c.name)
-  if (found.length > 0) {
-    return { ...base, found: found.slice(0, MAX_LISTED), similar: [], status: 'found', total: found.length }
+  const matched = candidates.filter(c => qualifiers.every(q => qualifierMatches(q, c.searchText)))
+  if (matched.length > 0) {
+    const listed = matched.slice(0, MAX_LISTED)
+    return { ...base, found: listed.map(c => c.name), found_file_ids: listed.map(c => c.fileId), similar: [], status: 'found', total: matched.length }
   }
-  return { ...base, found: [], similar: names.slice(0, MAX_LISTED), status: 'not_found', total: names.length }
+  return { ...base, found: [], found_file_ids: [], similar: candidates.slice(0, MAX_LISTED).map(c => c.name), status: 'not_found', total: candidates.length }
 }
 
 // ============================================================================
@@ -259,10 +258,12 @@ export function formatNamedDocumentsBlock(resolutions: NamedDocumentResolution[]
     if (r.status === 'unknown') continue
     const partial = r.truncated ? ' (liste partielle)' : ''
     if (r.status === 'found') {
-      lines.push(`- « ${r.phrase} » → ${withRemainder(r.found, r.total)}${partial}`)
+      const suffix = r.layer === 'app' ? ' (document de reference de la couche application, commun a tous les projets)' : ''
+      lines.push(`- « ${r.phrase} » → ${withRemainder(r.found, r.total)}${suffix}${partial}`)
     } else if (r.status === 'not_found') {
       const qualifiers = r.qualifiers.map(q => `« ${q} »`).join(', ')
-      lines.push(`- « ${r.phrase} » → aucun fichier ${r.type} ne porte ${qualifiers} ; fichiers ${r.type} du projet : ${withRemainder(r.similar, r.total)}${partial}`)
+      const scope = r.layer === 'app' ? 'de la couche application' : 'du projet'
+      lines.push(`- « ${r.phrase} » → aucun fichier ${r.type} ne porte ${qualifiers} ; fichiers ${r.type} ${scope} : ${withRemainder(r.similar, r.total)}${partial}`)
     } else {
       lines.push(`- « ${r.phrase} » → AUCUN fichier de ce type dans le projet`)
     }
@@ -313,23 +314,30 @@ export function buildFilenameFilter(type: NamedDocumentType): string {
     .join(',')
 }
 
-/** Fichiers du projet d'un type donné ; null en cas d'erreur (→ statut unknown). */
-async function fetchCandidates(
+type CandidateList = { candidates: NamedCandidate[]; truncated: boolean }
+
+/**
+ * Une requête `sources.files` pour un type et une couche donnés. `scope` porte soit le projet,
+ * soit la couche application (`app_id` + `project_id IS NULL`, où vivent le CCAG et les normes).
+ */
+async function queryCandidates(
   supabase: Supabase,
-  projectId: string,
   type: NamedDocumentType,
-): Promise<{ candidates: NamedCandidate[]; truncated: boolean } | null> {
-  const { data, error } = await supabase
+  layer: NamedDocumentLayer,
+  scope: { projectId: string } | { appId: string },
+): Promise<CandidateList | null> {
+  let q = supabase
     .schema('sources')
     .from('files')
-    .select('original_filename, display_name')
-    .eq('project_id', projectId)
+    .select('id, original_filename, display_name')
     .eq('processing_status', 'completed')
     .or(buildFilenameFilter(type))
-    .order('original_filename')
-    .limit(MAX_CANDIDATES)
+  q = 'projectId' in scope
+    ? q.eq('project_id', scope.projectId)
+    : q.eq('layer', 'app').eq('app_id', scope.appId).is('project_id', null)
+  const { data, error } = await q.order('original_filename').limit(MAX_CANDIDATES)
   if (error) {
-    console.warn(`[named-documents] ${type}:`, error.message)
+    console.warn(`[named-documents] ${type} (${layer}):`, error.message)
     return null
   }
   const rows = data || []
@@ -339,17 +347,33 @@ async function fetchCandidates(
     const original = typeof f.original_filename === 'string' ? f.original_filename : ''
     const display = typeof f.display_name === 'string' ? f.display_name : ''
     const name = (display || original).trim()
-    if (name === '' || seen.has(name)) continue
+    if (name === '' || seen.has(name) || typeof f.id !== 'string') continue
     seen.add(name)
     // R5 : on apparie sur les deux noms, on affiche celui que l'utilisateur voit.
-    candidates.push({ name, searchText: normalizeName(`${original} ${display}`) })
+    candidates.push({ fileId: f.id, name, searchText: normalizeName(`${original} ${display}`), layer })
   }
   // R4 : la limite atteinte signifie que la liste est partielle — elle ne prouve aucune absence.
   return { candidates, truncated: rows.length >= MAX_CANDIDATES }
 }
 
+/**
+ * Fichiers du projet d'un type donné ; si le projet n'en a aucun, repli sur la couche
+ * application (CCAG, normes : layer='app', project_id NULL, app_id). null = erreur → unknown.
+ */
+async function fetchCandidates(
+  supabase: Supabase,
+  projectId: string,
+  appId: string,
+  type: NamedDocumentType,
+): Promise<CandidateList | null> {
+  const project = await queryCandidates(supabase, type, 'project', { projectId })
+  if (project === null) return null
+  if (project.candidates.length > 0) return project
+  return await queryCandidates(supabase, type, 'app', { appId })
+}
+
 function unknownResolution(n: NamedDocument): NamedDocumentResolution {
-  return { phrase: n.phrase, type: n.type, qualifiers: [], found: [], similar: [], status: 'unknown', total: 0, truncated: false }
+  return { phrase: n.phrase, type: n.type, qualifiers: [], found: [], found_file_ids: [], similar: [], status: 'unknown', total: 0, truncated: false, layer: null }
 }
 
 /**
@@ -360,13 +384,14 @@ function unknownResolution(n: NamedDocument): NamedDocumentResolution {
 export async function fetchNamedDocumentCandidates(
   supabase: Supabase,
   projectId: string | undefined,
+  appId: string,
   named: NamedDocument[],
 ): Promise<CandidatesByType> {
   const byType: CandidatesByType = new Map()
   if (!projectId || named.length === 0) return byType
   const types = [...new Set(named.map(n => n.type))]
   try {
-    const lists = await Promise.all(types.map(t => fetchCandidates(supabase, projectId, t)))
+    const lists = await Promise.all(types.map(t => fetchCandidates(supabase, projectId, appId, t)))
     types.forEach((t, i) => byType.set(t, lists[i]))
   } catch (err) {
     console.warn('[named-documents] fetch error:', err)

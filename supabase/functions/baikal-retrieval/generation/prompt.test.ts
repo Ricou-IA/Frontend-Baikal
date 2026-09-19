@@ -29,7 +29,7 @@ Deno.test("regle 8 : document nomme absent → refus explicite, s'appuie sur le 
 
 Deno.test("bloc des documents nommes injecte quand il y a des resolutions, absent sinon", () => {
   const avec = buildSystemPrompt(null, ctx([
-    { phrase: "CCTP du gros œuvre", type: "cctp", qualifiers: ["gros", "œuvre"], found: [], similar: ["CCTP - Lot N°07 PLÂTRERIE.pdf"], status: "not_found", total: 1, truncated: false },
+    { phrase: "CCTP du gros œuvre", type: "cctp", qualifiers: ["gros", "œuvre"], found: [], found_file_ids: [], similar: ["CCTP - Lot N°07 PLÂTRERIE.pdf"], status: "not_found", total: 1, truncated: false, layer: "project" },
   ]), [], "factual", "paragraph", [], false, features)
   assertStringIncludes(avec, "DOCUMENTS NOMMES DANS LA QUESTION (resolus")
   assertStringIncludes(avec, "- « CCTP du gros œuvre » → aucun fichier cctp ne porte « gros », « œuvre » ; fichiers cctp du projet : CCTP - Lot N°07 PLÂTRERIE.pdf")
@@ -43,4 +43,10 @@ Deno.test("liste de concepts (documentsCles) ne doit jamais etre presentee comme
   const p = buildSystemPrompt(null, ctx([], [{ slug: "cctp", label: "CCTP" }]), [], "factual", "paragraph", [], false, features)
   assert(!p.includes("DOCUMENTS DU PROJET"))
   assert(!p.includes("- « CCTP »"))
+})
+
+Deno.test("marché privé : le CCAG de référence ne s'applique pas, mais un CCAG propre au projet fait foi", () => {
+  const p = buildSystemPrompt(null, { ...ctx([]), projectIdentity: { market_type: "prive" } }, [], "factual", "paragraph", [], false, features)
+  assert(p.includes("REGLE MARCHE PRIVE"))
+  assert(p.includes("Si le projet contient son propre document CCAG"))
 })

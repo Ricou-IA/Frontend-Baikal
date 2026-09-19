@@ -193,7 +193,7 @@ serve(async (req) => {
           const [context, initialEmbedding, namedCandidates, projectTokens] = await Promise.all([
             getAgentContext(supabase, user_id, org_id, project_id, app_id, conversation_id, config.brain),
             generateEmbedding(query, OPENAI_API_KEY),
-            fetchNamedDocumentCandidates(supabase, project_id, initialNamed),
+            fetchNamedDocumentCandidates(supabase, project_id, app_id, initialNamed),
             initialNamed.length > 0 ? fetchProjectNameTokens(supabase, project_id) : Promise.resolve([]),
           ])
           // L'appariement est pur : il a besoin du nom du projet, lu dans core.projects (out_project_identity n'en a pas).
@@ -215,7 +215,7 @@ serve(async (req) => {
               if (condensedNamed.length > 0 && JSON.stringify(condensedNamed) !== JSON.stringify(initialNamed)) {
                 context.namedDocuments = resolveNamedDocuments(
                   condensedNamed,
-                  await fetchNamedDocumentCandidates(supabase, project_id, condensedNamed),
+                  await fetchNamedDocumentCandidates(supabase, project_id, app_id, condensedNamed),
                   [...(projectTokens.length > 0 ? projectTokens : await fetchProjectNameTokens(supabase, project_id)), ...projectNameTokens(context.projectIdentity)],
                 )
               }

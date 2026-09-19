@@ -67,12 +67,12 @@ Deno.test("extraction R7 : plan et notice ne sont plus des documents nommés", (
   assertEquals(extractNamedDocuments("Que dit la notice de sécurité ?"), [])
 })
 
-// Hotfix 2026-09-15 : le CCAG est un document de la couche application (sources.files layer='app',
-// project_id null), pas un fichier du projet — la résolution par projet répondrait « aucun » à tort.
-// Réactivation au Sprint 2 avec la résolution couche application.
-Deno.test("extraction : CCAG (couche application) n'est pas extrait pour ce déploiement", () => {
-  assertEquals(extractNamedDocuments("Résume le CCAG"), [])
-  assertEquals(extractNamedDocuments("Que dit le CCAG sur les pénalités de retard ?"), [])
+// Sprint 2 : le CCAG (document de la couche application, sources.files layer='app', project_id
+// null) est de nouveau extrait comme type nommé ; sa résolution retombe sur la couche application
+// quand le projet n'a pas son propre CCAG (voir la résolution réseau, section RÉSOLUTION plus bas).
+Deno.test("extraction : CCAG est de nouveau un type nommé", () => {
+  const r = extractNamedDocuments("Quelles informations sont dans l'article 2 Définitions du CCAG ?")
+  assertEquals(r.map(n => n.type), ['ccag'])
 })
 
 // R1 : les qualifiants ne sont collectés que derrière un lien (de/du/des/d’/lot/n°/chiffre).
@@ -146,7 +146,8 @@ Deno.test("projectNameTokens : mots du nom du projet, 3 lettres ou plus, sans mo
 
 /** Candidat tel que le construit `fetchNamedDocumentCandidates` (display_name absent par défaut). */
 function cand(original: string, display?: string): NamedCandidate {
-  return { name: display || original, searchText: normalizeName(`${original} ${display || ""}`) }
+  const name = display || original
+  return { fileId: 'f-' + name, name, searchText: normalizeName(`${original} ${display || ""}`), layer: 'project' }
 }
 
 // Noms réels des 4 projets d'éval, vérifiés en base le 2026-09-15.
@@ -230,8 +231,8 @@ Deno.test("appariement : aucun candidat", () => {
 Deno.test("appariement : sans qualifiant, un seul candidat → trouvé", () => {
   const r = matchNamedDocument({ type: "ccap", phrase: "CCAP", qualifiers: [] }, [cand("2139_CCAP.pdf")])
   assertEquals(r, {
-    phrase: "CCAP", type: "ccap", qualifiers: [], found: ["2139_CCAP.pdf"],
-    similar: [], status: "found", total: 1, truncated: false,
+    phrase: "CCAP", type: "ccap", qualifiers: [], found: ["2139_CCAP.pdf"], found_file_ids: ["f-2139_CCAP.pdf"],
+    similar: [], status: "found", total: 1, truncated: false, layer: "project",
   })
 })
 
@@ -262,17 +263,30 @@ Deno.test("appariement : compte rendu 72 trouvé parmi les procès-verbaux", () 
   assertEquals(r.found, ["72 PROCES VERBAL CHANTIER_Lézignan-Corbières_EHPAD.pdf.pdf"])
 })
 
+Deno.test("appariement : found_file_ids alignés sur found", () => {
+  const cands = [
+    { fileId: 'f1', name: 'CCTP - Lot N°02 ETANCHEITE.pdf', searchText: 'cctp - lot n°02 etancheite.pdf', layer: 'project' as const },
+    { fileId: 'f2', name: 'CCTP - Lot N°07 PLÂTRERIE.pdf', searchText: 'cctp - lot n°07 platrerie.pdf', layer: 'project' as const },
+  ]
+  const r = matchNamedDocument({ type: 'cctp', phrase: 'CCTP du lot 07', qualifiers: ['lot', '07'] }, cands)
+  assertEquals(r.found, ['CCTP - Lot N°07 PLÂTRERIE.pdf'])
+  assertEquals(r.found_file_ids, ['f2'])
+  assertEquals(r.layer, 'project')
+  const all = matchNamedDocument({ type: 'cctp', phrase: 'CCTP', qualifiers: [] }, cands)
+  assertEquals(all.found_file_ids, ['f1', 'f2'])
+})
+
 // ============================================================================
 // BLOC DE PROMPT (R3, R4)
 // ============================================================================
 
 Deno.test("bloc de prompt : found, not_found factuel, no_candidate, unknown omis", () => {
   const block = formatNamedDocumentsBlock([
-    { phrase: "CCAP", type: "ccap", qualifiers: [], found: ["2139_CCAP.pdf"], similar: [], status: "found", total: 1, truncated: false },
-    { phrase: "CCAP de l'EHPAD", type: "ccap", qualifiers: ["ehpad"], found: [], similar: ["2139_CCAP.pdf"], status: "not_found", total: 1, truncated: false },
-    { phrase: "CCTP du gros œuvre", type: "cctp", qualifiers: ["gros", "œuvre"], found: [], similar: ["CCTP - Lot N°07 PLÂTRERIE.pdf", "CCTP - Lot N°02 ETANCHEITE.pdf"], status: "not_found", total: 6, truncated: false },
-    { phrase: "PGC", type: "pgc", qualifiers: [], found: [], similar: [], status: "no_candidate", total: 0, truncated: false },
-    { phrase: "DOE", type: "doe", qualifiers: [], found: [], similar: [], status: "unknown", total: 0, truncated: false },
+    { phrase: "CCAP", type: "ccap", qualifiers: [], found: ["2139_CCAP.pdf"], found_file_ids: ["f1"], similar: [], status: "found", total: 1, truncated: false, layer: "project" },
+    { phrase: "CCAP de l'EHPAD", type: "ccap", qualifiers: ["ehpad"], found: [], found_file_ids: [], similar: ["2139_CCAP.pdf"], status: "not_found", total: 1, truncated: false, layer: "project" },
+    { phrase: "CCTP du gros œuvre", type: "cctp", qualifiers: ["gros", "œuvre"], found: [], found_file_ids: [], similar: ["CCTP - Lot N°07 PLÂTRERIE.pdf", "CCTP - Lot N°02 ETANCHEITE.pdf"], status: "not_found", total: 6, truncated: false, layer: "project" },
+    { phrase: "PGC", type: "pgc", qualifiers: [], found: [], found_file_ids: [], similar: [], status: "no_candidate", total: 0, truncated: false, layer: null },
+    { phrase: "DOE", type: "doe", qualifiers: [], found: [], found_file_ids: [], similar: [], status: "unknown", total: 0, truncated: false, layer: null },
   ])!
   assert(block.startsWith("DOCUMENTS NOMMES DANS LA QUESTION"))
   assert(block.includes("- « CCAP » → 2139_CCAP.pdf"))
@@ -283,17 +297,33 @@ Deno.test("bloc de prompt : found, not_found factuel, no_candidate, unknown omis
   // Le bloc n'affirme une absence que pour no_candidate
   assert(!block.includes("AUCUN fichier correspondant"))
   assertEquals(formatNamedDocumentsBlock([]), null)
-  assertEquals(formatNamedDocumentsBlock([{ phrase: "DOE", type: "doe", qualifiers: [], found: [], similar: [], status: "unknown", total: 0, truncated: false }]), null)
+  assertEquals(formatNamedDocumentsBlock([{ phrase: "DOE", type: "doe", qualifiers: [], found: [], found_file_ids: [], similar: [], status: "unknown", total: 0, truncated: false, layer: null }]), null)
 })
 
 Deno.test("bloc de prompt R4 : liste tronquée signalée, sur found comme sur not_found", () => {
   const douze = Array.from({ length: 12 }, (_, i) => `CCTP - Lot N°${String(i + 1).padStart(2, "0")}.pdf`)
   const block = formatNamedDocumentsBlock([
-    { phrase: "CCTP", type: "cctp", qualifiers: [], found: douze, similar: [], status: "found", total: 20, truncated: true },
-    { phrase: "CCTP du lot 25", type: "cctp", qualifiers: ["lot", "25"], found: [], similar: douze, status: "not_found", total: 20, truncated: true },
+    { phrase: "CCTP", type: "cctp", qualifiers: [], found: douze, found_file_ids: douze.map((_, i) => `f${i}`), similar: [], status: "found", total: 20, truncated: true, layer: "project" },
+    { phrase: "CCTP du lot 25", type: "cctp", qualifiers: ["lot", "25"], found: [], found_file_ids: [], similar: douze, status: "not_found", total: 20, truncated: true, layer: "project" },
   ])!
   assert(block.includes("CCTP - Lot N°12.pdf (+8 autres) (liste partielle)"))
   assertEquals(block.split("(liste partielle)").length - 1, 2)
+})
+
+Deno.test("bloc : un document de la couche application est nommé comme référence commune", () => {
+  const block = formatNamedDocumentsBlock([{
+    phrase: 'CCAG', type: 'ccag', qualifiers: [], found: ['CCAG'], found_file_ids: ['5ba512af'], similar: [],
+    status: 'found', total: 1, truncated: false, layer: 'app',
+  }])
+  assert(block!.includes('« CCAG » → CCAG (document de reference de la couche application, commun a tous les projets)'))
+})
+
+Deno.test("bloc : aucun candidat → AUCUN, layer null", () => {
+  const block = formatNamedDocumentsBlock([{
+    phrase: 'DOE', type: 'doe', qualifiers: [], found: [], found_file_ids: [], similar: [],
+    status: 'no_candidate', total: 0, truncated: false, layer: null,
+  }])
+  assert(block!.includes('AUCUN fichier de ce type dans le projet'))
 })
 
 // ============================================================================
@@ -409,8 +439,8 @@ Deno.test("résolution : type absent de la Map ou en erreur → unknown, ligne o
 
 Deno.test("résolution : aucune requête sans project_id ni mention", async () => {
   const supabase = {} as unknown as Supabase
-  assertEquals((await fetchNamedDocumentCandidates(supabase, undefined, extractNamedDocuments("Que dit le CCAP ?"))).size, 0)
-  assertEquals((await fetchNamedDocumentCandidates(supabase, "p1", [])).size, 0)
+  assertEquals((await fetchNamedDocumentCandidates(supabase, undefined, "arpet", extractNamedDocuments("Que dit le CCAP ?"))).size, 0)
+  assertEquals((await fetchNamedDocumentCandidates(supabase, "p1", "arpet", [])).size, 0)
 })
 
 // ============================================================================

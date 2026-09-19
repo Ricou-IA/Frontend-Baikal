@@ -181,25 +181,32 @@ export interface NamedDocument {
 
 export type NamedDocumentStatus = 'found' | 'not_found' | 'no_candidate' | 'unknown'
 
-/** Un fichier candidat : le nom montré au modèle, et le texte sur lequel on apparie les qualifiants. */
+export type NamedDocumentLayer = 'project' | 'app'
+
+/** Un fichier candidat : identifiant, nom montré au modèle, texte d'appariement, couche. */
 export interface NamedCandidate {
+  fileId: string
   name: string            // display_name || original_filename (nom présenté)
   searchText: string      // normalizeName(original_filename + " " + display_name) : les deux noms
+  layer: NamedDocumentLayer
 }
 
 /** Candidats par type, résultat du réseau. `null` = requête en erreur → statut unknown. */
 export type CandidatesByType = Map<NamedDocumentType, { candidates: NamedCandidate[]; truncated: boolean } | null>
 
-/** Résolution d'une mention contre les fichiers du projet (sources.files). */
+/** Résolution d'une mention contre les fichiers du projet (ou de la couche application). */
 export interface NamedDocumentResolution {
   phrase: string
   type: NamedDocumentType
-  qualifiers: string[]    // qualifiants effectifs (mots du nom du projet retirés) — affichés dans le bloc
-  found: string[]         // fichiers dont le nom contient tous les qualifiants (max MAX_LISTED)
-  similar: string[]       // à défaut : fichiers du même type (max MAX_LISTED)
+  qualifiers: string[]      // qualifiants effectifs (mots du nom du projet retirés) — affichés dans le bloc
+  found: string[]           // fichiers dont le nom contient tous les qualifiants (max MAX_LISTED)
+  found_file_ids: string[]  // identifiants sources.files alignés sur found (Sprint 2 : recherche ciblée, lecture intégrale)
+  similar: string[]         // à défaut : fichiers du même type (max MAX_LISTED)
   status: NamedDocumentStatus
-  total: number           // nombre réel de fichiers derrière found (si found) ou similar, avant troncature
-  truncated: boolean      // la liste des candidats a atteint MAX_CANDIDATES : elle ne prouve aucune absence
+  total: number             // nombre réel de fichiers derrière found (si found) ou similar, avant troncature
+  truncated: boolean        // la liste des candidats a atteint MAX_CANDIDATES : elle ne prouve aucune absence
+  layer: NamedDocumentLayer | null   // couche des candidats : projet, ou repli couche application (CCAG, normes)
+  targeted_chunks?: number  // Sprint 2 (T5) : extraits ramenés par la recherche ciblée sur ces fichiers
 }
 
 // ============================================================================

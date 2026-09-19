@@ -217,9 +217,9 @@ function formatProjectIdentity(identity: Record<string, unknown> | null): string
   const rules: string[] = []
   if (identity.market_type === 'prive') {
     rules.push(
-      `REGLE MARCHE PRIVE : Ce projet est un marche PRIVE. Le CCAG (Cahier des Clauses Administratives Generales) ne s'applique PAS aux marches prives.`,
-      `Si l'utilisateur pose une question sur le CCAG, precise que ce document concerne les marches publics et n'est pas applicable a ce projet.`,
-      `Privilegie les documents contractuels du projet (CCAP, CCTP, Charte) plutot que le CCAG pour repondre.`,
+      `REGLE MARCHE PRIVE : Ce projet est un marche PRIVE. Le CCAG des marches publics (document de reference de la couche application) ne s'applique PAS a ce projet.`,
+      `Si l'utilisateur t'interroge sur le CCAG et que le projet ne contient AUCUN document CCAG propre, precise que le CCAG de reference concerne les marches publics et reponds a partir des documents contractuels du projet (CCAP, CCTP, Charte).`,
+      `Si le projet contient son propre document CCAG (present dans DOCUMENTS NOMMES ou dans les chunks fournis), c'est lui qui fait foi : reponds a partir de lui.`,
     )
   } else if (identity.market_type === 'public') {
     rules.push(
