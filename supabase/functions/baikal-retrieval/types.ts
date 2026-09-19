@@ -451,5 +451,6 @@ export interface PipelineMetrics {
     files_count: number
     total_pages: number
     sources_count: number
+    targeted_chunks: number
   }
 }

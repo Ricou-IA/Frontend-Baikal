@@ -42,6 +42,7 @@ import { isTrueSalutation } from "./routing/safety.ts"
 import { generateEmbedding } from "./search/embedding.ts"
 import { searchQAMemory, incrementQAUsage } from "./search/memory.ts"
 import { executeSearch, executeCrossRefSearch } from "./search/retrieval.ts"
+import { buildNamedTargets, targetLabel, executeTargetedSearches, mergeTargeted, annotateTargeted, slimNamedDocuments } from "./search/targeted.ts"
 import { rerankIfEnabled } from "./search/reranker.ts"
 import { buildSystemPrompt, formatContext, buildMeetingContext } from "./generation/prompt.ts"
 import { generateWithOpenAIStream } from "./generation/openai.ts"
@@ -170,6 +171,7 @@ serve(async (req) => {
           counts: {
             total_chunks: 0, l0_chunks: 0, l1_chunks: 0,
             child_chunks: 0, files_count: 0, total_pages: 0, sources_count: 0,
+            targeted_chunks: 0,
           },
         }
         metrics.timings.auth = authMs
@@ -311,27 +313,44 @@ serve(async (req) => {
             })
           }
 
-          // A6. SEARCH (with fast-path analysis)
+          // A6. SEARCH — recherche globale + recherche ciblée par document nommé (Sprint 2, T5), en parallèle
           sendSSE(controller, 'step', { step: 'search', message: 'Recherche documentaire...' })
+          const targets = buildNamedTargets(context.namedDocuments)
+          for (const t of targets) {
+            sendSSE(controller, 'step', { step: 'search_named', message: `🔍 Recherche dans ${targetLabel(t)}...` })
+          }
 
-          let searchResult: Awaited<ReturnType<typeof executeSearch>>
-          if (fastAnalysis.cross_ref?.is_cross_ref) {
-            console.log(`[retrieval] Cross-ref search activated`)
-            searchResult = await executeCrossRefSearch(
+          const globalSearch = fastAnalysis.cross_ref?.is_cross_ref
+            ? executeCrossRefSearch(
+                supabase, queryEmbedding, effectiveQuery, user_id, context.effectiveOrgId,
+                project_id, context.effectiveAppId, config.librarian,
+                filter_source_types,
+                fastAnalysis.search_config, fastAnalysis.intent, intentStrategy,
+                fastAnalysis.cross_ref,
+              )
+            : executeSearch(
+                supabase, queryEmbedding, effectiveQuery, user_id, context.effectiveOrgId,
+                project_id, context.effectiveAppId, config.librarian,
+                layerFlags, filter_source_types,
+                fastAnalysis.search_config, fastAnalysis.intent, intentStrategy, config.features,
+                fastAnalysis.cross_ref?.detected_norms ?? [],
+              )
+          if (fastAnalysis.cross_ref?.is_cross_ref) console.log(`[retrieval] Cross-ref search activated`)
+
+          const [globalResult, targetedResults] = await Promise.all([
+            globalSearch,
+            executeTargetedSearches(
               supabase, queryEmbedding, effectiveQuery, user_id, context.effectiveOrgId,
-              project_id, context.effectiveAppId, config.librarian,
-              filter_source_types,
-              fastAnalysis.search_config, fastAnalysis.intent, intentStrategy,
-              fastAnalysis.cross_ref,
-            )
-          } else {
-            searchResult = await executeSearch(
-              supabase, queryEmbedding, effectiveQuery, user_id, context.effectiveOrgId,
-              project_id, context.effectiveAppId, config.librarian,
-              layerFlags, filter_source_types,
-              fastAnalysis.search_config, fastAnalysis.intent, intentStrategy, config.features,
-              fastAnalysis.cross_ref?.detected_norms ?? [],
-            )
+              project_id, context.effectiveAppId, config.librarian, filter_source_types, intentStrategy, targets,
+            ),
+          ])
+          let searchResult: Awaited<ReturnType<typeof executeSearch>> = targets.length > 0
+            ? mergeTargeted(globalResult, targetedResults, config.librarian, fastAnalysis.search_config)
+            : globalResult
+          annotateTargeted(context.namedDocuments, targetedResults)
+          metrics.counts.targeted_chunks = targetedResults.reduce((s, t) => s + t.chunks.length, 0)
+          if (targets.length > 0) {
+            console.log(`[retrieval] Recherche ciblée: ${targets.length} document(s) nommé(s), ${metrics.counts.targeted_chunks} extraits ajoutés`)
           }
           metrics.timings.search = timer.mark('search')
 
@@ -448,6 +467,7 @@ serve(async (req) => {
                 steps: agenticResult.steps,
               },
               fast_path: false,
+              named_documents: slimNamedDocuments(context.namedDocuments),
               metrics,
               timings: metrics.timings,
             })
@@ -651,6 +671,7 @@ serve(async (req) => {
             fast_path: true,
             agentic: null,
             cross_ref: effectiveAnalysis.cross_ref || null,
+            named_documents: slimNamedDocuments(context.namedDocuments),
             metrics,
             timings: metrics.timings,
           })

@@ -114,7 +114,7 @@ export async function executeSearch(
 // MAP RPC RESULTS -> ChunkResult[]
 // ============================================================================
 
-function mapChunks(data: Record<string, unknown>[]): ChunkResult[] {
+export function mapChunks(data: Record<string, unknown>[]): ChunkResult[] {
   return data.map(d => ({
     chunk_id: d.out_chunk_id as number,
     content: d.out_content as string,
@@ -144,7 +144,7 @@ function mapChunks(data: Record<string, unknown>[]): ChunkResult[] {
 // BUILD FILE INFOS
 // ============================================================================
 
-function buildFileInfos(
+export function buildFileInfos(
   chunks: ChunkResult[],
   boostDocuments: string[],
   config: LibrarianConfig,
