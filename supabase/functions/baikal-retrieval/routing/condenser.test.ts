@@ -1,5 +1,5 @@
 import { assertEquals, assert } from "https://deno.land/std@0.224.0/assert/mod.ts"
-import { isElliptical, buildCondensePrompt } from "./condenser.ts"
+import { isElliptical, buildCondensePrompt, copiesAssistant } from "./condenser.ts"
 
 Deno.test("question courte → elliptique", () => {
   assertEquals(isElliptical("dans le ccap ?"), true)
@@ -33,4 +33,29 @@ Deno.test("prompt : historique borné, question en dernier, consigne de réécri
   assert(!p.includes("B".repeat(700)), "l'historique doit être tronqué à 600 caractères par message")
   assert(p.trim().endsWith("et si le maître d'ouvrage paie en retard ?"))
   assert(/question autonome/i.test(p))
+})
+
+Deno.test("prompt : interdit la recopie des réponses de l'assistant, avec exemple", () => {
+  const p = buildCondensePrompt("dans le ccap ?", [
+    { role: "assistant", content: "Le projet de décompte final doit intégrer la formule de révision de l'article 18.2." },
+    { role: "user", content: "Le marché est actualisable ou révisable ?" },
+  ] as never)
+  assert(/n['’]y recopie jamais/i.test(p))
+  assert(p.includes("Le marché est-il actualisable ou révisable d'après le CCAP ?"))
+})
+
+Deno.test("copiesAssistant : 8 mots consécutifs d'une réponse → recopie détectée", () => {
+  const recent = [
+    { role: "assistant", content: "Le projet de décompte final doit intégrer l'application de la formule de révision figurant à l'article 18.2 si le marché est concerné." },
+    { role: "user", content: "Le marché est actualisable ou révisable ?" },
+  ] as never
+  assertEquals(copiesAssistant("Le projet de décompte final doit intégrer l'application de la formule de révision dans le CCAP ?", recent), true)
+  assertEquals(copiesAssistant("Le marché est-il actualisable ou révisable d'après le CCAP ?", recent), false)
+})
+
+Deno.test("copiesAssistant : les mots de l'utilisateur ne comptent pas, seuls ceux de l'assistant", () => {
+  const recent = [
+    { role: "user", content: "Quel est le délai global d'exécution des travaux d'après le mémoire technique du marché ?" },
+  ] as never
+  assertEquals(copiesAssistant("Quel est le délai global d'exécution des travaux d'après le mémoire technique du marché si on le dépasse ?", recent), false)
 })
