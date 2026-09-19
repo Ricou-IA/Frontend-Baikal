@@ -2,7 +2,7 @@
 // baikal-retrieval - Routing: Safety (salutation detection + override)
 // ============================================================================
 
-import type { Intent, SafeAnalysisOverride } from "../types.ts"
+import type { Intent } from "../types.ts"
 import { extractSearchTerms } from "../search/keywords.ts"
 
 // ============================================================================
@@ -30,74 +30,6 @@ export function isTrueSalutation(query: string): boolean {
   }
 
   return false
-}
-
-// ============================================================================
-// QUESTION DETECTION
-// ============================================================================
-
-const QUESTION_WORDS = [
-  'où', 'ou',
-  'quel', 'quelle', 'quels', 'quelles',
-  'qui', 'quand', 'combien', 'comment', 'pourquoi',
-  'est-ce que', 'est ce que',
-  'y a-t-il', 'y a t il', 'y-a-t-il',
-  'existe-t-il', 'existe t il',
-]
-
-const QUESTION_PATTERNS = [
-  /^trouve/i, /^cherche/i, /^donne/i, /^liste/i,
-  /^explique/i, /^décris/i, /^résume/i, /^compare/i,
-  /se trouve/i, /se situe/i,
-  /est prévu/i, /est mentionné/i, /est indiqué/i,
-]
-
-export function containsRealQuestion(query: string): boolean {
-  const q = query.trim().toLowerCase()
-
-  for (const word of QUESTION_WORDS) {
-    if (q.includes(word)) return true
-  }
-
-  if (q.endsWith('?')) return true
-
-  for (const pattern of QUESTION_PATTERNS) {
-    if (pattern.test(q)) return true
-  }
-
-  return false
-}
-
-// ============================================================================
-// SAFE OVERRIDE
-// ============================================================================
-
-export function safeRequiresSearch(
-  query: string,
-  llmRequiresSearch: boolean,
-  llmIntent: Intent,
-): SafeAnalysisOverride {
-  // LLM says search needed -> trust it
-  if (llmRequiresSearch) {
-    return { requires_search: true, intent: llmIntent, was_overridden: false }
-  }
-
-  // LLM says no search -> verify it's a real salutation
-  if (isTrueSalutation(query)) {
-    return { requires_search: false, intent: 'conversational', was_overridden: false }
-  }
-
-  // LLM was wrong - contains a real question
-  if (containsRealQuestion(query)) {
-    return { requires_search: true, intent: 'factual', was_overridden: true }
-  }
-
-  // Not a salutation, not clearly a question -> force search by safety
-  return {
-    requires_search: true,
-    intent: llmIntent !== 'conversational' ? llmIntent : 'factual',
-    was_overridden: true,
-  }
 }
 
 // ============================================================================

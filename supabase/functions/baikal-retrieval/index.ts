@@ -1,5 +1,5 @@
 // ============================================================================
-// baikal-retrieval v2.1.0 - "Agentic RAG" + Sprint 1 (S1.1–S1.5, S4.4, P11)
+// baikal-retrieval v2.2.0 - "Agentic RAG" + Sprint 2 (documents nommés cibles, budget agentique, acces verifie)
 // ============================================================================
 //
 // Evolution from v1.3.0 "Search-First, Analyze-Later":
@@ -94,11 +94,7 @@ function resolveGenerationMode(
     return 'gemini'
   }
 
-  if (analysis.intent === 'comparison' && analysis.detected_documents.length > 0) {
-    console.log(`[retrieval] 📄 generation_mode: 'gemini' (comparison avec docs=[${analysis.detected_documents.join(', ')}])`)
-    return 'gemini'
-  }
-
+  // Sprint 2 : les comparaisons restent en mode extraits (recherche ciblée par document nommé, T5) ; la lecture intégrale est demandée explicitement par le frontend (« Approfondir », T7).
   console.log(`[retrieval] generation_mode: 'auto' (intent=${analysis.intent}, docs=${analysis.detected_documents.length})`)
   return 'auto'
 }
@@ -127,7 +123,7 @@ serve(async (req) => {
     if (!query?.trim()) return errorResponse("Query is required")
     if (!user_id) return errorResponse("user_id is required")
 
-    console.log(`[retrieval] === v2.1.0 Sprint 1 === Query: "${query.substring(0, 60)}..."`)
+    console.log(`[retrieval] === v2.2.0 Sprint 2 === Query: "${query.substring(0, 60)}..."`)
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     const timer = createTimer()

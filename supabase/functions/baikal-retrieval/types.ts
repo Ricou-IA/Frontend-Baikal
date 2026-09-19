@@ -230,12 +230,6 @@ export interface AnalysisResult {
   cross_ref?: CrossRefAnalysis
 }
 
-export interface SafeAnalysisOverride {
-  requires_search: boolean
-  intent: Intent
-  was_overridden: boolean
-}
-
 export type RouteDecision = 'conversational' | 'search' | 'external_agent'
 
 // ============================================================================
