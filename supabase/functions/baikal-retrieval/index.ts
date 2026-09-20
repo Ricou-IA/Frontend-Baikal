@@ -413,6 +413,9 @@ serve(async (req) => {
           metrics.decisions.agentic_gate_reason = gateReason
 
           let agenticError: string | null = null
+          // Une fois qu'un token agentique est parti, le chemin rapide ne peut plus prendre le relais :
+          // sa réponse s'ajouterait à la réponse partielle déjà affichée.
+          let agenticTokensSent = false
           if (useAgentic && GEMINI_API_KEY) {
             try {
               // ===========================================================
@@ -439,8 +442,11 @@ serve(async (req) => {
                 documentsCles: context.documentsCles,
               }
 
-              // SSE wrapper for the orchestrator
-              const sseSender = (event: string, data: unknown) => sendSSE(controller, event, data)
+              // SSE wrapper for the orchestrator — note le premier token streamé (voir le catch)
+              const sseSender = (event: string, data: unknown) => {
+                if (event === 'token') agenticTokensSent = true
+                sendSSE(controller, event, data)
+              }
 
               const agenticResult = await runAgenticLoop(
                 effectiveQuery, context, config.agentic, toolCtx,
@@ -525,9 +531,30 @@ serve(async (req) => {
               // Revue finale : une Phase B en panne (Gemini indisponible, outil en erreur) ne doit pas
               // faire échouer la requête — on retombe sur le chemin rapide avec les extraits déjà trouvés.
               agenticError = err instanceof Error ? err.message : String(err)
+              metrics.decisions.agentic_triggered = true
+
+              if (agenticTokensSent) {
+                // Sauf si une réponse partielle est déjà affichée : le chemin rapide en écrirait une
+                // seconde à la suite. On clôt le flux en erreur et on invite à reposer la question.
+                console.error('[agentic] échec après début du streaming, réponse interrompue:', err)
+                await logQuery(supabase, {
+                  conversation_id: context.conversationId, user_id,
+                  org_id: context.effectiveOrgId || org_id || null, project_id: project_id || null, app_id,
+                  query,
+                  rewritten_query: effectiveQuery !== query ? effectiveQuery : null,
+                  intent: fastAnalysis.intent,
+                  fast_path: false, generation_mode: 'agentic',
+                  agentic: { triggered: true, reason: gate.reason, n_vector: gate.n_vector, max_sim: gate.max_sim, error: agenticError ?? undefined },
+                  timings: metrics.timings, processing_time_ms: timer.elapsed,
+                  error: agenticError,
+                })
+                sendSSE(controller, 'error', { error: 'Recherche intelligente interrompue, veuillez reposer la question' })
+                controller.close()
+                return
+              }
+
               console.error('[agentic] échec, repli sur le chemin rapide:', err)
               sendSSE(controller, 'step', { step: 'agentic_failed', message: 'Recherche intelligente interrompue : réponse sur les extraits trouvés' })
-              metrics.decisions.agentic_triggered = true
             }
           }
 
