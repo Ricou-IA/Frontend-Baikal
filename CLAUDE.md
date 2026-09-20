@@ -108,14 +108,15 @@ FLUX 1 (Orchestrator) → Routes by file type
   └── FLUX 6 (Meeting Transcripts) → Chunking → Edge Function ingest
 ```
 
-### RAG Pipeline (baikal-retrieval v2.0)
+### RAG Pipeline (baikal-retrieval v2.2.0)
 
 ```
-User query → baikal-retrieval v2.0
+User query → baikal-retrieval v2.2.0
+  ├── Accès (auth.ts) : identité lue dans le jeton, appartenance vérifiée par rag.resolve_access (parité RLS de core.projects) ; clé anon → 401, non-membre → 403 ; service_role = corps de confiance (banc d'éval)
   ├── Analyse heuristique (intent par mots-clés, routing/analyzer.ts) + condensation des suivis (routing/condenser.ts, Gemini flash-lite)
   ├── Phase A: Fast Path
   │     → Embedding (text-embedding-3-small)
-  │     → Hybrid search (match_documents_v14)
+  │     → Hybrid search (match_documents_v15) + recherche ciblée par document nommé (search/targeted.ts, filter_file_ids, en parallèle) → fusion : extraits de chaque document nommé garantis
   │     │   ├── Vector search (cosine similarity)
   │     │   ├── Full-text search (French tsvector)
   │     │   └── GraphRAG (concept expansion)
@@ -128,12 +129,13 @@ User query → baikal-retrieval v2.0
         │   ├── Tool: search_documents (hybrid search with reformulated query)
         │   ├── Tool: list_project_files (list available documents)
         │   └── Tool: search_in_file (targeted search in specific file)
-        → Max 3 iterations, 8s timeout budget
+        → Max 3 iterations, budget 8 s compté depuis le début de la Phase B ; réponse texte de la boucle streamée telle quelle (pas de second appel)
+        → Lecture intégrale à la demande (« Approfondir » : generation_mode gemini explicite → fichiers des documents nommés, search/named-files.ts)
         → SSE events: agent_thinking, agent_searching, agent_found
         → Streaming final generation via Gemini
 ```
 
-#### baikal-retrieval v2.0 File Structure
+#### baikal-retrieval v2.2.0 File Structure
 ```
 supabase/functions/baikal-retrieval/
   index.ts              ← Main handler: Phase A + quality gate + agentic decision
@@ -141,19 +143,25 @@ supabase/functions/baikal-retrieval/
   types.ts              ← All TypeScript interfaces
   utils.ts              ← Timer, hashing utilities
   context.ts            ← Agent context loader (conversation, project identity)
+  auth.ts               ← Identité du jeton (service_role / utilisateur / anon) + décision d'accès (rag.resolve_access)
   sources.ts            ← Source citation builder
   agentic/
-    orchestrator.ts     ← ReAct loop (runAgenticLoop) + quality gate (shouldTriggerAgentic)
+    orchestrator.ts     ← ReAct loop (runAgenticLoop) : budget dédié, réponse directe streamée
+    gate.ts             ← Gate agentique (n_vector, max_sim), raison tracée dans rag.query_logs
     tools.ts            ← 3 tool declarations + execution + file resolution
     gemini-agent.ts     ← Gemini 2.5 Flash client (tool-calling + streaming)
   search/
-    retrieval.ts        ← executeSearch (calls match_documents_v14)
+    retrieval.ts        ← executeSearch (calls match_documents_v15)
+    targeted.ts         ← Recherche ciblée par document nommé + fusion (Sprint 2)
+    named-files.ts      ← Fichiers des documents nommés pour la lecture intégrale (Approfondir)
     embedding.ts        ← OpenAI text-embedding-3-small
     memory.ts           ← QA memory search/increment
     reranker.ts         ← Cohere reranking (feature-flagged, disabled)
   routing/
     router.ts           ← Route resolution + conversational handling
-    analyzer.ts         ← Fallback analysis builder
+    analyzer.ts         ← Analyse heuristique (intent par mots-clés)
+    condenser.ts        ← Condensation des questions de suivi (Gemini flash-lite, garde anti-recopie)
+    named-documents.ts  ← Documents nommés : extraction, résolution (projet puis couche application), bloc de prompt
     cross-ref.ts        ← Cross-document reference detection
     safety.ts           ← Safety checks
   generation/
@@ -215,9 +223,9 @@ npx supabase functions deploy <name>  # Deploy edge function
 - `processing_status` in `sources.files` may not update if n8n node 3.8b has errors
 - Cohere reranking is implemented but disabled for MVP (`enable_reranking: false`)
 - Frontend admin settings page not yet updated for baikal-retrieval agentic config
-- Les evenements SSE agentiques (`agent_thinking`, `agent_searching`, `agent_found`) arrivent
-  comme des evenements `step` generiques et sont affiches par ARPET ; il manque un traitement
-  UI dedie. L'evenement SSE `analysis` (intent, rewritten_query) n'est pas consomme cote front.
+- Les événements SSE agentiques ont un traitement UI dédié dans ARPET depuis v2.2.0 (T8) ; les
+  nouveaux steps `search_named`, `full_document_unavailable`, `agentic_failed` sont rendus comme
+  des steps génériques. L'événement SSE `analysis` (intent, rewritten_query) reste non consommé côté front.
 
 ### Conventions
 - Edge Functions use Deno runtime with TypeScript
