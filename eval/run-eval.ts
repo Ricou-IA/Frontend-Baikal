@@ -23,9 +23,12 @@
 interface GoldenExpected {
   source_doc_contains?: string | null
   source_page?: number | null
-  answer_must_contain?: string[]
+  // Sprint 2 : un élément tableau = alternatives (une suffit)
+  answer_must_contain?: Array<string | string[]>
   answer_must_not_contain?: string[]
   must_refuse?: boolean
+  // Sprint 2 (C3) : tous ces libellés doivent apparaître dans les top_k_for_recall sources
+  source_docs_all?: string[]
 }
 
 interface GoldenEntry {
@@ -82,6 +85,7 @@ interface EvalResult {
   ok_recall_page: boolean | null  // null = page non vérifiable (absente d'un côté)
   rank: number | null
   ok_criteria: boolean
+  ok_all_docs: boolean | null     // null = pas de source_docs_all attendu ; hors ok_criteria (Sprint 2, C3)
   refusal_detected: boolean
   missing_facts: string[]
   violations: string[]
@@ -324,11 +328,19 @@ async function evalEntry(
     }
   }
 
-  // Critères factuels
+  // Sprint 2 : un élément tableau = alternatives (une suffit)
   const mustContain = exp.answer_must_contain || []
-  const missing_facts = mustContain.filter(f => !answerNorm.includes(normalize(f)))
+  const missing_facts = mustContain
+    .filter(f => Array.isArray(f) ? !f.some(alt => answerNorm.includes(normalize(alt))) : !answerNorm.includes(normalize(f)))
+    .map(f => Array.isArray(f) ? f.join(' | ') : f)
   const violations = (exp.answer_must_not_contain || []).filter(f => answerNorm.includes(normalize(f)))
   const refusal_detected = detectRefusal(call.answer)
+
+  // Sprint 2 : C3 — tous les documents attendus dans le top-k (métrique à part, hors ok_criteria)
+  let ok_all_docs: boolean | null = null
+  if (exp.source_docs_all?.length) {
+    ok_all_docs = exp.source_docs_all.every(needle => topK.some(s => normalize(s.document_name || '').includes(normalize(needle))))
+  }
 
   let ok_criteria: boolean
   if (exp.must_refuse) {
@@ -339,7 +351,7 @@ async function evalEntry(
 
   return {
     id: entry.id, classe: entry.classe, project_ref: entry.project_ref, question: entry.question,
-    ok_recall_doc, ok_recall_page, rank, ok_criteria, refusal_detected,
+    ok_recall_doc, ok_recall_page, rank, ok_criteria, ok_all_docs, refusal_detected,
     missing_facts, violations,
     mode: call.generation_mode, fast_path: call.fast_path,
     agentic_iterations: call.agentic?.iterations ?? null,
@@ -358,6 +370,7 @@ interface Aggregate {
   recall_doc_pct: number | null
   page_ok_pct: number | null
   criteria_pct: number
+  all_docs_pct: number | null
   mrr: number | null
   latency_p50: number
   latency_p95: number
@@ -369,6 +382,7 @@ function aggregate(results: EvalResult[]): Aggregate {
   const n = results.length
   const withDoc = results.filter(r => r.ok_recall_doc !== null)
   const withPage = results.filter(r => r.ok_recall_page !== null)
+  const withAll = results.filter(r => r.ok_all_docs !== null)
   const latencies = results.map(r => r.latency_ms)
   const ranks = withDoc.map(r => (r.rank ? 1 / r.rank : 0))
   return {
@@ -376,6 +390,7 @@ function aggregate(results: EvalResult[]): Aggregate {
     recall_doc_pct: withDoc.length ? Math.round(100 * withDoc.filter(r => r.ok_recall_doc).length / withDoc.length) : null,
     page_ok_pct: withPage.length ? Math.round(100 * withPage.filter(r => r.ok_recall_page).length / withPage.length) : null,
     criteria_pct: n ? Math.round(100 * results.filter(r => r.ok_criteria).length / n) : 0,
+    all_docs_pct: withAll.length ? Math.round(100 * withAll.filter(r => r.ok_all_docs).length / withAll.length) : null,
     mrr: ranks.length ? Number((ranks.reduce((a, b) => a + b, 0) / ranks.length).toFixed(3)) : null,
     latency_p50: percentile(latencies, 50),
     latency_p95: percentile(latencies, 95),
@@ -404,26 +419,28 @@ function buildMarkdown(
   lines.push('')
   const delta = (cur: number | null, ref: number | null | undefined): string =>
     cur !== null && ref !== null && ref !== undefined ? ` (${cur - ref >= 0 ? '+' : ''}${cur - ref})` : ''
-  lines.push('| Classe | n | Recall doc | Page OK | Critères | MRR | p50 | p95 | Agentique | Erreurs |')
-  lines.push('|---|---|---|---|---|---|---|---|---|---|')
+  lines.push('| Classe | n | Recall doc | Page OK | Critères | Tous docs (C3) | MRR | p50 | p95 | Agentique | Erreurs |')
+  lines.push('|---|---|---|---|---|---|---|---|---|---|---|')
   for (const [classe, agg] of [...Object.entries(byClasse), ['GLOBAL', global] as [string, Aggregate]]) {
     const ref = classe === 'GLOBAL' ? baseline?.global : baseline?.byClasse?.[classe]
     lines.push(
       `| ${classe} | ${agg.n} | ${fmt(agg.recall_doc_pct, '%')}${delta(agg.recall_doc_pct, ref?.recall_doc_pct)} | ` +
       `${fmt(agg.page_ok_pct, '%')} | ${agg.criteria_pct}%${delta(agg.criteria_pct, ref?.criteria_pct)} | ` +
+      `${fmt(agg.all_docs_pct, ' %')} | ` +
       `${fmt(agg.mrr)} | ${agg.latency_p50}ms | ${agg.latency_p95}ms | ${agg.agentic_pct}% | ${agg.errors} |`,
     )
   }
   lines.push('')
   lines.push('## Échecs')
   lines.push('')
-  const failures = results.filter(r => !r.ok_criteria || r.ok_recall_doc === false)
+  const failures = results.filter(r => !r.ok_criteria || r.ok_recall_doc === false || r.ok_all_docs === false)
   if (failures.length === 0) lines.push('Aucun échec 🎉')
   for (const f of failures) {
     const reasons: string[] = []
     if (f.ok_recall_doc === false) reasons.push('doc attendu non remonté')
     if (f.missing_facts.length) reasons.push(`faits manquants: ${f.missing_facts.join(', ')}`)
     if (f.violations.length) reasons.push(`violations: ${f.violations.join(', ')}`)
+    if (f.ok_all_docs === false) reasons.push('documents manquants: au moins un document attendu (source_docs_all) absent du top-k')
     if (f.error) reasons.push(`erreur: ${f.error}`)
     lines.push(`- **${f.id}** (${f.classe}, ${f.mode}, ${f.latency_ms}ms) « ${f.question.slice(0, 90)} » — ${reasons.join(' ; ') || 'critères non remplis'}`)
   }
@@ -530,7 +547,7 @@ async function main() {
   const convPath = `eval/reports/${tag}.conversations.json`
   await Deno.writeTextFile(convPath, JSON.stringify({ tag, date: reportJson.meta.date, conversation_ids: convIds }, null, 2))
 
-  console.log(`\n📊 GLOBAL : recall doc ${fmt(global.recall_doc_pct, '%')} · critères ${global.criteria_pct}% · MRR ${fmt(global.mrr)} · p50 ${global.latency_p50}ms · p95 ${global.latency_p95}ms · agentique ${global.agentic_pct}% · erreurs ${global.errors}`)
+  console.log(`\n📊 GLOBAL : recall doc ${fmt(global.recall_doc_pct, '%')} · critères ${global.criteria_pct}% · tous docs (C3) ${fmt(global.all_docs_pct, ' %')} · MRR ${fmt(global.mrr)} · p50 ${global.latency_p50}ms · p95 ${global.latency_p95}ms · agentique ${global.agentic_pct}% · erreurs ${global.errors}`)
   console.log(`📁 Rapports : ${jsonPath} + ${mdPath}`)
   console.log(`🧹 ${convIds.length} conversation(s) de test créée(s) → ${convPath} (purgeables après run)`)
 }

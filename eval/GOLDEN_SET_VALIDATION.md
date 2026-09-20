@@ -88,3 +88,24 @@ Compléments du 2026-08-15 : C5-004 a reçu un attendu minimal (citer des réfé
 - Les questions quasi identiques ont été dédupliquées (la localisation pétanque représentait à elle seule ~80 messages, « Résume le CCAG » ~25) ; les messages de test (« bonjour », « Comment t'appelles-tu ? ») ont été écartés.
 - Les entrées C2-003, C4-004 et C8-002 ciblent les documents de la **couche app** (CCAG 527 chunks, NFP03-001 544 chunks) : elles valident aussi le dual-scope project/app.
 - Aucun DTU n'est ingéré dans la couche app à ce jour : pas d'entrée cross-ref DTU possible (à ajouter au golden set après ingestion du DTU 25.41).
+
+## Révision du 2026-09-19 (Sprint 2)
+
+Task 9 du plan Sprint 2 RAG : le harnais (`eval/run-eval.ts`) gagne des critères alternatifs
+dans `answer_must_contain` (un élément tableau = une liste d'alternatives, une seule suffit)
+et une métrique séparée « tous les documents cités » (`source_docs_all`, hors `ok_criteria`,
+recalculable sur un rapport déjà joué via `eval/rescore-both-docs.ts`). Les cinq changements
+de critères ci-dessous, soumis avec le plan, ont été validés par Eric le 2026-09-19 (plan
+Sprint 2) :
+
+| Id | Avant | Après | Justification | Validé par Eric le |
+|---|---|---|---|---|
+| C2-003 | doc `CCAG`, contient `10 %` | doc `CCAP`, contient `150` | Le CCAP du projet fixe 100/150 €/jour ; le plafond 10 % du CCAG est la règle générale, l'utilisateur veut le marché (poids 0,5 de la couche application, décision du Sprint 1) | 2026-09-19 (plan Sprint 2) |
+| C3-001 | doc `Mémoire Technique`, contient `désamiantage` | `source_docs_all: ["Mémoire Technique", "CCTP"]`, contient `[]` | L'origine dit « réponse de référence à définir par Eric » ; « désamiantage » n'est qu'une des 4 réponses observées. Le critère mesurable de C3 est : les deux documents cités | 2026-09-19 (plan Sprint 2) |
+| C4-001 | contient `réhabilitation énergétique`, `7 résidences` | contient `[["réhabilitation énergétique", "rénovation énergétique"], "7 résidences"]` | Synonymes du CCTP lui-même | 2026-09-19 (plan Sprint 2) |
+| C6-003 | contient `travail dissimulé` | contient `[["travail dissimulé", "8221"]]` | La réponse traite les articles L. 8221-3 à 5 ; la formule « travail dissimulé » n'est pas exigible | 2026-09-19 (plan Sprint 2) |
+| C8-003 | contient `Communication Parties Prenantes` | contient `[["Communication Parties Prenantes", "parties prenantes"]]` | Contenu juste, libellé exact absent ; la mention des parties prenantes suffit à prouver la lecture de l'annexe 2 | 2026-09-19 (plan Sprint 2) |
+
+`source_docs_all` a par ailleurs été ajouté (sans autre changement) sur les quatre entrées C3
+du set réel (C3-001 à C3-004) et les dix entrées C3 du set synthétique (SC3-001 à SC3-010),
+pour alimenter cette nouvelle métrique.

@@ -181,9 +181,9 @@
       "synthetic": false,
       "a_valider": false,
       "expected": {
-        "source_doc_contains": "CCAG",
+        "source_doc_contains": "CCAP",
         "source_page": null,
-        "answer_must_contain": ["10 %"],
+        "answer_must_contain": ["150"],
         "answer_must_not_contain": [],
         "must_refuse": false
       },
@@ -234,9 +234,10 @@
       "expected": {
         "source_doc_contains": "Mémoire Technique",
         "source_page": null,
-        "answer_must_contain": ["désamiantage"],
+        "answer_must_contain": [],
         "answer_must_not_contain": [],
-        "must_refuse": false
+        "must_refuse": false,
+        "source_docs_all": ["Mémoire Technique", "CCTP"]
       },
       "origine": "conversation réelle du 2026-01-14 (4 runs aux réponses contradictoires : « aucune incohérence », tableau comparatif, ou « extrapolation du désamiantage à la résidence Dunant » — réponse de référence à définir par Eric)",
       "resolution": "2026-09-13 — VALIDÉ par Eric : l'incohérence de référence est une omission — le désamiantage est prévu au CCTP TCE (§2.2, pages 3 et 50) et absent des 171 chunks du Mémoire Technique. Les deux documents doivent être cités."
@@ -254,7 +255,8 @@
         "source_page": null,
         "answer_must_contain": ["5 mois"],
         "answer_must_not_contain": [],
-        "must_refuse": false
+        "must_refuse": false,
+        "source_docs_all": ["CCAP", "CHARTE"]
       },
       "origine": "conversation réelle du 2026-02-11 (croisement CCAP × Charte Chantier Vert ; réponse d'époque : délai d'exécution 5 mois à compter de la notification — volet comparatif charte non visible dans l'extrait, à valider)",
       "resolution": "2026-09-13 — VALIDÉ par Eric : attendu « 5 mois » (délai d'exécution du CCAP Travaux) et les deux documents cités (CCAP Travaux, Charte Chantier Vert). À durcir si la charte porte des délais ou pénalités propres."
@@ -272,7 +274,8 @@
         "source_page": 29,
         "answer_must_contain": ["OPR"],
         "answer_must_not_contain": [],
-        "must_refuse": false
+        "must_refuse": false,
+        "source_docs_all": ["CCAP", "PROCES VERBAL"]
       },
       "origine": "conversation réelle du 2026-03-27 (synthèse multi-documents ; obligations OPR/OPL principalement dans 2139_CCAP.pdf art. 11.2 p.29)"
     },
@@ -289,7 +292,8 @@
         "source_page": null,
         "answer_must_contain": [],
         "answer_must_not_contain": [],
-        "must_refuse": false
+        "must_refuse": false,
+        "source_docs_all": ["CCTP", "PGC"]
       },
       "origine": "conversations réelles du 2026-01-15, 2026-01-16 et 2026-01-30 (réponses instables : tableau comparatif CCAP/CCTP ou « non explicitement définies » — le CCTP étant TCE, la notion de limites de prestations inter-lots est diffuse ; réponse de référence à définir)",
       "resolution": "2026-09-13 — VALIDÉ par Eric : attendu minimal (CCTP TCE cité, pas de refus, réponse structurée par lot). À durcir après le premier run baseline."
@@ -305,7 +309,7 @@
       "expected": {
         "source_doc_contains": "CCTP TCE",
         "source_page": null,
-        "answer_must_contain": ["réhabilitation énergétique", "7 résidences"],
+        "answer_must_contain": [["réhabilitation énergétique", "rénovation énergétique"], "7 résidences"],
         "answer_must_not_contain": [],
         "must_refuse": false
       },
@@ -485,7 +489,7 @@
       "expected": {
         "source_doc_contains": "CCAP",
         "source_page": null,
-        "answer_must_contain": ["travail dissimulé"],
+        "answer_must_contain": [["travail dissimulé", "8221"]],
         "answer_must_not_contain": [],
         "must_refuse": false
       },
@@ -605,7 +609,7 @@
       "expected": {
         "source_doc_contains": "CHARTE CHANTIER VERT",
         "source_page": 7,
-        "answer_must_contain": ["Communication Parties Prenantes"],
+        "answer_must_contain": [["Communication Parties Prenantes", "parties prenantes"]],
         "answer_must_not_contain": [],
         "must_refuse": false
       },
