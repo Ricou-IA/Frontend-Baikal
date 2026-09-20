@@ -220,6 +220,8 @@ npx supabase functions deploy <name>  # Deploy edge function
 - FLUX 4 (Excel ingestion) not implemented - Excel files routed to FLUX 3 will fail
 - `baikal-brain-v3` and `baikal-librarian-v4` are legacy - use `baikal-retrieval` v2.0 instead
 - Some older chunks (pre v5.0.0 pipeline) lack QQOQCCP enrichment
+- Quatre fichiers du projet Bessières n'ont aucun chunk L0 (« Bessières AE DBC Signé », « DBC - BESSIERES OPH 31 » = Mémoire Technique, « PGC-Bessières », « RICT-DCE ») : les stratégies / et la recherche ciblée cherchent en L0 + L1 depuis v2.2.0 pour ne pas les perdre — ré-ingestion prévue au Sprint 4
+- Les env  /  injectées dans les Edge Functions ne sont plus les JWT legacy envoyés par les clients :  reconnaît le rôle par la claim  du JWT (signature vérifiée par la passerelle, )
 - `processing_status` in `sources.files` may not update if n8n node 3.8b has errors
 - Cohere reranking is implemented but disabled for MVP (`enable_reranking: false`)
 - Frontend admin settings page not yet updated for baikal-retrieval agentic config
