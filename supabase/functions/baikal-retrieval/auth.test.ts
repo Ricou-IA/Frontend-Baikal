@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from "https://deno.land/std@0.224.0/assert/mod.ts"
-import { bearerToken, resolveCaller, resolveAccess } from "./auth.ts"
+import { bearerToken, resolveCaller, resolveAccess, jwtRole } from "./auth.ts"
 import type { Supabase } from "./types.ts"
 
 const ENV = { serviceRoleKey: 'service-secret', anonKey: 'anon-public' }
@@ -114,4 +114,56 @@ Deno.test("resolveAccess : project_id / org_id absents → transmis en null à l
   const { supabase, captured } = stubSupabase({ data: [], error: null })
   await resolveAccess(supabase, 'u-1', undefined, undefined)
   assertEquals(captured.args, { p_user_id: 'u-1', p_project_id: null, p_org_id: null })
+})
+
+// ----------------------------------------------------------------------------
+// jwtRole / resolveCaller — reconnaissance par la claim JWT (clés legacy)
+// ----------------------------------------------------------------------------
+// En production, les valeurs injectées (SUPABASE_SERVICE_ROLE_KEY / SUPABASE_ANON_KEY)
+// ne sont plus les JWT legacy envoyés par les clients/le harnais d'éval (nouveau format
+// de clés). La gateway (verify_jwt = true, ancré dans supabase/config.toml) a déjà
+// vérifié la signature avant que la requête n'atteigne la fonction : on peut donc faire
+// confiance à la claim `role` du payload sans revérifier la signature ici.
+
+function base64url(json: string): string {
+  const bytes = new TextEncoder().encode(json)
+  let binary = ''
+  for (const b of bytes) binary += String.fromCharCode(b)
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+function fakeJwt(payload: Record<string, unknown>): string {
+  return 'eyJhbGciOiJIUzI1NiJ9.' + base64url(JSON.stringify(payload)) + '.sig'
+}
+
+Deno.test("jwtRole : lit la claim role d'un JWT bien formé", () => {
+  assertEquals(jwtRole(fakeJwt({ role: 'service_role', ref: 'x' })), 'service_role')
+})
+
+Deno.test("jwtRole : jeton mal formé ou sans claim role exploitable → null", () => {
+  assertEquals(jwtRole('not-a-jwt'), null)
+  assertEquals(jwtRole('a.b.c'), null)
+  assertEquals(jwtRole(fakeJwt({ sub: 'u1' })), null)
+})
+
+Deno.test("resolveCaller : rôle service_role dans la claim JWT → service, même jeton différent de l'env (clés legacy)", async () => {
+  let calls = 0
+  const lookup = async (_jwt: string) => { calls++; return null }
+  const result = await resolveCaller(fakeJwt({ role: 'service_role', ref: 'x' }), ENV, lookup)
+  assertEquals(result, { kind: 'service' })
+  assertEquals(calls, 0, "le lookup ne doit pas être appelé quand la claim JWT tranche")
+})
+
+Deno.test("resolveCaller : rôle anon dans la claim JWT → anonymous (anon_key), même jeton différent de l'env", async () => {
+  let calls = 0
+  const lookup = async (_jwt: string) => { calls++; return null }
+  const result = await resolveCaller(fakeJwt({ role: 'anon' }), ENV, lookup)
+  assertEquals(result, { kind: 'anonymous', reason: 'anon_key' })
+  assertEquals(calls, 0, "le lookup ne doit pas être appelé quand la claim JWT tranche")
+})
+
+Deno.test("resolveCaller : rôle authenticated dans la claim JWT → passe par le lookup (comportement existant préservé)", async () => {
+  const token = fakeJwt({ role: 'authenticated', sub: 'u1' })
+  const lookup = async (jwt: string) => jwt === token ? { id: 'u-x' } : null
+  assertEquals(await resolveCaller(token, ENV, lookup), { kind: 'user', userId: 'u-x' })
 })
