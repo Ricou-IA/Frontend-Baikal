@@ -36,13 +36,25 @@ export function isTrueSalutation(query: string): boolean {
 // KEYWORD-BASED INTENT DETECTION (fallback)
 // ============================================================================
 
+// Bornage en début de mot : `\b` de JS est basé sur l'ASCII, une lettre accentuée
+// (é, à, î...) n'est pas un caractère de mot pour lui, donc `\bécart` ne matche pas
+// un mot commençant par « é ». On borne donc à gauche avec une lookbehind explicite
+// sur les lettres (accentuées ou non), et les racines restent des préfixes pour que
+// les flexions (« comparons », « présentation »...) continuent de matcher — seuls
+// les mots qui doivent être entiers (vs, cite, citation, citer, extrait) sont aussi
+// bornés à droite. Corrige les faux positifs « représente » (⊃ présente) et
+// « explicite » (⊃ cite) qui changeaient l'intent détecté.
+const COMPARISON = /(?<![a-zà-ÿ])(incohéren|écart|différen|compar|conform|cohéren|versus)|(?<![a-zà-ÿ])vs(?![a-zà-ÿ])|\bentre\b .+ \bet\b|\bpar rapport\b/i
+const SYNTHESIS = /(?<![a-zà-ÿ])(résum|synthè|synthéti|expliqu|présent|décri)|\bparle-moi\b/i
+const CITATION = /(?<![a-zà-ÿ])(cite|citation|citer|extrait)(?![a-zà-ÿ])|\btexte exact\b|\bmot pour mot\b/i
+
 export function detectIntentByKeywords(query: string): Intent {
   if (isTrueSalutation(query)) return 'conversational'
 
   const q = query.toLowerCase()
-  if (/incohéren|écart|différen|compar|conforme|conformité|cohéren|entre .+ et|versus|vs\b|par rapport/i.test(q)) return 'comparison'
-  if (/résume|synthèse|synthétise|explique|présente|décris|parle-moi/i.test(q)) return 'synthesis'
-  if (/cite|citation|extrait|texte exact|mot pour mot/i.test(q)) return 'citation'
+  if (COMPARISON.test(q)) return 'comparison'
+  if (SYNTHESIS.test(q)) return 'synthesis'
+  if (CITATION.test(q)) return 'citation'
   if (/où|ou se trouve|emplacement|localisation|situe/i.test(q)) return 'factual'
 
   return 'factual'

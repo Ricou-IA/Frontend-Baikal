@@ -37,3 +37,20 @@ Deno.test("documents clés détectés et cross-ref fusionnés", () => {
   assertEquals(a.cross_ref?.is_cross_ref, true)
   assertEquals(a.requires_search, true)
 })
+
+Deno.test("« représente » ne contient pas « présente » en début de mot → factual, pas synthesis", () => {
+  const a = buildFallbackAnalysis("C'est qui le maître d'ouvrage sur Golf Park, et qui le représente sur l'opération ?", DOCS)
+  assertEquals(a.intent, 'factual')
+})
+
+Deno.test("« explicite » ne contient pas « cite » en début de mot → factual, pas citation", () => {
+  const b = buildFallbackAnalysis("Le CCTP est-il explicite sur les fixations ?", DOCS)
+  assertEquals(b.intent, 'factual')
+})
+
+Deno.test("intents par mots-clés toujours détectés une fois bornés en début de mot", () => {
+  assertEquals(buildFallbackAnalysis("Présente-moi le lot 06", DOCS).intent, 'synthesis')
+  assertEquals(buildFallbackAnalysis("Quels écarts entre le CCAP et le CCTP sur les délais ?", DOCS).intent, 'comparison')
+  assertEquals(buildFallbackAnalysis("Cite l'article 12", DOCS).intent, 'citation')
+  assertEquals(buildFallbackAnalysis("Peux-tu citer le texte exact de l'article 4 ?", DOCS).intent, 'citation')
+})
