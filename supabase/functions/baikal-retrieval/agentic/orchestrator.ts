@@ -28,6 +28,7 @@ import {
   appendToolCallToHistory,
   appendToolResultToHistory,
   formatChunksForAgent,
+  splitForStreaming,
 } from "./gemini-agent.ts"
 import { executeTool, type ToolExecutionContext } from "./tools.ts"
 import { buildSourcesFromChunks } from "../sources.ts"
@@ -44,11 +45,19 @@ export interface AgenticResult {
   steps: AgenticStep[]
   iterations: number
   timedOut: boolean
+  directAnswer: boolean
 }
 
 // ============================================================================
 // AGENTIC ORCHESTRATOR
 // ============================================================================
+
+export const MIN_ITERATION_BUDGET_MS = 1500
+
+/** Budget restant de la Phase B : startTime = déclenchement de la boucle (S2.1), pas début de la requête. */
+export function remainingBudgetMs(startTime: number, now: number, timeoutMs: number): number {
+  return timeoutMs - (now - startTime)
+}
 
 export async function runAgenticLoop(
   query: string,
@@ -95,32 +104,32 @@ export async function runAgenticLoop(
   const steps: AgenticStep[] = []
   let iterations = 0
   let timedOut = false
+  let finalText: string | null = null
 
   // ==========================================
   // REACT LOOP
   // ==========================================
 
   while (iterations < agenticConfig.max_iterations) {
-    // Check timeout
-    const elapsed = Date.now() - startTime
-    if (elapsed > agenticConfig.timeout_ms) {
-      console.log(`[agentic] Timeout reached (${elapsed}ms > ${agenticConfig.timeout_ms}ms) at iteration ${iterations}`)
+    const remaining = remainingBudgetMs(startTime, Date.now(), agenticConfig.timeout_ms)
+    if (remaining < MIN_ITERATION_BUDGET_MS) {
+      console.log(`[agentic] Budget épuisé (${remaining}ms restants sur ${agenticConfig.timeout_ms}ms) à l'itération ${iterations}`)
       timedOut = true
       break
     }
 
     iterations++
-    console.log(`[agentic] Iteration ${iterations}/${agenticConfig.max_iterations}`)
+    console.log(`[agentic] Iteration ${iterations}/${agenticConfig.max_iterations} (budget restant ${remaining}ms)`)
 
     // Call Gemini with tools
     sendSSE('step', { step: 'agent_thinking', message: `Réflexion (étape ${iterations})...` })
 
-    const turn = await callGeminiAgent(query, history, agenticConfig, geminiApiKey)
+    const turn = await callGeminiAgent(query, history, agenticConfig, geminiApiKey, { timeoutMs: Math.min(20_000, remaining) })
 
     if (turn.type === 'text') {
-      // Gemini decided to respond — we're done with the loop
-      // The final text will be streamed separately
-      console.log(`[agentic] Gemini chose to respond at iteration ${iterations}`)
+      // S2.2 : la réponse texte de la boucle EST la réponse finale — plus de second appel
+      finalText = turn.content?.trim() || null
+      console.log(`[agentic] Gemini répond en texte à l'itération ${iterations} (${finalText?.length ?? 0} caractères)`)
       break
     }
 
@@ -167,15 +176,20 @@ export async function runAgenticLoop(
 
   sendSSE('step', { step: 'generating', message: 'Rédaction de la réponse...' })
 
-  // If we timed out or exhausted iterations without a text response,
-  // force a final generation by removing tools
   let fullResponse = ''
-
-  const generator = streamGeminiAgentResponse(history, agenticConfig, geminiApiKey)
-
-  for await (const token of generator) {
-    fullResponse += token
-    sendSSE('token', { content: token })
+  const directAnswer = finalText !== null && finalText.length > 0
+  if (directAnswer) {
+    for (const piece of splitForStreaming(finalText!)) {
+      fullResponse += piece
+      sendSSE('token', { content: piece })
+    }
+  } else {
+    // Timeout ou itérations épuisées sans réponse texte : génération finale sans outils
+    const generator = streamGeminiAgentResponse(history, agenticConfig, geminiApiKey)
+    for await (const token of generator) {
+      fullResponse += token
+      sendSSE('token', { content: token })
+    }
   }
 
   // Deduplicate chunks by chunk_id
@@ -190,6 +204,7 @@ export async function runAgenticLoop(
     steps,
     iterations,
     timedOut,
+    directAnswer,
   }
 }
 

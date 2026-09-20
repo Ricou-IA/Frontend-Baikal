@@ -36,6 +36,7 @@ export interface QueryLogEntry {
     max_sim?: number
     iterations?: number
     timed_out?: boolean
+    direct_answer?: boolean
     steps?: unknown[]
   } | null
   named_documents?: NamedDocumentResolution[] | null   // Sprint 1 (fin) : documents nommés dans la question et leur résolution

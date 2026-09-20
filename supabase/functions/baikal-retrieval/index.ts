@@ -399,7 +399,7 @@ serve(async (req) => {
 
             const agenticResult = await runAgenticLoop(
               effectiveQuery, context, config.agentic, toolCtx,
-              GEMINI_API_KEY, sseSender, timer.startTime,
+              GEMINI_API_KEY, sseSender, Date.now(),
             )
 
             metrics.timings.agentic = timer.mark('agentic')
@@ -444,7 +444,7 @@ serve(async (req) => {
               intent: fastAnalysis.intent, answer_format: fastAnalysis.answer_format,
               fast_path: false, generation_mode: 'agentic', model: config.agentic.model,
               reranked: metrics.decisions.reranking_applied,
-              agentic: { triggered: true, reason: gate.reason, n_vector: gate.n_vector, max_sim: gate.max_sim, iterations: agenticResult.iterations, timed_out: agenticResult.timedOut, steps: agenticResult.steps },
+              agentic: { triggered: true, reason: gate.reason, n_vector: gate.n_vector, max_sim: gate.max_sim, iterations: agenticResult.iterations, timed_out: agenticResult.timedOut, direct_answer: agenticResult.directAnswer, steps: agenticResult.steps },
               counts: { ...metrics.counts },
               top_similarities: agStats.top_similarities, match_sources: agStats.match_sources,
               sources: slimSources(agenticResult.sources),
@@ -464,6 +464,7 @@ serve(async (req) => {
               agentic: {
                 iterations: agenticResult.iterations,
                 timed_out: agenticResult.timedOut,
+                direct_answer: agenticResult.directAnswer,
                 steps: agenticResult.steps,
               },
               fast_path: false,

@@ -80,6 +80,7 @@ export async function callGeminiAgent(
   conversationHistory: GeminiMessage[],
   agenticConfig: AgenticConfig,
   geminiApiKey: string,
+  opts: { timeoutMs?: number } = {},
 ): Promise<AgentTurn> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${agenticConfig.model}:generateContent?key=${geminiApiKey}`
 
@@ -106,7 +107,7 @@ export async function callGeminiAgent(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(20_000),
+    signal: AbortSignal.timeout(Math.max(1000, opts.timeoutMs ?? 20_000)),
   })
 
   if (!response.ok) {
@@ -281,6 +282,21 @@ function extractThinking(parts: GeminiPart[]): string | undefined {
     .filter((p): p is { text: string } => 'text' in p && typeof p.text === 'string')
     .map(p => p.text)
   return textParts.length > 0 ? textParts.join(' ') : undefined
+}
+
+/** Découpe un texte déjà complet en morceaux streamables (coupure sur un espace, jamais au milieu d'un mot). */
+export function splitForStreaming(text: string, size = 24): string[] {
+  const parts: string[] = []
+  let rest = text
+  while (rest.length > 0) {
+    if (rest.length <= size) { parts.push(rest); break }
+    let cut = rest.indexOf(' ', size)
+    if (cut === -1) { parts.push(rest); break }
+    cut += 1                                     // l'espace reste avec le morceau courant
+    parts.push(rest.slice(0, cut))
+    rest = rest.slice(cut)
+  }
+  return parts
 }
 
 export function formatChunksForAgent(chunks: ChunkResult[]): string {
