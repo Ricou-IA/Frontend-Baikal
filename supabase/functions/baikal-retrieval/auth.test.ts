@@ -52,34 +52,52 @@ Deno.test("un getUser qui lève ne fait pas tomber la requête : anonymous", asy
 
 Deno.test("resolveAccess : ligne autorisée renvoyée en tableau → decision transmise telle quelle", async () => {
   const { supabase, captured } = stubSupabase({
-    data: [{ allowed: true, effective_org_id: 'org-1', reason: 'project_member' }],
+    data: [{ allowed: true, effective_org_id: 'org-1', effective_app_id: 'arpet', is_super_admin: false, reason: 'project_member' }],
     error: null,
   })
   const result = await resolveAccess(supabase, 'u-1', 'proj-1', undefined)
-  assertEquals(result, { allowed: true, effectiveOrgId: 'org-1', reason: 'project_member' })
+  assertEquals(result, { allowed: true, effectiveOrgId: 'org-1', effectiveAppId: 'arpet', isSuperAdmin: false, reason: 'project_member' })
   assertEquals(captured.args, { p_user_id: 'u-1', p_project_id: 'proj-1', p_org_id: null })
 })
 
 Deno.test("resolveAccess : ligne refusée renvoyée en objet direct (pas un tableau) → allowed false", async () => {
   const { supabase } = stubSupabase({
-    data: { allowed: false, effective_org_id: null, reason: 'not_project_member' },
+    data: { allowed: false, effective_org_id: null, effective_app_id: 'arpet', is_super_admin: false, reason: 'not_project_member' },
     error: null,
   })
   const result = await resolveAccess(supabase, 'u-1', 'proj-1', undefined)
-  assertEquals(result, { allowed: false, effectiveOrgId: null, reason: 'not_project_member' })
+  assertEquals(result, { allowed: false, effectiveOrgId: null, effectiveAppId: 'arpet', isSuperAdmin: false, reason: 'not_project_member' })
+})
+
+Deno.test("resolveAccess : super admin sur un projet d'une autre organisation → autorisé et signalé", async () => {
+  const { supabase } = stubSupabase({
+    data: [{ allowed: true, effective_org_id: 'org-autre', effective_app_id: 'arpet', is_super_admin: true, reason: 'project_member' }],
+    error: null,
+  })
+  const result = await resolveAccess(supabase, 'u-super', 'proj-autre', undefined)
+  assertEquals(result, { allowed: true, effectiveOrgId: 'org-autre', effectiveAppId: 'arpet', isSuperAdmin: true, reason: 'project_member' })
+})
+
+Deno.test("resolveAccess : ligne sans effective_app_id → repli sur 'arpet'", async () => {
+  const { supabase } = stubSupabase({
+    data: [{ allowed: true, effective_org_id: 'org-1', reason: 'no_scope' }],
+    error: null,
+  })
+  const result = await resolveAccess(supabase, 'u-1', undefined, undefined)
+  assertEquals(result, { allowed: true, effectiveOrgId: 'org-1', effectiveAppId: 'arpet', isSuperAdmin: false, reason: 'no_scope' })
 })
 
 Deno.test("resolveAccess : data vide ou null (réponse malformée) → fail-closed", async () => {
   const empty = stubSupabase({ data: [], error: null })
   assertEquals(
     await resolveAccess(empty.supabase, 'u-1', undefined, undefined),
-    { allowed: false, effectiveOrgId: null, reason: 'unknown' },
+    { allowed: false, effectiveOrgId: null, effectiveAppId: 'arpet', isSuperAdmin: false, reason: 'unknown' },
   )
 
   const nul = stubSupabase({ data: null, error: null })
   assertEquals(
     await resolveAccess(nul.supabase, 'u-1', undefined, undefined),
-    { allowed: false, effectiveOrgId: null, reason: 'unknown' },
+    { allowed: false, effectiveOrgId: null, effectiveAppId: 'arpet', isSuperAdmin: false, reason: 'unknown' },
   )
 })
 

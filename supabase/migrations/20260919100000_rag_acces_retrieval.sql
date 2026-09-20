@@ -4,9 +4,11 @@
 -- 1. rag.resolve_access : même prédicat que la RLS SELECT de core.projects.
 -- 2. rag.get_agent_context (surcharge avec p_conversation_id) : une conversation
 --    fournie n'est reprise que si elle appartient à l'utilisateur.
--- 3. Les fonctions de recherche et de contexte, SECURITY DEFINER et appelées
---    uniquement par des Edge Functions en service_role, ne sont plus exécutables
---    par anon / authenticated (le schéma rag est exposé par PostgREST).
+-- 3. Toutes les fonctions du schéma rag (hors fonctions trigger), appelées uniquement
+--    par des Edge Functions en service_role, ne sont plus exécutables par anon /
+--    authenticated (le schéma rag est exposé par PostgREST) : seules delete_conversation
+--    et close_conversation, appelées avec un jeton utilisateur par ARPET, restent ouvertes.
+--    La boucle sur le catalogue s'entretient d'elle-même quand une fonction est ajoutée.
 -- ============================================================================
 
 -- 1. Décision d'accès -------------------------------------------------------
@@ -15,7 +17,7 @@ CREATE OR REPLACE FUNCTION rag.resolve_access(
   p_project_id uuid DEFAULT NULL,
   p_org_id uuid DEFAULT NULL
 )
-RETURNS TABLE(allowed boolean, effective_org_id uuid, reason text)
+RETURNS TABLE(allowed boolean, effective_org_id uuid, effective_app_id text, is_super_admin boolean, reason text)
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
@@ -23,38 +25,43 @@ SET search_path = ''
 AS $$
 DECLARE
   v_profile_org uuid;
+  v_profile_app text;
+  v_super boolean;
   v_project_org uuid;
 BEGIN
-  SELECT p.org_id INTO v_profile_org FROM core.profiles p WHERE p.id = p_user_id;
+  SELECT p.org_id, COALESCE(p.app_id, 'arpet') INTO v_profile_org, v_profile_app
+  FROM core.profiles p WHERE p.id = p_user_id;
+  v_profile_app := COALESCE(v_profile_app, 'arpet');
+  v_super := core.rls_is_super_admin(p_user_id);
 
   IF p_project_id IS NOT NULL THEN
     SELECT pr.org_id INTO v_project_org FROM core.projects pr WHERE pr.id = p_project_id;
-    IF v_project_org IS NULL THEN
-      RETURN QUERY SELECT false, NULL::uuid, 'project_not_found'::text;
+    IF NOT FOUND THEN
+      RETURN QUERY SELECT false, NULL::uuid, v_profile_app, v_super, 'project_not_found'::text;
       RETURN;
     END IF;
-    -- Parité avec la policy projects_select_secure
-    IF core.rls_is_super_admin(p_user_id)
-       OR (core.rls_is_org_admin(p_user_id) AND v_project_org = v_profile_org)
+    -- Parité avec la policy projects_select_secure (un projet sans org_id reste accessible à ses membres)
+    IF v_super
+       OR (core.rls_is_org_admin(p_user_id) AND v_project_org IS NOT NULL AND v_project_org = v_profile_org)
        OR p_project_id = ANY(core.rls_get_user_project_ids(p_user_id)) THEN
-      RETURN QUERY SELECT true, v_project_org, 'project_member'::text;
+      RETURN QUERY SELECT true, v_project_org, v_profile_app, v_super, 'project_member'::text;
       RETURN;
     END IF;
-    RETURN QUERY SELECT false, NULL::uuid, 'not_project_member'::text;
+    RETURN QUERY SELECT false, NULL::uuid, v_profile_app, v_super, 'not_project_member'::text;
     RETURN;
   END IF;
 
   IF p_org_id IS NOT NULL THEN
     -- Parité avec la policy org_members_select_own_org
-    IF core.rls_is_super_admin(p_user_id) OR p_org_id = v_profile_org THEN
-      RETURN QUERY SELECT true, p_org_id, 'org_member'::text;
+    IF v_super OR p_org_id = v_profile_org THEN
+      RETURN QUERY SELECT true, p_org_id, v_profile_app, v_super, 'org_member'::text;
       RETURN;
     END IF;
-    RETURN QUERY SELECT false, NULL::uuid, 'not_org_member'::text;
+    RETURN QUERY SELECT false, NULL::uuid, v_profile_app, v_super, 'not_org_member'::text;
     RETURN;
   END IF;
 
-  RETURN QUERY SELECT true, v_profile_org, 'no_scope'::text;
+  RETURN QUERY SELECT true, v_profile_org, v_profile_app, v_super, 'no_scope'::text;
 END;
 $$;
 
@@ -282,42 +289,21 @@ BEGIN
 END;
 $function$;
 
--- 3. Fermeture à anon / authenticated des fonctions internes aux Edge Functions -----
--- Toutes appelées en service_role (baikal-retrieval, baikal-brain-v3, baikal-librarian-v3/v4,
--- generate-document). Aucun wrapper public/arpet ne les appelle ; ARPET n'appelle en direct que
--- rag.delete_conversation et rag.close_conversation, non touchées.
-REVOKE EXECUTE ON FUNCTION
-  rag.resolve_access(uuid, uuid, uuid),
-  rag.get_agent_context(uuid, uuid, uuid, text, text, integer, integer),
-  rag.get_agent_context(uuid, uuid, uuid, text, text, uuid, integer, integer),
-  rag.find_or_create_conversation(uuid, uuid, uuid, text, integer),
-  rag.get_conversation_context(uuid, integer),
-  rag.search_qa_memory(vector, uuid, uuid, double precision, integer),
-  rag.add_message(uuid, text, text, jsonb, text, integer),
-  rag.increment_qa_usage(uuid),
-  rag.match_documents_v12(vector, text, uuid, uuid, uuid, text, integer, double precision, boolean, boolean, boolean, boolean, text[], uuid[], text[], boolean, integer, double precision),
-  rag.match_documents_v13(vector, text, uuid, uuid, uuid, text, integer, double precision, boolean, boolean, boolean, boolean, text[], uuid[], text[], boolean, integer, double precision, integer[], boolean),
-  rag.match_documents_v14(vector, text, uuid, uuid, uuid, text, integer, double precision, boolean, boolean, boolean, boolean, text[], uuid[], text[], boolean, integer, double precision, integer[], boolean),
-  rag.match_documents_v15(vector, text, uuid, uuid, uuid, text, integer, double precision, boolean, boolean, boolean, boolean, text[], uuid[], text[], boolean, integer, double precision, integer[], boolean, double precision, integer),
-  rag.match_files_v1(vector, double precision, integer, text, uuid, uuid, uuid, boolean, boolean, boolean, boolean),
-  rag.match_files_v2(vector, double precision, integer, text, uuid, uuid, uuid, boolean, boolean, boolean, boolean),
-  rag.match_documents_orphans_v1(vector, double precision, integer, text, uuid, uuid, uuid, boolean, boolean, boolean, boolean)
-FROM PUBLIC, anon, authenticated;
-
-GRANT EXECUTE ON FUNCTION
-  rag.resolve_access(uuid, uuid, uuid),
-  rag.get_agent_context(uuid, uuid, uuid, text, text, integer, integer),
-  rag.get_agent_context(uuid, uuid, uuid, text, text, uuid, integer, integer),
-  rag.find_or_create_conversation(uuid, uuid, uuid, text, integer),
-  rag.get_conversation_context(uuid, integer),
-  rag.search_qa_memory(vector, uuid, uuid, double precision, integer),
-  rag.add_message(uuid, text, text, jsonb, text, integer),
-  rag.increment_qa_usage(uuid),
-  rag.match_documents_v12(vector, text, uuid, uuid, uuid, text, integer, double precision, boolean, boolean, boolean, boolean, text[], uuid[], text[], boolean, integer, double precision),
-  rag.match_documents_v13(vector, text, uuid, uuid, uuid, text, integer, double precision, boolean, boolean, boolean, boolean, text[], uuid[], text[], boolean, integer, double precision, integer[], boolean),
-  rag.match_documents_v14(vector, text, uuid, uuid, uuid, text, integer, double precision, boolean, boolean, boolean, boolean, text[], uuid[], text[], boolean, integer, double precision, integer[], boolean),
-  rag.match_documents_v15(vector, text, uuid, uuid, uuid, text, integer, double precision, boolean, boolean, boolean, boolean, text[], uuid[], text[], boolean, integer, double precision, integer[], boolean, double precision, integer),
-  rag.match_files_v1(vector, double precision, integer, text, uuid, uuid, uuid, boolean, boolean, boolean, boolean),
-  rag.match_files_v2(vector, double precision, integer, text, uuid, uuid, uuid, boolean, boolean, boolean, boolean),
-  rag.match_documents_orphans_v1(vector, double precision, integer, text, uuid, uuid, uuid, boolean, boolean, boolean, boolean)
-TO service_role;
+-- 3. Fermeture à anon / authenticated de toutes les fonctions du schéma rag exposé par PostgREST,
+--    sauf les deux appelées avec un jeton utilisateur par ARPET, et hors fonctions trigger.
+--    Toutes les autres ne sont appelées que par des Edge Functions en service_role.
+DO $$
+DECLARE r record;
+BEGIN
+  FOR r IN
+    SELECT p.oid::regprocedure AS sig
+    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'rag'
+      AND p.prokind = 'f'
+      AND p.prorettype <> 'trigger'::regtype
+      AND p.proname NOT IN ('delete_conversation', 'close_conversation')
+  LOOP
+    EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC, anon, authenticated', r.sig);
+    EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO service_role', r.sig);
+  END LOOP;
+END $$;

@@ -31,7 +31,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import type { RequestBody, PipelineMetrics, SourceItem, AnalysisResult, FileInfo } from "./types.ts"
 import { corsHeaders, sseHeaders, sendSSE, errorResponse } from "./utils.ts"
 import { createTimer } from "./utils.ts"
-import { bearerToken, resolveCaller, getUserIdFromJwt, resolveAccess } from "./auth.ts"
+import { bearerToken, resolveCaller, getUserIdFromJwt, resolveAccess, type AccessDecision } from "./auth.ts"
 import { loadConfig, getIntentStrategy, getEffectiveGenerationParams } from "./config.ts"
 import { getAgentContext, addMessage } from "./context.ts"
 import { extractNamedDocuments, fetchNamedDocumentCandidates, resolveNamedDocuments, projectNameTokens, fetchProjectNameTokens } from "./routing/named-documents.ts"
@@ -91,7 +91,10 @@ function resolveGenerationMode(
     return requestedMode as 'chunks' | 'gemini'
   }
 
-  const fullDocIntents: AnalysisResult['intent'][] = ['synthesis', 'citation']
+  // Revue finale : `citation` sort de la lecture intégrale — citer exige le texte exact des
+  // extraits (page et section), que le mode `chunks` seul garantit ; seule la synthèse profite
+  // de lire le document entier.
+  const fullDocIntents: AnalysisResult['intent'][] = ['synthesis']
 
   if (fullDocIntents.includes(analysis.intent) && analysis.detected_documents.length > 0) {
     console.log(`[retrieval] 📄 generation_mode: 'gemini' (intent=${analysis.intent}, docs=[${analysis.detected_documents.join(', ')}])`)
@@ -116,7 +119,7 @@ serve(async (req) => {
     const body: RequestBody = await req.json()
     const {
       query, user_id: bodyUserId, org_id: bodyOrgId, project_id,
-      app_id = 'arpet', conversation_id,
+      app_id: bodyAppId, conversation_id,
       generation_mode = 'auto', stream = true,
       include_app_layer = true, include_org_layer = true,
       include_project_layer = true, include_user_layer = false,
@@ -141,13 +144,25 @@ serve(async (req) => {
       return errorResponse("Authentification requise", 401)
     }
     let org_id: string | undefined = bodyOrgId
+    let access: AccessDecision | null = null
     if (caller.kind === 'user') {
-      const access = await resolveAccess(supabase, caller.userId, project_id, bodyOrgId)
+      access = await resolveAccess(supabase, caller.userId, project_id, bodyOrgId)
       if (!access.allowed) {
         console.warn(`[auth] 403 (${access.reason}) user=${caller.userId} project=${project_id ?? '-'} org=${bodyOrgId ?? '-'}`)
         return errorResponse("Accès refusé", 403)
       }
       org_id = access.effectiveOrgId ?? undefined
+    }
+    // Sprint 2 (revue finale) — la couche application est pinnée au profil pour un utilisateur ordinaire :
+    // un app_id du corps différent du profil serait une lecture inter-produits. Super admins et service_role
+    // gardent le corps (ARPET n'envoie jamais app_id ; le harnais l'envoie en service_role).
+    let app_id: string = bodyAppId ?? 'arpet'
+    if (caller.kind === 'user' && access && !access.isSuperAdmin) {
+      if (bodyAppId !== undefined && bodyAppId !== access.effectiveAppId) {
+        console.warn(`[auth] 403 (app_mismatch) user=${caller.userId} body=${bodyAppId} profil=${access.effectiveAppId}`)
+        return errorResponse("Accès refusé", 403)
+      }
+      app_id = access.effectiveAppId
     }
     // `const` de type string : un `let` perdrait son rétrécissement de type dans la closure start(controller)
     const user_id: string = caller.kind === 'user' ? caller.userId : (bodyUserId ?? '')
@@ -363,6 +378,7 @@ serve(async (req) => {
           // Sprint 2 (T7) — « Approfondir » : lecture intégrale demandée explicitement →
           // les fichiers lus sont ceux que la question nomme, pas les mieux classés.
           let namedFiles: FileInfo[] = []
+          let namedFullDocUnavailable = false
           if (generation_mode === 'gemini' && GEMINI_API_KEY) {
             const namedIds = [...new Set(context.namedDocuments.filter(r => r.status === 'found').flatMap(r => r.found_file_ids))]
             if (namedIds.length > 0) {
@@ -376,6 +392,12 @@ serve(async (req) => {
                   totalPages: namedFiles.reduce((s, f) => s + f.total_pages, 0),
                 }
                 console.log(`[retrieval] Lecture intégrale sur documents nommés: ${namedFiles.map(f => f.original_filename).join(', ')}`)
+              } else {
+                // Les fichiers nommés dépassent le plafond de pages ou ne sont pas lisibles :
+                // on ne lit PAS d'autres fichiers sous l'étiquette « Full Document ».
+                namedFullDocUnavailable = true
+                sendSSE(controller, 'step', { step: 'full_document_unavailable', message: 'Lecture intégrale impossible (document trop long ou indisponible) : réponse sur extraits' })
+                console.warn(`[retrieval] Lecture intégrale demandée mais aucun fichier nommé lisible (${namedIds.length} id(s))`)
               }
             }
           }
@@ -390,113 +412,123 @@ serve(async (req) => {
           const gateReason: GateReason = namedFiles.length > 0 && gate.trigger ? 'explicit_full_document' : (gate.trigger && !GEMINI_API_KEY ? 'no_gemini_key' : gate.reason)
           metrics.decisions.agentic_gate_reason = gateReason
 
+          let agenticError: string | null = null
           if (useAgentic && GEMINI_API_KEY) {
-            // ===========================================================
-            // PHASE B — AGENTIC RAG (Gemini tool-calling loop)
-            // ===========================================================
-            console.log(`[retrieval] === AGENTIC MODE ===`)
-            metrics.decisions.agentic_triggered = true
+            try {
+              // ===========================================================
+              // PHASE B — AGENTIC RAG (Gemini tool-calling loop)
+              // ===========================================================
+              console.log(`[retrieval] === AGENTIC MODE ===`)
+              metrics.decisions.agentic_triggered = true
 
-            sendSSE(controller, 'step', { step: 'agentic_start', message: '🧠 Recherche intelligente activée...' })
+              sendSSE(controller, 'step', { step: 'agentic_start', message: '🧠 Recherche intelligente activée...' })
 
-            // Build tool execution context (reuses existing modules)
-            const toolCtx: ToolExecutionContext = {
-              supabase,
-              queryEmbedding,
-              userId: user_id,
-              effectiveOrgId: context.effectiveOrgId,
-              projectId: project_id,
-              effectiveAppId: context.effectiveAppId,
-              config: config.librarian,
-              features: config.features,
-              layerFlags,
-              filterSourceTypes: filter_source_types,
-              openaiApiKey: OPENAI_API_KEY,
-              documentsCles: context.documentsCles,
-            }
-
-            // SSE wrapper for the orchestrator
-            const sseSender = (event: string, data: unknown) => sendSSE(controller, event, data)
-
-            const agenticResult = await runAgenticLoop(
-              effectiveQuery, context, config.agentic, toolCtx,
-              GEMINI_API_KEY, sseSender, Date.now(),
-            )
-
-            metrics.timings.agentic = timer.mark('agentic')
-            metrics.decisions.agentic_iterations = agenticResult.iterations
-            metrics.decisions.generation_mode = 'agentic'
-            metrics.counts.total_chunks = agenticResult.allChunks.length
-            metrics.counts.l0_chunks = agenticResult.allChunks.filter(c => c.hierarchy_level === 0).length
-            metrics.counts.l1_chunks = agenticResult.allChunks.filter(c => c.hierarchy_level === 1).length
-            metrics.counts.files_count = agenticResult.allFiles.length
-            metrics.counts.sources_count = agenticResult.sources.length
-
-            // SUGGESTIONS (optional, non-blocking)
-            if (enable_suggestions && config.suggestions.enabled && agenticResult.allChunks.length > 0) {
-              try {
-                const suggestions = await generateSuggestions(
-                  query, agenticResult.allChunks, fastAnalysis,
-                  config.suggestions, OPENAI_API_KEY,
-                )
-                if (suggestions.length > 0) {
-                  sendSSE(controller, 'suggestions', { suggestions })
-                }
-                metrics.timings.suggestions = timer.mark('suggestions')
-              } catch (err) {
-                console.warn('[retrieval] Suggestions failed (non-fatal):', err)
+              // Build tool execution context (reuses existing modules)
+              const toolCtx: ToolExecutionContext = {
+                supabase,
+                queryEmbedding,
+                userId: user_id,
+                effectiveOrgId: context.effectiveOrgId,
+                projectId: project_id,
+                effectiveAppId: context.effectiveAppId,
+                config: config.librarian,
+                features: config.features,
+                layerFlags,
+                filterSourceTypes: filter_source_types,
+                openaiApiKey: OPENAI_API_KEY,
+                documentsCles: context.documentsCles,
               }
+
+              // SSE wrapper for the orchestrator
+              const sseSender = (event: string, data: unknown) => sendSSE(controller, event, data)
+
+              const agenticResult = await runAgenticLoop(
+                effectiveQuery, context, config.agentic, toolCtx,
+                GEMINI_API_KEY, sseSender, Date.now(),
+              )
+
+              metrics.timings.agentic = timer.mark('agentic')
+              metrics.decisions.agentic_iterations = agenticResult.iterations
+              metrics.decisions.generation_mode = 'agentic'
+              metrics.counts.total_chunks = agenticResult.allChunks.length
+              metrics.counts.l0_chunks = agenticResult.allChunks.filter(c => c.hierarchy_level === 0).length
+              metrics.counts.l1_chunks = agenticResult.allChunks.filter(c => c.hierarchy_level === 1).length
+              metrics.counts.files_count = agenticResult.allFiles.length
+              metrics.counts.sources_count = agenticResult.sources.length
+
+              // SUGGESTIONS (optional, non-blocking)
+              if (enable_suggestions && config.suggestions.enabled && agenticResult.allChunks.length > 0) {
+                try {
+                  const suggestions = await generateSuggestions(
+                    query, agenticResult.allChunks, fastAnalysis,
+                    config.suggestions, OPENAI_API_KEY,
+                  )
+                  if (suggestions.length > 0) {
+                    sendSSE(controller, 'suggestions', { suggestions })
+                  }
+                  metrics.timings.suggestions = timer.mark('suggestions')
+                } catch (err) {
+                  console.warn('[retrieval] Suggestions failed (non-fatal):', err)
+                }
+              }
+
+              // FINALIZE
+              const processingTime = timer.elapsed
+              await addMessage(supabase, context.conversationId, 'assistant', agenticResult.fullResponse, agenticResult.sources, 'agentic', processingTime)
+              metrics.timings.total = processingTime
+
+              console.log(`[retrieval] Agentic done in ${processingTime}ms (${agenticResult.iterations} iterations, timed_out=${agenticResult.timedOut})`)
+
+              const agStats = chunkStats(agenticResult.allChunks)
+              await logQuery(supabase, {
+                conversation_id: context.conversationId, user_id,
+                org_id: context.effectiveOrgId || org_id || null, project_id: project_id || null, app_id,
+                query,
+                rewritten_query: effectiveQuery !== query ? effectiveQuery : null,
+                named_documents: context.namedDocuments.length > 0 ? context.namedDocuments : null,
+                intent: fastAnalysis.intent, answer_format: fastAnalysis.answer_format,
+                fast_path: false, generation_mode: 'agentic', model: config.agentic.model,
+                reranked: metrics.decisions.reranking_applied,
+                agentic: { triggered: true, reason: gate.reason, n_vector: gate.n_vector, max_sim: gate.max_sim, iterations: agenticResult.iterations, timed_out: agenticResult.timedOut, direct_answer: agenticResult.directAnswer, steps: agenticResult.steps },
+                counts: { ...metrics.counts },
+                top_similarities: agStats.top_similarities, match_sources: agStats.match_sources,
+                sources: slimSources(agenticResult.sources),
+                timings: metrics.timings, processing_time_ms: processingTime,
+              })
+
+              sendSSE(controller, 'sources', {
+                sources: agenticResult.sources,
+                conversation_id: context.conversationId,
+                generation_mode: 'agentic',
+                generation_mode_ui: MODE_LABELS.agentic.ui,
+                processing_time_ms: processingTime,
+                files_count: agenticResult.allFiles.length,
+                chunks_count: agenticResult.allChunks.length,
+                intent: fastAnalysis.intent,
+                answer_format: fastAnalysis.answer_format,
+                agentic: {
+                  iterations: agenticResult.iterations,
+                  timed_out: agenticResult.timedOut,
+                  direct_answer: agenticResult.directAnswer,
+                  steps: agenticResult.steps,
+                },
+                fast_path: false,
+                named_documents: slimNamedDocuments(context.namedDocuments),
+                metrics,
+                timings: metrics.timings,
+              })
+
+              sendSSE(controller, 'done', {})
+              controller.close()
+              return
+            } catch (err) {
+              // Revue finale : une Phase B en panne (Gemini indisponible, outil en erreur) ne doit pas
+              // faire échouer la requête — on retombe sur le chemin rapide avec les extraits déjà trouvés.
+              agenticError = err instanceof Error ? err.message : String(err)
+              console.error('[agentic] échec, repli sur le chemin rapide:', err)
+              sendSSE(controller, 'step', { step: 'agentic_failed', message: 'Recherche intelligente interrompue : réponse sur les extraits trouvés' })
+              metrics.decisions.agentic_triggered = true
             }
-
-            // FINALIZE
-            const processingTime = timer.elapsed
-            await addMessage(supabase, context.conversationId, 'assistant', agenticResult.fullResponse, agenticResult.sources, 'agentic', processingTime)
-            metrics.timings.total = processingTime
-
-            console.log(`[retrieval] Agentic done in ${processingTime}ms (${agenticResult.iterations} iterations, timed_out=${agenticResult.timedOut})`)
-
-            const agStats = chunkStats(agenticResult.allChunks)
-            await logQuery(supabase, {
-              conversation_id: context.conversationId, user_id,
-              org_id: context.effectiveOrgId || org_id || null, project_id: project_id || null, app_id,
-              query,
-              rewritten_query: effectiveQuery !== query ? effectiveQuery : null,
-              named_documents: context.namedDocuments.length > 0 ? context.namedDocuments : null,
-              intent: fastAnalysis.intent, answer_format: fastAnalysis.answer_format,
-              fast_path: false, generation_mode: 'agentic', model: config.agentic.model,
-              reranked: metrics.decisions.reranking_applied,
-              agentic: { triggered: true, reason: gate.reason, n_vector: gate.n_vector, max_sim: gate.max_sim, iterations: agenticResult.iterations, timed_out: agenticResult.timedOut, direct_answer: agenticResult.directAnswer, steps: agenticResult.steps },
-              counts: { ...metrics.counts },
-              top_similarities: agStats.top_similarities, match_sources: agStats.match_sources,
-              sources: slimSources(agenticResult.sources),
-              timings: metrics.timings, processing_time_ms: processingTime,
-            })
-
-            sendSSE(controller, 'sources', {
-              sources: agenticResult.sources,
-              conversation_id: context.conversationId,
-              generation_mode: 'agentic',
-              generation_mode_ui: MODE_LABELS.agentic.ui,
-              processing_time_ms: processingTime,
-              files_count: agenticResult.allFiles.length,
-              chunks_count: agenticResult.allChunks.length,
-              intent: fastAnalysis.intent,
-              answer_format: fastAnalysis.answer_format,
-              agentic: {
-                iterations: agenticResult.iterations,
-                timed_out: agenticResult.timedOut,
-                direct_answer: agenticResult.directAnswer,
-                steps: agenticResult.steps,
-              },
-              fast_path: false,
-              named_documents: slimNamedDocuments(context.namedDocuments),
-              metrics,
-              timings: metrics.timings,
-            })
-
-            sendSSE(controller, 'done', {})
-            controller.close()
-            return
           }
 
           // =============================================================
@@ -530,7 +562,7 @@ serve(async (req) => {
 
           // MODE DECISION
           const activeIntentStrategy = intentStrategy
-          const resolvedMode = resolveGenerationMode(generation_mode, effectiveAnalysis)
+          const resolvedMode = namedFullDocUnavailable ? 'chunks' : resolveGenerationMode(generation_mode, effectiveAnalysis)
           let effectiveMode = resolvedMode
           if (resolvedMode === 'auto') {
             if (activeIntentStrategy.mode === 'chunks') {
@@ -664,7 +696,7 @@ serve(async (req) => {
             fast_path: true, generation_mode: effectiveMode,
             model: effectiveMode === 'gemini' ? effectiveGenParams.model : config.librarian.llm_model,
             memory_hit: false, reranked: metrics.decisions.reranking_applied,
-            agentic: { triggered: false, reason: gateReason, n_vector: gate.n_vector, max_sim: gate.max_sim },
+            agentic: { triggered: agenticError !== null, reason: gateReason, n_vector: gate.n_vector, max_sim: gate.max_sim, error: agenticError ?? undefined },
             counts: { ...metrics.counts },
             top_similarities: fpStats.top_similarities, match_sources: fpStats.match_sources,
             sources: slimSources(finalSources),

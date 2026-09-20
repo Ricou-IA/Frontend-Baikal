@@ -111,7 +111,7 @@ interface EvalResult {
 //   « Les Écoles » ≡ « les ecoles »
 // Les points sont conservés volontairement (« 11.2 » ne doit pas matcher « 112 »),
 // tout comme les symboles significatifs (%). Appliqué aux DEUX côtés de la comparaison.
-function normalize(s: string): string {
+export function normalize(s: string): string {
   return s
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')        // diacritiques combinants (accents)
@@ -426,7 +426,7 @@ function buildMarkdown(
     lines.push(
       `| ${classe} | ${agg.n} | ${fmt(agg.recall_doc_pct, '%')}${delta(agg.recall_doc_pct, ref?.recall_doc_pct)} | ` +
       `${fmt(agg.page_ok_pct, '%')} | ${agg.criteria_pct}%${delta(agg.criteria_pct, ref?.criteria_pct)} | ` +
-      `${fmt(agg.all_docs_pct, ' %')} | ` +
+      `${fmt(agg.all_docs_pct, '%')} | ` +
       `${fmt(agg.mrr)} | ${agg.latency_p50}ms | ${agg.latency_p95}ms | ${agg.agentic_pct}% | ${agg.errors} |`,
     )
   }
@@ -547,7 +547,7 @@ async function main() {
   const convPath = `eval/reports/${tag}.conversations.json`
   await Deno.writeTextFile(convPath, JSON.stringify({ tag, date: reportJson.meta.date, conversation_ids: convIds }, null, 2))
 
-  console.log(`\n📊 GLOBAL : recall doc ${fmt(global.recall_doc_pct, '%')} · critères ${global.criteria_pct}% · tous docs (C3) ${fmt(global.all_docs_pct, ' %')} · MRR ${fmt(global.mrr)} · p50 ${global.latency_p50}ms · p95 ${global.latency_p95}ms · agentique ${global.agentic_pct}% · erreurs ${global.errors}`)
+  console.log(`\n📊 GLOBAL : recall doc ${fmt(global.recall_doc_pct, '%')} · critères ${global.criteria_pct}% · tous docs (C3) ${fmt(global.all_docs_pct, '%')} · MRR ${fmt(global.mrr)} · p50 ${global.latency_p50}ms · p95 ${global.latency_p95}ms · agentique ${global.agentic_pct}% · erreurs ${global.errors}`)
   console.log(`📁 Rapports : ${jsonPath} + ${mdPath}`)
   console.log(`🧹 ${convIds.length} conversation(s) de test créée(s) → ${convPath} (purgeables après run)`)
 }

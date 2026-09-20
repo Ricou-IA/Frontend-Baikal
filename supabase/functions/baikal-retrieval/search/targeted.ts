@@ -141,7 +141,16 @@ export function annotateTargeted(resolutions: NamedDocumentResolution[], targete
 }
 
 /** Forme envoyée au frontend dans l'événement `sources` (bouton « Approfondir », T8). */
-export function slimNamedDocuments(resolutions: NamedDocumentResolution[]) {
+export interface SlimNamedDocument {
+  phrase: string
+  status: string
+  found: string[]
+  file_ids: string[]
+  layer: NamedDocumentLayer | null
+  targeted_chunks: number
+}
+
+export function slimNamedDocuments(resolutions: NamedDocumentResolution[]): SlimNamedDocument[] {
   return resolutions
     .filter(r => r.status !== 'unknown')
     .map(r => ({

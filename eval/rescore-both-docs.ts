@@ -2,10 +2,10 @@
 // existant : les sources y sont stockées. Sert à obtenir la valeur v2.1.0 sans rejouer le banc.
 // Usage : deno run -A eval/rescore-both-docs.ts --report eval/reports/baseline-v2.1.0.json --golden eval/golden-set.json
 import { parseArgs } from "https://deno.land/std@0.224.0/cli/parse_args.ts"
-
-function normalize(s: string): string {
-  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[\s-]+/g, '')
-}
+// Revue finale : une seule définition de `normalize` (celle du banc), pour que le rescore
+// note exactement comme run-eval.ts. `main()` y est gardé par `if (import.meta.main)`,
+// l'import ne lance donc pas le banc.
+import { normalize } from "./run-eval.ts"
 
 const args = parseArgs(Deno.args, { string: ['report', 'golden'] })
 if (!args.report || !args.golden) {
@@ -14,6 +14,10 @@ if (!args.report || !args.golden) {
 }
 const report = JSON.parse(await Deno.readTextFile(args.report))
 const golden = JSON.parse(await Deno.readTextFile(args.golden))
+if (!Array.isArray(golden?.entries) || !Array.isArray(report?.results)) {
+  console.error('Fichier inattendu : golden.entries ou report.results absent')
+  Deno.exit(1)
+}
 // Sprint 2 : les rapports v2.1.0 n'ont pas de clé `config` — le top-k vit dans `meta` selon les
 // versions, sinon on retombe sur la valeur par défaut d'eval/config.json (10).
 const topK: number = report.meta?.top_k_for_recall ?? report.meta?.defaults?.top_k_for_recall ?? 10

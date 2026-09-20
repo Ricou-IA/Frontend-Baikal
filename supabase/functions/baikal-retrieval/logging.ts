@@ -38,6 +38,8 @@ export interface QueryLogEntry {
     timed_out?: boolean
     direct_answer?: boolean
     steps?: unknown[]
+    /** Revue finale : message d'erreur quand la Phase B a échoué et que le chemin rapide a pris le relais. */
+    error?: string
   } | null
   named_documents?: NamedDocumentResolution[] | null   // Sprint 1 (fin) : documents nommés dans la question et leur résolution
   counts?: Record<string, number>

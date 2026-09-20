@@ -20,6 +20,9 @@ export type Caller =
 export interface AccessDecision {
   allowed: boolean
   effectiveOrgId: string | null
+  /** Couche applicative du profil (revue finale) : elle pinne l'app_id d'un utilisateur ordinaire. */
+  effectiveAppId: string
+  isSuperAdmin: boolean
   reason: string
 }
 
@@ -74,6 +77,8 @@ export async function resolveAccess(
   return {
     allowed: row?.allowed === true,
     effectiveOrgId: (row?.effective_org_id as string | null) ?? null,
+    effectiveAppId: (row?.effective_app_id as string | null) ?? 'arpet',
+    isSuperAdmin: row?.is_super_admin === true,
     reason: (row?.reason as string) ?? 'unknown',
   }
 }
