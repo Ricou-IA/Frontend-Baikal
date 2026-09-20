@@ -28,7 +28,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
-import type { RequestBody, PipelineMetrics, SourceItem, AnalysisResult } from "./types.ts"
+import type { RequestBody, PipelineMetrics, SourceItem, AnalysisResult, FileInfo } from "./types.ts"
 import { corsHeaders, sseHeaders, sendSSE, errorResponse } from "./utils.ts"
 import { createTimer } from "./utils.ts"
 import { bearerToken, resolveCaller, getUserIdFromJwt, resolveAccess } from "./auth.ts"
@@ -44,6 +44,7 @@ import { searchQAMemory, incrementQAUsage } from "./search/memory.ts"
 import { executeSearch, executeCrossRefSearch } from "./search/retrieval.ts"
 import { buildNamedTargets, targetLabel, executeTargetedSearches, mergeTargeted, annotateTargeted, slimNamedDocuments } from "./search/targeted.ts"
 import { rerankIfEnabled } from "./search/reranker.ts"
+import { fetchFileInfosByIds, selectNamedFiles } from "./search/named-files.ts"
 import { buildSystemPrompt, formatContext, buildMeetingContext } from "./generation/prompt.ts"
 import { generateWithOpenAIStream } from "./generation/openai.ts"
 import { generateWithGeminiStream, getOrUploadGoogleFile, getOrCreateGlobalCache } from "./generation/gemini.ts"
@@ -359,14 +360,34 @@ serve(async (req) => {
           metrics.decisions.reranking_applied = searchResult.reranked
           metrics.timings.rerank = timer.mark('rerank')
 
+          // Sprint 2 (T7) — « Approfondir » : lecture intégrale demandée explicitement →
+          // les fichiers lus sont ceux que la question nomme, pas les mieux classés.
+          let namedFiles: FileInfo[] = []
+          if (generation_mode === 'gemini' && GEMINI_API_KEY) {
+            const namedIds = [...new Set(context.namedDocuments.filter(r => r.status === 'found').flatMap(r => r.found_file_ids))]
+            if (namedIds.length > 0) {
+              namedFiles = selectNamedFiles(
+                await fetchFileInfosByIds(supabase, namedIds),
+                config.librarian.gemini_max_files, config.librarian.gemini_max_pages,
+              )
+              if (namedFiles.length > 0) {
+                searchResult = {
+                  ...searchResult, files: namedFiles, filterApplied: true,
+                  totalPages: namedFiles.reduce((s, f) => s + f.total_pages, 0),
+                }
+                console.log(`[retrieval] Lecture intégrale sur documents nommés: ${namedFiles.map(f => f.original_filename).join(', ')}`)
+              }
+            }
+          }
+
           // =============================================================
           // DECISION: Fast Path (v1.3) vs Agentic (v2.0)
           // =============================================================
 
           const gate = evaluateAgenticGate(searchResult.chunks, config.agentic)
           console.log(`[agentic] gate: ${gate.reason} (n_vector=${gate.n_vector}, max_sim=${gate.max_sim.toFixed(3)}, avg=${gate.avg_sim.toFixed(3)})`)
-          const useAgentic = gate.trigger
-          const gateReason: GateReason = gate.trigger && !GEMINI_API_KEY ? 'no_gemini_key' : gate.reason
+          const useAgentic = gate.trigger && namedFiles.length === 0
+          const gateReason: GateReason = namedFiles.length > 0 && gate.trigger ? 'explicit_full_document' : (gate.trigger && !GEMINI_API_KEY ? 'no_gemini_key' : gate.reason)
           metrics.decisions.agentic_gate_reason = gateReason
 
           if (useAgentic && GEMINI_API_KEY) {
