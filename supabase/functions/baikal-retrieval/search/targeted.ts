@@ -31,6 +31,13 @@ export interface TargetedResult {
 export const TARGETED_CHUNKS_PER_DOCUMENT = 6
 export const TARGETED_SIMILARITY_THRESHOLD = 0.25   // seuil bas : le document est déjà désigné, comme search_in_file
 
+// Hotfix niveaux (19/09) : un document NOMMÉ explicitement doit remonter quel que
+// soit son niveau de hiérarchie, indépendamment de l'intent. Ne pas reprendre
+// intentStrategy.hierarchy_levels ici : certains documents (4 fichiers Bessières,
+// dont le Mémoire Technique, ingérés avant la v5) n'ont AUCUN chunk L0, et la
+// recherche ciblée retombait à 0 extrait pour eux malgré filter_file_ids.
+export const TARGETED_HIERARCHY_LEVELS = [0, 1] as const
+
 export function buildNamedTargets(resolutions: NamedDocumentResolution[]): NamedTarget[] {
   const targets: NamedTarget[] = []
   const seen = new Set<string>()
@@ -59,7 +66,7 @@ export async function executeTargetedSearches(
   effectiveAppId: string,
   config: LibrarianConfig,
   filterSourceTypes: string[] | undefined,
-  intentStrategy: IntentStrategy,
+  intentStrategy: IntentStrategy, // non utilisé : niveaux fixés par TARGETED_HIERARCHY_LEVELS ci-dessus ; gardé pour ne pas changer l'appel positionnel dans index.ts
   targets: NamedTarget[],
 ): Promise<TargetedResult[]> {
   if (targets.length === 0) return []
@@ -83,8 +90,8 @@ export async function executeTargetedSearches(
         filter_file_ids: target.fileIds,
         filter_filenames: null,
         enable_concept_expansion: config.enable_concept_expansion,
-        p_hierarchy_levels: intentStrategy.hierarchy_levels,
-        p_include_children: intentStrategy.include_children,
+        p_hierarchy_levels: [...TARGETED_HIERARCHY_LEVELS],
+        p_include_children: true,
         p_app_layer_weight: 1.0,          // le document est désigné : aucune pénalité de couche
         p_children_per_parent: 3,
       })

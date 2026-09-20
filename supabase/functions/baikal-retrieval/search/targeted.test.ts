@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts"
-import { buildNamedTargets, mergeTargeted, targetLabel, annotateTargeted, slimNamedDocuments } from "./targeted.ts"
+import { buildNamedTargets, mergeTargeted, targetLabel, annotateTargeted, slimNamedDocuments, TARGETED_HIERARCHY_LEVELS } from "./targeted.ts"
 import type { ChunkResult, SearchResult, LibrarianConfig, SearchConfig, NamedDocumentResolution } from "../types.ts"
 
 function chunk(id: number, file: string, sim = 0.5): ChunkResult {
@@ -49,6 +49,10 @@ Deno.test("annotateTargeted pose targeted_chunks sur la résolution correspondan
   const r = [resolution({})]
   annotateTargeted(r, [{ target: { phrase: 'CCAP', names: ['CCAP.pdf'], fileIds: ['fa'], layer: 'project' }, chunks: [chunk(2, 'fa')] }])
   assertEquals(r[0].targeted_chunks, 1)
+})
+
+Deno.test("TARGETED_HIERARCHY_LEVELS couvre L0+L1 : un document nommé doit remonter quel que soit son niveau de hiérarchie", () => {
+  assertEquals(TARGETED_HIERARCHY_LEVELS, [0, 1])
 })
 
 Deno.test("slimNamedDocuments : les unknown sont exclus, un found est projeté avec file_ids et targeted_chunks à 0 par défaut", () => {

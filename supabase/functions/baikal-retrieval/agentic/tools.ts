@@ -260,7 +260,7 @@ async function executeSearchInFileTool(
   const maxResults = Math.min(args.max_results as number || 6, 12)
 
   // Resolve file_name to file_id(s) using flexible matching
-  const fileIds = await resolveFileIds(ctx.supabase, fileName, ctx.projectId, ctx.effectiveOrgId)
+  const fileIds = await resolveFileIds(ctx.supabase, fileName, ctx.projectId, ctx.effectiveOrgId, ctx.effectiveAppId)
 
   if (fileIds.length === 0) {
     return {
@@ -320,6 +320,7 @@ async function resolveFileIds(
   fileName: string,
   projectId: string | undefined,
   orgId: string | null,
+  appId: string,
 ): Promise<string[]> {
   // Step 1: Try project-scoped matching first (most restrictive)
   if (projectId) {
@@ -337,8 +338,8 @@ async function resolveFileIds(
     }
   }
 
-  // Step 2: Fallback to org-scoped (for org-level / app-level docs like DTUs)
-  // Security: ALWAYS filter by org_id — never search globally
+  // Step 2: Fallback to org-scoped (for org-level docs like DTUs)
+  // Sécurité : toujours filtrer par org_id ici — jamais de recherche globale sur cette couche
   if (orgId) {
     const { data } = await supabase
       .schema('sources')
@@ -349,11 +350,28 @@ async function resolveFileIds(
       .ilike('original_filename', `%${fileName}%`)
       .limit(5)
 
-    return (data || []).map((f: Record<string, unknown>) => f.id as string)
+    if (data && data.length > 0) {
+      return data.map((f: Record<string, unknown>) => f.id as string)
+    }
   }
 
-  // No org_id available — cannot safely resolve files
-  return []
+  // Step 3: Couche application — documents de référence PUBLICS, partagés par
+  // conception entre toutes les organisations d'une même app (ex. CCAG Travaux),
+  // sans project_id ni org_id. Ce n'est pas une recherche globale : le filtre de
+  // sécurité ici est app_id, pas org_id. Essayée aussi quand orgId est null
+  // (compte sans organisation), pour ne pas laisser ces documents introuvables.
+  const { data } = await supabase
+    .schema('sources')
+    .from('files')
+    .select('id')
+    .eq('processing_status', 'completed')
+    .eq('layer', 'app')
+    .eq('app_id', appId)
+    .is('project_id', null)
+    .ilike('original_filename', `%${fileName}%`)
+    .limit(5)
+
+  return (data || []).map((f: Record<string, unknown>) => f.id as string)
 }
 
 function mapSearchResults(data: Record<string, unknown>[]): ChunkResult[] {

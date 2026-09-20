@@ -166,8 +166,16 @@ Les mots suivants indiquent une COMPARAISON:
 // INTENT STRATEGIES (hierarchy L0/L1)
 // ============================================================================
 
-// v1.1.1: EXACT copy from librarian-v4 INTENT_STRATEGY
-// Do NOT change these - they are proven to work in production
+// Sprint 2 (hotfix niveaux, 19/09) : synthesis et comparison cherchent en L0+L1,
+// et non plus L0 seul. 4 documents du projet Bessières — dont le Mémoire
+// Technique (171 chunks L1) — ont été ingérés avant la v5 et n'ont AUCUN chunk
+// L0 : en L0 seul, ils étaient injoignables aussi bien par la recherche globale
+// que par la recherche ciblée (targeted_chunks retombait à 0 dans rag.query_logs).
+// Le L1 reste de toute façon le seul niveau réellement citable (règle 5 du prompt
+// système) : ajouter L0+L1 ne change rien pour les documents qui ont un L0, cela
+// rend seulement les autres de nouveau joignables. factual/citation/conversational
+// restent en L1 seul : leur usage (sourçage exact, salutations) ne bénéficie pas
+// de L0.
 const INTENT_STRATEGIES: Record<string, IntentStrategy> = {
   factual: {
     hierarchy_levels: [1],      // L1 uniquement (texte exact pour sourçage)
@@ -180,12 +188,12 @@ const INTENT_STRATEGIES: Record<string, IntentStrategy> = {
     mode: 'chunks',
   },
   synthesis: {
-    hierarchy_levels: [0],      // Chercher dans L0 (sections/résumés)
+    hierarchy_levels: [0, 1],   // L0 (sections/résumés) + L1 (repli documents sans L0, cf. commentaire ci-dessus)
     include_children: true,     // Puis récupérer L1 enfants pour le contenu détaillé
     mode: 'chunks',
   },
   comparison: {
-    hierarchy_levels: [0],      // L0 pour identifier les sections
+    hierarchy_levels: [0, 1],   // L0 (identifier les sections) + L1 (repli documents sans L0, cf. commentaire ci-dessus)
     include_children: true,     // L1 enfants pour comparer le contenu exact
     mode: 'chunks',
   },
