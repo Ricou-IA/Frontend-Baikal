@@ -89,6 +89,12 @@
 --
 -- Une valeur hors vocabulaire n'est pas affichée ailleurs par défaut : elle
 -- est écartée, comme une ligne incomplète. Baikal ne devine pas un rangement.
+--
+-- LA RÈGLE POUR RANGER : le chapitre suit ce que la mesure COMPTE, pas qui l'a
+-- produite. Les analyses lancées par un diagnostiqueur abonné vont dans
+-- 'clients', parce qu'elles comptent des logements ; quarante analyses ne font
+-- pas quarante comptes. 'comptes_pro' est le chapitre des COMPTES.
+-- (Formulée par la session MonsieurDPE en rangeant ses cinq premières clés.)
 
 create or replace view @SCHEMA@.baikal_mesures as
 
