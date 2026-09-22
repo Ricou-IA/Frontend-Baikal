@@ -46,7 +46,7 @@ import { buildNamedTargets, targetLabel, executeTargetedSearches, mergeTargeted,
 import { rerankIfEnabled } from "./search/reranker.ts"
 import { fetchFileInfosByIds, selectNamedFiles } from "./search/named-files.ts"
 import { buildSystemPrompt, formatContext, buildMeetingContext } from "./generation/prompt.ts"
-import { generateWithOpenAIStream } from "./generation/openai.ts"
+import { generateChunksStream } from "./generation/chunks.ts"
 import { generateWithGeminiStream, getOrUploadGoogleFile, getOrCreateGlobalCache } from "./generation/gemini.ts"
 import { EMPTY_USAGE, addUsage, type TokenUsage } from "./generation/usage.ts"
 import { buildSourcesFromFiles, buildSourcesFromChunks } from "./sources.ts"
@@ -625,6 +625,8 @@ serve(async (req) => {
           let cacheWasReused = false
           const meetingContext = buildMeetingContext(searchResult.meetingChunks)
           const effectiveGenParams = getEffectiveGenerationParams(config.librarian, effectiveAnalysis.intent)
+          let usedModel = effectiveGenParams.model
+          const chunksHooks = { onUsage: noteUsage, onModel: (m: string) => { usedModel = m } }
 
           if (effectiveMode === 'gemini' && searchResult.files.length > 0) {
             try {
@@ -669,9 +671,9 @@ serve(async (req) => {
                 effectiveAnalysis.answer_format, effectiveAnalysis.key_concepts, false, config.features,
               )
               const ctx = formatContext(searchResult.chunks, config.librarian.max_context_length)
-              const generator = generateWithOpenAIStream(
+              const generator = generateChunksStream(
                 effectiveAnalysis.rewritten_query || query, ctx, systemPrompt,
-                config.librarian, OPENAI_API_KEY, noteUsage,
+                config.librarian, { openai: OPENAI_API_KEY, gemini: GEMINI_API_KEY }, chunksHooks,
               )
               for await (const token of generator) {
                 fullResponse += token
@@ -688,9 +690,9 @@ serve(async (req) => {
             const ctx = formatContext(searchResult.chunks, config.librarian.max_context_length)
 
             sendSSE(controller, 'step', { step: 'generating', message: 'Génération...' })
-            const generator = generateWithOpenAIStream(
+            const generator = generateChunksStream(
               effectiveAnalysis.rewritten_query || query, ctx, systemPrompt,
-              config.librarian, OPENAI_API_KEY, noteUsage,
+              config.librarian, { openai: OPENAI_API_KEY, gemini: GEMINI_API_KEY }, chunksHooks,
             )
             for await (const token of generator) {
               fullResponse += token
@@ -723,7 +725,7 @@ serve(async (req) => {
           await addMessage(supabase, context.conversationId, 'assistant', fullResponse, finalSources, effectiveMode, processingTime)
           metrics.timings.total = processingTime
 
-          console.log(`[retrieval] Fast-path done in ${processingTime}ms: ${JSON.stringify(metrics.timings)}`)
+          console.log(`[retrieval] Fast-path done in ${processingTime}ms (${usedModel}): ${JSON.stringify(metrics.timings)}`)
 
           const fpStats = chunkStats(searchResult.chunks)
           await logQuery(supabase, {
@@ -734,7 +736,7 @@ serve(async (req) => {
             named_documents: context.namedDocuments.length > 0 ? context.namedDocuments : null,
             intent: effectiveAnalysis.intent, answer_format: effectiveAnalysis.answer_format,
             fast_path: true, generation_mode: effectiveMode,
-            model: effectiveMode === 'gemini' ? effectiveGenParams.model : config.librarian.llm_model,
+            model: usedModel,
             memory_hit: false, reranked: metrics.decisions.reranking_applied,
             agentic: { triggered: agenticError !== null, reason: gateReason, n_vector: gate.n_vector, max_sim: gate.max_sim, error: agenticError ?? undefined },
             counts: { ...metrics.counts },
@@ -757,7 +759,8 @@ serve(async (req) => {
             answer_format: effectiveAnalysis.answer_format,
             rewritten_query: effectiveAnalysis.rewritten_query,
             file_filter_applied: searchResult.filterApplied,
-            effective_model: effectiveGenParams.model,
+            effective_model: usedModel,
+            model: usedModel,
             hierarchy_strategy: {
               levels: activeIntentStrategy.hierarchy_levels,
               include_children: activeIntentStrategy.include_children,
