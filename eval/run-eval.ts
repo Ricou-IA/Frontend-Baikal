@@ -140,7 +140,7 @@ const REFUSAL_PATTERNS = [
   /pas (explicitement|clairement) (d[ée]taill|mentionn|pr[ée]cis|indiqu|abord)/i,
   /n['’]existe pas (dans|parmi)/i, /aucun (fichier|document)[^.]{0,160}(projet|corpus)/i,
   /ne (sp[ée]cifie|d[ée]taille|pr[ée]cise|fournit|indique) pas (de |d['’]|la |le |les )/i,
-  /ne contient pas de (document|fichier|section|mention)/i,
+  /ne contient \**(pas d[e'’]|aucune? )\s*\**(document|fichier|section|mention)/i,
   /n['’]existe pas (de |d['’])/i,
   /aucune (mention|r[ée]f[ée]rence|trace)/i,
   /ne (mentionne|traite|aborde|pr[ée]voit)(nt)? (à aucun endroit|nulle part)/i,
