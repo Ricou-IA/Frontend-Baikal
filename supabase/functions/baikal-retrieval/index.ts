@@ -693,6 +693,8 @@ serve(async (req) => {
             } catch (geminiError) {
               if (fileTokensSent) {
                 console.error('[retrieval] Gemini (fichiers) en échec après début du streaming, réponse interrompue:', geminiError)
+                metrics.timings.generation = timer.mark('generation')
+                if (suggestionsPromise) await suggestionsPromise
                 await logQuery(supabase, {
                   conversation_id: context.conversationId, user_id,
                   org_id: context.effectiveOrgId || org_id || null, project_id: project_id || null, app_id,
