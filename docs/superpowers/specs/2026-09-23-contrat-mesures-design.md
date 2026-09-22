@@ -153,9 +153,26 @@ de ligne vaut zéro, sans danger. Pour un stock, pas de ligne veut dire « pas
 mesuré ce jour-là », et afficher 0 fiche revendiquée un lundi de calme serait
 faux.
 
-Le contrat n'exige donc **pas** une ligne par jour et par clé : exiger un
+Pour un FLUX, le contrat n'exige donc pas une ligne par jour : exiger un
 `generate_series` de chaque site déplace le coût chez lui et garantit qu'un
 site l'oubliera. C'est Baikal qui est tolérant aux trous.
+
+Pour un STOCK, c'est l'inverse, et la session MonsieurDPE l'a trouvé en
+production le 23/09 : un stock doit publier une ligne par jour depuis sa
+première mesure, **zéros compris**. Une ligne absente veut dire « pas
+mesuré », jamais « zéro », et la tolérance de Baikal fige alors le compteur à
+sa dernière valeur non nulle. Une fenêtre glissante ne redescend plus, un
+abonné résilié reste compté, une fiche supprimée survit. Concrètement, la
+tuile « dossiers distincts, 7 j » aurait annoncé 1 au huitième jour sans
+ouverture, là où la réponse est 0 : un nombre faux, plausible, et daté d'une
+date qui ne dit pas qu'il est faux. Les branches de stock se publient donc en
+jointure externe.
+
+La tolérance de Baikal reste, mais elle est une tolérance aux pannes de
+publication, pas une licence de publier par intermittence. Deux bornes : on ne
+publie rien avant la première mesure, sans quoi la courbe montrerait une année
+plate qui n'a jamais existé ; et un cumul monotone n'a pas besoin de ses
+zéros, son absence de ligne ne pouvant pas mentir.
 
 - Un `dernier` vaut la dernière ligne dont `jour` est inférieur ou égal à la
   borne haute de la fenêtre, **sans borne de recul**.

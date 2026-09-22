@@ -9,7 +9,7 @@
 --
 -- Installer chez un site : copier ce fichier dans une migration du site,
 -- substituer @SCHEMA@ par le schéma du produit, remplacer les branches de
--- l'exemple par les siennes, puis passer les cinq contrôles du §3.
+-- l'exemple par les siennes, puis passer les sept contrôles du §3.
 --
 -- Baikal ne connaît aucun libellé, aucune clé, aucun métier. Il lit des
 -- séries, pose ses bornes de fenêtre, calcule la variation et trace la
@@ -49,6 +49,26 @@
 --     le site publie une série par fenêtre qu'il veut servir (7, 30, 90).
 --     Baikal ne se rabat JAMAIS sur la fenêtre publiée la plus proche : une
 --     clé qui ne couvre pas la fenêtre demandée n'est pas affichée.
+--
+-- (b bis) UN STOCK PUBLIE UNE LIGNE PAR JOUR, ZÉROS COMPRIS, depuis sa
+--     première mesure. Une ligne absente veut dire « pas mesuré », jamais
+--     « zéro », et Baikal ne sait pas distinguer les deux : il affiche alors la
+--     dernière valeur connue, datée. Un stock publié en jointure INTERNE se
+--     fige donc à sa dernière valeur non nulle — une fenêtre glissante qui ne
+--     redescend jamais, un abonné résilié qui reste compté, une fiche
+--     supprimée qui survit. Trouvé chez MonsieurDPE le 23/09 sur quatre
+--     branches : la tuile « dossiers distincts, 7 j » aurait annoncé 1 au
+--     huitième jour sans ouverture, là où la réponse est 0. La jointure
+--     externe est ce qui répare.
+--
+--     La valeur datée du dernier jour connu est une TOLÉRANCE aux pannes de
+--     publication, pas une licence de publier par intermittence.
+--
+--     Deux bornes à cette règle. On ne publie RIEN avant la première mesure :
+--     des zéros antérieurs prétendraient qu'on mesurait déjà et dessineraient
+--     une courbe plate qui n'a jamais existé. Et un cumul monotone, qui ne peut
+--     pas décroître (un chiffre d'affaires cumulé), n'a pas besoin de ses
+--     zéros : son absence de ligne ne peut pas mentir.
 --
 -- (c) LES TESTS ET LES SUPPRIMÉS SONT EXCLUS À LA SOURCE. Tant que les KPI
 --     étaient écrits dans Baikal, c'est lui qui les écartait en joignant
@@ -172,7 +192,7 @@ comment on view @SCHEMA@.baikal_mesures is
 
 -- ------ 3. Recette d'installation ------
 --
--- Les six contrôles à passer avant de déclarer un site branché. Aucun n'est
+-- Les sept contrôles à passer avant de déclarer un site branché. Aucun n'est
 -- facultatif : chacun correspond à une panne déjà vue, et toutes ces pannes
 -- ont la même signature, une vue plausible mais fausse, jamais une erreur.
 --
@@ -223,7 +243,19 @@ comment on view @SCHEMA@.baikal_mesures is
 --     La règle d'exploitation du dépôt vaut ici : rejouer cette boucle chaque
 --     fois qu'une table nouvelle entre dans une vue contractuelle.
 
--- (6) Lecture effective sous le rôle de Baikal, et non sous le rôle courant.
+-- (6) Série continue des stocks. Un stock doit avoir autant de jours publiés
+--     que de jours écoulés depuis sa première mesure. Les seules lignes
+--     admises en sortie sont les cumuls monotones (§1 b bis).
+--
+--     select cle, fenetre_jours,
+--            count(distinct jour) as jours_publies,
+--            (max(jour) - min(jour) + 1) as jours_attendus
+--     from @SCHEMA@.baikal_mesures
+--     where agregation = 'dernier'
+--     group by 1, 2
+--     having count(distinct jour) <> (max(jour) - min(jour) + 1);
+
+-- (7) Lecture effective sous le rôle de Baikal, et non sous le rôle courant.
 --     Doit rendre des lignes, et les MÊMES qu'en (1).
 --
 --     set role baikal_reader;
