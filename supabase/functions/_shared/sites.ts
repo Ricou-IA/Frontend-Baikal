@@ -15,6 +15,11 @@ export interface Site {
   is_active: boolean;
   domaine: string | null;
   db_schema: string | null;
+  // Fuseau du calendrier des mesures du site. Baikal pose ses bornes de
+  // fenetre dedans, parce que les vues contractuelles publient un jour LOCAL :
+  // calculer les unes en UTC et les autres a Paris rend la journee en cours
+  // fausse des deux cotes a la fois.
+  fuseau: string;
   db_ro_secret_ref: string | null;
   env_url: string | null;
   env_secret_ref: string | null;
@@ -31,7 +36,7 @@ export async function chargerSite(
 ): Promise<Site> {
   const { data, error } = await admin.schema("config").from("apps")
     .select(
-      "id, name, is_active, domaine, db_schema, db_ro_secret_ref, env_url, env_secret_ref, env_anon_key, env_dossiers_fn, env_prospects_fn",
+      "id, name, is_active, domaine, db_schema, fuseau, db_ro_secret_ref, env_url, env_secret_ref, env_anon_key, env_dossiers_fn, env_prospects_fn",
     )
     .eq("id", appId).maybeSingle();
   if (error) throw new ErreurSite(`Lecture du registre impossible: ${error.message}`);

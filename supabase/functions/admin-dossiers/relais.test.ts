@@ -8,6 +8,7 @@ const siteComplet: Site = {
   is_active: true,
   domaine: null,
   db_schema: "pack_vendeur",
+  fuseau: "Europe/Paris",
   db_ro_secret_ref: null,
   env_url: "https://exemple.supabase.co/",
   env_secret_ref: "RELAIS_TEST_CLE",
