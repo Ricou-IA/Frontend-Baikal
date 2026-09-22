@@ -140,10 +140,15 @@ const REFUSAL_PATTERNS = [
   /pas (explicitement|clairement) (d[ée]taill|mentionn|pr[ée]cis|indiqu|abord)/i,
   /n['’]existe pas (dans|parmi)/i, /aucun (fichier|document)[^.]{0,160}(projet|corpus)/i,
   /ne (sp[ée]cifie|d[ée]taille|pr[ée]cise|fournit|indique) pas (de |d['’]|la |le |les )/i,
+  /ne contient pas de (document|fichier|section|mention)/i,
+  /n['’]existe pas (de |d['’])/i,
+  /aucune (mention|r[ée]f[ée]rence|trace)/i,
+  /ne (mentionne|traite|aborde|pr[ée]voit)(nt)? (à aucun endroit|nulle part)/i,
+  /ne (font|fait) pas r[ée]f[ée]rence/i,
 ]
 
-// Sprint 3 (R-S2a) : fenêtre 60 → 160 caractères (C7-004) — hors comparabilité stricte avec v2.2.0 sur cette seule question
-export const REFUSAL_PATTERNS_VERSION = 2
+// Sprint 3 : v2 fenêtre 60 → 160 (C7-004) ; v3 formulations de gpt-4.1-mini / Gemini (« ne contient pas de document », « aucune mention », « ne mentionne à aucun endroit », « n'existe pas de ») — hors comparabilité stricte sur C7
+export const REFUSAL_PATTERNS_VERSION = 3
 
 export function detectRefusal(answer: string): boolean {
   return REFUSAL_PATTERNS.some(rx => rx.test(answer))
@@ -474,7 +479,7 @@ function buildMarkdown(
   lines.push('')
   lines.push(`> ${new Date().toISOString()} — ${results.length} questions${baseline ? ` — comparé à ${baseline.tag}` : ''}`)
   lines.push(`> Modèle de génération (surcharge) : ${llmModelOverride ?? 'config DB'}`)
-  lines.push(`> Motifs de refus : v${REFUSAL_PATTERNS_VERSION} (v2 : fenêtre 160 caractères — C7-004 non strictement comparable à v2.2.0)`)
+  lines.push(`> Motifs de refus : v${REFUSAL_PATTERNS_VERSION} (v2 : fenêtre 160 caractères ; v3 : formulations nouvelles — C7 non strictement comparable à v2.2.0)`)
   lines.push('')
   lines.push('## Synthèse par classe')
   lines.push('')
