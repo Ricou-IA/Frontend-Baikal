@@ -6,6 +6,7 @@ import type {
   Supabase, LibrarianConfig, FileInfo, EffectiveGenerationParams,
 } from "../types.ts"
 import { hashFileIds, hashPrompt } from "../utils.ts"
+import { type TokenUsage, usageFromGemini } from "./usage.ts"
 
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY")!
 
@@ -203,6 +204,7 @@ export async function* generateWithGeminiStream(
   cacheName: string,
   effectiveParams: EffectiveGenerationParams,
   meetingContext: string = '',
+  onUsage?: (u: TokenUsage) => void,
 ): AsyncGenerator<string, string, undefined> {
   const fullQuery = meetingContext ? `${query}\n\n${meetingContext}` : query
 
@@ -233,6 +235,7 @@ export async function* generateWithGeminiStream(
   const decoder = new TextDecoder()
   let fullContent = ''
   let buffer = ''
+  let lastUsage: TokenUsage | null = null
 
   while (true) {
     const { done, value } = await reader.read()
@@ -248,6 +251,8 @@ export async function* generateWithGeminiStream(
 
       try {
         const json = JSON.parse(trimmed.slice(6))
+        const u = usageFromGemini(json)
+        if (u) lastUsage = u
         const text = json.candidates?.[0]?.content?.parts?.[0]?.text
         if (text) {
           fullContent += text
@@ -259,5 +264,6 @@ export async function* generateWithGeminiStream(
     }
   }
 
+  if (lastUsage) onUsage?.(lastUsage)
   return fullContent
 }

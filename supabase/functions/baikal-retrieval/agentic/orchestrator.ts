@@ -32,6 +32,7 @@ import {
 } from "./gemini-agent.ts"
 import { executeTool, type ToolExecutionContext } from "./tools.ts"
 import { buildSourcesFromChunks } from "../sources.ts"
+import { EMPTY_USAGE, addUsage, type TokenUsage } from "../generation/usage.ts"
 
 // ============================================================================
 // TYPES
@@ -46,6 +47,7 @@ export interface AgenticResult {
   iterations: number
   timedOut: boolean
   directAnswer: boolean
+  usage: TokenUsage
 }
 
 // ============================================================================
@@ -105,6 +107,7 @@ export async function runAgenticLoop(
   let iterations = 0
   let timedOut = false
   let finalText: string | null = null
+  let usage: TokenUsage = EMPTY_USAGE
 
   // ==========================================
   // REACT LOOP
@@ -125,6 +128,7 @@ export async function runAgenticLoop(
     sendSSE('step', { step: 'agent_thinking', message: `Réflexion (étape ${iterations})...` })
 
     const turn = await callGeminiAgent(query, history, agenticConfig, geminiApiKey, { timeoutMs: Math.min(20_000, remaining) })
+    usage = addUsage(usage, turn.usage)
 
     if (turn.type === 'text') {
       // S2.2 : la réponse texte de la boucle EST la réponse finale — plus de second appel
@@ -185,7 +189,7 @@ export async function runAgenticLoop(
     }
   } else {
     // Timeout ou itérations épuisées sans réponse texte : génération finale sans outils
-    const generator = streamGeminiAgentResponse(history, agenticConfig, geminiApiKey)
+    const generator = streamGeminiAgentResponse(history, agenticConfig, geminiApiKey, u => { usage = addUsage(usage, u) })
     for await (const token of generator) {
       fullResponse += token
       sendSSE('token', { content: token })
@@ -205,6 +209,7 @@ export async function runAgenticLoop(
     iterations,
     timedOut,
     directAnswer,
+    usage,
   }
 }
 

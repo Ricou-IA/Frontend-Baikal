@@ -3,6 +3,7 @@
 // ============================================================================
 
 import type { LibrarianConfig } from "../types.ts"
+import { type TokenUsage, usageFromOpenAI } from "./usage.ts"
 
 // ============================================================================
 // STREAM GENERATE
@@ -14,6 +15,7 @@ export async function* generateWithOpenAIStream(
   systemPrompt: string,
   config: LibrarianConfig,
   openaiApiKey: string,
+  onUsage?: (u: TokenUsage) => void,
 ): AsyncGenerator<string, string, undefined> {
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -30,6 +32,7 @@ export async function* generateWithOpenAIStream(
       temperature: config.temperature,
       max_tokens: config.max_tokens,
       stream: true,
+      stream_options: { include_usage: true },
     }),
     signal: AbortSignal.timeout(120_000),
   })
@@ -59,6 +62,8 @@ export async function* generateWithOpenAIStream(
 
       try {
         const json = JSON.parse(trimmed.slice(6))
+        const usage = usageFromOpenAI(json)
+        if (usage) onUsage?.(usage)
         const content = json.choices?.[0]?.delta?.content
         if (content) {
           fullContent += content

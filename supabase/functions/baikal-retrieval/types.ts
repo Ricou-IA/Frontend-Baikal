@@ -452,5 +452,8 @@ export interface PipelineMetrics {
     total_pages: number
     sources_count: number
     targeted_chunks: number
+    tokens_in: number
+    tokens_out: number
+    llm_calls: number
   }
 }

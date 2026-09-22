@@ -48,6 +48,7 @@ import { fetchFileInfosByIds, selectNamedFiles } from "./search/named-files.ts"
 import { buildSystemPrompt, formatContext, buildMeetingContext } from "./generation/prompt.ts"
 import { generateWithOpenAIStream } from "./generation/openai.ts"
 import { generateWithGeminiStream, getOrUploadGoogleFile, getOrCreateGlobalCache } from "./generation/gemini.ts"
+import { EMPTY_USAGE, addUsage, type TokenUsage } from "./generation/usage.ts"
 import { buildSourcesFromFiles, buildSourcesFromChunks } from "./sources.ts"
 import { generateSuggestions } from "./generation/suggestions.ts"
 import { logQuery, slimSources, chunkStats } from "./logging.ts"
@@ -188,9 +189,18 @@ serve(async (req) => {
             total_chunks: 0, l0_chunks: 0, l1_chunks: 0,
             child_chunks: 0, files_count: 0, total_pages: 0, sources_count: 0,
             targeted_chunks: 0,
+            tokens_in: 0, tokens_out: 0, llm_calls: 0,
           },
         }
         metrics.timings.auth = authMs
+
+        let usage: TokenUsage = EMPTY_USAGE
+        const noteUsage = (u: TokenUsage) => {
+          usage = addUsage(usage, u)
+          metrics.counts.tokens_in = usage.input_tokens
+          metrics.counts.tokens_out = usage.output_tokens
+          metrics.counts.llm_calls = usage.calls
+        }
 
         try {
           sendSSE(controller, 'step', { step: 'received', message: 'Question reçue' })
@@ -454,6 +464,7 @@ serve(async (req) => {
               )
 
               metrics.timings.agentic = timer.mark('agentic')
+              noteUsage(agenticResult.usage)
               metrics.decisions.agentic_iterations = agenticResult.iterations
               metrics.decisions.generation_mode = 'agentic'
               metrics.counts.total_chunks = agenticResult.allChunks.length
@@ -520,6 +531,8 @@ serve(async (req) => {
                 },
                 fast_path: false,
                 named_documents: slimNamedDocuments(context.namedDocuments),
+                model: config.agentic.model,
+                usage,
                 metrics,
                 timings: metrics.timings,
               })
@@ -638,7 +651,7 @@ serve(async (req) => {
               sendSSE(controller, 'step', { step: 'generating', message: 'Génération...' })
               const generator = generateWithGeminiStream(
                 effectiveAnalysis.rewritten_query || query, cacheResult.cacheName,
-                effectiveGenParams, meetingContext,
+                effectiveGenParams, meetingContext, noteUsage,
               )
 
               for await (const token of generator) {
@@ -658,7 +671,7 @@ serve(async (req) => {
               const ctx = formatContext(searchResult.chunks, config.librarian.max_context_length)
               const generator = generateWithOpenAIStream(
                 effectiveAnalysis.rewritten_query || query, ctx, systemPrompt,
-                config.librarian, OPENAI_API_KEY,
+                config.librarian, OPENAI_API_KEY, noteUsage,
               )
               for await (const token of generator) {
                 fullResponse += token
@@ -677,7 +690,7 @@ serve(async (req) => {
             sendSSE(controller, 'step', { step: 'generating', message: 'Génération...' })
             const generator = generateWithOpenAIStream(
               effectiveAnalysis.rewritten_query || query, ctx, systemPrompt,
-              config.librarian, OPENAI_API_KEY,
+              config.librarian, OPENAI_API_KEY, noteUsage,
             )
             for await (const token of generator) {
               fullResponse += token
@@ -753,6 +766,7 @@ serve(async (req) => {
             agentic: null,
             cross_ref: effectiveAnalysis.cross_ref || null,
             named_documents: slimNamedDocuments(context.namedDocuments),
+            usage,
             metrics,
             timings: metrics.timings,
           })

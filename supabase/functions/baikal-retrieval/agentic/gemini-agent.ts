@@ -12,6 +12,7 @@
 
 import type { AgenticConfig, ChunkResult } from "../types.ts"
 import { TOOL_DECLARATIONS } from "./tools.ts"
+import { type TokenUsage, usageFromGemini } from "../generation/usage.ts"
 
 // ============================================================================
 // TYPES
@@ -23,6 +24,7 @@ export interface AgentTurn {
   args?: Record<string, unknown>
   content?: string
   thinking?: string   // The LLM's reasoning (for SSE step display)
+  usage?: TokenUsage
 }
 
 interface GeminiMessage {
@@ -117,6 +119,7 @@ export async function callGeminiAgent(
 
   const data = await response.json()
   const candidate = data.candidates?.[0]
+  const usage = usageFromGemini(data) ?? undefined
 
   if (!candidate?.content?.parts) {
     throw new Error('Gemini agent: no content in response')
@@ -130,6 +133,7 @@ export async function callGeminiAgent(
         name: part.functionCall.name,
         args: part.functionCall.args || {},
         thinking: extractThinking(candidate.content.parts),
+        usage,
       }
     }
   }
@@ -143,6 +147,7 @@ export async function callGeminiAgent(
   return {
     type: 'text',
     content: textParts,
+    usage,
   }
 }
 
@@ -154,6 +159,7 @@ export async function* streamGeminiAgentResponse(
   conversationHistory: GeminiMessage[],
   agenticConfig: AgenticConfig,
   geminiApiKey: string,
+  onUsage?: (u: TokenUsage) => void,
 ): AsyncGenerator<string, string, undefined> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${agenticConfig.model}:streamGenerateContent?alt=sse&key=${geminiApiKey}`
 
@@ -186,6 +192,7 @@ export async function* streamGeminiAgentResponse(
   const decoder = new TextDecoder()
   let fullContent = ''
   let buffer = ''
+  let lastUsage: TokenUsage | null = null
 
   while (true) {
     const { done, value } = await reader.read()
@@ -201,6 +208,8 @@ export async function* streamGeminiAgentResponse(
 
       try {
         const json = JSON.parse(trimmed.slice(6))
+        const u = usageFromGemini(json)
+        if (u) lastUsage = u
         const text = json.candidates?.[0]?.content?.parts?.[0]?.text
         if (text) {
           fullContent += text
@@ -212,6 +221,7 @@ export async function* streamGeminiAgentResponse(
     }
   }
 
+  if (lastUsage) onUsage?.(lastUsage)
   return fullContent
 }
 
