@@ -1,5 +1,5 @@
 // ============================================================================
-// baikal-retrieval v2.2.0 - "Agentic RAG" + Sprint 2 (documents nommés cibles, budget agentique, acces verifie)
+// baikal-retrieval v2.3.0 - "Agentic RAG" + Sprint 3 (modèle de génération configurable, coût par requête, reranker préservant les documents nommés)
 // ============================================================================
 //
 // Evolution from v1.3.0 "Search-First, Analyze-Later":
@@ -170,7 +170,7 @@ serve(async (req) => {
     const authMs = timer.mark('auth')
     console.log(`[auth] ${caller.kind} en ${authMs}ms`)
 
-    console.log(`[retrieval] === v2.2.0 Sprint 2 === Query: "${query.substring(0, 60)}..."`)
+    console.log(`[retrieval] === v2.3.0 Sprint 3 === Query: "${query.substring(0, 60)}..."`)
     const layerFlags = { app: include_app_layer, org: include_org_layer, project: include_project_layer, user: include_user_layer }
 
     const sseStream = new ReadableStream({

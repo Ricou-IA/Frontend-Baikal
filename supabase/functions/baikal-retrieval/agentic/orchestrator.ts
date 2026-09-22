@@ -119,7 +119,7 @@ export async function runAgenticLoop(
     }
 
     iterations++
-    console.log(`[agentic] Iteration ${iterations}/${agenticConfig.max_iterations} (budget restant ${remaining}ms)`)
+    console.log(`[agentic] Itération ${iterations}/${agenticConfig.max_iterations} (budget restant ${remaining} ms)`)
 
     // Call Gemini with tools
     sendSSE('step', { step: 'agent_thinking', message: `Réflexion (étape ${iterations})...` })

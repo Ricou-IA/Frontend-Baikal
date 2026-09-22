@@ -49,7 +49,7 @@ export function buildFallbackAnalysis(
     search_config: SEARCH_CONFIGS[intent] || SEARCH_CONFIGS.factual,
     answer_format: FORMATS[intent] || 'paragraph',
     key_concepts: extractKeywords(query),
-    reasoning: 'Analyse par mots-cles',
+    reasoning: 'Analyse par mots-clés',
   }
 
   if (crossRef.is_cross_ref) {

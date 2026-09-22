@@ -305,7 +305,7 @@ function parseBrainConfig(data: Record<string, unknown> | null): BrainConfig {
   }
 }
 
-function parseLibrarianConfig(data: Record<string, unknown> | null): LibrarianConfig {
+export function parseLibrarianConfig(data: Record<string, unknown> | null): LibrarianConfig {
   if (!data) return FALLBACK_LIBRARIAN
 
   const params = (data.parameters || {}) as Record<string, Record<string, unknown>>
@@ -345,7 +345,7 @@ function parseLibrarianConfig(data: Record<string, unknown> | null): LibrarianCo
     boost_on_mention: scoring.boost_on_mention as number || FALLBACK_LIBRARIAN.boost_on_mention,
     min_chunks_for_inclusion: scoring.min_chunks_for_inclusion as number || FALLBACK_LIBRARIAN.min_chunks_for_inclusion,
     app_layer_weight: typeof search.app_layer_weight === 'number' ? search.app_layer_weight : FALLBACK_LIBRARIAN.app_layer_weight,
-    llm_model: FALLBACK_LIBRARIAN.llm_model,
+    llm_model: generation.llm_model as string || FALLBACK_LIBRARIAN.llm_model,
     max_context_length: search.max_context_length as number || FALLBACK_LIBRARIAN.max_context_length,
     google_file_ttl_hours: FALLBACK_LIBRARIAN.google_file_ttl_hours,
     qa_memory_similarity_threshold: legacy.qa_memory_similarity_threshold as number || FALLBACK_LIBRARIAN.qa_memory_similarity_threshold,
@@ -422,6 +422,17 @@ export const MATCH_DOCUMENTS_FN = 'match_documents_v15'
 // ============================================================================
 // HELPERS
 // ============================================================================
+
+// ============================================================================
+// FOURNISSEUR DE GÉNÉRATION SUR EXTRAITS (Sprint 3, S3.1)
+// ============================================================================
+
+export type ChunksProvider = 'openai' | 'gemini'
+
+/** Le fournisseur se déduit du nom du modèle : `gemini-*` → Gemini, tout le reste → OpenAI. */
+export function providerFor(model: string): ChunksProvider {
+  return /^gemini-/i.test(model.trim()) ? 'gemini' : 'openai'
+}
 
 export function getEffectiveGenerationParams(
   config: LibrarianConfig,
