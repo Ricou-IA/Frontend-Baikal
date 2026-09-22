@@ -45,4 +45,10 @@ comme un fait, pas comme une absence de mesure.
 | Contrat | Nature | Version | Sites installés |
 |---|---|---|---|
 | `prospects-v1.sql` | module | 1 | monsieurdpe |
-| `mesures-v1.sql` | forme | 1 | monsieurdpe |
+| `mesures-v1.sql` | forme | 1 | monsieurdpe (sans `chapitre`, à compléter) |
+| `comptes-pro-v1.sql` | forme | 1 | aucun |
+
+Les vues de liste et les mesures se répondent : `baikal_dossiers` porte le
+chapitre Clients, `baikal_comptes_pro` le chapitre Comptes pro, et
+`baikal_mesures` coiffe chaque chapitre de ses tuiles. Une liste ne porte
+jamais d'agrégat, une mesure ne porte jamais de personne.

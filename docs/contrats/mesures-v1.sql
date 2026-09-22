@@ -29,8 +29,9 @@
 -- | valeur        | numeric, non nul |                                      |
 -- | agregation    | text, non nul    | 'somme' (flux) ou 'dernier' (stock)  |
 -- | format        | text, non nul    | 'nombre', 'eur' ou 'pourcent'        |
+-- | chapitre      | text, non nul    | OÙ la tuile s'affiche, voir §1.1     |
 -- | fenetre_jours | int, nullable    | non nul => agregation = 'dernier'    |
--- | groupe        | text, nullable   | bloc de tuiles                       |
+-- | groupe        | text, nullable   | bloc de tuiles dans le chapitre      |
 -- | ordre         | int, nullable    | rang dans le groupe, NULL en dernier |
 --
 -- Trois règles tiennent tout le reste. Elles ne sont pas des recommandations :
@@ -64,7 +65,30 @@
 -- Les « non nul » du tableau sont des promesses de la même façon : une vue ne
 -- porte aucune contrainte, toutes ses colonnes se déclarent nullables quoi
 -- qu'on écrive. Baikal écarte donc silencieusement une ligne dont jour, cle,
--- libelle, valeur, agregation ou format serait nul, plutôt que d'échouer.
+-- libelle, valeur, agregation, format ou chapitre serait nul, plutôt que
+-- d'échouer.
+
+
+-- ------ 1.1 Le chapitre : où la tuile s'affiche ------
+--
+-- Il n'y a PAS d'écran des statistiques. Une mesure s'affiche en tête du
+-- chapitre de la console auquel elle appartient : le chiffre d'affaires
+-- au-dessus de Finances, le nombre de comptes au-dessus de Comptes pro, les
+-- dossiers au-dessus de Clients. Un chiffre se lit à côté de ce qu'il compte,
+-- et les droits par module s'appliquent sans une ligne de plus : qui n'a pas
+-- le module ne voit pas ses tuiles.
+--
+-- Le vocabulaire est FERMÉ, et il appartient à Baikal, pas au site :
+--
+--     'clients' | 'finances' | 'comptes_pro'
+--
+-- Ce sont les chapitres qui montrent des données du site. Les autres modules
+-- de la console (prospects, rapports, seo, partenariats, users) portent des
+-- données de Baikal ou de Google, pas du site : une mesure n'y a rien à faire.
+-- La liste grandira le jour où un chapitre nouveau montrera du site.
+--
+-- Une valeur hors vocabulaire n'est pas affichée ailleurs par défaut : elle
+-- est écartée, comme une ligne incomplète. Baikal ne devine pas un rangement.
 
 create or replace view @SCHEMA@.baikal_mesures as
 
@@ -78,6 +102,7 @@ select
   count(*)::numeric                                as valeur,
   'somme'                                          as agregation,
   'nombre'                                         as format,
+  'finances'                                       as chapitre,
   null::int                                        as fenetre_jours,
   'Ventes'                                         as groupe,
   10                                               as ordre
@@ -99,6 +124,7 @@ select
   count(distinct a.dossier_id)::numeric       as valeur,
   'dernier'                                   as agregation,
   'nombre'                                    as format,
+  'clients'                                   as chapitre,
   f.fenetre                                   as fenetre_jours,
   'Ventes'                                    as groupe,
   20                                          as ordre
@@ -145,7 +171,9 @@ comment on view @SCHEMA@.baikal_mesures is
 -- ont la même signature, une vue plausible mais fausse, jamais une erreur.
 --
 -- Passés sur dpe.baikal_mesures le 23/09/2026 : 93 lignes, 5 clés, zéro
--- doublon, zéro fenêtre sur un flux, zéro valeur hors vocabulaire.
+-- doublon, zéro fenêtre sur un flux, zéro valeur hors vocabulaire, zéro ligne
+-- incomplète. Cette vue est antérieure à la colonne chapitre (§1.1) : elle la
+-- gagnera avant d'être branchée.
 
 -- (1) Aucun doublon. Doit rendre zéro ligne.
 --
@@ -161,16 +189,17 @@ comment on view @SCHEMA@.baikal_mesures is
 
 -- (3) Vocabulaire admis. Doit rendre zéro ligne.
 --
---     select distinct cle, agregation, format
+--     select distinct cle, agregation, format, chapitre
 --     from @SCHEMA@.baikal_mesures
 --     where agregation not in ('somme', 'dernier')
---        or format not in ('nombre', 'eur', 'pourcent');
+--        or format not in ('nombre', 'eur', 'pourcent')
+--        or chapitre not in ('clients', 'finances', 'comptes_pro');
 
 -- (4) Complétude. Doit rendre zéro.
 --
 --     select count(*) from @SCHEMA@.baikal_mesures
 --     where jour is null or cle is null or libelle is null or valeur is null
---        or agregation is null or format is null;
+--        or agregation is null or format is null or chapitre is null;
 
 -- (5) TOUTE TABLE SOURCE A SON GRANT ET SA POLICY baikal_read. C'est le
 --     contrôle le plus important, parce que c'est le seul dont le symptôme est
@@ -207,8 +236,9 @@ grant select on @SCHEMA@.baikal_mesures to baikal_reader;
 -- contrat, pas un rattrapage silencieux.
 --
 -- Les LIGNES NOMINATIVES. Une série ne porte pas de personnes, et ne doit pas
--- en porter. Le tableau des dernières entrées de la vue d'ensemble se dérive
--- de baikal_dossiers, que Baikal lit déjà.
+-- en porter. Les listes ont leurs propres contrats : baikal_dossiers pour le
+-- chapitre Clients, baikal_comptes_pro pour le chapitre Comptes pro. Les
+-- mesures les coiffent, elles ne les remplacent pas.
 --
 -- Les COLONNES TOUJOURS VIDES. Une colonne optionnelle qu'un site ne sait pas
 -- remplir doit être ABSENTE, pas présente et nulle : la capacité se lit à la

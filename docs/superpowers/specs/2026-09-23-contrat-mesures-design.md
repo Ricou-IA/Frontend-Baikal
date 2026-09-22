@@ -49,8 +49,9 @@ ne connaît aucun métier.
 | `valeur` | numeric, non nul | |
 | `agregation` | text, non nul | `somme` ou `dernier`, rien d'autre |
 | `format` | text, non nul | `nombre`, `eur` ou `pourcent` |
+| `chapitre` | text, non nul | Où la tuile s'affiche (voir §3.2) |
 | `fenetre_jours` | int, nullable | Fenêtre propre à la mesure (voir §4) |
-| `groupe` | text, nullable | Bloc de tuiles |
+| `groupe` | text, nullable | Bloc de tuiles dans le chapitre |
 | `ordre` | int, nullable | Rang dans le groupe, NULL en dernier |
 
 **Deux agrégations, pas trois.** `moyenne` a été écartée : elle se dérive
@@ -77,7 +78,27 @@ majorité.
 ### 3.1 Vues optionnelles
 
 Aucune. Le contrat de mesures tient dans une seule vue. Un site qui ne la
-publie pas garde le comportement actuel (§8).
+publie pas n'affiche simplement aucune tuile.
+
+### 3.2 Le chapitre : il n'y a pas d'écran des statistiques
+
+Décision d'Eric du 23/09. La vue d'ensemble par site ne devient pas un
+neuvième chapitre : **les mesures remontent dans les chapitres existants**. Le
+chiffre d'affaires coiffe Finances, le nombre de comptes coiffe Comptes pro,
+les dossiers coiffent Clients. Un chiffre se lit à côté de ce qu'il compte, et
+les droits par module s'appliquent sans une ligne de plus.
+
+Le site déclare donc où va sa mesure, dans un vocabulaire **fermé, tenu par
+Baikal** : `clients`, `finances`, `comptes_pro`. Ce sont les chapitres qui
+montrent des données du site ; les autres modules (prospects, rapports, seo,
+partenariats, users) portent des données de Baikal ou de Google. La liste
+grandira le jour où un chapitre nouveau montrera du site.
+
+Une valeur hors vocabulaire est écartée, comme une ligne incomplète. Baikal ne
+devine pas un rangement.
+
+`groupe` reste le sous-bloc à l'intérieur du chapitre, libre et nommé par le
+site.
 
 ## 4. Fenêtres, flux et stocks
 
@@ -180,17 +201,15 @@ valider séparément.
 
 ### 6.1 `admin-site-stats`
 
-L'EF garde son action `overview` et gagne un mode. Ordre de priorité, choisi
-pour que la bascule soit explicite et réversible :
+L'EF garde son action `overview`, qui sert `VueSite` jusqu'à sa disparition au
+lot 6, et gagne une action `mesures` prenant un `chapitre` et une fenêtre.
+Les deux cohabitent le temps de la recette : c'est ce qui rend la bascule
+explicite et réversible, un site câblé en dur ne perdant ses KPI que le jour où
+sa fonction est retirée de `stats-sites.ts`, en une ligne.
 
-1. `statsParSite[site.id]` existe : mode `kpis`, comportement actuel inchangé.
-2. sinon, `baikal_mesures` est présente : mode `mesures`.
-3. sinon : repli générique actuel (tables et volumes).
-
-Un site déjà câblé en dur ne bascule donc que le jour où sa fonction est
-retirée de `stats-sites.ts`, en une ligne, après recette. Un site sans
-fonction (monsieurdpe, et plus tard conseil-solaire) prend le contrat dès qu'il
-publie sa vue.
+`mesures` rend une réponse vide, jamais une erreur, quand le site ne publie pas
+la vue ou n'a aucune mesure pour ce chapitre : le bandeau de tuiles ne se monte
+simplement pas.
 
 **La résolution du schéma est propre aux mesures.** `admin-dossiers` résout le
 schéma une fois sur la présence de `baikal_dossiers`, puis cherche toutes ses
@@ -202,10 +221,10 @@ premier trouvé gagne, `to_regclass`) mais testée sur `baikal_mesures`.
 ### 6.2 Ce que l'EF renvoie
 
 Les fenêtres offertes sont celles de la maison : 7, 30 et 90 jours, comme
-`/clients`. L'EF reçoit `jours`, calcule ses bornes dans le fuseau du site, et
-rend par clé : la valeur, la valeur de la période précédente, la série
-quotidienne pour la courbe, le libellé, le format, le groupe, l'ordre, et pour
-un `dernier` la date de mesure.
+`/clients`. L'EF reçoit `chapitre` et `jours`, calcule ses bornes dans le
+fuseau du site, et rend par clé : la valeur, la valeur de la période
+précédente, la série quotidienne pour la courbe, le libellé, le format, le
+groupe, l'ordre, et pour un `dernier` la date de mesure.
 
 ### 6.3 Doublons
 
@@ -216,29 +235,64 @@ motif de `Finances.jsx` et de ses « journées incomplètes dans la période » 
 la faute reste du bon côté, c'est le site fautif qui est nommé, et Baikal ne
 se tait pas et ne rejette pas.
 
-### 6.4 Le tableau des dernières lignes
+### 6.4 Le tableau des dernières lignes disparaît
 
-Point à trancher, parce qu'il change ce qui est à l'écran aujourd'hui. Le mode
-`kpis` rend aussi un tableau (« Derniers dossiers payés » pour Pack Vendeur,
-dix lignes). Le contrat de mesures ne le couvre pas : des séries ne portent
-pas de lignes nominatives, et elles ne doivent pas en porter.
-
-Trois sorties. La recommandation est la troisième.
-
-1. Le perdre. La page Clients liste déjà les dossiers, avec ses filtres.
-2. Une seconde vue contractuelle. Un contrat de plus pour dix lignes, non.
-3. **Le dériver de `baikal_dossiers`**, que Baikal sait déjà lire : les dix
-   dernières lignes payées, tests et supprimés exclus. Aucun contrat nouveau,
-   générique pour tout site publiant ses dossiers, et cohérent par
-   construction avec la page Clients. Un site sans `baikal_dossiers` n'a
-   simplement pas ce tableau.
+Le mode `kpis` rend aussi un tableau (« Derniers dossiers payés » pour Pack
+Vendeur, dix lignes, `LIMIT 10` dans `stats-sites.ts`). Il tombe avec l'écran
+qui le portait : les mesures remontant dans les chapitres, la liste du
+chapitre Clients EST cette liste, en mieux, avec ses filtres, sa recherche et
+sa pagination par 25. Un contrat de mesures ne porte pas de lignes
+nominatives, et n'a pas à en porter.
 
 ### 6.5 Rendu
 
-Sur `/admin`, à la place de la grille actuelle : sélecteur de fenêtre
-(7 / 30 / 90), tuiles groupées par `groupe` et ordonnées par `ordre`, valeur
-formatée selon `format`, variation contre la période précédente, date de
-mesure sous les stocks, courbe par clé, bandeau de doublons le cas échéant.
+Chaque chapitre concerné (Clients, Finances, Comptes pro) porte en tête un
+bandeau de tuiles : sélecteur de fenêtre (7 / 30 / 90), tuiles groupées par
+`groupe` et ordonnées par `ordre`, valeur formatée selon `format`, variation
+contre la période précédente, date de mesure sous les stocks, courbe par clé,
+bandeau de doublons le cas échéant. Un composant unique, monté dans chaque
+page avec son chapitre en paramètre.
+
+`VueSite` sort d'`Admin.jsx`, qui redevient la page d'ARPET et rien d'autre.
+Le repli générique (tables du site et volumes estimés) disparaît avec elle :
+ce n'était pas une mesure d'activité mais un pansement d'attente, et un site
+sans mesures n'affiche désormais aucune tuile plutôt qu'un écran qui ressemble
+à une information sans en être une.
+
+## 6bis. Le chapitre Comptes pro
+
+Décision d'Eric du 23/09 : ajouter un chapitre Comptes pro, sur le modèle de
+la page « Comptes Pro » de l'admin de Pré-état-daté
+(`src/pages/admin/AdminProsPage.jsx` : six tuiles, recherche par société ou
+courriel, tableau triable, tiroir par compte).
+
+**Deux populations, jamais mélangées.** Clients liste l'acte commercial, le
+dossier. Comptes pro liste les entreprises qui achètent au site : l'agence
+immobilière de Pré-état-daté, le diagnostiqueur abonné de MonsieurDPE,
+l'installateur de Conseil Solaire. Un compte pro vit dans le temps, un dossier
+est un événement. C'est aussi ce qui répond à la question restée ouverte sur
+Conseil Solaire : le particulier ira dans Clients, l'installateur dans
+Comptes pro.
+
+**Un contrat de plus**, `comptes-pro-v1.sql`, même mécanique que
+`baikal_dossiers` : vue `baikal_comptes_pro`, noyau obligatoire (identifiant,
+raison sociale, courriel, date de création, actif, `est_test`, `supprime_le`),
+blocs optionnels dont la présence déclare la capacité (crédits, argent,
+abonnement au vocabulaire `abo_*` des dossiers, catégorie). Pas de vue, pas de
+chapitre.
+
+**Les tuiles ne sont pas dans cette vue** : elles viennent de `baikal_mesures`
+avec `chapitre = comptes_pro`. Une vue de liste ne porte pas d'agrégat, sinon
+deux écrans finiront par annoncer deux nombres.
+
+**Une liste, pas une fiche** (périmètre fixé par Eric). Recherche, tri,
+bascules tests et supprimés, pagination. Baikal n'écrit jamais dans la vue ni
+dans les tables du site : créditer, suspendre ou fermer un compte passerait
+par l'EF d'administration du site, comme les actions de la fiche client, et
+n'est pas de ce lot.
+
+Le module `comptes_pro` entre dans `core.modules_console()`, donc dans les
+droits par site, comme les autres.
 
 ## 7. Recette
 
@@ -272,24 +326,29 @@ réduire à deux colonnes du registre (`db_schema`, `db_ro_secret_ref`).
 
 | Lot | Contenu |
 |---|---|
-| 1 | `docs/contrats/mesures-v1.sql` versionné, sur le modèle de `prospects-v1.sql` |
-| 2 | Colonne `fuseau` au registre (migration, validation séparée) |
-| 3 | EF : mode `mesures`, résolution propre, bornes dans le fuseau, doublons |
-| 4 | Rendu `/admin` : sélecteur, tuiles, variation, date de mesure, courbe, bandeau |
-| 5 | Vue de Pré-état-daté, recette de parité, puis retrait de `statsParSite['pack-vendeur']` |
-| 6 | Onboarding de Conseil Solaire, plus tard, comme recette du parcours |
+| 1 | Contrats versionnés : `mesures-v1.sql`, `comptes-pro-v1.sql` |
+| 2 | Migration : colonne `fuseau` au registre, module `comptes_pro` dans `core.modules_console()` |
+| 3 | EF : lecture des mesures par chapitre, résolution propre, bornes dans le fuseau, doublons |
+| 4 | Composant de tuiles, monté en tête de Clients et de Finances |
+| 5 | Chapitre Comptes pro : EF de liste, page, entrée de navigation |
+| 6 | Vues de Pré-état-daté, recette de parité, puis retrait de `statsParSite` et de `VueSite` |
+| 7 | Onboarding de Conseil Solaire, plus tard, comme recette du parcours |
 
-Les lots 1 à 4 ne changent rien à l'écran des sites déjà câblés en dur. Le
-lot 5 est le seul qui touche une page en production.
+Les lots 1 à 5 ne retirent rien de l'écran : les KPI en dur restent servis par
+`VueSite` pendant que les tuiles contractuelles apparaissent dans les
+chapitres. Le lot 6 est le seul qui enlève quelque chose, et il ne se fait
+qu'une fois la parité vérifiée.
 
 ## 10. Points ouverts
 
-1. **§6.4, le tableau des dernières lignes.** Recommandation : le dériver de
-   `baikal_dossiers`. Décision d'Eric.
-2. **Périodes calendaires.** `fenetre_jours` compte des jours, comme le
+1. **Périodes calendaires.** `fenetre_jours` compte des jours, comme le
    paramètre `jours` que prend déjà l'EF. Il n'exprime pas « mois en cours »
    ni « année en cours », que `/finances` propose pourtant. Le jour où la vue
    d'ensemble les voudra, ce sera une v2 du contrat, pas un rattrapage.
-3. **Voirie et Majord'home.** Leurs fonctions en dur restent en place tant
-   qu'elles ne publient pas leur vue. Rien ne les presse, mais tant qu'elles
-   existent la vue d'ensemble a deux régimes.
+2. **Voirie et Majord'home.** Leurs fonctions en dur restent en place tant
+   qu'elles ne publient pas leur vue, donc `VueSite` leur survit jusque-là.
+   Rien ne les presse, mais tant qu'elles existent la console a deux régimes.
+3. **La barre à neuf chapitres.** Elle tient en écran large, moins bien sur
+   téléphone, où la console doit rester utilisable en compagnon (décision du
+   08/09). C'est un problème de barre, pas de chapitre, et il se traite à
+   part.
