@@ -62,6 +62,16 @@ Deno.test("Gemini ne rend aucun token (reponse vide) → repli OpenAI gpt-4o-min
   assertEquals(models, ['gemini-2.5-flash', 'gpt-4o-mini'])
 })
 
+Deno.test("gemini-* → onRunaway transmis au 8e argument de deps.gemini", async () => {
+  let sawRunawayFn = false
+  const deps = {
+    openai: () => fake(['a']),
+    gemini: (..._args: unknown[]) => { sawRunawayFn = typeof _args[7] === 'function'; return fake(['G']) },
+  } as any
+  await collect(generateChunksStream('q', 'c', 's', cfg('gemini-2.5-flash'), KEYS, { onRunaway: () => {} }, deps))
+  assertEquals(sawRunawayFn, true)
+})
+
 Deno.test("cle Gemini absente → OpenAI direct avec le modele de repli", async () => {
   let openaiModel = ''
   const deps = { openai: (_q: string, _c: string, _s: string, config: LibrarianConfig) => { openaiModel = config.llm_model; return fake(['o']) }, gemini: () => fake(['G']) } as any

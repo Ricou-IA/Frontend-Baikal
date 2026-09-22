@@ -186,6 +186,7 @@ serve(async (req) => {
             reranking_applied: false, adaptive_threshold_applied: false,
             no_results_detected: false, memory_hit: false,
             agentic_triggered: false, agentic_iterations: 0, agentic_gate_reason: '',
+            generation_runaway: false,
           },
           counts: {
             total_chunks: 0, l0_chunks: 0, l1_chunks: 0,
@@ -668,7 +669,11 @@ serve(async (req) => {
           const meetingContext = buildMeetingContext(searchResult.meetingChunks)
           const effectiveGenParams = getEffectiveGenerationParams(config.librarian, effectiveAnalysis.intent)
           let usedModel = effectiveGenParams.model
-          const chunksHooks = { onUsage: noteUsage, onModel: (m: string) => { usedModel = m } }
+          const chunksHooks = {
+            onUsage: noteUsage,
+            onModel: (m: string) => { usedModel = m },
+            onRunaway: () => { metrics.decisions.generation_runaway = true },
+          }
 
           if (effectiveMode === 'gemini' && searchResult.files.length > 0) {
             // Une fois qu'un token du fichier est parti, le repli chunks ne peut plus prendre le relais :

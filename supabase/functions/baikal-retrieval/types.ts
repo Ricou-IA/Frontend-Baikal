@@ -445,6 +445,7 @@ export interface PipelineMetrics {
     agentic_triggered: boolean
     agentic_iterations: number
     agentic_gate_reason: string
+    generation_runaway: boolean
   }
   counts: {
     total_chunks: number

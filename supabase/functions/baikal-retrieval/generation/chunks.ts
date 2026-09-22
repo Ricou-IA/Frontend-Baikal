@@ -17,6 +17,7 @@ export const FALLBACK_CHUNKS_MODEL = 'gpt-4o-mini'
 export interface ChunksGenerationHooks {
   onUsage?: (u: TokenUsage) => void
   onModel?: (model: string, provider: ChunksProvider) => void
+  onRunaway?: () => void
 }
 
 export interface ChunksDeps {
@@ -39,7 +40,7 @@ export async function* generateChunksStream(
 
   if (provider === 'gemini' && keys.gemini) {
     hooks.onModel?.(config.llm_model, 'gemini')
-    const gen = deps.gemini(query, context, systemPrompt, config, keys.gemini, hooks.onUsage)
+    const gen = deps.gemini(query, context, systemPrompt, config, keys.gemini, hooks.onUsage, undefined, hooks.onRunaway)
     let first: IteratorResult<string, string>
     try {
       first = await gen.next()

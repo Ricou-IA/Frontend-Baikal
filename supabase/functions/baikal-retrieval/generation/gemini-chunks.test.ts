@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts"
-import { buildGeminiChunksBody, thinkingConfigFor, generateWithGeminiChunksStream } from "./gemini-chunks.ts"
+import { buildGeminiChunksBody, thinkingConfigFor, generateWithGeminiChunksStream, whitespaceRun, MAX_WHITESPACE_RUN } from "./gemini-chunks.ts"
 import type { LibrarianConfig } from "../types.ts"
 
 const CFG = { llm_model: 'gemini-2.5-flash', temperature: 0.3, max_tokens: 6400 } as LibrarianConfig
@@ -10,6 +10,23 @@ Deno.test("buildGeminiChunksBody : prompt systeme + contexte en systemInstructio
   assertStringIncludes(body.systemInstruction.parts[0].text, "=== CHUNK 1 ===")
   assertEquals(body.contents, [{ role: 'user', parts: [{ text: "Quel delai ?" }] }])
   assertEquals(body.generationConfig, { temperature: 0.3, maxOutputTokens: 6400, thinkingConfig: { thinkingBudget: 0 } })
+})
+
+Deno.test("buildGeminiChunksBody : regle de forme anti-alignement ajoutee a l'instruction systeme", () => {
+  const body = buildGeminiChunksBody("Quel delai ?", "=== CHUNK 1 ===\ntexte", "REGLES", CFG) as Record<string, any>
+  assertStringIncludes(body.systemInstruction.parts[0].text, "REGLE DE FORME (Gemini)")
+  assertStringIncludes(body.systemInstruction.parts[0].text, "=== CHUNK 1 ===")
+})
+
+Deno.test("whitespaceRun : longueur de la sequence d'espaces en fin de texte, reportee depuis le morceau precedent", () => {
+  assertEquals(whitespaceRun(0, 'abc  '), 2)
+  assertEquals(whitespaceRun(5, '   '), 8)
+  assertEquals(whitespaceRun(5, 'x'), 0)
+  assertEquals(whitespaceRun(5, ''), 5)
+})
+
+Deno.test("MAX_WHITESPACE_RUN vaut 200", () => {
+  assertEquals(MAX_WHITESPACE_RUN, 200)
 })
 
 Deno.test("thinkingConfigFor : budget 0 sur flash, absent sur pro (0 refuse par l'API)", () => {
@@ -47,4 +64,33 @@ Deno.test("generateWithGeminiChunksStream : HTTP non-2xx → erreur avec le stat
   let message = ''
   try { for await (const _ of gen) { /* rien */ } } catch (e) { message = (e as Error).message }
   assertStringIncludes(message, '429')
+})
+
+Deno.test("generateWithGeminiChunksStream : boucle d'espaces detectee → flux coupe, dernier morceau abandonne, onRunaway appele une fois", async () => {
+  const fetchFn = (() => Promise.resolve(sseResponse([
+    { candidates: [{ content: { parts: [{ text: '| A |' }] } }] },
+    { candidates: [{ content: { parts: [{ text: ' '.repeat(150) }] } }] },
+    { candidates: [{ content: { parts: [{ text: ' '.repeat(100) }] } }] },
+    { candidates: [{ content: { parts: [{ text: 'fin' }] } }] },
+  ]))) as unknown as typeof fetch
+  let runawayCalls = 0
+  const gen = generateWithGeminiChunksStream("q", "ctx", "sys", CFG, "KEY", undefined, fetchFn, () => { runawayCalls++ })
+  let out = ''
+  for await (const t of gen) out += t
+  assertEquals(out, '| A |' + ' '.repeat(150) + '\n')
+  assertEquals(runawayCalls, 1)
+})
+
+Deno.test("generateWithGeminiChunksStream : morceau d'espaces normal (50) transmis sans coupure", async () => {
+  const fetchFn = (() => Promise.resolve(sseResponse([
+    { candidates: [{ content: { parts: [{ text: '| A |' }] } }] },
+    { candidates: [{ content: { parts: [{ text: ' '.repeat(50) }] } }] },
+    { candidates: [{ content: { parts: [{ text: 'fin' }] } }] },
+  ]))) as unknown as typeof fetch
+  let runawayCalls = 0
+  const gen = generateWithGeminiChunksStream("q", "ctx", "sys", CFG, "KEY", undefined, fetchFn, () => { runawayCalls++ })
+  let out = ''
+  for await (const t of gen) out += t
+  assertEquals(out, '| A |' + ' '.repeat(50) + 'fin')
+  assertEquals(runawayCalls, 0)
 })
