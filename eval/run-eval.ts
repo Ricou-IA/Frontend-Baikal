@@ -12,6 +12,7 @@
 //   deno run -A eval/run-eval.ts --limit 5                  # n premières entrées
 //   deno run -A eval/run-eval.ts --tag baseline-v2.0.0      # nom du rapport
 //   deno run -A eval/run-eval.ts --baseline eval/reports/baseline-v2.0.0.json
+//   deno run -A eval/run-eval.ts --llm-model gemini-2.5-flash --tag s3-v2.3.0-flash   # surcharge service_role (eval_overrides)
 //
 // eval/.env : SUPABASE_ANON_KEY requis (SUPABASE_URL optionnel, sinon config)
 // ============================================================================
@@ -45,11 +46,14 @@ interface GoldenEntry {
 
 interface EvalContext { project_id: string; org_id: string; user_id: string; note?: string }
 
+interface TokenUsage { input_tokens: number; output_tokens: number; calls: number }
+
 interface EvalConfig {
   endpoint: string
   app_id: string
   contexts: Record<string, EvalContext>
   defaults: { top_k_for_recall: number; request_timeout_ms: number; delay_between_calls_ms: number }
+  prices_per_mtok?: Record<string, { in: number; out: number }>
 }
 
 interface SSESource {
@@ -74,6 +78,8 @@ interface CallResult {
   intent: string | null
   latency_ms: number
   error: string | null
+  model: string | null
+  usage: TokenUsage | null
 }
 
 interface EvalResult {
@@ -98,6 +104,9 @@ interface EvalResult {
   conversation_id: string | null
   answer: string
   sources: SSESource[]
+  model: string | null
+  usage: TokenUsage | null
+  cost_usd: number | null
 }
 
 // ----------------------------------------------------------------------------
@@ -181,6 +190,31 @@ function delay(ms: number): Promise<void> {
 }
 
 // ----------------------------------------------------------------------------
+// Tarification (coût par requête)
+// ----------------------------------------------------------------------------
+
+// USD par million de tokens — valeurs des pages tarifs publiques au 2026-09 :
+// heuristique à vérifier par Eric, modifiable dans eval/config.json sans code.
+export const PRICES_DEFAULT: Record<string, { in: number; out: number }> = {
+  'gpt-4o-mini': { in: 0.15, out: 0.60 },
+  'gpt-4.1-mini': { in: 0.40, out: 1.60 },
+  'gemini-2.5-flash': { in: 0.30, out: 2.50 },
+  'gemini-2.5-flash-lite': { in: 0.10, out: 0.40 },
+  'gemini-2.5-pro': { in: 1.25, out: 10.00 },
+}
+
+export function costUsd(
+  model: string | null,
+  usage: TokenUsage | null,
+  prices: Record<string, { in: number; out: number }>,
+): number | null {
+  if (!model || !usage) return null
+  const p = prices[model]
+  if (!p) return null
+  return Number(((usage.input_tokens * p.in + usage.output_tokens * p.out) / 1_000_000).toFixed(6))
+}
+
+// ----------------------------------------------------------------------------
 // Appel SSE de baikal-retrieval
 // ----------------------------------------------------------------------------
 
@@ -194,11 +228,13 @@ async function callRetrieval(
   conversationId: string | null,
   cfg: EvalConfig,
   bearer: string,
+  llmModel: string | null,
 ): Promise<CallResult> {
   const started = Date.now()
   const result: CallResult = {
     answer: '', sources: [], conversation_id: null, generation_mode: 'unknown',
     fast_path: null, agentic: null, intent: null, latency_ms: 0, error: null,
+    model: null, usage: null,
   }
 
   const controller = new AbortController()
@@ -223,6 +259,7 @@ async function callRetrieval(
         stream: true,
         generation_mode: 'auto',
         enable_suggestions: false,
+        ...(llmModel ? { eval_overrides: { llm_model: llmModel } } : {}),
       }),
     })
 
@@ -267,6 +304,8 @@ async function callRetrieval(
           result.intent = (payload.intent as string) || null
           const ag = payload.agentic as { iterations?: number; timed_out?: boolean } | null
           result.agentic = ag || null
+          result.model = typeof payload.model === 'string' ? payload.model : null
+          result.usage = (payload.usage as TokenUsage) || null
         } else if (event === 'error') {
           result.error = String(payload.error || 'erreur SSE')
         }
@@ -292,6 +331,8 @@ async function evalEntry(
   entry: GoldenEntry,
   cfg: EvalConfig,
   bearer: string,
+  llmModel: string | null,
+  prices: Record<string, { in: number; out: number }>,
 ): Promise<EvalResult> {
   const ctx = cfg.contexts[entry.project_ref]
   if (!ctx) throw new Error(`project_ref inconnu dans config.json: ${entry.project_ref} (entrée ${entry.id})`)
@@ -303,12 +344,12 @@ async function evalEntry(
   const convId = crypto.randomUUID()
   if (entry.conversation_context?.length) {
     for (const pre of entry.conversation_context) {
-      await callRetrieval(pre.question, ctx, convId, cfg, bearer)
+      await callRetrieval(pre.question, ctx, convId, cfg, bearer, llmModel)
       await delay(cfg.defaults.delay_between_calls_ms)
     }
   }
 
-  const call = await callRetrieval(entry.question, ctx, convId, cfg, bearer)
+  const call = await callRetrieval(entry.question, ctx, convId, cfg, bearer, llmModel)
   const exp = entry.expected || {}
   const answerNorm = normalize(call.answer)
   const topK = call.sources.slice(0, cfg.defaults.top_k_for_recall)
@@ -358,6 +399,8 @@ async function evalEntry(
     intent: call.intent, latency_ms: call.latency_ms, error: call.error,
     conversation_id: convId,
     answer: call.answer, sources: call.sources,
+    model: call.model, usage: call.usage,
+    cost_usd: costUsd(call.model, call.usage, prices),
   }
 }
 
@@ -376,6 +419,9 @@ interface Aggregate {
   latency_p95: number
   agentic_pct: number
   errors: number
+  cost_avg_usd: number | null
+  tokens_in_avg: number | null
+  tokens_out_avg: number | null
 }
 
 function aggregate(results: EvalResult[]): Aggregate {
@@ -385,6 +431,10 @@ function aggregate(results: EvalResult[]): Aggregate {
   const withAll = results.filter(r => r.ok_all_docs !== null)
   const latencies = results.map(r => r.latency_ms)
   const ranks = withDoc.map(r => (r.rank ? 1 / r.rank : 0))
+  const withCost = results.filter(r => r.cost_usd !== null)
+  const withTokensIn = results.filter(r => r.usage !== null).map(r => r.usage!.input_tokens)
+  const withTokensOut = results.filter(r => r.usage !== null).map(r => r.usage!.output_tokens)
+  const avg = (values: number[]): number | null => values.length ? values.reduce((a, b) => a + b, 0) / values.length : null
   return {
     n,
     recall_doc_pct: withDoc.length ? Math.round(100 * withDoc.filter(r => r.ok_recall_doc).length / withDoc.length) : null,
@@ -396,6 +446,9 @@ function aggregate(results: EvalResult[]): Aggregate {
     latency_p95: percentile(latencies, 95),
     agentic_pct: n ? Math.round(100 * results.filter(r => r.mode === 'agentic').length / n) : 0,
     errors: results.filter(r => r.error !== null).length,
+    cost_avg_usd: (() => { const a = avg(withCost.map(r => r.cost_usd!)); return a === null ? null : Number(a.toFixed(5)) })(),
+    tokens_in_avg: (() => { const a = avg(withTokensIn); return a === null ? null : Math.round(a) })(),
+    tokens_out_avg: (() => { const a = avg(withTokensOut); return a === null ? null : Math.round(a) })(),
   }
 }
 
@@ -409,26 +462,41 @@ function buildMarkdown(
   byClasse: Record<string, Aggregate>,
   global: Aggregate,
   baseline: { tag: string; byClasse: Record<string, Aggregate>; global: Aggregate } | null,
+  llmModelOverride: string | null,
 ): string {
   const lines: string[] = []
   lines.push(`# Rapport d'évaluation RAG — ${tag}`)
   lines.push('')
   lines.push(`> ${new Date().toISOString()} — ${results.length} questions${baseline ? ` — comparé à ${baseline.tag}` : ''}`)
+  lines.push(`> Modèle de génération (surcharge) : ${llmModelOverride ?? 'config DB'}`)
   lines.push('')
   lines.push('## Synthèse par classe')
   lines.push('')
   const delta = (cur: number | null, ref: number | null | undefined): string =>
     cur !== null && ref !== null && ref !== undefined ? ` (${cur - ref >= 0 ? '+' : ''}${cur - ref})` : ''
-  lines.push('| Classe | n | Recall doc | Page OK | Critères | Tous docs (C3) | MRR | p50 | p95 | Agentique | Erreurs |')
-  lines.push('|---|---|---|---|---|---|---|---|---|---|---|')
+  lines.push('| Classe | n | Recall doc | Page OK | Critères | Tous docs (C3) | MRR | p50 | p95 | Coût moyen | Tokens in/out | Agentique | Erreurs |')
+  lines.push('|---|---|---|---|---|---|---|---|---|---|---|---|---|')
   for (const [classe, agg] of [...Object.entries(byClasse), ['GLOBAL', global] as [string, Aggregate]]) {
     const ref = classe === 'GLOBAL' ? baseline?.global : baseline?.byClasse?.[classe]
     lines.push(
       `| ${classe} | ${agg.n} | ${fmt(agg.recall_doc_pct, '%')}${delta(agg.recall_doc_pct, ref?.recall_doc_pct)} | ` +
       `${fmt(agg.page_ok_pct, '%')} | ${agg.criteria_pct}%${delta(agg.criteria_pct, ref?.criteria_pct)} | ` +
       `${fmt(agg.all_docs_pct, '%')} | ` +
-      `${fmt(agg.mrr)} | ${agg.latency_p50}ms | ${agg.latency_p95}ms | ${agg.agentic_pct}% | ${agg.errors} |`,
+      `${fmt(agg.mrr)} | ${agg.latency_p50}ms | ${agg.latency_p95}ms | ` +
+      `${fmt(agg.cost_avg_usd, ' $')} | ${fmt(agg.tokens_in_avg)}/${fmt(agg.tokens_out_avg)} | ` +
+      `${agg.agentic_pct}% | ${agg.errors} |`,
     )
+  }
+  lines.push('')
+  lines.push('## Modèles utilisés')
+  lines.push('')
+  const modelCounts = new Map<string, number>()
+  for (const r of results) {
+    const key = r.model ?? '?'
+    modelCounts.set(key, (modelCounts.get(key) ?? 0) + 1)
+  }
+  for (const [model, count] of [...modelCounts.entries()].sort((a, b) => b[1] - a[1])) {
+    lines.push(`- ${model} : ${count}`)
   }
   lines.push('')
   lines.push('## Échecs')
@@ -442,7 +510,7 @@ function buildMarkdown(
     if (f.violations.length) reasons.push(`violations: ${f.violations.join(', ')}`)
     if (f.ok_all_docs === false) reasons.push('documents manquants: au moins un document attendu (source_docs_all) absent du top-k')
     if (f.error) reasons.push(`erreur: ${f.error}`)
-    lines.push(`- **${f.id}** (${f.classe}, ${f.mode}, ${f.latency_ms}ms) « ${f.question.slice(0, 90)} » — ${reasons.join(' ; ') || 'critères non remplis'}`)
+    lines.push(`- **${f.id}** (${f.classe}, ${f.mode}, ${f.model ?? '?'}, ${f.latency_ms}ms) « ${f.question.slice(0, 90)} » — ${reasons.join(' ; ') || 'critères non remplis'}`)
   }
   lines.push('')
   return lines.join('\n')
@@ -473,12 +541,14 @@ async function main() {
     console.warn('⚠️  SUPABASE_SERVICE_ROLE_KEY absente de eval/.env : depuis v2.2.0 l\'EF répondra 401 avec la clé anon')
   }
 
+  const llmModel = typeof args['llm-model'] === 'string' ? args['llm-model'] : null
+
   // --smoke : une question, affichage direct, pas de rapport
   if (args.smoke) {
     const ctx = cfg.contexts.bessieres
     console.log('🔥 Smoke test (bessieres) : "Quel est le délai global d\'exécution des travaux ?"')
-    const r = await callRetrieval("Quel est le délai global d'exécution des travaux ?", ctx, null, cfg, bearer)
-    console.log(`\n⏱  ${r.latency_ms}ms — mode=${r.generation_mode} fast_path=${r.fast_path} intent=${r.intent} error=${r.error}`)
+    const r = await callRetrieval("Quel est le délai global d'exécution des travaux ?", ctx, null, cfg, bearer, llmModel)
+    console.log(`\n⏱  ${r.latency_ms}ms — mode=${r.generation_mode} fast_path=${r.fast_path} intent=${r.intent} error=${r.error} model=${r.model ?? '?'}`)
     console.log(`\n📄 Sources (${r.sources.length}):`)
     for (const s of r.sources) console.log(`   - ${s.document_name} (p.${s.page ?? '?'}, score=${s.score?.toFixed?.(3) ?? s.score})`)
     console.log(`\n💬 Réponse:\n${r.answer.slice(0, 800)}${r.answer.length > 800 ? '…' : ''}`)
@@ -497,13 +567,15 @@ async function main() {
   if (typeof args.limit === 'string') entries = entries.slice(0, parseInt(args.limit, 10))
 
   const tag = typeof args.tag === 'string' ? args.tag : `run-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}`
-  console.log(`▶ Éval « ${tag} » : ${entries.length} questions (golden ${golden.version}) → ${cfg.endpoint}`)
+  console.log(`▶ Éval « ${tag} » : ${entries.length} questions (golden ${golden.version}) → ${cfg.endpoint}${llmModel ? ` (modèle surchargé : ${llmModel})` : ''}`)
+
+  const prices = { ...PRICES_DEFAULT, ...(cfg.prices_per_mtok || {}) }
 
   const results: EvalResult[] = []
   for (const [i, entry] of entries.entries()) {
     const label = `[${i + 1}/${entries.length}] ${entry.id}`
     try {
-      const r = await evalEntry(entry, cfg, bearer)
+      const r = await evalEntry(entry, cfg, bearer, llmModel, prices)
       const status = r.error ? '💥' : r.ok_criteria && r.ok_recall_doc !== false ? '✅' : '❌'
       console.log(`${status} ${label} ${r.mode} ${r.latency_ms}ms recall=${r.ok_recall_doc} critères=${r.ok_criteria}`)
       results.push(r)
@@ -533,21 +605,21 @@ async function main() {
   // Rapports
   await Deno.mkdir('eval/reports', { recursive: true })
   const reportJson = {
-    meta: { tag, date: new Date().toISOString(), golden_version: golden.version, endpoint: cfg.endpoint, n: results.length },
+    meta: { tag, date: new Date().toISOString(), golden_version: golden.version, endpoint: cfg.endpoint, n: results.length, llm_model_override: llmModel },
     aggregates: { global, by_classe: byClasse },
     results,
   }
   const jsonPath = `eval/reports/${tag}.json`
   const mdPath = `eval/reports/${tag}.md`
   await Deno.writeTextFile(jsonPath, JSON.stringify(reportJson, null, 2))
-  await Deno.writeTextFile(mdPath, buildMarkdown(tag, results, byClasse, global, baseline))
+  await Deno.writeTextFile(mdPath, buildMarkdown(tag, results, byClasse, global, baseline, llmModel))
 
   // Sidecar : conversations créées en prod par ce run, pour purge chirurgicale.
   const convIds = [...new Set(results.map(r => r.conversation_id).filter((c): c is string => !!c))]
   const convPath = `eval/reports/${tag}.conversations.json`
   await Deno.writeTextFile(convPath, JSON.stringify({ tag, date: reportJson.meta.date, conversation_ids: convIds }, null, 2))
 
-  console.log(`\n📊 GLOBAL : recall doc ${fmt(global.recall_doc_pct, '%')} · critères ${global.criteria_pct}% · tous docs (C3) ${fmt(global.all_docs_pct, '%')} · MRR ${fmt(global.mrr)} · p50 ${global.latency_p50}ms · p95 ${global.latency_p95}ms · agentique ${global.agentic_pct}% · erreurs ${global.errors}`)
+  console.log(`\n📊 GLOBAL : recall doc ${fmt(global.recall_doc_pct, '%')} · critères ${global.criteria_pct}% · tous docs (C3) ${fmt(global.all_docs_pct, '%')} · MRR ${fmt(global.mrr)} · p50 ${global.latency_p50}ms · p95 ${global.latency_p95}ms · agentique ${global.agentic_pct}% · erreurs ${global.errors} · coût moyen ${global.cost_avg_usd ?? 'n/a'} $`)
   console.log(`📁 Rapports : ${jsonPath} + ${mdPath}`)
   console.log(`🧹 ${convIds.length} conversation(s) de test créée(s) → ${convPath} (purgeables après run)`)
 }

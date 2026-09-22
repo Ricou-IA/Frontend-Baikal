@@ -29,6 +29,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 import type { RequestBody, PipelineMetrics, SourceItem, AnalysisResult, FileInfo } from "./types.ts"
+import { applyEvalOverrides } from "./eval-overrides.ts"
 import { corsHeaders, sseHeaders, sendSSE, errorResponse } from "./utils.ts"
 import { createTimer } from "./utils.ts"
 import { bearerToken, resolveCaller, getUserIdFromJwt, resolveAccess, type AccessDecision } from "./auth.ts"
@@ -126,6 +127,7 @@ serve(async (req) => {
       include_project_layer = true, include_user_layer = false,
       filter_source_types,
       enable_suggestions = false,
+      eval_overrides,
     } = body
 
     if (!query?.trim()) return errorResponse("Query is required")
@@ -213,6 +215,12 @@ serve(async (req) => {
           // A1. CONFIG
           const config = await loadConfig(supabase, app_id, org_id)
           metrics.timings.config = timer.mark('config')
+
+          // Sprint 3 : surcharge du modèle par le banc (service_role seulement)
+          const ov = applyEvalOverrides(config.librarian, eval_overrides, caller.kind)
+          config.librarian = ov.librarian
+          if (ov.applied.length) console.log(`[eval] surcharges appliquées: ${ov.applied.join(', ')} (llm_model=${config.librarian.llm_model})`)
+          if (ov.ignored.length) console.warn(`[eval] surcharges ignorées (${caller.kind}): ${ov.ignored.join(', ')}`)
 
           // A2. PARALLEL: context + embedding
           sendSSE(controller, 'step', { step: 'analyzing', message: 'Analyse de la question...' })

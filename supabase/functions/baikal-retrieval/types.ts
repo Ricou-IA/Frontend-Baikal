@@ -26,6 +26,7 @@ export interface RequestBody {
   filter_source_types?: string[]
   filter_concepts?: string[]
   enable_suggestions?: boolean
+  eval_overrides?: { llm_model?: string }
 }
 
 // ============================================================================
