@@ -24,6 +24,7 @@ import { useApp } from '../contexts/AppContext';
 import ConsoleLayout from '../components/console/ConsoleLayout';
 import { useDroitModule } from '../hooks/useDroitModule';
 import LectureSeule from '../components/console/LectureSeule';
+import BandeauMesures from '../components/console/BandeauMesures';
 import { useDonneesCachees } from '../hooks/useDonneesCachees';
 import {
   Chargement, ContenuEstompe, Erreur, LigneVide, Section, Vide,
@@ -941,6 +942,10 @@ function FinancesContent() {
   return (
     <div className="sm:p-6 space-y-10">
       {!ecriture && <LectureSeule module="Finances" />}
+      {/* Mesures que le SITE publie, à distinguer de la synthèse ci-dessous,
+          qui vient de admin.ventes et de Stripe. Rien ne s'affiche tant que le
+          site ne publie pas sa vue baikal_mesures. */}
+      <BandeauMesures appId={currentApp} chapitre="finances" />
       <Synthese appId={currentApp} lectureSeule={!ecriture} />
       <Tendance appId={currentApp} />
       <CoutsParMois appId={currentApp} />

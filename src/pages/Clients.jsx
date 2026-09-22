@@ -21,6 +21,7 @@ import {
 } from '../components/console/etats';
 import { dossiersService } from '../services/dossiers.service';
 import Fiche from '../components/console/fiche/Fiche';
+import BandeauMesures from '../components/console/BandeauMesures';
 import { BadgeCanal, BadgeCategorie, BadgeEtape, fmtDate } from '../components/console/badges-clients';
 
 const PERIODES = [[null, 'Tout'], [7, '7 jours'], [30, '30 jours'], [90, '90 jours']];
@@ -138,6 +139,10 @@ function ClientsContent() {
       titre="Clients"
       sousTitre="Lecture directe dans la base du site — funnel défini au registre des sites"
     >
+      {/* Les mesures du chapitre coiffent la liste : un chiffre se lit à côté
+          de ce qu'il compte. Rien ne s'affiche si le site ne les publie pas. */}
+      <BandeauMesures appId={currentApp} chapitre="clients" />
+
       {/* Barre de filtres */}
       <div className="bg-baikal-surface border border-baikal-border rounded-lg p-4 space-y-3">
         <div className="flex items-center gap-3 flex-wrap">
