@@ -388,7 +388,8 @@ serve(async (req) => {
           }
           metrics.timings.search = timer.mark('search')
 
-          // A7. RERANKING (feature-flagged)
+          // A7. RERANKING (feature-flagged) — la gate agentique se lit sur les similarités cosinus d'AVANT rerank
+          const gateChunks = searchResult.chunks
           searchResult = await rerankIfEnabled(searchResult, effectiveQuery, config.features)
           metrics.decisions.reranking_applied = searchResult.reranked
           metrics.timings.rerank = timer.mark('rerank')
@@ -424,7 +425,7 @@ serve(async (req) => {
           // DECISION: Fast Path (v1.3) vs Agentic (v2.0)
           // =============================================================
 
-          const gate = evaluateAgenticGate(searchResult.chunks, config.agentic)
+          const gate = evaluateAgenticGate(gateChunks, config.agentic)
           console.log(`[agentic] gate: ${gate.reason} (n_vector=${gate.n_vector}, max_sim=${gate.max_sim.toFixed(3)}, avg=${gate.avg_sim.toFixed(3)})`)
           const useAgentic = gate.trigger && namedFiles.length === 0
           const gateReason: GateReason = namedFiles.length > 0 && gate.trigger ? 'explicit_full_document' : (gate.trigger && !GEMINI_API_KEY ? 'no_gemini_key' : gate.reason)
@@ -560,6 +561,21 @@ serve(async (req) => {
                 // La réponse complète est déjà affichée : l'échec vient de la finalisation
                 // (addMessage / logQuery). On termine proprement au lieu d'annoncer une interruption.
                 console.error('[agentic] échec après la réponse complète (finalisation):', err)
+                metrics.timings.total = timer.elapsed
+                await logQuery(supabase, {
+                  conversation_id: context.conversationId, user_id,
+                  org_id: context.effectiveOrgId || org_id || null, project_id: project_id || null, app_id,
+                  query,
+                  rewritten_query: effectiveQuery !== query ? effectiveQuery : null,
+                  named_documents: context.namedDocuments.length > 0 ? context.namedDocuments : null,
+                  intent: fastAnalysis.intent, answer_format: fastAnalysis.answer_format,
+                  fast_path: false, generation_mode: 'agentic', model: config.agentic.model,
+                  agentic: { triggered: true, reason: gate.reason, n_vector: gate.n_vector, max_sim: gate.max_sim, iterations: agenticDone.iterations, timed_out: agenticDone.timedOut, direct_answer: agenticDone.directAnswer, steps: agenticDone.steps, error: agenticError },
+                  counts: { ...metrics.counts },
+                  sources: slimSources(agenticDone.sources),
+                  timings: metrics.timings, processing_time_ms: metrics.timings.total,
+                  error: agenticError,
+                })
                 sendSSE(controller, 'sources', {
                   sources: agenticDone.sources, conversation_id: context.conversationId,
                   generation_mode: 'agentic', generation_mode_ui: MODE_LABELS.agentic.ui,

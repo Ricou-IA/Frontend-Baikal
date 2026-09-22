@@ -175,7 +175,11 @@ async function main() {
     Deno.exit(1)
   }
 
-  const passes = typeof args.passes === 'string' ? Math.max(1, parseInt(args.passes, 10)) : 1
+  const passesArg = typeof args.passes === 'string' ? parseInt(args.passes, 10) : 1
+  const passes = Number.isFinite(passesArg) ? Math.max(1, passesArg) : 1
+  if (args.passes !== undefined && !Number.isFinite(passesArg)) {
+    console.warn('⚠ --passes invalide, 1 passage')
+  }
   const chunksOnly = Boolean(args['chunks-only'])
 
   const report = JSON.parse(await Deno.readTextFile(reportPath))

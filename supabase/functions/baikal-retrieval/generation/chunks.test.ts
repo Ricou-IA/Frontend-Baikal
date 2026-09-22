@@ -49,6 +49,19 @@ Deno.test("Gemini en erreur apres un token → l'erreur remonte (pas de double r
   await assertRejects(() => collect(generateChunksStream('q', 'c', 's', cfg('gemini-2.5-flash'), KEYS, {}, deps)), Error, 'boom apres')
 })
 
+Deno.test("Gemini ne rend aucun token (reponse vide) → repli OpenAI gpt-4o-mini, onModel appele deux fois", async () => {
+  const models: string[] = []
+  let openaiModel = ''
+  const deps = {
+    openai: (_q: string, _c: string, _s: string, config: LibrarianConfig) => { openaiModel = config.llm_model; return fake(['repli vide']) },
+    gemini: () => fake([]),
+  } as any
+  const out = await collect(generateChunksStream('q', 'c', 's', cfg('gemini-2.5-flash'), KEYS, { onModel: (m) => models.push(m) }, deps))
+  assertEquals(out, 'repli vide')
+  assertEquals(openaiModel, 'gpt-4o-mini')
+  assertEquals(models, ['gemini-2.5-flash', 'gpt-4o-mini'])
+})
+
 Deno.test("cle Gemini absente → OpenAI direct avec le modele de repli", async () => {
   let openaiModel = ''
   const deps = { openai: (_q: string, _c: string, _s: string, config: LibrarianConfig) => { openaiModel = config.llm_model; return fake(['o']) }, gemini: () => fake(['G']) } as any

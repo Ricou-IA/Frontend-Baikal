@@ -423,6 +423,7 @@ interface Aggregate {
   agentic_pct: number
   errors: number
   cost_avg_usd: number | null
+  cost_n: number
   tokens_in_avg: number | null
   tokens_out_avg: number | null
 }
@@ -450,6 +451,7 @@ function aggregate(results: EvalResult[]): Aggregate {
     agentic_pct: n ? Math.round(100 * results.filter(r => r.mode === 'agentic').length / n) : 0,
     errors: results.filter(r => r.error !== null).length,
     cost_avg_usd: (() => { const a = avg(withCost.map(r => r.cost_usd!)); return a === null ? null : Number(a.toFixed(5)) })(),
+    cost_n: withCost.length,
     tokens_in_avg: (() => { const a = avg(withTokensIn); return a === null ? null : Math.round(a) })(),
     tokens_out_avg: (() => { const a = avg(withTokensOut); return a === null ? null : Math.round(a) })(),
   }
@@ -472,6 +474,7 @@ function buildMarkdown(
   lines.push('')
   lines.push(`> ${new Date().toISOString()} — ${results.length} questions${baseline ? ` — comparé à ${baseline.tag}` : ''}`)
   lines.push(`> Modèle de génération (surcharge) : ${llmModelOverride ?? 'config DB'}`)
+  lines.push(`> Motifs de refus : v${REFUSAL_PATTERNS_VERSION} (v2 : fenêtre 160 caractères — C7-004 non strictement comparable à v2.2.0)`)
   lines.push('')
   lines.push('## Synthèse par classe')
   lines.push('')
@@ -481,12 +484,13 @@ function buildMarkdown(
   lines.push('|---|---|---|---|---|---|---|---|---|---|---|---|---|')
   for (const [classe, agg] of [...Object.entries(byClasse), ['GLOBAL', global] as [string, Aggregate]]) {
     const ref = classe === 'GLOBAL' ? baseline?.global : baseline?.byClasse?.[classe]
+    const costCell = agg.cost_n < agg.n ? `${fmt(agg.cost_avg_usd, ' $')} (n=${agg.cost_n})` : fmt(agg.cost_avg_usd, ' $')
     lines.push(
       `| ${classe} | ${agg.n} | ${fmt(agg.recall_doc_pct, '%')}${delta(agg.recall_doc_pct, ref?.recall_doc_pct)} | ` +
       `${fmt(agg.page_ok_pct, '%')} | ${agg.criteria_pct}%${delta(agg.criteria_pct, ref?.criteria_pct)} | ` +
       `${fmt(agg.all_docs_pct, '%')} | ` +
       `${fmt(agg.mrr)} | ${agg.latency_p50}ms | ${agg.latency_p95}ms | ` +
-      `${fmt(agg.cost_avg_usd, ' $')} | ${fmt(agg.tokens_in_avg)}/${fmt(agg.tokens_out_avg)} | ` +
+      `${costCell} | ${fmt(agg.tokens_in_avg)}/${fmt(agg.tokens_out_avg)} | ` +
       `${agg.agentic_pct}% | ${agg.errors} |`,
     )
   }

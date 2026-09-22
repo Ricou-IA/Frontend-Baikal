@@ -47,6 +47,10 @@ export async function* generateChunksStream(
       console.warn(`[chunks] Gemini ${config.llm_model} indisponible avant le premier token, repli OpenAI ${FALLBACK_CHUNKS_MODEL}:`, err instanceof Error ? err.message : err)
       return yield* openaiFallback(query, context, systemPrompt, config, keys.openai, hooks, deps)
     }
+    if (first.done && !first.value) {
+      console.warn(`[chunks] Gemini ${config.llm_model} a rendu une réponse vide, repli OpenAI ${FALLBACK_CHUNKS_MODEL}`)
+      return yield* openaiFallback(query, context, systemPrompt, config, keys.openai, hooks, deps)
+    }
     let full = ''
     while (!first.done) {
       full += first.value
