@@ -9,6 +9,7 @@ import type {
 import { CROSS_REF_CONFIG, MATCH_DOCUMENTS_FN } from "../config.ts"
 import { extractSearchTerms, buildFtsQuery } from "./keywords.ts"
 import { resolveAppLayerWeight } from "./layer-weight.ts"
+import { candidateCount } from "./reranker.ts"
 
 /** Requête full-text OR-isée ; retombe sur la question brute si aucun terme n'est extrait. */
 export function toFtsQuery(queryText: string): string {
@@ -47,7 +48,7 @@ export async function executeSearch(
 
   // v1.1.1: EXACT copy of librarian-v4 search logic
   const intentParams = intent ? (config.intent_config[intent] || null) : null
-  const effectiveMatchCount = intentParams?.match_count || config.match_count
+  const effectiveMatchCount = candidateCount(intentParams?.match_count || config.match_count, features)
   const effectiveThreshold = intentParams?.min_similarity || config.match_threshold
 
   console.log(`[retrieval] Search v15: match_count=${effectiveMatchCount}, threshold=${effectiveThreshold}`)

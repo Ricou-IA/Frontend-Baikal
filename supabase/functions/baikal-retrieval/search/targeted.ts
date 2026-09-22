@@ -119,7 +119,7 @@ export function mergeTargeted(
   const seen = new Set<number>()
   const merged: ChunkResult[] = []
   const push = (c: ChunkResult) => { if (!seen.has(c.chunk_id)) { seen.add(c.chunk_id); merged.push(c) } }
-  for (const t of targeted) for (const c of t.chunks) push(c)
+  for (const t of targeted) for (const c of t.chunks) push({ ...c, targeted: true })
   for (const c of global.chunks) push(c)
 
   const meetingChunks = merged.filter(c => c.metadata?.source_type === 'meeting_transcript')

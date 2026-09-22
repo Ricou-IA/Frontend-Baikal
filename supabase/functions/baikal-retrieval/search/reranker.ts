@@ -5,13 +5,36 @@
 import type { ChunkResult, FeatureFlags, SearchResult } from "../types.ts"
 
 // ============================================================================
+// POOL DE CANDIDATS (Sprint 3, S3.3)
+// ============================================================================
+
+/** Élargit match_count quand le reranking est actif : Cohere a besoin d'un pool plus large que le fast path. */
+export function candidateCount(base: number, features: FeatureFlags): number {
+  return features.enable_reranking ? Math.max(base, features.cohere_candidates) : base
+}
+
+// ============================================================================
 // RERANK
 // ============================================================================
+
+/** Les extraits ciblés (documents nommés) ne sont jamais perdus par la troncature Cohere. */
+export function keepTargetedFirst(reranked: ChunkResult[], original: ChunkResult[], topN: number): ChunkResult[] {
+  const inReranked = new Set(reranked.map(c => c.chunk_id))
+  const targetedIds = new Set(original.filter(c => c.targeted).map(c => c.chunk_id))
+  const targeted = [
+    ...reranked.filter(c => targetedIds.has(c.chunk_id)),
+    ...original.filter(c => c.targeted && !inReranked.has(c.chunk_id)),
+  ]
+  const others = reranked.filter(c => !targetedIds.has(c.chunk_id))
+  if (targeted.length + others.length > topN) console.log(`[retrieval] Rerank: ${targeted.length} extrait(s) ciblé(s) conservé(s) au-delà de top_n=${topN}`)
+  return [...targeted, ...others]
+}
 
 export async function rerankIfEnabled(
   searchResult: SearchResult,
   query: string,
   features: FeatureFlags,
+  fetchFn: typeof fetch = fetch,
 ): Promise<SearchResult> {
   if (!features.enable_reranking) return searchResult
 
@@ -31,36 +54,32 @@ export async function rerankIfEnabled(
     if (primaryChunks.length === 0) return searchResult
 
     // Rerank only primary chunks
-    const rerankedPrimary = await callCohereRerank(
+    const reranked = await callCohereRerank(
       primaryChunks,
       query,
       cohereApiKey,
       features.cohere_model,
       features.cohere_top_n,
+      fetchFn,
     )
 
-    // Build parent ID -> re-score map for children inheritance
-    const parentScores = new Map<number, number>()
-    for (const chunk of rerankedPrimary) {
-      parentScores.set(chunk.chunk_id, chunk.similarity)
+    // Les extraits ciblés tronqués par Cohere sont réinjectés (S3.3)
+    const primaries = keepTargetedFirst(reranked, primaryChunks, features.cohere_top_n)
+
+    // Les enfants suivent leur parent (score hérité) ; un enfant dont le parent est sorti disparaît avec lui
+    const ordered: ChunkResult[] = []
+    for (const p of primaries) {
+      ordered.push(p)
+      for (const child of childChunks) {
+        if (child.parent_chunk_id === p.chunk_id) ordered.push({ ...child, similarity: p.similarity })
+      }
     }
 
-    // Children inherit parent's new score
-    const rerankedChildren = childChunks.map(child => {
-      if (child.parent_chunk_id && parentScores.has(child.parent_chunk_id)) {
-        return { ...child, similarity: parentScores.get(child.parent_chunk_id)! }
-      }
-      return child
-    })
-
-    // Merge: primaries first (by reranked order), then children
-    const allChunks = [...rerankedPrimary, ...rerankedChildren]
-
-    console.log(`[retrieval] Reranked: ${primaryChunks.length} primary chunks via ${features.cohere_model}`)
+    console.log(`[retrieval] Reranked: ${primaryChunks.length} primaires → ${primaries.length} via ${features.cohere_model} (ciblés préservés: ${primaries.filter(c => c.targeted).length})`)
 
     return {
       ...searchResult,
-      chunks: allChunks,
+      chunks: ordered,
       reranked: true,
     }
   } catch (error) {
@@ -79,10 +98,11 @@ async function callCohereRerank(
   apiKey: string,
   model: string,
   topN: number,
+  fetchFn: typeof fetch,
 ): Promise<ChunkResult[]> {
   const documents = chunks.map(c => c.content)
 
-  const response = await fetch("https://api.cohere.com/v2/rerank", {
+  const response = await fetchFn("https://api.cohere.com/v2/rerank", {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${apiKey}`,

@@ -49,6 +49,7 @@ export interface FeatureFlags {
   enable_reranking: boolean
   cohere_model: string
   cohere_top_n: number
+  cohere_candidates: number
   adaptive_threshold_enabled: boolean
   adaptive_threshold_ratio: number
   no_results_min_similarity: number
@@ -297,6 +298,7 @@ export interface ChunkResult {
   parent_chunk_id: number | null
   retrieval_role: 'primary' | 'child'
   section_title: string | null
+  targeted?: boolean   // Sprint 3 : extrait issu de la recherche ciblée par document nommé (préservé par le reranker)
 }
 
 export interface FileInfo {

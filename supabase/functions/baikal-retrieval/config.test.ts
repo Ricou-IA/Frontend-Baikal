@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts"
-import { getIntentStrategy, parseLibrarianConfig, providerFor } from "./config.ts"
+import { getIntentStrategy, parseLibrarianConfig, parseFeatureFlags, providerFor } from "./config.ts"
 
 // Sprint 2 hotfix : 4 documents Bessières (dont le Mémoire Technique, 171 chunks L1)
 // n'ont aucun chunk L0 (ingérés avant v5). En cherchant L0 seul, comparison/synthesis
@@ -34,4 +34,11 @@ Deno.test("providerFor : gemini-* → gemini, sinon openai", () => {
   assertEquals(providerFor('gpt-4.1-mini'), 'openai')
   assertEquals(providerFor('gpt-4o-mini'), 'openai')
   assertEquals(providerFor(''), 'openai')
+})
+
+// Sprint 3 (S3.3) : pool de candidats Cohere — repli 24, jamais lu si absent.
+Deno.test("parseFeatureFlags : cohere_candidates lu, repli 24", () => {
+  assertEquals(parseFeatureFlags({ cohere_candidates: 30 }).cohere_candidates, 30)
+  assertEquals(parseFeatureFlags(null).cohere_candidates, 24)
+  assertEquals(parseFeatureFlags({}).enable_reranking, false)
 })

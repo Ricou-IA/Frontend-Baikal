@@ -75,6 +75,7 @@ const FALLBACK_FEATURES: FeatureFlags = {
   enable_reranking: false,
   cohere_model: 'rerank-v3.5',
   cohere_top_n: 10,
+  cohere_candidates: 24,          // Sprint 3 : primaires demandés à match_documents_v15 quand le reranking est actif
   adaptive_threshold_enabled: false,       // v1.1.0: disabled - was eliminating relevant chunks (petanque bug)
   adaptive_threshold_ratio: 0.55,          // v1.1.0: lowered from 0.70 (less aggressive when re-enabled)
   no_results_min_similarity: 0.15,         // v1.1.0: lowered from 0.25 (was rejecting valid results too early)
@@ -353,13 +354,14 @@ export function parseLibrarianConfig(data: Record<string, unknown> | null): Libr
   }
 }
 
-function parseFeatureFlags(raw: unknown): FeatureFlags {
+export function parseFeatureFlags(raw: unknown): FeatureFlags {
   if (!raw || typeof raw !== 'object') return FALLBACK_FEATURES
   const f = raw as Record<string, unknown>
   return {
     enable_reranking: f.enable_reranking as boolean ?? FALLBACK_FEATURES.enable_reranking,
     cohere_model: f.cohere_model as string || FALLBACK_FEATURES.cohere_model,
     cohere_top_n: f.cohere_top_n as number || FALLBACK_FEATURES.cohere_top_n,
+    cohere_candidates: f.cohere_candidates as number || FALLBACK_FEATURES.cohere_candidates,
     adaptive_threshold_enabled: f.adaptive_threshold_enabled as boolean ?? FALLBACK_FEATURES.adaptive_threshold_enabled,
     adaptive_threshold_ratio: f.adaptive_threshold_ratio as number || FALLBACK_FEATURES.adaptive_threshold_ratio,
     no_results_min_similarity: f.no_results_min_similarity as number || FALLBACK_FEATURES.no_results_min_similarity,

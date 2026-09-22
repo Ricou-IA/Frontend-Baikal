@@ -45,6 +45,13 @@ Deno.test("mergeTargeted sans résultat ciblé rend les extraits globaux inchang
   assertEquals(m.chunks.map(c => c.chunk_id), [1, 2])
 })
 
+// Sprint 3 (S3.3) : le reranker Cohere doit pouvoir repérer les extraits ciblés
+// pour ne jamais les perdre à la troncature — mergeTargeted les marque à la source.
+Deno.test("mergeTargeted marque targeted: true sur les extraits cibles, jamais sur les globaux", () => {
+  const merged = mergeTargeted(GLOBAL, [{ target: { fileIds: ['fa'], names: ['CCAP.pdf'], phrase: 'CCAP', layer: 'project' }, chunks: [chunk(3, 'fa', 0.7)] }], CONFIG, SEARCH)
+  assertEquals(merged.chunks.map(c => [c.chunk_id, c.targeted === true]), [[3, true], [1, false], [2, false]])
+})
+
 Deno.test("annotateTargeted pose targeted_chunks sur la résolution correspondante", () => {
   const r = [resolution({})]
   annotateTargeted(r, [{ target: { phrase: 'CCAP', names: ['CCAP.pdf'], fileIds: ['fa'], layer: 'project' }, chunks: [chunk(2, 'fa')] }])
