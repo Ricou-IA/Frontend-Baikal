@@ -35,8 +35,22 @@
 -- | supprime_le    | timestamptz null | bascule « Inclure supprimés »    |
 --
 -- BLOCS OPTIONNELS. La capacité se lit à la PRÉSENCE des colonnes : un bloc
--- absent de la vue n'est pas affiché, ce n'est jamais une erreur. Un bloc se
--- publie entier ou pas du tout.
+-- absent de la vue n'est pas affiché, ce n'est jamais une erreur.
+--
+-- Chaque colonne d'un bloc est INDÉPENDAMMENT optionnelle. Le bloc est déclaré
+-- par sa colonne pivot — `abo_statut` pour l'abonnement, `credits_stock` pour
+-- les crédits, `ca_ttc` pour l'argent. Sans le pivot, pas de bloc ; avec lui,
+-- Baikal affiche ce qui est là et rien d'autre.
+--
+-- Ce n'est pas du laxisme, c'est l'alignement sur le contrat voisin. Clients
+-- n'a jamais exigé de bloc entier : dpe.baikal_dossiers publie quatre colonnes
+-- abo_* sur cinq depuis le 02/09, sans `abo_montant_mensuel`, parce que le
+-- montant d'un abonnement n'existe nulle part côté dpe — le catalogue de prix
+-- vit chez Stripe. Exiger ici ce que Clients n'exige pas, sur LES MÊMES
+-- colonnes, obligerait le site à recopier un tarif dans sa vue : une seconde
+-- source de vérité pour un prix, qui divergera au premier changement, dans une
+-- console où l'on passe la journée à empêcher deux écrans d'annoncer deux
+-- nombres.
 --
 -- Crédits (Pré-état-daté, Conseil Solaire) :
 -- | credits_stock      | int     | solde disponible                      |
@@ -70,6 +84,12 @@
 -- (b) UNE COLONNE QU'ON NE SAIT PAS REMPLIR EST ABSENTE, jamais présente et
 --     nulle. Un `credits_stock` toujours nul se lit « ce compte n'a plus rien »
 --     au lieu de « ce site ne vend pas de crédits ».
+--
+--     À ne pas confondre avec une colonne dont NULL est une réponse. Chez un
+--     site qui ne supprime jamais un compte, `supprime_le` vaut null partout,
+--     et c'est juste : null y signifie « pas supprimé », pas « on ne sait
+--     pas ». Elle reste au noyau, et la bascule « Inclure supprimés » continue
+--     de fonctionner.
 
 create or replace view @SCHEMA@.baikal_comptes_pro as
 select
@@ -120,8 +140,9 @@ comment on view @SCHEMA@.baikal_comptes_pro is
 --     select compte_id, count(*) from @SCHEMA@.baikal_comptes_pro
 --     group by 1 having count(*) > 1;
 
--- (3) Blocs entiers. Un bloc publié doit l'être en entier : les trois colonnes
---     de crédits, ou aucune ; les cinq colonnes d'abonnement, ou aucune.
+-- (3) Colonnes pivots. Un bloc dont une colonne est publiée sans son pivot ne
+--     s'affichera pas : relire la liste et vérifier que `credits_stock`,
+--     `abo_statut` ou `ca_ttc` est bien là quand le bloc est voulu.
 --
 --     select column_name from information_schema.columns
 --     where table_schema = '@SCHEMA@' and table_name = 'baikal_comptes_pro';
