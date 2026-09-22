@@ -155,9 +155,11 @@ comment on view @SCHEMA@.baikal_comptes_pro is
 --     -- à comparer à la mesure de chapitre 'comptes_pro' qui compte les
 --     -- comptes actifs, au dernier jour publié.
 
--- (5) Toute table source a son grant ET sa policy baikal_read. Même contrôle
---     que mesures-v1 §3, même symptôme muet : une table oubliée sert la vue
---     amputée sans lever d'erreur.
+-- (5) Toute table source a son grant ET sa policy baikal_read. Reprendre la
+--     requête de catalogue de mesures-v1 §3 (5) en changeant le nom de la vue,
+--     et lire son avertissement : sur la base partagée, le rôle postgres a
+--     BYPASSRLS, donc un grant manquant ne se voit pas et n'apparaîtra qu'au
+--     déménagement vers un projet dédié.
 
 -- (6) Lecture sous le rôle de Baikal.
 --

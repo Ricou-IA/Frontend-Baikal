@@ -77,6 +77,15 @@
 --     resteront plausibles. Voirie a affiché 5 demandes payées pour 2 réelles
 --     pendant des semaines, à cause de sessions TEST_SKIP_.
 --
+-- (d) UNE MESURE QUI COIFFE UNE LISTE SE DÉRIVE DE CETTE LISTE, elle ne la
+--     recompte jamais. La tuile « comptes actifs » lit baikal_comptes_pro, la
+--     tuile « dossiers payés » lit baikal_dossiers. C'est le seul montage où
+--     les deux écrans ne PEUVENT PAS diverger : recompter, c'est redéfinir un
+--     périmètre en double, et deux définitions finissent toujours par
+--     s'écarter. La règle vaut déjà dans stats-sites.ts, où les KPI se
+--     joignent à baikal_dossiers ; elle vaut maintenant pour tout le contrat.
+--     (Formulée par la session MonsieurDPE en publiant comptes_pro_actifs.)
+--
 -- L'unicité sur (jour, cle, fenetre_jours) est une PROMESSE du site : une vue
 -- ne contraint rien. Un doublon sur un 'dernier' est inoffensif, un doublon
 -- sur une 'somme' double le nombre affiché sans un bruit. Baikal le détecte et
@@ -234,14 +243,48 @@ comment on view @SCHEMA@.baikal_mesures is
 --     (diag_revendication, envoi_campagne, envoi_recap) : revendications
 --     absentes de la timeline, moitié des courriels manquants, aucune erreur.
 --
---     Lister les tables citées par la vue, puis pour chacune :
+--     Ce contrôle ne se fait PAS à la main : les sources d'une vue se lisent
+--     dans le catalogue, et une table qui entre dans la vue six mois plus tard
+--     n'a aucune chance d'être repérée autrement. Doit rendre zéro ligne, pour
+--     chaque vue contractuelle du site.
 --
---         grant select on @SCHEMA@.<table> to baikal_reader;
---         create policy baikal_read on @SCHEMA@.<table>
+--     with sources as (
+--       select distinct c.oid, n.nspname || '.' || c.relname as source,
+--              c.relrowsecurity as rls
+--       from pg_rewrite r
+--       join pg_depend d on d.objid = r.oid and d.classid = 'pg_rewrite'::regclass
+--       join pg_class c on c.oid = d.refobjid
+--       join pg_namespace n on n.oid = c.relnamespace
+--       where r.ev_class = '@SCHEMA@.baikal_mesures'::regclass
+--         and c.relkind in ('r','v','m','p') and c.oid <> r.ev_class
+--         and n.nspname not in ('pg_catalog', 'information_schema')
+--     )
+--     select source,
+--            has_table_privilege('baikal_reader', oid, 'SELECT') as grant_ok,
+--            exists (select 1 from pg_policies p
+--                     where p.schemaname || '.' || p.tablename = source
+--                       and 'baikal_reader' = any (p.roles)
+--                       and p.cmd in ('SELECT', 'ALL')) as policy_ok
+--     from sources
+--     where not has_table_privilege('baikal_reader', oid, 'SELECT')
+--        or (rls and not exists (select 1 from pg_policies p
+--                                 where p.schemaname || '.' || p.tablename = source
+--                                   and 'baikal_reader' = any (p.roles)
+--                                   and p.cmd in ('SELECT', 'ALL')));
+--
+--     Réparer chaque ligne rendue :
+--
+--         grant select on @SCHEMA@.<source> to baikal_reader;
+--         create policy baikal_read on @SCHEMA@.<source>
 --           for select to baikal_reader using (true);
 --
---     La règle d'exploitation du dépôt vaut ici : rejouer cette boucle chaque
---     fois qu'une table nouvelle entre dans une vue contractuelle.
+--     ATTENTION à ce que ce contrôle ne dit pas. Un site de la base PARTAGÉE
+--     est lu par `SUPABASE_DB_URL`, c'est-à-dire le rôle postgres, qui a
+--     BYPASSRLS : chez lui, un grant manquant ne se voit pas, et la vue paraît
+--     complète. Le trou n'apparaît que le jour du déménagement vers un projet
+--     dédié, où la lecture passe par `baikal_reader`. Passer ce contrôle même
+--     quand tout marche est donc le seul moyen de ne pas transformer un
+--     déménagement en régression silencieuse.
 
 -- (6) Série continue des stocks. Un stock doit avoir autant de jours publiés
 --     que de jours écoulés depuis sa première mesure. Les seules lignes
