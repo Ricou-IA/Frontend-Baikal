@@ -45,6 +45,7 @@ import Partenariats from './pages/Partenariats';
 import Sites from './pages/Sites';
 import ConsoleBaikal from './pages/ConsoleBaikal';
 import Clients from './pages/Clients';
+import ComptesPro from './pages/ComptesPro';
 import Prospects from './pages/Prospects';
 
 function App() {
@@ -248,6 +249,16 @@ function App() {
             element={
               <AdminRoute>
                 <Clients />
+              </AdminRoute>
+            }
+          />
+
+          {/* Admin - Comptes pro multi-sites */}
+          <Route
+            path="/comptes-pro"
+            element={
+              <AdminRoute>
+                <ComptesPro />
               </AdminRoute>
             }
           />

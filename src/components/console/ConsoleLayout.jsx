@@ -6,7 +6,7 @@
  * fois), navigation contextuelle (modules du site + modules transverses).
  *
  * Usage : <ConsoleLayout actif="seo">…contenu…</ConsoleLayout>
- * `actif` ∈ dashboard|knowledge|prompts|indexation|clients|prospects|finances|rapports|seo|partenariats|users|sites
+ * `actif` ∈ dashboard|knowledge|prompts|indexation|clients|comptes_pro|prospects|finances|rapports|seo|partenariats|users|sites
  *         ou, pour l'etage Baikal (/baikal), baikal-comptes|baikal-sites
  * `badges` optionnel : { knowledge: 3 } affiche un badge sur l'onglet.
  * ============================================================================
@@ -16,7 +16,7 @@ import { useNavigate } from 'react-router-dom';
 import {
     LayoutDashboard, BookOpen, MessageSquareCode, Database, FolderOpen,
     TrendingUp, Mail, Users, Globe, Shield, Settings, LogOut, Euro, Target, FileText,
-    ListChecks } from 'lucide-react';
+    ListChecks, Building2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { AppProvider, useApp } from '../../contexts/AppContext';
 import SiteSidebar, { SiteBarre } from './SiteSidebar';
@@ -38,6 +38,10 @@ const MODULES_SITE = {
 // Modules transverses, quel que soit le site.
 const MODULES_TRANSVERSES = [
     { id: 'clients', label: 'Clients', icon: FolderOpen, route: '/clients' },
+    // Comptes pro : les entreprises qui achetent au site, quand Clients liste
+    // l'acte commercial. L'id est celui du module (core.modules_console), sans
+    // quoi le filtrage par droits ci-dessous ne le verrait pas.
+    { id: 'comptes_pro', label: 'Comptes pro', icon: Building2, route: '/comptes-pro' },
     { id: 'prospects', label: 'Prospects', icon: Target, route: '/prospect' },
     { id: 'finances', label: 'Finances', icon: Euro, route: '/finances' },
     { id: 'rapports', label: 'Rapports', icon: FileText, route: '/rapports' },
