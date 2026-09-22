@@ -7,7 +7,7 @@
 // nécessaire — c'est l'étage 2 (monde ouvert) du dispositif d'évaluation.
 //
 // Usage :
-//   deno run -A eval/judge-groundedness.ts --from-report eval/reports/<tag>.json [--limit N]
+//   deno run -A eval/judge-groundedness.ts --from-report eval/reports/<tag>.json [--passes 3] [--chunks-only] [--limit N]
 //
 // eval/.env : GEMINI_API_KEY requis.
 //   Optionnel : SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY → le juge récupère le
@@ -21,6 +21,30 @@ interface JudgeVerdict {
   citation_accuracy: number
 }
 
+export interface JudgeSummary { groundedness: number; citation_accuracy: number; groundedness_sd: number; passes: number }
+
+const r3 = (x: number) => Number(x.toFixed(3))
+
+/** R-S2b : moyenne + écart-type (population) de la fidélité sur N passages du juge. */
+export function averageVerdicts(verdicts: JudgeVerdict[]): JudgeSummary {
+  const n = verdicts.length
+  const g = verdicts.map(v => v.groundedness)
+  const mean = g.reduce((a, b) => a + b, 0) / n
+  const sd = Math.sqrt(g.reduce((a, b) => a + (b - mean) ** 2, 0) / n)
+  return {
+    groundedness: r3(mean),
+    citation_accuracy: r3(verdicts.reduce((a, v) => a + v.citation_accuracy, 0) / n),
+    groundedness_sd: r3(sd),
+    passes: n,
+  }
+}
+
+/** R-S2b : en mode intégral le juge ne voit pas les fichiers ; un refus n'a rien à soutenir. */
+export function isJudgeable(r: { mode: string; refusal_detected?: boolean }, chunksOnly: boolean): boolean {
+  if (!chunksOnly) return true
+  return (r.mode === 'chunks' || r.mode === 'agentic') && !r.refusal_detected
+}
+
 interface ReportResult {
   id: string
   classe: string
@@ -30,7 +54,8 @@ interface ReportResult {
   error: string | null
   refusal_detected?: boolean
   sources: { id?: number | string; document_name?: string; page?: number; content_preview?: string | null }[]
-  judge?: JudgeVerdict | { error: string }
+  judge?: JudgeSummary | { error: string }
+  judge_passes?: JudgeVerdict[]
 }
 
 const JUDGE_PROMPT = `Tu es un auditeur. Voici une RÉPONSE d'assistant documentaire BTP et les EXTRAITS documentaires qui lui étaient fournis.
@@ -150,29 +175,38 @@ async function main() {
     Deno.exit(1)
   }
 
+  const passes = typeof args.passes === 'string' ? Math.max(1, parseInt(args.passes, 10)) : 1
+  const chunksOnly = Boolean(args['chunks-only'])
+
   const report = JSON.parse(await Deno.readTextFile(reportPath))
   let results: ReportResult[] = report.results || []
-  results = results.filter(r => r.answer && !r.error)
+  results = results.filter(r => r.answer && !r.error && isJudgeable(r, chunksOnly))
   if (typeof args.limit === 'string') results = results.slice(0, parseInt(args.limit, 10))
 
   const deepMode = Boolean(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY)
-  console.log(`⚖ Juge fidélité (${model}) sur ${results.length} réponses — mode ${deepMode ? 'COMPLET (chunks DB)' : 'APERÇUS (200c)'}`)
+  console.log(`⚖ Juge fidélité (${model}) sur ${results.length} réponses — mode ${deepMode ? 'COMPLET (chunks DB)' : 'APERÇUS (200c)'} · ${passes} passage(s) · ${chunksOnly ? 'extraits/agentique hors refus' : 'toutes réponses'}`)
 
-  const scores: { id: string; classe: string; groundedness: number; citation_accuracy: number }[] = []
+  const scores: { id: string; classe: string; groundedness: number; citation_accuracy: number; sd: number }[] = []
   for (const [i, r] of results.entries()) {
     try {
       const chunkIds = r.sources.map(s => s.id).filter((id): id is number => typeof id === 'number')
       const fullContents = await fetchChunkContents(chunkIds, env)
-      const verdict = await judgeOne(r, fullContents, model, env.GEMINI_API_KEY)
-      r.judge = verdict
-      scores.push({ id: r.id, classe: r.classe, groundedness: verdict.groundedness, citation_accuracy: verdict.citation_accuracy })
-      const flag = verdict.groundedness >= 0.8 ? '✅' : verdict.groundedness >= 0.5 ? '⚠' : '❌'
-      console.log(`${flag} [${i + 1}/${results.length}] ${r.id} groundedness=${verdict.groundedness.toFixed(2)} citations=${verdict.citation_accuracy.toFixed(2)} (${verdict.claims.length} claims)`)
+      const verdicts: JudgeVerdict[] = []
+      for (let p = 0; p < passes; p++) {
+        verdicts.push(await judgeOne(r, fullContents, model, env.GEMINI_API_KEY))
+        await delay(600)
+      }
+      r.judge = averageVerdicts(verdicts)
+      r.judge_passes = verdicts
+      scores.push({ id: r.id, classe: r.classe, groundedness: r.judge.groundedness, citation_accuracy: r.judge.citation_accuracy, sd: r.judge.groundedness_sd })
+      const flag = r.judge.groundedness >= 0.8 ? '✅' : r.judge.groundedness >= 0.5 ? '⚠' : '❌'
+      const claimsAvg = Math.round(verdicts.reduce((a, v) => a + v.claims.length, 0) / verdicts.length)
+      console.log(`${flag} [${i + 1}/${results.length}] ${r.id} groundedness=${r.judge.groundedness.toFixed(2)}±${r.judge.groundedness_sd} citations=${r.judge.citation_accuracy.toFixed(2)} (${claimsAvg} claims)`)
     } catch (err) {
       r.judge = { error: err instanceof Error ? err.message : String(err) }
       console.log(`💥 [${i + 1}/${results.length}] ${r.id} juge en échec: ${(r.judge as { error: string }).error}`)
+      await delay(600)
     }
-    await delay(600)
   }
 
   // Moyennes par classe
@@ -182,12 +216,13 @@ async function main() {
     const cs = scores.filter(s => s.classe === c)
     const g = cs.reduce((a, b) => a + b.groundedness, 0) / cs.length
     const ca = cs.reduce((a, b) => a + b.citation_accuracy, 0) / cs.length
-    console.log(`   ${c} : groundedness ${g.toFixed(2)} · citations ${ca.toFixed(2)} (n=${cs.length})`)
+    const sdMoyen = cs.reduce((a, b) => a + b.sd, 0) / cs.length
+    console.log(`   ${c} : groundedness ${g.toFixed(2)} (écart moyen ±${sdMoyen.toFixed(3)}) · citations ${ca.toFixed(2)} (n=${cs.length})`)
   }
   const worst = [...scores].sort((a, b) => a.groundedness - b.groundedness).slice(0, 3)
   if (worst.length) console.log(`\n🔎 À inspecter en priorité : ${worst.map(w => `${w.id} (${w.groundedness.toFixed(2)})`).join(', ')}`)
 
-  const outPath = reportPath.replace(/\.json$/, '.judged.json')
+  const outPath = reportPath.replace(/\.json$/, passes > 1 ? `.judged-x${passes}.json` : '.judged.json')
   await Deno.writeTextFile(outPath, JSON.stringify(report, null, 2))
   console.log(`\n📁 Rapport enrichi : ${outPath}`)
 }

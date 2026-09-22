@@ -138,11 +138,14 @@ const REFUSAL_PATTERNS = [
   /je ne peux pas (vous )?(aider|répondre|fournir|confirmer)/i, /pas en mesure de/i,
   /ne (sont|est) pas (explicitement |clairement |précisément |precisement )?(d[ée]taill|mentionn|pr[ée]cis|indiqu|d[ée]crit|abord)/i,
   /pas (explicitement|clairement) (d[ée]taill|mentionn|pr[ée]cis|indiqu|abord)/i,
-  /n['’]existe pas (dans|parmi)/i, /aucun (fichier|document)[^.]{0,60}(projet|corpus)/i,
+  /n['’]existe pas (dans|parmi)/i, /aucun (fichier|document)[^.]{0,160}(projet|corpus)/i,
   /ne (sp[ée]cifie|d[ée]taille|pr[ée]cise|fournit|indique) pas (de |d['’]|la |le |les )/i,
 ]
 
-function detectRefusal(answer: string): boolean {
+// Sprint 3 (R-S2a) : fenêtre 60 → 160 caractères (C7-004) — hors comparabilité stricte avec v2.2.0 sur cette seule question
+export const REFUSAL_PATTERNS_VERSION = 2
+
+export function detectRefusal(answer: string): boolean {
   return REFUSAL_PATTERNS.some(rx => rx.test(answer))
 }
 
@@ -605,7 +608,7 @@ async function main() {
   // Rapports
   await Deno.mkdir('eval/reports', { recursive: true })
   const reportJson = {
-    meta: { tag, date: new Date().toISOString(), golden_version: golden.version, endpoint: cfg.endpoint, n: results.length, llm_model_override: llmModel },
+    meta: { tag, date: new Date().toISOString(), golden_version: golden.version, endpoint: cfg.endpoint, n: results.length, llm_model_override: llmModel, refusal_patterns_version: REFUSAL_PATTERNS_VERSION },
     aggregates: { global, by_classe: byClasse },
     results,
   }
