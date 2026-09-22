@@ -55,7 +55,7 @@ import { generateSuggestions } from "./generation/suggestions.ts"
 import { logQuery, slimSources, chunkStats } from "./logging.ts"
 
 // v2.0: Agentic imports
-import { runAgenticLoop } from "./agentic/orchestrator.ts"
+import { runAgenticLoop, type AgenticResult } from "./agentic/orchestrator.ts"
 import { evaluateAgenticGate, type GateReason } from "./agentic/gate.ts"
 import type { ToolExecutionContext } from "./agentic/tools.ts"
 
@@ -435,6 +435,7 @@ serve(async (req) => {
           // sa réponse s'ajouterait à la réponse partielle déjà affichée.
           let agenticTokensSent = false
           if (useAgentic && GEMINI_API_KEY) {
+            let agenticDone: AgenticResult | null = null
             try {
               // ===========================================================
               // PHASE B — AGENTIC RAG (Gemini tool-calling loop)
@@ -470,6 +471,7 @@ serve(async (req) => {
                 effectiveQuery, context, config.agentic, toolCtx,
                 GEMINI_API_KEY, sseSender, Date.now(),
               )
+              agenticDone = agenticResult
 
               metrics.timings.agentic = timer.mark('agentic')
               noteUsage(agenticResult.usage)
@@ -554,6 +556,22 @@ serve(async (req) => {
               agenticError = err instanceof Error ? err.message : String(err)
               metrics.decisions.agentic_triggered = true
 
+              if (agenticDone) {
+                // La réponse complète est déjà affichée : l'échec vient de la finalisation
+                // (addMessage / logQuery). On termine proprement au lieu d'annoncer une interruption.
+                console.error('[agentic] échec après la réponse complète (finalisation):', err)
+                sendSSE(controller, 'sources', {
+                  sources: agenticDone.sources, conversation_id: context.conversationId,
+                  generation_mode: 'agentic', generation_mode_ui: MODE_LABELS.agentic.ui,
+                  processing_time_ms: timer.elapsed, fast_path: false, model: config.agentic.model, usage,
+                  agentic: { iterations: agenticDone.iterations, timed_out: agenticDone.timedOut, direct_answer: agenticDone.directAnswer, steps: agenticDone.steps, error: agenticError },
+                  named_documents: slimNamedDocuments(context.namedDocuments), metrics, timings: metrics.timings,
+                })
+                sendSSE(controller, 'done', {})
+                controller.close()
+                return
+              }
+
               if (agenticTokensSent) {
                 // Sauf si une réponse partielle est déjà affichée : le chemin rapide en écrirait une
                 // seconde à la suite. On clôt le flux en erreur et on invite à reposer la question.
@@ -637,6 +655,9 @@ serve(async (req) => {
           const chunksHooks = { onUsage: noteUsage, onModel: (m: string) => { usedModel = m } }
 
           if (effectiveMode === 'gemini' && searchResult.files.length > 0) {
+            // Une fois qu'un token du fichier est parti, le repli chunks ne peut plus prendre le relais :
+            // sa réponse s'ajouterait à la réponse partielle déjà affichée (miroir du cas agentique).
+            let fileTokensSent = false
             try {
               const geminiPrompt = buildSystemPrompt(
                 config.librarian.gemini_system_prompt || context.geminiSystemPrompt,
@@ -666,9 +687,27 @@ serve(async (req) => {
 
               for await (const token of generator) {
                 fullResponse += token
+                fileTokensSent = true
                 sendSSE(controller, 'token', { content: token })
               }
             } catch (geminiError) {
+              if (fileTokensSent) {
+                console.error('[retrieval] Gemini (fichiers) en échec après début du streaming, réponse interrompue:', geminiError)
+                await logQuery(supabase, {
+                  conversation_id: context.conversationId, user_id,
+                  org_id: context.effectiveOrgId || org_id || null, project_id: project_id || null, app_id,
+                  query,
+                  rewritten_query: effectiveAnalysis.rewritten_query !== query ? effectiveAnalysis.rewritten_query : null,
+                  intent: effectiveAnalysis.intent,
+                  fast_path: true, generation_mode: 'gemini',
+                  error: String(geminiError),
+                  timings: metrics.timings, processing_time_ms: timer.elapsed,
+                })
+                sendSSE(controller, 'error', { error: 'Lecture intégrale interrompue, veuillez reposer la question' })
+                controller.close()
+                return
+              }
+
               console.error('[retrieval] Gemini error, fallback chunks:', geminiError)
               effectiveMode = 'chunks'
               metrics.decisions.generation_mode = 'chunks'
@@ -774,7 +813,7 @@ serve(async (req) => {
               include_children: activeIntentStrategy.include_children,
             },
             fast_path: true,
-            agentic: null,
+            agentic: agenticError !== null ? { triggered: true, error: agenticError, iterations: 0 } : null,
             cross_ref: effectiveAnalysis.cross_ref || null,
             named_documents: slimNamedDocuments(context.namedDocuments),
             usage,

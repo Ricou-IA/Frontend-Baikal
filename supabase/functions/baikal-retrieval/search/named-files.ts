@@ -10,14 +10,21 @@ import type { Supabase, FileInfo } from "../types.ts"
 
 export async function fetchFileInfosByIds(supabase: Supabase, fileIds: string[]): Promise<FileInfo[]> {
   if (fileIds.length === 0) return []
-  const { data, error } = await supabase
-    .schema('sources')
-    .from('files')
-    .select('id, storage_path, storage_bucket, original_filename, display_name, mime_type, total_pages, layer')
-    .in('id', fileIds)
-    .eq('processing_status', 'completed')
-  if (error) {
-    console.warn('[named-files] sources.files:', error.message)
+  let data: Record<string, unknown>[] | null = null
+  try {
+    const res = await supabase
+      .schema('sources')
+      .from('files')
+      .select('id, storage_path, storage_bucket, original_filename, display_name, mime_type, total_pages, layer')
+      .in('id', fileIds)
+      .eq('processing_status', 'completed')
+    if (res.error) {
+      console.warn('[named-files] sources.files:', res.error.message)
+      return []
+    }
+    data = res.data as Record<string, unknown>[] | null
+  } catch (err) {
+    console.warn('[named-files] sources.files:', err instanceof Error ? err.message : err)
     return []
   }
   const byId = new Map<string, Record<string, unknown>>()

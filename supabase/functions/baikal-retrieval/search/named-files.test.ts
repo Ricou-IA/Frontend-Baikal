@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts"
-import { selectNamedFiles } from "./named-files.ts"
+import { fetchFileInfosByIds, selectNamedFiles } from "./named-files.ts"
 import type { FileInfo } from "../types.ts"
 
 function file(id: string, pages: number): FileInfo {
@@ -13,4 +13,9 @@ Deno.test("selectNamedFiles respecte l'ordre, le nombre et le cumul de pages", (
   assertEquals(selectNamedFiles(files, 5, 450).map(f => f.file_id), ['a', 'b'])
   assertEquals(selectNamedFiles(files, 1, 450).map(f => f.file_id), ['a'])
   assertEquals(selectNamedFiles(files, 5, 50).map(f => f.file_id), [])
+})
+
+Deno.test("fetchFileInfosByIds : exception du client → [] (jamais d'erreur remontée)", async () => {
+  const supabase = { schema: () => { throw new Error('réseau') } } as any
+  assertEquals(await fetchFileInfosByIds(supabase, ['a']), [])
 })
