@@ -108,10 +108,10 @@ FLUX 1 (Orchestrator) → Routes by file type
   └── FLUX 6 (Meeting Transcripts) → Chunking → Edge Function ingest
 ```
 
-### RAG Pipeline (baikal-retrieval v2.2.0)
+### RAG Pipeline (baikal-retrieval v2.3.0)
 
 ```
-User query → baikal-retrieval v2.2.0
+User query → baikal-retrieval v2.3.0
   ├── Accès (auth.ts) : identité lue dans le jeton, appartenance vérifiée par rag.resolve_access (parité RLS de core.projects) ; clé anon → 401, non-membre → 403 ; service_role = corps de confiance (banc d'éval)
   ├── Analyse heuristique (intent par mots-clés, routing/analyzer.ts) + condensation des suivis (routing/condenser.ts, Gemini flash-lite)
   ├── Phase A: Fast Path
@@ -123,6 +123,7 @@ User query → baikal-retrieval v2.2.0
   │     → RRF fusion (k=60)
   │     → [Optional: Cohere reranking - disabled for MVP]
   │     → Quality gate: enough chunks + good similarity? → Generate response (SSE)
+  │     → Génération sur extraits : fournisseur déduit de `parameters.generation.llm_model` (`generation/chunks.ts`, `gpt-*` → OpenAI, `gemini-*` → `generation/gemini-chunks.ts` avec réflexion coupée, règle de forme et garde de répétition ; repli OpenAI gpt-4o-mini avant le premier token ou sur réponse vide) ; tokens captés (`generation/usage.ts`) → `query_logs.counts.tokens_in/out/llm_calls/runaway`, payload `sources.usage`/`model` ; `eval_overrides.llm_model` accepté en service_role seulement (banc)
   │
   └── Phase B: Agentic (if fast path insufficient)
         → Gemini 2.5 Flash orchestrator (tool-calling, ReAct loop)
@@ -135,7 +136,7 @@ User query → baikal-retrieval v2.2.0
         → Streaming final generation via Gemini
 ```
 
-#### baikal-retrieval v2.2.0 File Structure
+#### baikal-retrieval v2.3.0 File Structure
 ```
 supabase/functions/baikal-retrieval/
   index.ts              ← Main handler: Phase A + quality gate + agentic decision
@@ -145,6 +146,7 @@ supabase/functions/baikal-retrieval/
   context.ts            ← Agent context loader (conversation, project identity)
   auth.ts               ← Identité du jeton (service_role / utilisateur / anon) + décision d'accès (rag.resolve_access)
   sources.ts            ← Source citation builder
+  eval-overrides.ts      ← Surcharge eval_overrides.llm_model (service_role seulement, A/B du banc)
   agentic/
     orchestrator.ts     ← ReAct loop (runAgenticLoop) : budget dédié, réponse directe streamée
     gate.ts             ← Gate agentique (n_vector, max_sim), raison tracée dans rag.query_logs
@@ -156,7 +158,7 @@ supabase/functions/baikal-retrieval/
     named-files.ts      ← Fichiers des documents nommés pour la lecture intégrale (Approfondir)
     embedding.ts        ← OpenAI text-embedding-3-small
     memory.ts           ← QA memory search/increment
-    reranker.ts         ← Cohere reranking (feature-flagged, disabled)
+    reranker.ts         ← Cohere (flag false ; extraits ciblés préservés, gate agentique lue avant rerank, `cohere_candidates`)
   routing/
     router.ts           ← Route resolution + conversational handling
     analyzer.ts         ← Analyse heuristique (intent par mots-clés)
@@ -168,6 +170,9 @@ supabase/functions/baikal-retrieval/
     prompt.ts           ← System prompt builder + context formatting
     openai.ts           ← OpenAI streaming generation (fast path)
     gemini.ts           ← Gemini streaming generation (fast path, file-based)
+    usage.ts            ← TokenUsage : capture des tokens de chaque appel de génération (Sprint 3)
+    chunks.ts           ← Dispatch génération sur extraits par fournisseur (providerFor), repli OpenAI (Sprint 3)
+    gemini-chunks.ts    ← Génération Gemini sur extraits, réflexion coupée, garde de répétition (Sprint 3)
 ```
 
 ### Document Hierarchy
@@ -225,6 +230,8 @@ npx supabase functions deploy <name>  # Deploy edge function
 - `processing_status` in `sources.files` may not update if n8n node 3.8b has errors
 - Cohere reranking is implemented but disabled for MVP (`enable_reranking: false`)
 - Frontend admin settings page not yet updated for baikal-retrieval agentic config
+- gemini-2.5-flash sur extraits boucle sur un caractère (espaces puis tirets) dans ~3-6 % des réponses quand la réflexion est coupée : garde `MAX_REPEAT_RUN` = 200 (flux coupé, `counts.runaway`), modèle non promu — essai d'un budget de réflexion au Sprint 4
+- Cohere dormant faute de `COHERE_API_KEY` ; activation = clé + migration `features.enable_reranking`
 - Les événements SSE agentiques ont un traitement UI dédié dans ARPET depuis v2.2.0 (T8) ; les
   nouveaux steps `search_named`, `full_document_unavailable`, `agentic_failed` sont rendus comme
   des steps génériques. L'événement SSE `analysis` (intent, rewritten_query) reste non consommé côté front.
@@ -431,3 +438,4 @@ sites-design.md).
 `ADMIN_RO_MAJORDHOME_DSN`, `ADMIN_RO_PACKVENDEUR_DSN`, `ADMIN_ENV_PACKVENDEUR_KEY` (même
 valeur que `BAIKAL_ADMIN_KEY` côté projet Pré-état-daté : c'est le secret partagé du canal
 d'administration). `ADMIN_ENV_MONSIEURDPE_KEY` n'est plus nécessaire (connecteur SQL).
+`COHERE_API_KEY` (optionnel, reranking).
