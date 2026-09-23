@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts"
-import { buildGeminiChunksBody, thinkingConfigFor, generateWithGeminiChunksStream, whitespaceRun, longestWhitespaceRun, MAX_WHITESPACE_RUN } from "./gemini-chunks.ts"
+import { buildGeminiChunksBody, thinkingConfigFor, generateWithGeminiChunksStream, repeatRun, longestRepeatRun, MAX_REPEAT_RUN, MAX_WHITESPACE_RUN } from "./gemini-chunks.ts"
 import type { LibrarianConfig } from "../types.ts"
 
 const CFG = { llm_model: 'gemini-2.5-flash', temperature: 0.3, max_tokens: 6400 } as LibrarianConfig
@@ -18,20 +18,22 @@ Deno.test("buildGeminiChunksBody : regle de forme anti-alignement ajoutee a l'in
   assertStringIncludes(body.systemInstruction.parts[0].text, "=== CHUNK 1 ===")
 })
 
-Deno.test("whitespaceRun : longueur de la sequence d'espaces en fin de texte, reportee depuis le morceau precedent", () => {
-  assertEquals(whitespaceRun(0, 'abc  '), 2)
-  assertEquals(whitespaceRun(5, '   '), 8)
-  assertEquals(whitespaceRun(5, 'x'), 0)
-  assertEquals(whitespaceRun(5, ''), 5)
+Deno.test("repeatRun : longueur de la sequence du dernier caractere, reportee depuis le morceau precedent", () => {
+  assertEquals(repeatRun({ ch: '', n: 0 }, 'abc--'), { ch: '-', n: 2 })
+  assertEquals(repeatRun({ ch: '-', n: 5 }, '---'), { ch: '-', n: 8 })
+  assertEquals(repeatRun({ ch: '-', n: 5 }, 'x'), { ch: 'x', n: 1 })
+  assertEquals(repeatRun({ ch: '-', n: 5 }, ''), { ch: '-', n: 5 })
 })
 
-Deno.test("MAX_WHITESPACE_RUN vaut 200", () => {
+Deno.test("MAX_REPEAT_RUN (et son alias MAX_WHITESPACE_RUN) valent 200", () => {
+  assertEquals(MAX_REPEAT_RUN, 200)
   assertEquals(MAX_WHITESPACE_RUN, 200)
 })
 
-Deno.test("longestWhitespaceRun : plus longue sequence d'espaces n'importe ou dans le texte", () => {
-  assertEquals(longestWhitespaceRun('a' + ' '.repeat(300) + 'b'), 300)
-  assertEquals(longestWhitespaceRun('abc'), 0)
+Deno.test("longestRepeatRun : plus longue sequence d'un meme caractere n'importe ou dans le texte", () => {
+  assertEquals(longestRepeatRun('a' + '-'.repeat(300) + 'b'), 300)
+  assertEquals(longestRepeatRun('abc'), 1)
+  assertEquals(longestRepeatRun(''), 0)
 })
 
 Deno.test("thinkingConfigFor : budget 0 sur flash, absent sur pro (0 refuse par l'API)", () => {
@@ -86,29 +88,43 @@ Deno.test("generateWithGeminiChunksStream : boucle d'espaces detectee → flux c
   assertEquals(runawayCalls, 1)
 })
 
-Deno.test("generateWithGeminiChunksStream : morceau d'espaces normal (50) transmis sans coupure", async () => {
+Deno.test("generateWithGeminiChunksStream : boucle de tirets (repli de la table markdown) → flux coupe, onRunaway appele une fois", async () => {
   const fetchFn = (() => Promise.resolve(sseResponse([
-    { candidates: [{ content: { parts: [{ text: '| A |' }] } }] },
-    { candidates: [{ content: { parts: [{ text: ' '.repeat(50) }] } }] },
+    { candidates: [{ content: { parts: [{ text: 'Voici\n|' }] } }] },
+    { candidates: [{ content: { parts: [{ text: '-'.repeat(150) }] } }] },
+    { candidates: [{ content: { parts: [{ text: '-'.repeat(100) }] } }] },
     { candidates: [{ content: { parts: [{ text: 'fin' }] } }] },
   ]))) as unknown as typeof fetch
   let runawayCalls = 0
   const gen = generateWithGeminiChunksStream("q", "ctx", "sys", CFG, "KEY", undefined, fetchFn, () => { runawayCalls++ })
   let out = ''
   for await (const t of gen) out += t
-  assertEquals(out, '| A |' + ' '.repeat(50) + 'fin')
-  assertEquals(runawayCalls, 0)
+  assertEquals(out, 'Voici\n|' + '-'.repeat(150) + '\n')
+  assertEquals(runawayCalls, 1)
 })
 
-Deno.test("generateWithGeminiChunksStream : sequence d'espaces interieure a un seul morceau → flux coupe, onRunaway appele une fois", async () => {
+Deno.test("generateWithGeminiChunksStream : sequence d'un meme caractere interieure a un seul morceau (« = ») → flux coupe, onRunaway appele une fois", async () => {
   const fetchFn = (() => Promise.resolve(sseResponse([
-    { candidates: [{ content: { parts: [{ text: 'x' + ' '.repeat(250) + 'y' }] } }] },
+    { candidates: [{ content: { parts: [{ text: 'x' + '='.repeat(250) + 'y' }] } }] },
   ]))) as unknown as typeof fetch
   let runawayCalls = 0
   const gen = generateWithGeminiChunksStream("q", "ctx", "sys", CFG, "KEY", undefined, fetchFn, () => { runawayCalls++ })
   let out = ''
   for await (const t of gen) out += t
   assertEquals(out, '\n')
-  assertEquals(out.endsWith('\n'), true)
   assertEquals(runawayCalls, 1)
+})
+
+Deno.test("generateWithGeminiChunksStream : morceau de tirets normal (50) transmis sans coupure", async () => {
+  const fetchFn = (() => Promise.resolve(sseResponse([
+    { candidates: [{ content: { parts: [{ text: '| A |' }] } }] },
+    { candidates: [{ content: { parts: [{ text: '-'.repeat(50) }] } }] },
+    { candidates: [{ content: { parts: [{ text: 'fin' }] } }] },
+  ]))) as unknown as typeof fetch
+  let runawayCalls = 0
+  const gen = generateWithGeminiChunksStream("q", "ctx", "sys", CFG, "KEY", undefined, fetchFn, () => { runawayCalls++ })
+  let out = ''
+  for await (const t of gen) out += t
+  assertEquals(out, '| A |' + '-'.repeat(50) + 'fin')
+  assertEquals(runawayCalls, 0)
 })

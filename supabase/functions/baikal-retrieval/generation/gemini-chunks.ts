@@ -15,7 +15,7 @@ export function thinkingConfigFor(model: string): { thinkingBudget: number } | u
 }
 
 const REGLE_DE_FORME =
-  "\n\nREGLE DE FORME (Gemini) : dans les tableaux markdown, n'aligne JAMAIS les colonnes avec des espaces ; une seule espace de chaque cote du contenu d'une cellule. Pas de lignes vides repetees."
+  "\n\nREGLE DE FORME (Gemini) : dans les tableaux markdown, n'aligne JAMAIS les colonnes avec des espaces ; une seule espace de chaque cote du contenu d'une cellule. Pas de lignes vides repetees. Pas de lignes de separation de tableau plus longues que necessaire (trois tirets par colonne suffisent)."
 
 export function buildGeminiChunksBody(
   query: string,
@@ -35,23 +35,49 @@ export function buildGeminiChunksBody(
   }
 }
 
-// Longueur de la séquence d'espaces (au sens \s) en fin de `text`, en reportant
-// la longueur `prev` de la séquence qui se terminait le morceau précédent.
-export function whitespaceRun(prev: number, text: string): number {
+// Longueur de la séquence du DERNIER caractère de `text`, en reportant l'état
+// `prev` ({ ch, n }) de la séquence qui se terminait le morceau précédent :
+// si `text` est entièrement composé de `prev.ch`, la séquence se prolonge
+// (n = prev.n + text.length) ; sinon elle repart de la séquence finale du
+// dernier caractère de `text`. `text` vide → `prev` inchangé.
+export function repeatRun(prev: { ch: string; n: number }, text: string): { ch: string; n: number } {
   if (text.length === 0) return prev
-  if (/^\s*$/.test(text)) return prev + text.length
-  const match = text.match(/\s+$/)
-  return match ? match[0].length : 0
+  if (prev.ch !== '' && [...text].every(c => c === prev.ch)) {
+    return { ch: prev.ch, n: prev.n + text.length }
+  }
+  return longestRepeatRunDetail(text, true)
 }
 
-export const MAX_WHITESPACE_RUN = 200
+// Détail (caractère + longueur) de la plus longue séquence d'un même caractère
+// répété dans `text`. `fromEnd` restreint la recherche à la séquence finale
+// (utilisé par `repeatRun`) plutôt qu'à la plus longue séquence globale.
+function longestRepeatRunDetail(text: string, fromEnd = false): { ch: string; n: number } {
+  if (text.length === 0) return { ch: '', n: 0 }
+  if (fromEnd) {
+    const lastChar = text[text.length - 1]
+    let n = 1
+    for (let i = text.length - 2; i >= 0 && text[i] === lastChar; i--) n++
+    return { ch: lastChar, n }
+  }
+  let bestCh = text[0]
+  let best = 1
+  let curCh = text[0]
+  let cur = 1
+  for (let i = 1; i < text.length; i++) {
+    if (text[i] === curCh) { cur++ } else { curCh = text[i]; cur = 1 }
+    if (cur > best) { best = cur; bestCh = curCh }
+  }
+  return { ch: bestCh, n: best }
+}
 
-// Plus longue séquence d'espaces (au sens \s) trouvée n'importe où DANS `text`
-// (pas seulement en fin de morceau) : 0 si `text` n'en contient aucune.
-export function longestWhitespaceRun(text: string): number {
-  const matches = text.match(/\s+/g)
-  if (!matches) return 0
-  return Math.max(...matches.map(m => m.length))
+export const MAX_REPEAT_RUN = 200
+// Alias conservé pour compatibilité (ancien nom de la garde, désormais générique).
+export const MAX_WHITESPACE_RUN = MAX_REPEAT_RUN
+
+// Plus longue séquence d'un même caractère répété trouvée n'importe où DANS
+// `text` (pas seulement en fin de morceau) : 0 si `text` est vide.
+export function longestRepeatRun(text: string): number {
+  return longestRepeatRunDetail(text).n
 }
 
 export async function* generateWithGeminiChunksStream(
@@ -82,7 +108,7 @@ export async function* generateWithGeminiChunksStream(
   let fullContent = ''
   let buffer = ''
   let lastUsage: TokenUsage | null = null
-  let wsRun = 0
+  let runState: { ch: string; n: number } = { ch: '', n: 0 }
   let runaway = false
 
   while (true) {
@@ -101,17 +127,17 @@ export async function* generateWithGeminiChunksStream(
         const parts = json.candidates?.[0]?.content?.parts as Array<{ text?: string }> | undefined
         for (const p of parts ?? []) {
           if (!p.text) continue
-          const run = whitespaceRun(wsRun, p.text)
-          const interiorRun = longestWhitespaceRun(p.text)
-          if (Math.max(run, interiorRun) > MAX_WHITESPACE_RUN) {
-            const reportedRun = Math.max(run, interiorRun)
-            console.warn('[gemini-chunks] boucle d’espaces détectée (' + reportedRun + ' caractères), flux interrompu')
+          const nextRun = repeatRun(runState, p.text)
+          const interior = longestRepeatRunDetail(p.text)
+          if (Math.max(nextRun.n, longestRepeatRun(p.text)) > MAX_REPEAT_RUN) {
+            const reported = nextRun.n >= interior.n ? nextRun : interior
+            console.warn('[gemini-chunks] boucle de répétition détectée (« ' + reported.ch + ' » × ' + reported.n + '), flux interrompu')
             onRunaway?.()
             await reader.cancel()
             runaway = true
             break
           }
-          wsRun = run
+          runState = nextRun
           fullContent += p.text
           yield p.text
         }
