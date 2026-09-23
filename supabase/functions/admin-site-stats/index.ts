@@ -103,6 +103,20 @@ async function lireMesures(
       UNION ALL SELECT * FROM precedentes
     ) t`;
 
+  // Premier jour publie par chaque cle, sur tout son historique : c'est ce qui
+  // dit depuis quand une etape d'entonnoir est mesuree, et donc sur quelle
+  // periode commune ses taux ont un sens (voir etablirEntonnoir).
+  const debutsLignes = await sql`
+    SELECT cle, min(jour)::text AS debut
+    FROM ${sql(schemaVues)}.baikal_mesures
+    WHERE chapitre = ${chapitre}
+      AND (fenetre_jours IS NULL OR fenetre_jours = ${jours})
+      AND jour IS NOT NULL
+    GROUP BY cle`;
+  const debuts: Record<string, string> = Object.fromEntries(
+    debutsLignes.map((l: { cle: string; debut: string }) => [l.cle, l.debut]),
+  );
+
   // L'unicite est une promesse du site : une vue ne contraint rien. Un doublon
   // sur un stock est inoffensif, un doublon sur un flux double le nombre
   // affiche sans un bruit. On le nomme plutot que de sommer en silence, avec
@@ -124,7 +138,7 @@ async function lireMesures(
     jours,
     fin,
     fuseau: site.fuseau,
-    groupes: assembler(lignes, fin, jours),
+    groupes: assembler(lignes, fin, jours, debuts),
     doublons,
   };
 }

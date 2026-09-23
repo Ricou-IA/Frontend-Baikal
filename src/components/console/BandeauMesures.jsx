@@ -12,11 +12,15 @@
  *
  * Un site qui ne publie pas la vue, ou qui n'a aucune mesure pour ce
  * chapitre, n'affiche RIEN : pas de cadre vide, pas de message. La capacité
- * se lit à la présence.
+ * se lit à la présence. Une ERREUR, en revanche, s'affiche toujours : se taire
+ * la rendrait indiscernable d'un site qui ne publie rien.
+ *
+ * Un groupe déclaré en entonnoir (colonne `rendu` du contrat) s'affiche en
+ * étapes alignées avec leurs taux de passage, les autres en tuiles.
  * ============================================================================
  */
 import { useState } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, ArrowRight } from 'lucide-react';
 import { useDonneesCachees } from '../../hooks/useDonneesCachees';
 import { siteStatsService } from '../../services/siteStats.service';
 
@@ -117,6 +121,55 @@ function Tuile({ tuile }) {
   );
 }
 
+function pourcent(taux) {
+  return `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 }).format(taux * 100)} %`;
+}
+
+/**
+ * Entonnoir : étapes alignées dans l'ordre, taux de passage entre deux étapes
+ * CONSÉCUTIVES réellement publiées.
+ *
+ * Les totaux et les taux sont ceux de la période que TOUTES les étapes
+ * mesurent (l'EF la calcule), et le composant le dit quand elle est plus
+ * courte que la fenêtre. Il dit aussi que les taux sont apparents : deux flux
+ * de la même période ne sont pas une cohorte, et un chiffre juste qu'on laisse
+ * lire pour ce qu'il n'est pas devient un chiffre faux.
+ */
+function Entonnoir({ groupe, jours }) {
+  return (
+    <div className="bg-baikal-surface border border-baikal-border rounded-lg p-4">
+      <div className="flex items-stretch gap-2 overflow-x-auto">
+        {groupe.tuiles.map((t, i) => (
+          <div key={t.cle} className="flex items-center gap-2 shrink-0">
+            {i > 0 && (
+              <div className="flex flex-col items-center text-xs text-baikal-text min-w-[56px]">
+                <ArrowRight className="w-4 h-4 opacity-50" />
+                <span className="tabular-nums">
+                  {t.tauxPassage === null || t.tauxPassage === undefined ? '—' : pourcent(t.tauxPassage)}
+                </span>
+              </div>
+            )}
+            <div className="min-w-[120px]">
+              <p className="text-xs font-mono text-baikal-text uppercase truncate" title={t.libelle}>
+                {t.libelle}
+              </p>
+              <p className="text-xl sm:text-2xl font-semibold text-white tabular-nums">
+                {formater(t.valeurEntonnoir ?? t.valeur, t.format)}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="text-[11px] text-baikal-text opacity-60 mt-3">
+        {groupe.depuis
+          ? `Sur ${groupe.joursMesures} jour${groupe.joursMesures > 1 ? 's' : ''}, depuis le ${jourCourt(groupe.depuis)} : première période mesurée par toutes les étapes, au lieu des ${jours} jours demandés. `
+          : ''}
+        Taux apparents : flux de la même période, pas des cohortes. Qui franchit la dernière étape aujourd'hui n'a pas forcément franchi la première aujourd'hui.
+      </p>
+    </div>
+  );
+}
+
 export default function BandeauMesures({ appId, chapitre }) {
   const [jours, setJours] = useState(30);
   const { donnees, erreur } = useDonneesCachees(
@@ -125,9 +178,19 @@ export default function BandeauMesures({ appId, chapitre }) {
     appId,
   );
 
-  // Ni vue, ni mesure, ni droit sur le module : on ne montre rien. Un cadre
-  // vide dirait « ce site ne mesure rien » là où il n'y a rien à dire.
-  if (erreur) return null;
+  // Ni vue ni mesure : on ne montre rien, un cadre vide dirait « ce site ne
+  // mesure rien » là où il n'y a rien à dire. Une ERREUR, elle, se montre. Le
+  // 23/09, ce bandeau taisait ses erreurs, et Eric a vu une page Clients sans
+  // tuile là où l'Edge Function rendait un 500 à chaque appel : impossible à
+  // distinguer d'un site qui ne publie rien.
+  if (erreur) {
+    return (
+      <div className="p-3 bg-red-900/20 border border-red-500/40 rounded-md flex items-start gap-2 text-red-300 text-sm">
+        <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+        <p>Mesures du site indisponibles : {erreur}</p>
+      </div>
+    );
+  }
   const groupes = donnees?.disponible ? (donnees.groupes || []) : [];
   if (groupes.length === 0) return null;
 
@@ -170,9 +233,13 @@ export default function BandeauMesures({ appId, chapitre }) {
               {g.groupe}
             </h3>
           )}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {g.tuiles.map((t) => <Tuile key={t.cle} tuile={t} />)}
-          </div>
+          {g.rendu === 'entonnoir'
+            ? <Entonnoir groupe={g} jours={jours} />
+            : (
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                {g.tuiles.map((t) => <Tuile key={t.cle} tuile={t} />)}
+              </div>
+            )}
         </div>
       ))}
     </div>

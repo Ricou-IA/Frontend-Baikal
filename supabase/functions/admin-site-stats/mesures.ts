@@ -48,12 +48,20 @@ export interface Tuile {
   // null pour la première étape, et quand l'étape précédente vaut 0 — un taux
   // depuis zéro n'existe pas.
   tauxPassage?: number | null;
+  // Entonnoir seulement : total de l'étape sur la période COMMUNE à toutes
+  // les étapes (voir etablirEntonnoir), qui peut être plus courte que la
+  // fenêtre. C'est lui que l'entonnoir affiche, pas `valeur`.
+  valeurEntonnoir?: number;
 }
 
 export interface GroupeTuiles {
   groupe: string | null;
   rendu: "tuiles" | "entonnoir";
   tuiles: Tuile[];
+  // Entonnoir seulement : premier jour de la période commune, quand elle
+  // commence après le début de la fenêtre (null sinon), et sa durée.
+  depuis?: string | null;
+  joursMesures?: number;
 }
 
 export function normaliserRequete(
@@ -94,10 +102,19 @@ function metadonnees(lignes: LigneMesure[]): LigneMesure {
   return lignes.reduce((a, b) => (b.jour >= a.jour ? b : a));
 }
 
+export function ecartJours(de: string, a: string): number {
+  return Math.round(
+    (Date.parse(`${a}T00:00:00Z`) - Date.parse(`${de}T00:00:00Z`)) / 86_400_000,
+  );
+}
+
+// `debuts` : premier jour publié par chaque clé, sur tout son historique. Il
+// ne sert qu'aux entonnoirs, pour savoir depuis quand chaque étape est mesurée.
 export function assembler(
   brut: Partial<LigneMesure>[],
   fin: string,
   jours: number,
+  debuts: Record<string, string> = {},
 ): GroupeTuiles[] {
   const debut = decalerJour(fin, -(jours - 1));
   const debutPrecedent = decalerJour(fin, -(2 * jours - 1));
@@ -155,12 +172,56 @@ export function assembler(
     });
   }
 
-  return grouper(tuiles, parCle);
+  return grouper(tuiles, parCle, { fin, debut, debuts });
+}
+
+interface Contexte {
+  fin: string;
+  debut: string;
+  debuts: Record<string, string>;
+}
+
+// Un entonnoir se lit sur la période que TOUTES ses étapes mesurent. Trouvé
+// sur les premières données réelles, le 24/09 : les rapports ouverts n'étaient
+// journalisés que depuis la veille, les courriels et les paiements depuis fin
+// août, et l'entonnoir sur 30 jours affichait 11 rapports ouverts, puis 19
+// courriels — un taux de passage de 173 %. Comparer deux étapes mesurées sur
+// deux durées, c'est rapporter deux jours à trente.
+//
+// La période commune commence au plus tard des débuts de mesure des étapes,
+// et jamais avant la fenêtre. Les totaux de l'entonnoir et ses taux sont
+// calculés dessus, et le groupe dit depuis quand quand elle est raccourcie.
+// Le début d'une étape se lit à sa première ligne : c'est pourquoi le contrat
+// demande à une étape d'entonnoir de publier ses zéros, comme un stock.
+function etablirEntonnoir(
+  g: GroupeTuiles,
+  parCle: Map<string, LigneMesure[]>,
+  ctx: Contexte,
+): void {
+  const depuis = g.tuiles
+    .map((t) => ctx.debuts[t.cle] ?? ctx.debut)
+    .reduce((a, b) => (b > a ? b : a), ctx.debut);
+  for (const t of g.tuiles) {
+    t.valeurEntonnoir = parCle.get(t.cle)!
+      .filter((l) => l.jour >= depuis && l.jour <= ctx.fin)
+      .reduce((s, l) => s + l.valeur, 0);
+  }
+  // Taux entre étapes RÉELLEMENT publiées et consécutives dans l'ordre : une
+  // étape absente n'est pas devinée, l'entonnoir commence plus bas. Jamais de
+  // taux depuis zéro.
+  g.tuiles.forEach((t, i) => {
+    const avant = i > 0 ? g.tuiles[i - 1].valeurEntonnoir! : null;
+    t.tauxPassage = avant !== null && avant > 0 ? t.valeurEntonnoir! / avant : null;
+  });
+  g.rendu = "entonnoir";
+  g.depuis = depuis > ctx.debut ? depuis : null;
+  g.joursMesures = ecartJours(depuis, ctx.fin) + 1;
 }
 
 function grouper(
   tuiles: Tuile[],
   parCle: Map<string, LigneMesure[]>,
+  ctx: Contexte,
 ): GroupeTuiles[] {
   const rang = (cle: string) => {
     const o = metadonnees(parCle.get(cle)!).ordre;
@@ -184,18 +245,11 @@ function grouper(
     // Un groupe n'est un entonnoir que si TOUTES ses mesures le déclarent :
     // un groupe panaché retombe sur des tuiles, parce que mieux vaut un
     // affichage ordinaire qu'un entonnoir dont une étape n'en serait pas une.
-    // Il en faut au moins deux : une étape seule n'a pas de passage.
+    // Il en faut au moins deux, et ce sont des FLUX : une étape seule n'a pas
+    // de passage, et un stock n'est pas un passage.
     const entonnoir = g.tuiles.length >= 2 &&
-      g.tuiles.every((t) => renduDe(t.cle) === "entonnoir");
-    if (entonnoir) {
-      g.rendu = "entonnoir";
-      // Taux entre étapes RÉELLEMENT publiées et consécutives dans l'ordre :
-      // une étape absente n'est pas devinée, l'entonnoir commence plus bas.
-      g.tuiles.forEach((t, i) => {
-        const avant = i > 0 ? g.tuiles[i - 1].valeur : null;
-        t.tauxPassage = avant !== null && avant > 0 ? t.valeur / avant : null;
-      });
-    }
+      g.tuiles.every((t) => renduDe(t.cle) === "entonnoir" && t.agregation === "somme");
+    if (entonnoir) etablirEntonnoir(g, parCle, ctx);
   }
 
   // Les groupes suivent le rang de leur première tuile : un site ordonne ses

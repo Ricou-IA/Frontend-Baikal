@@ -131,7 +131,7 @@
 -- lecteur qui ne lit aucune étiquette. `groupe` reste libre et le site le nomme
 -- comme il veut, y compris « Entonnoir d'achat » ou « Parcours ».
 --
--- Trois règles pour un entonnoir, et la troisième est la plus importante.
+-- Quatre règles pour un entonnoir, et la dernière est la plus importante.
 --
 --   - Toutes les mesures d'un même groupe déclarent le MÊME rendu. Un groupe
 --     panaché retombe sur des tuiles : mieux vaut un affichage ordinaire qu'un
@@ -143,6 +143,18 @@
 --     RÉELLEMENT PUBLIÉES, et ne devine pas qu'il en manque une. Un site qui
 --     n'a pas encore de mesure de trafic affiche un entonnoir qui commence
 --     plus bas, avec ses libellés pour le dire.
+--   - Un entonnoir se lit sur la période que TOUTES ses étapes mesurent. Ses
+--     étapes sont des flux, et chacune PUBLIE SES ZÉROS depuis sa première
+--     mesure, comme un stock : c'est la seule façon pour Baikal de savoir
+--     depuis quand une étape est mesurée. Baikal calcule alors la période
+--     commune (du plus tardif des débuts à la fin de la fenêtre), y totalise
+--     les étapes et les taux, et affiche « sur N jours, depuis le JJ/MM »
+--     quand elle est plus courte que la fenêtre. Trouvé sur les premières
+--     données réelles, le 24/09 : les rapports ouverts n'étaient journalisés
+--     que depuis la veille, les courriels depuis fin août, et l'entonnoir sur
+--     30 jours affichait 11 ouvertures suivies de 19 courriels — 173 % de
+--     passage. Comparer deux étapes mesurées sur deux durées, c'est rapporter
+--     deux jours à trente.
 --   - Un taux de passage entre deux flux de la même période est APPARENT, pas
 --     une cohorte : celui qui ouvre son rapport un lundi paie trois semaines
 --     plus tard, et il n'est pas le même que celui qui paie ce lundi-là.

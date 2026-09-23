@@ -193,3 +193,53 @@ Deno.test("colonne rendu absente : tuiles", () => {
   const [g] = assembler([ligne({ cle: "a" }), ligne({ cle: "b" })], FIN, 7);
   assertEquals(g.rendu, "tuiles");
 });
+
+Deno.test("entonnoir : lu sur la periode commune, le cas reel du 24/09", () => {
+  // Rapports ouverts journalises depuis le 29/09 seulement, courriels depuis
+  // longtemps : sur 7 jours, l'entonnoir ne compte que les 29 et 30/09. Sans
+  // cette borne, 1 rapport ouvert suivi de 9 courriels ferait un taux de 900 %.
+  const e = (cle: string, ordre: number, jour: string, valeur: number) =>
+    ligne({ cle, ordre, jour, valeur, groupe: "Parcours", rendu: "entonnoir" });
+  const [g] = assembler(
+    [
+      e("ouverts", 1, "2026-09-29", 4),
+      e("ouverts", 1, "2026-09-30", 6),
+      e("emails", 2, "2026-09-25", 7),
+      e("emails", 2, "2026-09-29", 1),
+      e("emails", 2, "2026-09-30", 1),
+    ],
+    FIN,
+    7,
+    { ouverts: "2026-09-29", emails: "2026-08-01" },
+  );
+  assertEquals(g.rendu, "entonnoir");
+  assertEquals(g.depuis, "2026-09-29");
+  assertEquals(g.joursMesures, 2);
+  assertEquals(g.tuiles.map((t) => t.valeurEntonnoir), [10, 2]);
+  assertEquals(g.tuiles.map((t) => t.tauxPassage), [null, 0.2]);
+  // Les tuiles ordinaires, elles, gardent leur total sur toute la fenetre.
+  assertEquals(g.tuiles.map((t) => t.valeur), [10, 9]);
+});
+
+Deno.test("entonnoir : toutes les etapes mesurees avant la fenetre, pas de borne", () => {
+  const e = (cle: string, ordre: number, valeur: number) =>
+    ligne({ cle, ordre, valeur, groupe: "Parcours", rendu: "entonnoir" });
+  const [g] = assembler([e("a", 1, 10), e("b", 2, 5)], FIN, 7, {
+    a: "2026-01-01",
+    b: "2026-02-01",
+  });
+  assertEquals(g.depuis, null);
+  assertEquals(g.joursMesures, 7);
+});
+
+Deno.test("entonnoir : un stock n'est pas une etape, le groupe retombe sur des tuiles", () => {
+  const [g] = assembler(
+    [
+      ligne({ cle: "a", ordre: 1, groupe: "G", rendu: "entonnoir" }),
+      ligne({ cle: "b", ordre: 2, groupe: "G", rendu: "entonnoir", agregation: "dernier" }),
+    ],
+    FIN,
+    7,
+  );
+  assertEquals(g.rendu, "tuiles");
+});
