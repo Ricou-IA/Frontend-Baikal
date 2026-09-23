@@ -135,7 +135,10 @@
 --
 --   - Toutes les mesures d'un même groupe déclarent le MÊME rendu. Un groupe
 --     panaché retombe sur des tuiles : mieux vaut un affichage ordinaire qu'un
---     entonnoir dont une étape ne serait pas une étape.
+--     entonnoir dont une étape ne serait pas une étape. En pratique, écrire
+--     `rendu` UNE FOIS en sortie de l'union, par un `case` sur la clé, plutôt
+--     que dans chaque branche : une valeur écrite une seule fois ne peut pas
+--     diverger. (Mise en œuvre de la session MonsieurDPE.)
 --   - Une étape absente est absente : Baikal calcule ses taux entre les étapes
 --     RÉELLEMENT PUBLIÉES, et ne devine pas qu'il en manque une. Un site qui
 --     n'a pas encore de mesure de trafic affiche un entonnoir qui commence
