@@ -155,6 +155,25 @@ comment on view @SCHEMA@.baikal_comptes_pro is
 --     -- à comparer à la mesure de chapitre 'comptes_pro' qui compte les
 --     -- comptes actifs, au dernier jour publié.
 
+-- (4 bis) AUCUNE CATÉGORIE N'EST UNE VALEUR PAR DÉFAUT DÉGUISÉE EN
+--     INFORMATION. Un site dont le rôle est posé à l'inscription puis promu à
+--     une activation a toujours une population invisible entre les deux : elle
+--     porte le rôle initial, et la console l'affiche comme un fait.
+--
+--     Trouvé chez MonsieurDPE le 23/09 : `particulier` est le rôle posé à
+--     l'inscription, promu à la validation d'une revendication de fiche. Six
+--     comptes s'étaient arrêtés avant, dont quatre cabinets de diagnostic
+--     reconnaissables à leur domaine, et la liste les annonçait « Particulier ».
+--
+--     Le contrôle : pour chaque valeur de `categorie`, se demander si elle est
+--     CHOISIE ou SUBIE. Une valeur subie mérite son propre slug, sans quoi
+--     elle se lit comme une affirmation. Un vrai particulier, lui, se distingue
+--     par un acte — un achat, une commande — et non par l'absence d'un autre.
+--
+--     select categorie, count(*) from @SCHEMA@.baikal_comptes_pro group by 1;
+--
+--     (Formulé par la session MonsieurDPE en corrigeant ses deux vues.)
+
 -- (5) Toute table source a son grant ET sa policy baikal_read. Reprendre la
 --     requête de catalogue de mesures-v1 §3 (5) en changeant le nom de la vue,
 --     et lire son avertissement : sur la base partagée, le rôle postgres a

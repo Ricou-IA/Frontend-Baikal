@@ -9,6 +9,11 @@
 
 const COULEURS_ETAPES = {
   slate: 'bg-slate-800/60 text-slate-300 border-slate-600',
+  // sky : neutre froid, ajoute le 23/09/2026 parce que les six couleurs
+  // etaient prises chez monsieurdpe et qu'il restait emerald (qui se lit
+  // « reussi ») et red (qui se lit « probleme ») pour nommer un etat qui
+  // n'est ni l'un ni l'autre — un compte inscrit qui n'a pas de fiche.
+  sky: 'bg-sky-900/40 text-sky-300 border-sky-700',
   blue: 'bg-blue-900/40 text-blue-300 border-blue-700',
   amber: 'bg-amber-900/40 text-amber-300 border-amber-700',
   emerald: 'bg-emerald-900/40 text-emerald-200 border-emerald-700',
