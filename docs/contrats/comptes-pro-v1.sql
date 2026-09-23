@@ -174,6 +174,23 @@ comment on view @SCHEMA@.baikal_comptes_pro is
 --
 --     (Formulé par la session MonsieurDPE en corrigeant ses deux vues.)
 
+-- (4 ter) LES DEUX VUES S'ACCORDENT LIGNE À LIGNE sur les colonnes qu'elles
+--     partagent. Un site qui publie `categorie` ici ET dans baikal_dossiers
+--     doit la DÉRIVER de celle qui fait autorité, jamais la recalculer : deux
+--     cascades du même fait s'écartent toujours, et aucune n'est fausse de son
+--     point de vue, ce qui rend l'écart introuvable.
+--
+--     Trouvé chez MonsieurDPE le 23/09 : la même personne sortait « inscrit
+--     sans fiche » de baikal_comptes_pro et « agent immo » de baikal_dossiers,
+--     la cascade courte de la première ignorant un lead de sourcing agence.
+--
+--     Doit rendre zéro ligne (adapter la clé de rapprochement du site) :
+--
+--     select p.compte_id, p.categorie, d.categorie
+--     from @SCHEMA@.baikal_comptes_pro p
+--     join @SCHEMA@.baikal_dossiers d on d.email = p.email
+--     where p.categorie is distinct from d.categorie;
+
 -- (5) Toute table source a son grant ET sa policy baikal_read. Reprendre la
 --     requête de catalogue de mesures-v1 §3 (5) en changeant le nom de la vue,
 --     et lire son avertissement : sur la base partagée, le rôle postgres a

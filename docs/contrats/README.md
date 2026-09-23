@@ -42,6 +42,20 @@ manquants.
 nulle.** La capacité se lit à la présence ; une colonne toujours vide se lit
 comme un fait, pas comme une absence de mesure.
 
+**Toute donnée présente dans deux vues contractuelles d'un même site se dérive
+de celle qui fait autorité, jamais recalculée.** Deux définitions du même fait
+s'écartent toujours, et aucune n'est fausse de son point de vue : c'est ce qui
+rend l'écart introuvable. Deux cas vus le 23/09/2026 chez MonsieurDPE. Une
+mesure qui coiffe une liste doit la lire (`comptes_pro_actifs` lit
+`baikal_comptes_pro`), sans quoi la tuile et la liste annoncent deux nombres.
+Et une colonne partagée par deux vues doit venir de celle qui porte le grain le
+plus complet : `baikal_comptes_pro` avait sa propre cascade de catégorie, plus
+courte que celle de `baikal_dossiers`, et la même personne sortait « inscrit
+sans fiche » d'un côté, « agent immo » de l'autre.
+
+Le contrôle correspondant, à l'onboarding : pour chaque colonne présente dans
+deux vues, vérifier qu'elles s'accordent ligne à ligne.
+
 | Contrat | Nature | Version | Sites installés |
 |---|---|---|---|
 | `prospects-v1.sql` | module | 1 | monsieurdpe |
