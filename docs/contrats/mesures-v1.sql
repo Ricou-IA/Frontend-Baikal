@@ -87,6 +87,20 @@
 --     joignent à baikal_dossiers ; elle vaut maintenant pour tout le contrat.
 --     (Formulée par la session MonsieurDPE en publiant comptes_pro_actifs.)
 --
+-- (e) UN GROUPE QUI RESSEMBLE À UNE RÉPARTITION EN EST UNE, COMPLÈTE. Des
+--     tuiles posées à côté d'un total seront additionnées par le lecteur :
+--     si elles ne couvrent pas tout le total, ou si elles comptent autre chose
+--     que lui, l'addition tombe faux et le chiffre juste paraît faux. Trouvé
+--     par Eric le 24/09 sur MonsieurDPE : 27 fiches diagnostiqueur + 37 fiches
+--     entreprise + 6 inscrits sans fiche = 70, pour 71 comptes pro — un agent
+--     immobilier n'avait pas de tuile, et les fiches n'étaient pas des
+--     comptes. Une répartition dérive de la liste par sa catégorie, couvre
+--     toutes les catégories, et ne mélange pas deux unités.
+--
+-- Le format 'pourcent' porte une valeur DÉJÀ en pourcentage, de 0 à 100 :
+-- Baikal ajoute le signe, il ne multiplie pas. Un taux publié de 0 à 1
+-- s'afficherait « 0,2 % » pour 20 %.
+--
 -- L'unicité sur (jour, cle, fenetre_jours) est une PROMESSE du site : une vue
 -- ne contraint rien. Un doublon sur un 'dernier' est inoffensif, un doublon
 -- sur une 'somme' double le nombre affiché sans un bruit. Baikal le détecte et
