@@ -32,6 +32,7 @@
 -- | chapitre      | text, non nul    | OÙ la tuile s'affiche, voir §1.1     |
 -- | fenetre_jours | int, nullable    | non nul => agregation = 'dernier'    |
 -- | groupe        | text, nullable   | bloc de tuiles dans le chapitre      |
+-- | rendu         | text, nullable   | 'tuiles' (défaut) ou 'entonnoir'     |
 -- | ordre         | int, nullable    | rang dans le groupe, NULL en dernier |
 --
 -- Trois règles tiennent tout le reste. Elles ne sont pas des recommandations :
@@ -118,6 +119,32 @@
 --
 -- Une valeur hors vocabulaire n'est pas affichée ailleurs par défaut : elle
 -- est écartée, comme une ligne incomplète. Baikal ne devine pas un rangement.
+--
+-- LE RENDU SE DÉCLARE, IL NE SE DEVINE PAS À UN NOM. `rendu` vaut 'tuiles'
+-- (défaut, NULL compris) ou 'entonnoir'. Un groupe en 'entonnoir' s'affiche en
+-- étapes alignées, dans l'ordre de `ordre`, avec le taux de passage entre deux
+-- étapes CONSÉCUTIVES.
+--
+-- Un nom de groupe réservé — « publie un groupe appelé funnel et Baikal
+-- comprendra » — aurait été la même faute que la fenêtre dans le nom d'une
+-- clé : de la métadonnée passée en contrebande dans une étiquette, chez un
+-- lecteur qui ne lit aucune étiquette. `groupe` reste libre et le site le nomme
+-- comme il veut, y compris « Entonnoir d'achat » ou « Parcours ».
+--
+-- Trois règles pour un entonnoir, et la troisième est la plus importante.
+--
+--   - Toutes les mesures d'un même groupe déclarent le MÊME rendu. Un groupe
+--     panaché retombe sur des tuiles : mieux vaut un affichage ordinaire qu'un
+--     entonnoir dont une étape ne serait pas une étape.
+--   - Une étape absente est absente : Baikal calcule ses taux entre les étapes
+--     RÉELLEMENT PUBLIÉES, et ne devine pas qu'il en manque une. Un site qui
+--     n'a pas encore de mesure de trafic affiche un entonnoir qui commence
+--     plus bas, avec ses libellés pour le dire.
+--   - Un taux de passage entre deux flux de la même période est APPARENT, pas
+--     une cohorte : celui qui ouvre son rapport un lundi paie trois semaines
+--     plus tard, et il n'est pas le même que celui qui paie ce lundi-là.
+--     Baikal l'écrit sous l'entonnoir. Un chiffre juste qu'on laisse lire pour
+--     ce qu'il n'est pas devient un chiffre faux.
 --
 -- LA RÈGLE POUR RANGER : le chapitre suit ce que la mesure COMPTE, pas qui l'a
 -- produite. Les analyses lancées par un diagnostiqueur abonné vont dans
@@ -224,11 +251,18 @@ comment on view @SCHEMA@.baikal_mesures is
 
 -- (3) Vocabulaire admis. Doit rendre zéro ligne.
 --
---     select distinct cle, agregation, format, chapitre
+--     select distinct cle, agregation, format, chapitre, rendu
 --     from @SCHEMA@.baikal_mesures
 --     where agregation not in ('somme', 'dernier')
 --        or format not in ('nombre', 'eur', 'pourcent')
---        or chapitre not in ('clients', 'finances', 'comptes_pro');
+--        or chapitre not in ('clients', 'finances', 'comptes_pro')
+--        or coalesce(rendu, 'tuiles') not in ('tuiles', 'entonnoir');
+--
+--     Et le rendu uniforme par groupe, qui doit aussi rendre zéro ligne :
+--
+--     select chapitre, groupe, count(distinct coalesce(rendu, 'tuiles'))
+--     from @SCHEMA@.baikal_mesures
+--     group by 1, 2 having count(distinct coalesce(rendu, 'tuiles')) > 1;
 
 -- (4) Complétude. Doit rendre zéro.
 --
