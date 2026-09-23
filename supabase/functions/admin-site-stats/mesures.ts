@@ -26,6 +26,9 @@ export interface LigneMesure {
   groupe: string | null;
   ordre: number | null;
   fenetre_jours: number | null;
+  // Colonne optionnelle du contrat : absente chez un site installé avant
+  // elle, l'EF la rend alors à NULL, qui vaut 'tuiles'.
+  rendu?: string | null;
 }
 
 export interface Tuile {
@@ -41,10 +44,15 @@ export interface Tuile {
   // Renseignée pour un stock seulement : c'est la date du dernier jour mesuré.
   mesureLe: string | null;
   serie: { jour: string; valeur: number }[];
+  // Entonnoir seulement : part de l'étape précédente qui atteint celle-ci.
+  // null pour la première étape, et quand l'étape précédente vaut 0 — un taux
+  // depuis zéro n'existe pas.
+  tauxPassage?: number | null;
 }
 
 export interface GroupeTuiles {
   groupe: string | null;
+  rendu: "tuiles" | "entonnoir";
   tuiles: Tuile[];
 }
 
@@ -160,17 +168,34 @@ function grouper(
   };
   const nomGroupe = (cle: string) => metadonnees(parCle.get(cle)!).groupe ?? null;
 
+  const renduDe = (cle: string) => metadonnees(parCle.get(cle)!).rendu ?? "tuiles";
+
   const groupes = new Map<string, GroupeTuiles>();
   for (const t of tuiles) {
     const g = nomGroupe(t.cle);
     const cle = g ?? "";
     const existant = groupes.get(cle);
     if (existant) existant.tuiles.push(t);
-    else groupes.set(cle, { groupe: g, tuiles: [t] });
+    else groupes.set(cle, { groupe: g, rendu: "tuiles", tuiles: [t] });
   }
 
   for (const g of groupes.values()) {
     g.tuiles.sort((a, b) => rang(a.cle) - rang(b.cle) || a.cle.localeCompare(b.cle));
+    // Un groupe n'est un entonnoir que si TOUTES ses mesures le déclarent :
+    // un groupe panaché retombe sur des tuiles, parce que mieux vaut un
+    // affichage ordinaire qu'un entonnoir dont une étape n'en serait pas une.
+    // Il en faut au moins deux : une étape seule n'a pas de passage.
+    const entonnoir = g.tuiles.length >= 2 &&
+      g.tuiles.every((t) => renduDe(t.cle) === "entonnoir");
+    if (entonnoir) {
+      g.rendu = "entonnoir";
+      // Taux entre étapes RÉELLEMENT publiées et consécutives dans l'ordre :
+      // une étape absente n'est pas devinée, l'entonnoir commence plus bas.
+      g.tuiles.forEach((t, i) => {
+        const avant = i > 0 ? g.tuiles[i - 1].valeur : null;
+        t.tauxPassage = avant !== null && avant > 0 ? t.valeur / avant : null;
+      });
+    }
   }
 
   // Les groupes suivent le rang de leur première tuile : un site ordonne ses

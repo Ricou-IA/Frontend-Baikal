@@ -13,7 +13,7 @@ import {
   sitesAutorises,
 } from "../_shared/droits.ts";
 import { statsParSite } from "./stats-sites.ts";
-import { assembler, normaliserRequete } from "./mesures.ts";
+import { assembler, decalerJour, normaliserRequete } from "./mesures.ts";
 
 // deno-lint-ignore no-explicit-any
 type Sql = any;
@@ -41,11 +41,32 @@ async function lireMesures(
   }
   if (!schemaVues) return { disponible: false, chapitre, jours };
 
+  // `rendu` est venu apres la premiere version du contrat : un site installe
+  // avant ne l'a pas, et le lire sans verifier ferait tomber toutes ses
+  // tuiles. Sa presence se lit, comme toute capacite ; absent, il vaut NULL,
+  // donc des tuiles ordinaires.
+  const [{ aRendu }] = await sql`
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = ${schemaVues} AND table_name = 'baikal_mesures'
+        AND column_name = 'rendu'
+    ) AS "aRendu"`;
+
   // Le jour de fin est le jour LOCAL du site, celui-la meme que ses vues
   // publient. Le calculer en UTC decalerait la journee en cours d'un jour en
   // fin de soiree, silencieusement.
   const [{ fin }] = await sql`
     SELECT (now() AT TIME ZONE ${site.fuseau})::date::text AS fin`;
+
+  // Les bornes se calculent ICI, en TypeScript, et voyagent en texte. Les
+  // calculer en SQL a coute un 500 sur chaque appel le 23/09 : postgres.js
+  // envoie ses parametres sans type, et Postgres resolvait `$1::date - $2` en
+  // soustraction de DEUX DATES, qui rend un entier — d'ou `operator does not
+  // exist: date > integer`. Une borne deja datee ne laisse rien a deviner, et
+  // c'est exactement ce que decalerJour() calcule pour l'assemblage : une
+  // seule definition des fenetres pour la requete et pour les totaux.
+  const borneBasse = decalerJour(fin, -(2 * jours - 1));
+  const finPrecedente = decalerJour(fin, -jours);
 
   // Trois ensembles, parce qu'un stock n'a pas de borne de recul : les lignes
   // des deux dernieres fenetres (serie, sommes, periode precedente), la
@@ -55,15 +76,16 @@ async function lireMesures(
   const lignes = await sql`
     WITH src AS (
       SELECT cle, jour::text AS jour, valeur::float8 AS valeur, agregation, format,
-             libelle, groupe, ordre::int AS ordre, fenetre_jours::int AS fenetre_jours
+             libelle, groupe, ordre::int AS ordre, fenetre_jours::int AS fenetre_jours,
+             ${aRendu ? sql`rendu` : sql`NULL::text`} AS rendu
       FROM ${sql(schemaVues)}.baikal_mesures
       WHERE chapitre = ${chapitre}
         AND (fenetre_jours IS NULL OR fenetre_jours = ${jours})
         AND jour IS NOT NULL
-        AND jour <= ${fin}::date
+        AND jour::text <= ${fin}
     ),
     recentes AS (
-      SELECT * FROM src WHERE jour::date > ${fin}::date - ${2 * jours}
+      SELECT * FROM src WHERE jour >= ${borneBasse}
     ),
     connues AS (
       SELECT DISTINCT ON (cle) * FROM src
@@ -72,7 +94,7 @@ async function lireMesures(
     ),
     precedentes AS (
       SELECT DISTINCT ON (cle) * FROM src
-      WHERE agregation = 'dernier' AND jour::date <= ${fin}::date - ${jours}
+      WHERE agregation = 'dernier' AND jour <= ${finPrecedente}
       ORDER BY cle, jour DESC
     )
     SELECT DISTINCT * FROM (

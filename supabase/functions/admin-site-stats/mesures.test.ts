@@ -14,6 +14,7 @@ function ligne(p: Partial<Parameters<typeof assembler>[0][number]>) {
     groupe: null,
     ordre: null,
     fenetre_jours: null,
+    rendu: null as string | null,
     ...p,
   };
 }
@@ -157,4 +158,38 @@ Deno.test("deux fenetres de la meme cle ne se melangent pas dans la serie", () =
   );
   assertEquals(g.tuiles[0].fenetreJours, 7);
   assertEquals(g.tuiles[0].valeur, 3);
+});
+
+Deno.test("entonnoir : rendu declare partout, taux entre etapes consecutives", () => {
+  const e = (cle: string, ordre: number, valeur: number) =>
+    ligne({ cle, ordre, valeur, groupe: "Parcours", rendu: "entonnoir" });
+  const [g] = assembler([e("ouverts", 2, 40), e("emails", 3, 10), e("payes", 4, 2)], FIN, 7);
+  assertEquals(g.rendu, "entonnoir");
+  assertEquals(g.tuiles.map((t) => t.cle), ["ouverts", "emails", "payes"]);
+  assertEquals(g.tuiles.map((t) => t.tauxPassage), [null, 0.25, 0.2]);
+});
+
+Deno.test("entonnoir : une etape a zero ne produit pas de taux depuis zero", () => {
+  const e = (cle: string, ordre: number, valeur: number) =>
+    ligne({ cle, ordre, valeur, groupe: "Parcours", rendu: "entonnoir" });
+  const [g] = assembler([e("emails", 1, 0), e("payes", 2, 0)], FIN, 7);
+  assertEquals(g.tuiles[1].tauxPassage, null);
+});
+
+Deno.test("groupe panache : retombe sur des tuiles, sans taux", () => {
+  const [g] = assembler(
+    [
+      ligne({ cle: "a", ordre: 1, groupe: "G", rendu: "entonnoir" }),
+      ligne({ cle: "b", ordre: 2, groupe: "G", rendu: null }),
+    ],
+    FIN,
+    7,
+  );
+  assertEquals(g.rendu, "tuiles");
+  assertEquals(g.tuiles.every((t) => t.tauxPassage === undefined), true);
+});
+
+Deno.test("colonne rendu absente : tuiles", () => {
+  const [g] = assembler([ligne({ cle: "a" }), ligne({ cle: "b" })], FIN, 7);
+  assertEquals(g.rendu, "tuiles");
 });
