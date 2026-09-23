@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts"
-import { buildGeminiChunksBody, thinkingConfigFor, generateWithGeminiChunksStream, whitespaceRun, MAX_WHITESPACE_RUN } from "./gemini-chunks.ts"
+import { buildGeminiChunksBody, thinkingConfigFor, generateWithGeminiChunksStream, whitespaceRun, longestWhitespaceRun, MAX_WHITESPACE_RUN } from "./gemini-chunks.ts"
 import type { LibrarianConfig } from "../types.ts"
 
 const CFG = { llm_model: 'gemini-2.5-flash', temperature: 0.3, max_tokens: 6400 } as LibrarianConfig
@@ -27,6 +27,11 @@ Deno.test("whitespaceRun : longueur de la sequence d'espaces en fin de texte, re
 
 Deno.test("MAX_WHITESPACE_RUN vaut 200", () => {
   assertEquals(MAX_WHITESPACE_RUN, 200)
+})
+
+Deno.test("longestWhitespaceRun : plus longue sequence d'espaces n'importe ou dans le texte", () => {
+  assertEquals(longestWhitespaceRun('a' + ' '.repeat(300) + 'b'), 300)
+  assertEquals(longestWhitespaceRun('abc'), 0)
 })
 
 Deno.test("thinkingConfigFor : budget 0 sur flash, absent sur pro (0 refuse par l'API)", () => {
@@ -93,4 +98,17 @@ Deno.test("generateWithGeminiChunksStream : morceau d'espaces normal (50) transm
   for await (const t of gen) out += t
   assertEquals(out, '| A |' + ' '.repeat(50) + 'fin')
   assertEquals(runawayCalls, 0)
+})
+
+Deno.test("generateWithGeminiChunksStream : sequence d'espaces interieure a un seul morceau → flux coupe, onRunaway appele une fois", async () => {
+  const fetchFn = (() => Promise.resolve(sseResponse([
+    { candidates: [{ content: { parts: [{ text: 'x' + ' '.repeat(250) + 'y' }] } }] },
+  ]))) as unknown as typeof fetch
+  let runawayCalls = 0
+  const gen = generateWithGeminiChunksStream("q", "ctx", "sys", CFG, "KEY", undefined, fetchFn, () => { runawayCalls++ })
+  let out = ''
+  for await (const t of gen) out += t
+  assertEquals(out, '\n')
+  assertEquals(out.endsWith('\n'), true)
+  assertEquals(runawayCalls, 1)
 })

@@ -31,7 +31,7 @@ Deno.test("detectRefusal : une réponse qui cite n'est pas un refus", () => {
   assertEquals(detectRefusal("Le délai global est de 14 mois [Mémoire Technique, Page 29]."), false)
 })
 
-Deno.test("detectRefusal v3 : trois formulations des campagnes Sprint 3", () => {
+Deno.test("detectRefusal v3 : quatre formulations des campagnes Sprint 3", () => {
   assertEquals(detectRefusal("Le projet ne contient pas de document intitulé « CCTP du gros œuvre ». … Par conséquent, il n'existe pas de CCTP du gros œuvre dans les documents fournis."), true)
   assertEquals(detectRefusal("Dans les documents fournis, notamment le CCAG CITROEN, il n'y a aucune mention explicite ni section traitant du diagnostic amiante avant travaux … mais ne font pas référence au diagnostic amiante"), true)
   assertEquals(detectRefusal("Le CCTP TCE de Bessières ne mentionne à aucun endroit la mise en place ou la fourniture d'un système de sprinklage. … aucune référence à un système de sprinklage n'est faite dans l'ensemble du document fourni."), true)

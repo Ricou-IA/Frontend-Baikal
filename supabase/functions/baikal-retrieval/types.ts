@@ -459,5 +459,6 @@ export interface PipelineMetrics {
     tokens_in: number
     tokens_out: number
     llm_calls: number
+    runaway: number
   }
 }

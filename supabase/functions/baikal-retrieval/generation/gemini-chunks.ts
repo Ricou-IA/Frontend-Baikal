@@ -35,8 +35,8 @@ export function buildGeminiChunksBody(
   }
 }
 
-// Longueur de la sequence d'espaces (au sens \s) en fin de `text`, en reportant
-// la longueur `prev` de la sequence qui se terminait le morceau precedent.
+// Longueur de la séquence d'espaces (au sens \s) en fin de `text`, en reportant
+// la longueur `prev` de la séquence qui se terminait le morceau précédent.
 export function whitespaceRun(prev: number, text: string): number {
   if (text.length === 0) return prev
   if (/^\s*$/.test(text)) return prev + text.length
@@ -45,6 +45,14 @@ export function whitespaceRun(prev: number, text: string): number {
 }
 
 export const MAX_WHITESPACE_RUN = 200
+
+// Plus longue séquence d'espaces (au sens \s) trouvée n'importe où DANS `text`
+// (pas seulement en fin de morceau) : 0 si `text` n'en contient aucune.
+export function longestWhitespaceRun(text: string): number {
+  const matches = text.match(/\s+/g)
+  if (!matches) return 0
+  return Math.max(...matches.map(m => m.length))
+}
 
 export async function* generateWithGeminiChunksStream(
   query: string,
@@ -94,8 +102,10 @@ export async function* generateWithGeminiChunksStream(
         for (const p of parts ?? []) {
           if (!p.text) continue
           const run = whitespaceRun(wsRun, p.text)
-          if (run > MAX_WHITESPACE_RUN) {
-            console.warn('[gemini-chunks] boucle d’espaces detectee (' + run + ' caracteres), flux interrompu')
+          const interiorRun = longestWhitespaceRun(p.text)
+          if (Math.max(run, interiorRun) > MAX_WHITESPACE_RUN) {
+            const reportedRun = Math.max(run, interiorRun)
+            console.warn('[gemini-chunks] boucle d’espaces détectée (' + reportedRun + ' caractères), flux interrompu')
             onRunaway?.()
             await reader.cancel()
             runaway = true

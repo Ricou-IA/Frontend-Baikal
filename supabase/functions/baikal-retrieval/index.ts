@@ -192,7 +192,7 @@ serve(async (req) => {
             total_chunks: 0, l0_chunks: 0, l1_chunks: 0,
             child_chunks: 0, files_count: 0, total_pages: 0, sources_count: 0,
             targeted_chunks: 0,
-            tokens_in: 0, tokens_out: 0, llm_calls: 0,
+            tokens_in: 0, tokens_out: 0, llm_calls: 0, runaway: 0,
           },
         }
         metrics.timings.auth = authMs
@@ -672,7 +672,7 @@ serve(async (req) => {
           const chunksHooks = {
             onUsage: noteUsage,
             onModel: (m: string) => { usedModel = m },
-            onRunaway: () => { metrics.decisions.generation_runaway = true },
+            onRunaway: () => { metrics.decisions.generation_runaway = true; metrics.counts.runaway = 1 },
           }
 
           if (effectiveMode === 'gemini' && searchResult.files.length > 0) {
