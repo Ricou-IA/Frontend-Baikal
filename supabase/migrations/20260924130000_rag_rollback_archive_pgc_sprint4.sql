@@ -1,3 +1,4 @@
+-- MIGRATION DE DONNÉES appliquée en production le 2026-09-24 par apply_migration (MCP) — NE JAMAIS REJOUER : elle dépend de l'état du corpus à cet instant (état du corpus du jour).
 -- Sprint 4 (S4.2) : ROLLBACK partiel de 20260924125000 pour PGC-Bessières seulement.
 -- La ré-ingestion du PGC (FLUX 3 v5.1.0, 2026-09-24 09:50-09:59 UTC) s'est terminée sans insérer de chunk
 -- (même symptôme que l'Acte d'Engagement : HTTP 200 vide, aucun appel à ingest-documents). Les 175 chunks

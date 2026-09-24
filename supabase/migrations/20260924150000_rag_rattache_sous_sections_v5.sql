@@ -1,3 +1,4 @@
+-- MIGRATION DE DONNÉES appliquée en production le 2026-09-24 par apply_migration (MCP) — NE JAMAIS REJOUER : elle dépend de l'état du corpus à cet instant (état du corpus du jour).
 -- Sprint 4 (S4.1/S4.2) : rattachement des sous-sections produites par FLUX 3 v5.1.0 dont le parent est un L1.
 -- Fait établi le 2026-09-24 : le chunking v5.1.0 émet parfois des sous-sections (`batch_N_chunk_X_Y_Z`) dont le
 -- `parent_local_id` désigne un chunk L1 (et non un L0) ; certaines sont étiquetées niveau 2 ou 3 (RICT : 10 L2,

@@ -1,3 +1,4 @@
+-- MIGRATION DE DONNÉES appliquée en production le 2026-09-24 par apply_migration (MCP) — NE JAMAIS REJOUER : elle dépend de l'état du corpus à cet instant (état du corpus du jour).
 -- Sprint 4 (S4.1) : ROLLBACK partiel de 20260924120000 pour le CCAG seulement.
 -- La ré-ingestion du CCAG (FLUX 3 v5.1.0, 2026-09-24 10:28-11:04 UTC, 35 min) s'est terminée sans insérer de
 -- chunk (HTTP 200 vide, get-concepts appelé à 10:31 puis aucun appel à ingest-documents : arrêt dans la phase

@@ -1,3 +1,4 @@
+-- MIGRATION DE DONNÉES appliquée en production le 2026-09-24 par apply_migration (MCP) — NE JAMAIS REJOUER : elle dépend de l'état du corpus à cet instant (état du corpus du jour).
 -- Sprint 4 (S4.2) : archivage des chunks legacy (pipeline de janvier 2026, chunk_local_id NULL) de RICT-DCE,
 -- PGC-Bessières et du Mémoire Technique, juste avant leur ré-ingestion en FLUX 3 v5.1.0 (le pipeline est
 -- validé par la ré-ingestion réussie du CCAP le 2026-09-24). Même mécanisme que 20260924110000 ; l'Acte

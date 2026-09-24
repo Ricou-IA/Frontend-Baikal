@@ -1,3 +1,4 @@
+-- MIGRATION DE DONNÉES appliquée en production le 2026-09-24 par apply_migration (MCP) — NE JAMAIS REJOUER : elle dépend de l'état du corpus à cet instant (les fichiers 120000 et 141000 archiveraient les chunks v5.1.0).
 -- Sprint 4 (S4.1) : archivage des 527 chunks pipeline 3.2.0 du CCAG (129 L0, 374 L1, 24 niveaux 2/3) avant
 -- un NOUVEL essai de ré-ingestion en FLUX 3 v5.1.0 — le premier essai avait échoué sur le statement_timeout de
 -- l'upsert (496 lignes), corrigé par ingest-documents v8.2.0 (upsert par lots de 100, validé sur NFP03-001 :

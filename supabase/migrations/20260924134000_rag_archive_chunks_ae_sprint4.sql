@@ -1,3 +1,4 @@
+-- MIGRATION DE DONNÉES appliquée en production le 2026-09-24 par apply_migration (MCP) — NE JAMAIS REJOUER : elle dépend de l'état du corpus à cet instant (état du corpus du jour).
 -- Sprint 4 (S4.2) : archivage des 42 chunks legacy (pipeline de janvier 2026, chunk_local_id NULL) de l'Acte
 -- d'Engagement (Bessières AE DBC Signé) APRÈS une ré-ingestion réussie en FLUX 3 v5.1.0 (le premier essai
 -- n'avait rien produit et avait été annulé par 20260924123000). Même mécanisme que 20260924110000 ; les

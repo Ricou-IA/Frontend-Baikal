@@ -1,3 +1,4 @@
+-- MIGRATION DE DONNÉES appliquée en production le 2026-09-24 par apply_migration (MCP) — NE JAMAIS REJOUER : elle dépend de l'état du corpus à cet instant (état du corpus du jour).
 -- Sprint 4 (S4.2) : archivage des chunks legacy (pipeline de janvier 2026, sans L0) des 5 fichiers du
 -- projet OC014 - Bessières avant leur ré-ingestion en FLUX 3 v5.1.0.
 -- `rag.document_status` n'a pas de valeur 'archived' : status = 'rejected' (exclu de match_documents_v15 et

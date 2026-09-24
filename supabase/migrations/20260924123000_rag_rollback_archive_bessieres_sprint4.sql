@@ -1,3 +1,4 @@
+-- MIGRATION DE DONNÉES appliquée en production le 2026-09-24 par apply_migration (MCP) — NE JAMAIS REJOUER : elle dépend de l'état du corpus à cet instant (état du corpus du jour).
 -- Sprint 4 (S4.2) : ROLLBACK de 20260924110000_rag_archive_chunks_bessieres_sprint4.
 -- Le canari de ré-ingestion (Acte d'Engagement, FLUX 3 v5.1.0 par webhook direct) s'est arrêté sans
 -- insérer de chunk (HTTP 200 corps vide, aucun appel à ingest-documents) et le connecteur n8n étant

@@ -234,6 +234,8 @@ npx supabase functions deploy <name>  # Deploy edge function
 - Cohere dormant faute de `COHERE_API_KEY` ; activation = clé + migration `features.enable_reranking`
 - `fts` de `rag.documents` pondéré depuis le Sprint 4 (`rag.update_fts` : A normes/lots, B localisations/titre de section, D contenu ; trigger sur content, comment_normes, qui_lots, qqoqccp, metadata)
 - FLUX 3 v5.1.0 produit parfois des sous-sections rattachées à un L1 (niveaux 2/3) ; `rag.resolve_chunk_hierarchy` ne lie que L1→L0 : la migration `rag_rattache_sous_sections_v5` les a rattachées au L0 — à rejouer après toute nouvelle ingestion
+- Un rejeu (retry idempotent) de l'ingestion d'un fichier déjà rattaché remet ses sous-sections en niveau 2/3 (l'upsert écrit `hierarchy_level`, pas `parent_chunk_id`) et la migration de rattachement les ignore alors (`parent_chunk_id` déjà posé) — Sprint 5 : porter le rattachement dans `rag.resolve_chunk_hierarchy` ou élargir le filtre à `parent_chunk_id IS NULL OR hierarchy_level >= 2`
+- `ingest-documents` v8.2.0 n'est plus tout-ou-rien : si le lot k échoue, les lots 1…k-1 restent `approved` sans hiérarchie ni concepts (le message d'erreur nomme le lot ; un nouvel appel du même payload répare) — vérifier `rag.documents` après tout échec
 - Le webhook FLUX 3 répond HTTP 200 corps vide même quand aucun chunk n'est inséré ; vérifier `rag.documents` et les journaux `ingest-documents` après chaque ingestion
 - QQOQCCP (passe 2 de FLUX 3) enrichit une minorité des chunks (0-17 % au Sprint 4, 12-60 % en mars)
 - Les événements SSE agentiques ont un traitement UI dédié dans ARPET depuis v2.2.0 (T8) ; les

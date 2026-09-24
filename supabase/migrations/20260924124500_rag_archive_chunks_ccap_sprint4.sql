@@ -1,3 +1,4 @@
+-- MIGRATION DE DONNÉES appliquée en production le 2026-09-24 par apply_migration (MCP) — NE JAMAIS REJOUER : elle dépend de l'état du corpus à cet instant (état du corpus du jour).
 -- Sprint 4 (S4.2) : archivage des 107 chunks legacy (pipeline de janvier 2026, chunk_local_id NULL) du CCAP
 -- Bessières, APRÈS sa ré-ingestion réussie en FLUX 3 v5.1.0 (2026-09-24 09:38 UTC, 136 chunks : 64 L0 + 72 L1).
 -- Le rollback général (20260924123000) avait remis ces chunks en 'approved' ; ils cohabitent depuis avec les

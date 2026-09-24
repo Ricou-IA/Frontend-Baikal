@@ -1,3 +1,4 @@
+-- MIGRATION DE DONNÉES appliquée en production le 2026-09-24 par apply_migration (MCP) — NE JAMAIS REJOUER : elle dépend de l'état du corpus à cet instant (les fichiers 120000 et 141000 archiveraient les chunks v5.1.0).
 -- Sprint 4 (S4.1) : archivage des chunks pipeline 3.2.0 (dont les 24 chunks niveaux 2/3 du CCAG) des 2 fichiers de la
 -- couche application avant ré-ingestion en FLUX 3 v5.1.0.
 -- `rag.document_status` n'a pas de valeur 'archived' : status = 'rejected' (exclu de match_documents_v15 et
