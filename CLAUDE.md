@@ -65,7 +65,7 @@ src/
 | `baikal-retrieval` | **Main pipeline v2.0** - Unified retrieval with Agentic RAG (see below) |
 | `baikal-brain-v3` | Legacy orchestrator (intent detection, query rewriting) - integrated in baikal-retrieval |
 | `baikal-librarian-v4` | Legacy retrieval + generation - replaced by baikal-retrieval |
-| `ingest-documents` | Receives chunks from n8n, stores in rag.documents with embeddings |
+| `ingest-documents` | Receives chunks from n8n, stores in rag.documents with embeddings (v8.2.0 : upsert par lots de 100, statement_timeout 8 s du rôle authenticator) |
 | `trigger-ingestion` | Triggers n8n ingestion workflow from DB events |
 | `get-concepts` | Returns concept taxonomy for GraphRAG |
 | `generate-document` | Document generation from RAG context |
@@ -108,10 +108,10 @@ FLUX 1 (Orchestrator) → Routes by file type
   └── FLUX 6 (Meeting Transcripts) → Chunking → Edge Function ingest
 ```
 
-### RAG Pipeline (baikal-retrieval v2.3.0)
+### RAG Pipeline (baikal-retrieval v2.4.0)
 
 ```
-User query → baikal-retrieval v2.3.0
+User query → baikal-retrieval v2.4.0
   ├── Accès (auth.ts) : identité lue dans le jeton, appartenance vérifiée par rag.resolve_access (parité RLS de core.projects) ; clé anon → 401, non-membre → 403 ; service_role = corps de confiance (banc d'éval)
   ├── Analyse heuristique (intent par mots-clés, routing/analyzer.ts) + condensation des suivis (routing/condenser.ts, Gemini flash-lite)
   ├── Phase A: Fast Path
@@ -123,7 +123,7 @@ User query → baikal-retrieval v2.3.0
   │     → RRF fusion (k=60)
   │     → [Optional: Cohere reranking - disabled for MVP]
   │     → Quality gate: enough chunks + good similarity? → Generate response (SSE)
-  │     → Génération sur extraits : fournisseur déduit de `parameters.generation.llm_model` (`generation/chunks.ts`, `gpt-*` → OpenAI, `gemini-*` → `generation/gemini-chunks.ts` avec réflexion coupée, règle de forme et garde de répétition ; repli OpenAI gpt-4o-mini avant le premier token ou sur réponse vide) ; tokens captés (`generation/usage.ts`) → `query_logs.counts.tokens_in/out/llm_calls/runaway`, payload `sources.usage`/`model` ; `eval_overrides.llm_model` accepté en service_role seulement (banc)
+  │     → Génération sur extraits : fournisseur déduit de `parameters.generation.llm_model` (`generation/chunks.ts`, `gpt-*` → OpenAI, `gemini-*` → `generation/gemini-chunks.ts` réflexion coupée par défaut, budget configurable `generation.gemini_thinking_budget`, règle de forme et garde de répétition ; repli OpenAI gpt-4o-mini avant le premier token ou sur réponse vide) ; tokens captés (`generation/usage.ts`) → `query_logs.counts.tokens_in/out/llm_calls/runaway`, payload `sources.usage`/`model` ; `eval_overrides` (`llm_model`, `gemini_thinking_budget`, `enable_reranking`) accepté en service_role seulement (banc)
   │
   └── Phase B: Agentic (if fast path insufficient)
         → Gemini 2.5 Flash orchestrator (tool-calling, ReAct loop)
@@ -136,7 +136,7 @@ User query → baikal-retrieval v2.3.0
         → Streaming final generation via Gemini
 ```
 
-#### baikal-retrieval v2.3.0 File Structure
+#### baikal-retrieval v2.4.0 File Structure
 ```
 supabase/functions/baikal-retrieval/
   index.ts              ← Main handler: Phase A + quality gate + agentic decision
@@ -146,7 +146,7 @@ supabase/functions/baikal-retrieval/
   context.ts            ← Agent context loader (conversation, project identity)
   auth.ts               ← Identité du jeton (service_role / utilisateur / anon) + décision d'accès (rag.resolve_access)
   sources.ts            ← Source citation builder
-  eval-overrides.ts      ← Surcharge eval_overrides.llm_model (service_role seulement, A/B du banc)
+  eval-overrides.ts      ← Surcharges eval_overrides v2 (llm_model, gemini_thinking_budget, enable_reranking ; service_role seulement, A/B du banc)
   agentic/
     orchestrator.ts     ← ReAct loop (runAgenticLoop) : budget dédié, réponse directe streamée
     gate.ts             ← Gate agentique (n_vector, max_sim), raison tracée dans rag.query_logs
@@ -225,13 +225,17 @@ npx supabase functions deploy <name>  # Deploy edge function
 - FLUX 4 (Excel ingestion) not implemented - Excel files routed to FLUX 3 will fail
 - `baikal-brain-v3` and `baikal-librarian-v4` are legacy - use `baikal-retrieval` v2.0 instead
 - Some older chunks (pre v5.0.0 pipeline) lack QQOQCCP enrichment
-- Quatre fichiers du projet Bessières n'ont aucun chunk L0 (« Bessières AE DBC Signé », « DBC - BESSIERES OPH 31 » = Mémoire Technique, « PGC-Bessières », « RICT-DCE ») : les stratégies `synthesis`/`comparison` et la recherche ciblée cherchent en L0 + L1 depuis v2.2.0 pour ne pas les perdre — ré-ingestion prévue au Sprint 4
+- Les 7 fichiers ré-ingérés au Sprint 4 (5 Bessières + CCAG + NFP03-001) sont en FLUX 3 v5.1.0 (L0 + L1) ; leurs anciens chunks sont en `status = 'rejected'` avec `metadata.archive`
 - Les env `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` injectées dans les Edge Functions ne sont plus les JWT legacy envoyés par les clients : `baikal-retrieval/auth.ts` reconnaît le rôle par la claim `role` du JWT (signature vérifiée par la passerelle, `verify_jwt = true`)
 - `processing_status` in `sources.files` may not update if n8n node 3.8b has errors
 - Cohere reranking is implemented but disabled for MVP (`enable_reranking: false`)
 - Frontend admin settings page not yet updated for baikal-retrieval agentic config
-- gemini-2.5-flash sur extraits boucle sur un caractère (espaces puis tirets) dans ~3-6 % des réponses quand la réflexion est coupée : garde `MAX_REPEAT_RUN` = 200 (flux coupé, `counts.runaway`), modèle non promu — essai d'un budget de réflexion au Sprint 4
+- gemini-2.5-flash sur extraits boucle sur un caractère (espaces puis tirets) dans ~3-6 % des réponses quand la réflexion est coupée : garde `MAX_REPEAT_RUN` = 200 (flux coupé, `counts.runaway`), modèle non promu — budget de réflexion 256 testé au Sprint 4 (4 boucles / 37 réponses sur échantillon, coût ×2,2-2,8), non promu non plus
 - Cohere dormant faute de `COHERE_API_KEY` ; activation = clé + migration `features.enable_reranking`
+- `fts` de `rag.documents` pondéré depuis le Sprint 4 (`rag.update_fts` : A normes/lots, B localisations/titre de section, D contenu ; trigger sur content, comment_normes, qui_lots, qqoqccp, metadata)
+- FLUX 3 v5.1.0 produit parfois des sous-sections rattachées à un L1 (niveaux 2/3) ; `rag.resolve_chunk_hierarchy` ne lie que L1→L0 : la migration `rag_rattache_sous_sections_v5` les a rattachées au L0 — à rejouer après toute nouvelle ingestion
+- Le webhook FLUX 3 répond HTTP 200 corps vide même quand aucun chunk n'est inséré ; vérifier `rag.documents` et les journaux `ingest-documents` après chaque ingestion
+- QQOQCCP (passe 2 de FLUX 3) enrichit une minorité des chunks (0-17 % au Sprint 4, 12-60 % en mars)
 - Les événements SSE agentiques ont un traitement UI dédié dans ARPET depuis v2.2.0 (T8) ; les
   nouveaux steps `search_named`, `full_document_unavailable`, `agentic_failed` sont rendus comme
   des steps génériques. L'événement SSE `analysis` (intent, rewritten_query) reste non consommé côté front.
