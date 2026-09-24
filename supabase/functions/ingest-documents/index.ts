@@ -1,6 +1,17 @@
 // ╔══════════════════════════════════════════════════════════════════════════════╗
 // ║  INGEST-DOCUMENTS - Edge Function Supabase                                   ║
-// ║  Version: 8.1.0 - Upsert idempotent (source_file_id, chunk_local_id)        ║
+// ║  Version: 8.2.0 - Upsert par lots de 100 (statement_timeout 8 s du rôle     ║
+// ║                    authenticator)                                            ║
+// ╠══════════════════════════════════════════════════════════════════════════════╣
+// ║  Changements v8.2.0:                                                         ║
+// ║  - L'upsert unique de rag.documents dépassait le statement_timeout de 8 s   ║
+// ║    du rôle PostgREST authenticator sur un lot de 496 lignes (embeddings     ║
+// ║    1536 d, index HNSW, trigger fts) : ré-ingestion du CCAG perdue           ║
+// ║  - Découpage en lots consécutifs via chunkRows() (chunk-rows.ts),           ║
+// ║    UPSERT_BATCH_SIZE = 100 ; résultats concaténés dans l'ordre du payload   ║
+// ║    pour préserver l'alignement avec conceptsByDocIndex                      ║
+// ║  - Erreur sur un lot : message précisant lot, lignes du lot et lignes déjà  ║
+// ║    insérées (l'upsert étant idempotent, un nouvel appel rafraîchit tout)    ║
 // ╠══════════════════════════════════════════════════════════════════════════════╣
 // ║  Changements v8.0.0:                                                         ║
 // ║  - Extraction des 6 colonnes QQOQCCP depuis le payload n8n                  ║
@@ -24,6 +35,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { chunkRows, UPSERT_BATCH_SIZE } from "./chunk-rows.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -92,7 +104,7 @@ serve(async (req) => {
     const payload = await req.json()
     const documents = Array.isArray(payload) ? payload : [payload]
 
-    console.log(`[ingest-documents v8.0.0] Reçu ${documents.length} document(s)`)
+    console.log(`[ingest-documents v8.2.0] Reçu ${documents.length} document(s)`)
 
     // ════════════════════════════════════════════════════════════════════════════
     // V6.0.0 : Charger le mapping category_slug → concept_id
@@ -482,17 +494,33 @@ serve(async (req) => {
       // (et non ignoreDuplicates) garantit que .select('id') retourne une ligne par
       // element du payload, dans l'ordre : l'alignement conceptsByDocIndex est preserve.
       // Les chunks sans chunk_local_id (NULL) ne conflictent jamais (comportement inchange).
-      const { data, error } = await supabase
-        .schema('rag')
-        .from('documents')
-        .upsert(rowsToInsert, { onConflict: 'source_file_id,chunk_local_id' })
-        .select('id')
+      //
+      // v8.2.0 : le rôle PostgREST authenticator a un statement_timeout de 8 s ; un
+      // upsert unique de 496 lignes l'a dépassé (canceling statement due to statement
+      // timeout → HTTP 500, ré-ingestion perdue après 35 min de pipeline). L'upsert est
+      // donc fait par lots consécutifs (chunkRows, UPSERT_BATCH_SIZE = 100) et les
+      // résultats sont concaténés DANS L'ORDRE des lots, qui est lui-même l'ordre du
+      // payload : l'alignement global avec conceptsByDocIndex reste préservé.
+      const batches = chunkRows(rowsToInsert, UPSERT_BATCH_SIZE)
+      insertedDocs = []
 
-      if (error) {
-        throw new Error(`Supabase upsert rag.documents error: ${error.message}`)
+      for (let i = 0; i < batches.length; i++) {
+        const batch = batches[i]
+        console.log(`[ingest-documents] rag.documents: lot ${i + 1}/${batches.length} — ${batch.length} lignes`)
+
+        const { data, error } = await supabase
+          .schema('rag')
+          .from('documents')
+          .upsert(batch, { onConflict: 'source_file_id,chunk_local_id' })
+          .select('id')
+
+        if (error) {
+          throw new Error(`Supabase upsert rag.documents error (lot ${i + 1}/${batches.length}, ${batch.length} lignes, ${insertedDocs.length} déjà insérées): ${error.message}`)
+        }
+
+        insertedDocs = insertedDocs.concat(data || [])
       }
 
-      insertedDocs = data || []
       console.log(`[ingest-documents] rag.documents: ${insertedDocs.length} insérés`)
     }
 
@@ -665,7 +693,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        version: '8.1.0',  // v8.1.0 upsert idempotent
+        version: '8.2.0',  // v8.2.0 upsert par lots de 100
         inserted: {
           total: totalInserted,
           rag_documents: insertedDocs.length,
