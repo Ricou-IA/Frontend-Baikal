@@ -13,6 +13,8 @@
 //   deno run -A eval/run-eval.ts --tag baseline-v2.0.0      # nom du rapport
 //   deno run -A eval/run-eval.ts --baseline eval/reports/baseline-v2.0.0.json
 //   deno run -A eval/run-eval.ts --llm-model gemini-2.5-flash --tag s3-v2.3.0-flash   # surcharge service_role (eval_overrides)
+//   deno run -A eval/run-eval.ts --llm-model gemini-2.5-flash --thinking-budget 256   # + budget de réflexion Gemini
+//   deno run -A eval/run-eval.ts --enable-reranking                                   # + reranking Cohere (surcharge)
 //
 // eval/.env : SUPABASE_ANON_KEY requis (SUPABASE_URL optionnel, sinon config)
 // ============================================================================
@@ -197,6 +199,20 @@ function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
+export interface EvalOverridesArg { llm_model?: string; gemini_thinking_budget?: number; enable_reranking?: boolean }
+
+/** Surcharges du banc depuis les options CLI (--llm-model, --thinking-budget N, --enable-reranking). */
+export function buildEvalOverrides(args: Record<string, unknown>): EvalOverridesArg | null {
+  const o: EvalOverridesArg = {}
+  if (typeof args['llm-model'] === 'string') o.llm_model = args['llm-model'] as string
+  if (typeof args['thinking-budget'] === 'string') {
+    const n = parseInt(args['thinking-budget'] as string, 10)
+    if (Number.isFinite(n)) o.gemini_thinking_budget = n
+  }
+  if (args['enable-reranking'] === true) o.enable_reranking = true
+  return Object.keys(o).length ? o : null
+}
+
 // ----------------------------------------------------------------------------
 // Tarification (coût par requête)
 // ----------------------------------------------------------------------------
@@ -236,7 +252,7 @@ async function callRetrieval(
   conversationId: string | null,
   cfg: EvalConfig,
   bearer: string,
-  llmModel: string | null,
+  overrides: EvalOverridesArg | null,
 ): Promise<CallResult> {
   const started = Date.now()
   const result: CallResult = {
@@ -267,7 +283,7 @@ async function callRetrieval(
         stream: true,
         generation_mode: 'auto',
         enable_suggestions: false,
-        ...(llmModel ? { eval_overrides: { llm_model: llmModel } } : {}),
+        ...(overrides ? { eval_overrides: overrides } : {}),
       }),
     })
 
@@ -339,7 +355,7 @@ async function evalEntry(
   entry: GoldenEntry,
   cfg: EvalConfig,
   bearer: string,
-  llmModel: string | null,
+  overrides: EvalOverridesArg | null,
   prices: Record<string, { in: number; out: number }>,
 ): Promise<EvalResult> {
   const ctx = cfg.contexts[entry.project_ref]
@@ -352,12 +368,12 @@ async function evalEntry(
   const convId = crypto.randomUUID()
   if (entry.conversation_context?.length) {
     for (const pre of entry.conversation_context) {
-      await callRetrieval(pre.question, ctx, convId, cfg, bearer, llmModel)
+      await callRetrieval(pre.question, ctx, convId, cfg, bearer, overrides)
       await delay(cfg.defaults.delay_between_calls_ms)
     }
   }
 
-  const call = await callRetrieval(entry.question, ctx, convId, cfg, bearer, llmModel)
+  const call = await callRetrieval(entry.question, ctx, convId, cfg, bearer, overrides)
   const exp = entry.expected || {}
   const answerNorm = normalize(call.answer)
   const topK = call.sources.slice(0, cfg.defaults.top_k_for_recall)
@@ -472,13 +488,13 @@ function buildMarkdown(
   byClasse: Record<string, Aggregate>,
   global: Aggregate,
   baseline: { tag: string; byClasse: Record<string, Aggregate>; global: Aggregate } | null,
-  llmModelOverride: string | null,
+  overrides: EvalOverridesArg | null,
 ): string {
   const lines: string[] = []
   lines.push(`# Rapport d'évaluation RAG — ${tag}`)
   lines.push('')
   lines.push(`> ${new Date().toISOString()} — ${results.length} questions${baseline ? ` — comparé à ${baseline.tag}` : ''}`)
-  lines.push(`> Modèle de génération (surcharge) : ${llmModelOverride ?? 'config DB'}`)
+  lines.push(`> Surcharges du banc : ${overrides ? JSON.stringify(overrides) : 'aucune (config DB)'}`)
   lines.push(`> Motifs de refus : v${REFUSAL_PATTERNS_VERSION} (v2 : fenêtre 160 caractères ; v3 : formulations nouvelles — C7 non strictement comparable à v2.2.0)`)
   lines.push('')
   lines.push('## Synthèse par classe')
@@ -553,13 +569,13 @@ async function main() {
     console.warn('⚠️  SUPABASE_SERVICE_ROLE_KEY absente de eval/.env : depuis v2.2.0 l\'EF répondra 401 avec la clé anon')
   }
 
-  const llmModel = typeof args['llm-model'] === 'string' ? args['llm-model'] : null
+  const overrides = buildEvalOverrides(args)
 
   // --smoke : une question, affichage direct, pas de rapport
   if (args.smoke) {
     const ctx = cfg.contexts.bessieres
     console.log('🔥 Smoke test (bessieres) : "Quel est le délai global d\'exécution des travaux ?"')
-    const r = await callRetrieval("Quel est le délai global d'exécution des travaux ?", ctx, null, cfg, bearer, llmModel)
+    const r = await callRetrieval("Quel est le délai global d'exécution des travaux ?", ctx, null, cfg, bearer, overrides)
     console.log(`\n⏱  ${r.latency_ms}ms — mode=${r.generation_mode} fast_path=${r.fast_path} intent=${r.intent} error=${r.error} model=${r.model ?? '?'}`)
     console.log(`\n📄 Sources (${r.sources.length}):`)
     for (const s of r.sources) console.log(`   - ${s.document_name} (p.${s.page ?? '?'}, score=${s.score?.toFixed?.(3) ?? s.score})`)
@@ -579,7 +595,7 @@ async function main() {
   if (typeof args.limit === 'string') entries = entries.slice(0, parseInt(args.limit, 10))
 
   const tag = typeof args.tag === 'string' ? args.tag : `run-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}`
-  console.log(`▶ Éval « ${tag} » : ${entries.length} questions (golden ${golden.version}) → ${cfg.endpoint}${llmModel ? ` (modèle surchargé : ${llmModel})` : ''}`)
+  console.log(`▶ Éval « ${tag} » : ${entries.length} questions (golden ${golden.version}) → ${cfg.endpoint}${overrides?.llm_model ? ` (modèle surchargé : ${overrides.llm_model})` : ''}`)
 
   const prices = { ...PRICES_DEFAULT, ...(cfg.prices_per_mtok || {}) }
 
@@ -587,7 +603,7 @@ async function main() {
   for (const [i, entry] of entries.entries()) {
     const label = `[${i + 1}/${entries.length}] ${entry.id}`
     try {
-      const r = await evalEntry(entry, cfg, bearer, llmModel, prices)
+      const r = await evalEntry(entry, cfg, bearer, overrides, prices)
       const status = r.error ? '💥' : r.ok_criteria && r.ok_recall_doc !== false ? '✅' : '❌'
       console.log(`${status} ${label} ${r.mode} ${r.latency_ms}ms recall=${r.ok_recall_doc} critères=${r.ok_criteria}`)
       results.push(r)
@@ -617,14 +633,14 @@ async function main() {
   // Rapports
   await Deno.mkdir('eval/reports', { recursive: true })
   const reportJson = {
-    meta: { tag, date: new Date().toISOString(), golden_version: golden.version, endpoint: cfg.endpoint, n: results.length, llm_model_override: llmModel, refusal_patterns_version: REFUSAL_PATTERNS_VERSION },
+    meta: { tag, date: new Date().toISOString(), golden_version: golden.version, endpoint: cfg.endpoint, n: results.length, llm_model_override: overrides?.llm_model ?? null, eval_overrides: overrides, refusal_patterns_version: REFUSAL_PATTERNS_VERSION },
     aggregates: { global, by_classe: byClasse },
     results,
   }
   const jsonPath = `eval/reports/${tag}.json`
   const mdPath = `eval/reports/${tag}.md`
   await Deno.writeTextFile(jsonPath, JSON.stringify(reportJson, null, 2))
-  await Deno.writeTextFile(mdPath, buildMarkdown(tag, results, byClasse, global, baseline, llmModel))
+  await Deno.writeTextFile(mdPath, buildMarkdown(tag, results, byClasse, global, baseline, overrides))
 
   // Sidecar : conversations créées en prod par ce run, pour purge chirurgicale.
   const convIds = [...new Set(results.map(r => r.conversation_id).filter((c): c is string => !!c))]

@@ -1,17 +1,22 @@
 // ============================================================================
-// baikal-retrieval - Generation: Gemini sur extraits (Sprint 3, S3.2)
+// baikal-retrieval - Generation: Gemini sur extraits (Sprint 3, S3.2 ; Sprint 4)
 // ============================================================================
 // Même contrat que generation/openai.ts : prompt système + contexte formaté
 // (formatContext) en instruction système, question en message utilisateur,
-// tokens streamés. Réflexion coupée (thinkingBudget 0) pour tenir le budget de
-// latence ; les modèles *-pro refusent 0 → pas de thinkingConfig.
+// tokens streamés. Réflexion coupée par défaut (thinkingBudget 0), configurable
+// par `generation.gemini_thinking_budget` ; les modèles *-pro refusent 0 →
+// pas de thinkingConfig, et imposent un plancher de 128 quand un budget est demandé.
 // ============================================================================
 
 import type { LibrarianConfig } from "../types.ts"
 import { usageFromGemini, type TokenUsage } from "./usage.ts"
 
-export function thinkingConfigFor(model: string): { thinkingBudget: number } | undefined {
-  return /-pro\b/i.test(model) ? undefined : { thinkingBudget: 0 }
+// Budget de réflexion Gemini : 0 = réflexion coupée (défaut, budget de latence). Les modèles *-pro
+// refusent 0 (pas de thinkingConfig) et imposent un plancher de 128 quand un budget est demandé.
+export function thinkingConfigFor(model: string, budget = 0): { thinkingBudget: number } | undefined {
+  const b = Number.isFinite(budget) ? Math.max(0, Math.floor(budget)) : 0
+  if (/-pro\b/i.test(model)) return b > 0 ? { thinkingBudget: Math.max(128, b) } : undefined
+  return { thinkingBudget: b }
 }
 
 const REGLE_DE_FORME =
@@ -23,7 +28,7 @@ export function buildGeminiChunksBody(
   systemPrompt: string,
   config: LibrarianConfig,
 ): Record<string, unknown> {
-  const thinkingConfig = thinkingConfigFor(config.llm_model)
+  const thinkingConfig = thinkingConfigFor(config.llm_model, config.gemini_thinking_budget)
   return {
     systemInstruction: { parts: [{ text: systemPrompt + '\n\n' + context + REGLE_DE_FORME }] },
     contents: [{ role: 'user', parts: [{ text: query }] }],

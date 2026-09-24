@@ -29,6 +29,14 @@ Deno.test("parseLibrarianConfig sans llm_model garde le repli gpt-4o-mini", () =
   assertEquals(parseLibrarianConfig(null).llm_model, 'gpt-4o-mini')
 })
 
+// Sprint 4 : budget de réflexion Gemini sur extraits, repli 0.
+Deno.test("parseLibrarianConfig : gemini_thinking_budget lu en base, repli 0", () => {
+  const avec = parseLibrarianConfig({ parameters: { generation: { gemini_thinking_budget: 256 } } } as any)
+  assertEquals(avec.gemini_thinking_budget, 256)
+  const sans = parseLibrarianConfig({ parameters: { generation: {} } } as any)
+  assertEquals(sans.gemini_thinking_budget, 0)
+})
+
 Deno.test("providerFor : gemini-* → gemini, sinon openai", () => {
   assertEquals(providerFor('gemini-2.5-flash'), 'gemini')
   assertEquals(providerFor('gpt-4.1-mini'), 'openai')

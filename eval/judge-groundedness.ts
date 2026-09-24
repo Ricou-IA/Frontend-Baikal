@@ -175,7 +175,7 @@ async function main() {
     Deno.exit(1)
   }
 
-  const passesArg = typeof args.passes === 'string' ? parseInt(args.passes, 10) : 1
+  const passesArg = typeof args.passes === 'string' ? parseInt(args.passes, 10) : (args.passes === true ? Number.NaN : 1)
   const passes = Number.isFinite(passesArg) ? Math.max(1, passesArg) : 1
   if (args.passes !== undefined && !Number.isFinite(passesArg)) {
     console.warn('⚠ --passes invalide, 1 passage')

@@ -26,7 +26,7 @@ export interface RequestBody {
   filter_source_types?: string[]
   filter_concepts?: string[]
   enable_suggestions?: boolean
-  eval_overrides?: { llm_model?: string }
+  eval_overrides?: { llm_model?: string; gemini_thinking_budget?: number; enable_reranking?: boolean }
 }
 
 // ============================================================================
@@ -114,6 +114,7 @@ export interface LibrarianConfig {
   cache_ttl_minutes: number
   enable_global_cache: boolean
   llm_model: string
+  gemini_thinking_budget: number   // Sprint 4 : budget de réflexion Gemini sur extraits (0 = coupée)
   max_context_length: number
   google_file_ttl_hours: number
   qa_memory_similarity_threshold: number

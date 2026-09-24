@@ -1,5 +1,5 @@
 // ============================================================================
-// baikal-retrieval v2.3.0 - "Agentic RAG" + Sprint 3 (modèle de génération configurable, coût par requête, reranker préservant les documents nommés)
+// baikal-retrieval v2.4.0 - "Agentic RAG" + Sprint 4 (corpus v5.1.0, FTS pondéré, budget de réflexion Gemini, surcharges d'éval v2)
 // ============================================================================
 //
 // Evolution from v1.3.0 "Search-First, Analyze-Later":
@@ -173,7 +173,7 @@ serve(async (req) => {
     const authMs = timer.mark('auth')
     console.log(`[auth] ${caller.kind} en ${authMs}ms`)
 
-    console.log(`[retrieval] === v2.3.0 Sprint 3 === Query: "${query.substring(0, 60)}..."`)
+    console.log(`[retrieval] === v2.4.0 Sprint 4 === Query: "${query.substring(0, 60)}..."`)
     const layerFlags = { app: include_app_layer, org: include_org_layer, project: include_project_layer, user: include_user_layer }
 
     const sseStream = new ReadableStream({
@@ -217,10 +217,11 @@ serve(async (req) => {
           const config = await loadConfig(supabase, app_id, org_id)
           metrics.timings.config = timer.mark('config')
 
-          // Sprint 3 : surcharge du modèle par le banc (service_role seulement)
-          const ov = applyEvalOverrides(config.librarian, eval_overrides, caller.kind)
+          // Sprint 3/4 : surcharges du banc (service_role seulement) — modèle, budget de réflexion, reranking
+          const ov = applyEvalOverrides(config.librarian, config.features, eval_overrides, caller.kind)
           config.librarian = ov.librarian
-          if (ov.applied.length) console.log(`[eval] surcharges appliquées: ${ov.applied.join(', ')} (llm_model=${config.librarian.llm_model})`)
+          config.features = ov.features
+          if (ov.applied.length) console.log(`[eval] surcharges appliquées: ${ov.applied.join(', ')} (llm_model=${config.librarian.llm_model}, thinking=${config.librarian.gemini_thinking_budget}, rerank=${config.features.enable_reranking})`)
           if (ov.ignored.length) console.warn(`[eval] surcharges ignorées (${caller.kind}): ${ov.ignored.join(', ')}`)
 
           // A2. PARALLEL: context + embedding

@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts"
-import { costUsd, PRICES_DEFAULT, normalize, detectRefusal, REFUSAL_PATTERNS_VERSION } from "./run-eval.ts"
+import { costUsd, PRICES_DEFAULT, normalize, detectRefusal, REFUSAL_PATTERNS_VERSION, buildEvalOverrides } from "./run-eval.ts"
 
 Deno.test("costUsd : (in × prix_in + out × prix_out) / 1e6, arrondi 6 decimales", () => {
   const prices = { 'gpt-4o-mini': { in: 0.15, out: 0.60 } }
@@ -40,4 +40,12 @@ Deno.test("detectRefusal v3 : quatre formulations des campagnes Sprint 3", () =>
 
 Deno.test("detectRefusal v3 : « mentionne » et « référence » hors refus ne déclenchent pas", () => {
   assertEquals(detectRefusal("Le CCAP prévoit une pénalité de 100 € par jour [CCAP, Page 19] ; le document mentionne aussi une référence à la norme NF P 03-001."), false)
+})
+
+Deno.test("buildEvalOverrides : rien sans option, sinon seulement les options fournies", () => {
+  assertEquals(buildEvalOverrides({}), null)
+  assertEquals(buildEvalOverrides({ 'llm-model': 'gemini-2.5-flash' }), { llm_model: 'gemini-2.5-flash' })
+  assertEquals(buildEvalOverrides({ 'llm-model': 'gemini-2.5-flash', 'thinking-budget': '256' }), { llm_model: 'gemini-2.5-flash', gemini_thinking_budget: 256 })
+  assertEquals(buildEvalOverrides({ 'enable-reranking': true }), { enable_reranking: true })
+  assertEquals(buildEvalOverrides({ 'thinking-budget': 'abc' }), null)
 })

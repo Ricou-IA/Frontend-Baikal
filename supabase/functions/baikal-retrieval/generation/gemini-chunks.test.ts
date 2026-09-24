@@ -36,10 +36,25 @@ Deno.test("longestRepeatRun : plus longue sequence d'un meme caractere n'importe
   assertEquals(longestRepeatRun(''), 0)
 })
 
-Deno.test("thinkingConfigFor : budget 0 sur flash, absent sur pro (0 refuse par l'API)", () => {
+Deno.test("thinkingConfigFor : budget 0 par defaut sur flash, absent sur pro", () => {
   assertEquals(thinkingConfigFor('gemini-2.5-flash'), { thinkingBudget: 0 })
   assertEquals(thinkingConfigFor('gemini-2.5-flash-lite'), { thinkingBudget: 0 })
   assertEquals(thinkingConfigFor('gemini-2.5-pro'), undefined)
+})
+
+Deno.test("thinkingConfigFor : budget configure transmis tel quel sur flash, plancher 128 sur pro, valeurs invalides → 0", () => {
+  assertEquals(thinkingConfigFor('gemini-2.5-flash', 256), { thinkingBudget: 256 })
+  assertEquals(thinkingConfigFor('gemini-2.5-pro', 256), { thinkingBudget: 256 })
+  assertEquals(thinkingConfigFor('gemini-2.5-pro', 64), { thinkingBudget: 128 })
+  assertEquals(thinkingConfigFor('gemini-2.5-flash', -5), { thinkingBudget: 0 })
+  assertEquals(thinkingConfigFor('gemini-2.5-flash', Number.NaN), { thinkingBudget: 0 })
+  assertEquals(thinkingConfigFor('gemini-2.5-flash', 300.7), { thinkingBudget: 300 })
+})
+
+Deno.test("buildGeminiChunksBody : le budget de reflexion de la config est transmis", () => {
+  const body = buildGeminiChunksBody("Quel delai ?", "=== CHUNK 1 ===\ntexte", "REGLES",
+    { ...CFG, gemini_thinking_budget: 256 } as LibrarianConfig) as Record<string, any>
+  assertEquals(body.generationConfig.thinkingConfig, { thinkingBudget: 256 })
 })
 
 function sseResponse(events: unknown[]): Response {
