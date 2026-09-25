@@ -227,7 +227,7 @@ npx supabase functions deploy <name>  # Deploy edge function
 - Some older chunks (pre v5.0.0 pipeline) lack QQOQCCP enrichment
 - Les 7 fichiers ré-ingérés au Sprint 4 (5 Bessières + CCAG + NFP03-001) sont en FLUX 3 v5.1.0 (L0 + L1) ; leurs anciens chunks sont en `status = 'rejected'` avec `metadata.archive`
 - Les env `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` injectées dans les Edge Functions ne sont plus les JWT legacy envoyés par les clients : `baikal-retrieval/auth.ts` reconnaît le rôle par la claim `role` du JWT (signature vérifiée par la passerelle, `verify_jwt = true`)
-- `processing_status` in `sources.files` may not update if n8n node 3.8b has errors
+- `processing_status` in `sources.files` is never updated by FLUX 3 v5.1.0: node 3.8b calls `sources.complete_ingestion_job(…, undefined)` (`document_analysis.chunk_count` no longer exists in the v5 response → SQL error « column "undefined" does not exist »), so every execution ends in `error` after the chunks are inserted and node 3.9 Respond is never reached (root cause read on 2026-09-25 in the n8n executions 36484-36502) — fix = use `total_chunks` (or `inserted.rag_documents`) in node 3.8b
 - Cohere reranking is implemented but disabled for MVP (`enable_reranking: false`)
 - Frontend admin settings page not yet updated for baikal-retrieval agentic config
 - gemini-2.5-flash sur extraits boucle sur un caractère (espaces puis tirets) dans ~3-6 % des réponses quand la réflexion est coupée : garde `MAX_REPEAT_RUN` = 200 (flux coupé, `counts.runaway`), modèle non promu — budget de réflexion 256 testé au Sprint 4 (4 boucles / 37 réponses sur échantillon, coût ×2,2-2,8), non promu non plus
@@ -236,7 +236,7 @@ npx supabase functions deploy <name>  # Deploy edge function
 - FLUX 3 v5.1.0 produit parfois des sous-sections rattachées à un L1 (niveaux 2/3) ; `rag.resolve_chunk_hierarchy` ne lie que L1→L0 : la migration `rag_rattache_sous_sections_v5` les a rattachées au L0 — à rejouer après toute nouvelle ingestion
 - Un rejeu (retry idempotent) de l'ingestion d'un fichier déjà rattaché remet ses sous-sections en niveau 2/3 (l'upsert écrit `hierarchy_level`, pas `parent_chunk_id`) et la migration de rattachement les ignore alors (`parent_chunk_id` déjà posé) — Sprint 5 : porter le rattachement dans `rag.resolve_chunk_hierarchy` ou élargir le filtre à `parent_chunk_id IS NULL OR hierarchy_level >= 2`
 - `ingest-documents` v8.2.0 n'est plus tout-ou-rien : si le lot k échoue, les lots 1…k-1 restent `approved` sans hiérarchie ni concepts (le message d'erreur nomme le lot ; un nouvel appel du même payload répare) — vérifier `rag.documents` après tout échec
-- Le webhook FLUX 3 répond HTTP 200 corps vide même quand aucun chunk n'est inséré ; vérifier `rag.documents` et les journaux `ingest-documents` après chaque ingestion
+- Le webhook FLUX 3 répond HTTP 200 corps vide dans tous les cas (conséquence du bug 3.8b ci-dessus) ; vérifier `rag.documents` et les journaux `ingest-documents` après chaque ingestion. Les vrais échecs du 24/09 étaient au nœud 3.6i (Gemini passe 2) : 400 sur micro-lot vide (`skip_gemini: true` non filtré par 3.6h→3.6i) et 503 transitoire sans retry
 - QQOQCCP (passe 2 de FLUX 3) enrichit une minorité des chunks (0-17 % au Sprint 4, 12-60 % en mars)
 - Les événements SSE agentiques ont un traitement UI dédié dans ARPET depuis v2.2.0 (T8) ; les
   nouveaux steps `search_named`, `full_document_unavailable`, `agentic_failed` sont rendus comme
