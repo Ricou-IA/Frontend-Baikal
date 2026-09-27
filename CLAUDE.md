@@ -225,7 +225,7 @@ npx supabase functions deploy <name>  # Deploy edge function
 - FLUX 4 (Excel ingestion) not implemented - Excel files routed to FLUX 3 will fail
 - `baikal-brain-v3` and `baikal-librarian-v4` are legacy - use `baikal-retrieval` v2.0 instead
 - Some older chunks (pre v5.0.0 pipeline) lack QQOQCCP enrichment
-- Les 7 fichiers ré-ingérés (5 Bessières + CCAG + NFP03-001) sont en FLUX 3 réparé (version n8n active 646c84e4 : chunking v5.1.0, QQOQCCP v1.1.0) depuis le 26/09 ; leurs anciens chunks sont en `status = 'rejected'` avec `metadata.archive` (raison `reingestion-flux3-repare`). Référence d'éval : `eval/reports/baseline-v2.4.0-flux3{,-synth}`
+- Les 8 fichiers ré-ingérés (les 6 PDF du projet Bessières + CCAG + NFP03-001) sont en FLUX 3 réparé (version n8n active 646c84e4 : chunking v5.1.0, QQOQCCP v1.1.0) depuis le 26-27/09 ; leurs anciens chunks sont en `status = 'rejected'` avec `metadata.archive` (raison `reingestion-flux3-repare`). Référence d'éval : `eval/reports/baseline-v2.4.0-bessieres{,-synth}`
 - Les env `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` injectées dans les Edge Functions ne sont plus les JWT legacy envoyés par les clients : `baikal-retrieval/auth.ts` reconnaît le rôle par la claim `role` du JWT (signature vérifiée par la passerelle, `verify_jwt = true`)
 - FLUX 3 (646c84e4) : 3.8b lit `inserted.rag_documents` (`processing_status`, `chunk_count`, `processed_at` de `sources.files` sont renseignés), retry 3 × 5 s sur 3.6d/3.6i, 3.6f tout-ou-rien, réparation du JSON Gemini dans 3.6e/3.6j. Toujours comparer `versionId` et `activeVersionId` avant de dire quelle version tourne ; ne jamais réécrire le workflow par le SDK n8n (identifiants masqués)
 - Cohere reranking is implemented but disabled for MVP (`enable_reranking: false`)
