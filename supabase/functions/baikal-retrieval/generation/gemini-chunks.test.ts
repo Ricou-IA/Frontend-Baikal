@@ -1,5 +1,5 @@
-import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts"
-import { buildGeminiChunksBody, thinkingConfigFor, generateWithGeminiChunksStream, repeatRun, longestRepeatRun, MAX_REPEAT_RUN, MAX_WHITESPACE_RUN } from "./gemini-chunks.ts"
+import { assertEquals, assertRejects, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts"
+import { buildGeminiChunksBody, thinkingConfigFor, thinkingCandidates, generateWithGeminiChunksStream, repeatRun, longestRepeatRun, MAX_REPEAT_RUN, MAX_WHITESPACE_RUN } from "./gemini-chunks.ts"
 import type { LibrarianConfig } from "../types.ts"
 
 const CFG = { llm_model: 'gemini-2.5-flash', temperature: 0.3, max_tokens: 6400 } as LibrarianConfig
@@ -49,6 +49,42 @@ Deno.test("thinkingConfigFor : budget configure transmis tel quel sur flash, pla
   assertEquals(thinkingConfigFor('gemini-2.5-flash', -5), { thinkingBudget: 0 })
   assertEquals(thinkingConfigFor('gemini-2.5-flash', Number.NaN), { thinkingBudget: 0 })
   assertEquals(thinkingConfigFor('gemini-2.5-flash', 300.7), { thinkingBudget: 300 })
+})
+
+Deno.test("thinkingCandidates : Gemini 3.x sans reflexion → minimal, puis budget 0, puis low ; pro → low", () => {
+  assertEquals(thinkingCandidates('gemini-3.5-flash', 0), [{ thinkingLevel: 'minimal' }, { thinkingBudget: 0 }, { thinkingLevel: 'low' }])
+  assertEquals(thinkingCandidates('gemini-3.8-flash'), [{ thinkingLevel: 'minimal' }, { thinkingBudget: 0 }, { thinkingLevel: 'low' }])
+  assertEquals(thinkingCandidates('gemini-3.1-pro-preview', 0), [{ thinkingLevel: 'low' }])
+  assertEquals(thinkingCandidates('gemini-3.5-flash', 256), [{ thinkingBudget: 256 }, { thinkingLevel: 'low' }])
+  assertEquals(thinkingConfigFor('gemini-3.5-flash-lite'), { thinkingLevel: 'minimal' })
+})
+
+Deno.test("thinkingCandidates : Gemini 2.x inchange (un seul essai)", () => {
+  assertEquals(thinkingCandidates('gemini-2.5-flash', 0), [{ thinkingBudget: 0 }])
+  assertEquals(thinkingCandidates('gemini-2.5-pro', 0), [undefined])
+})
+
+Deno.test("generateWithGeminiChunksStream : 400 sur un reglage de reflexion → essai suivant", async () => {
+  const configs: unknown[] = []
+  const fetchFn = ((_url: string, init?: RequestInit) => {
+    const tc = JSON.parse(String(init?.body)).generationConfig.thinkingConfig
+    configs.push(tc)
+    if (tc?.thinkingLevel === 'minimal') return Promise.resolve(new Response('{"error":{"code":400,"message":"Request contains an invalid argument."}}', { status: 400 }))
+    return Promise.resolve(sseResponse([{ candidates: [{ content: { parts: [{ text: 'OK' }] } }] }]))
+  }) as unknown as typeof fetch
+  let out = ''
+  for await (const t of generateWithGeminiChunksStream("q", "ctx", "sys", { ...CFG, llm_model: 'gemini-3.8-flash' } as LibrarianConfig, "KEY", undefined, fetchFn)) out += t
+  assertEquals(out, 'OK')
+  assertEquals(configs, [{ thinkingLevel: 'minimal' }, { thinkingBudget: 0 }])
+})
+
+Deno.test("generateWithGeminiChunksStream : erreur non 400 → pas d'essai suivant", async () => {
+  let calls = 0
+  const fetchFn = (() => { calls++; return Promise.resolve(new Response('indisponible', { status: 503 })) }) as unknown as typeof fetch
+  await assertRejects(async () => {
+    for await (const _ of generateWithGeminiChunksStream("q", "ctx", "sys", { ...CFG, llm_model: 'gemini-3.8-flash' } as LibrarianConfig, "KEY", undefined, fetchFn)) { /* rien */ }
+  }, Error, '503')
+  assertEquals(calls, 1)
 })
 
 Deno.test("buildGeminiChunksBody : le budget de reflexion de la config est transmis", () => {
