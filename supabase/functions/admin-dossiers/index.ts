@@ -10,7 +10,7 @@ import { chargerSite, ErreurSite, lecteurSite } from "../_shared/sites.ts";
 import { ErreurAcces, droitsModules, exigerModule, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 import { normaliserCriteres } from "./filtres.ts";
 import { canalVente } from "./canal.ts";
-import { ErreurRelais, preparerRelais, relaisConfigure } from "./relais.ts";
+import { appelerRelais as appelerRelaisSite, ErreurRelais, relaisConfigure } from "../_shared/relais.ts";
 import { ONGLETS, paginationOnglet, resoudreOnglet, triEffectif } from "./onglets.ts";
 import { grouperChamps } from "./champs.ts";
 import { type ActionFiche, normaliserManifeste, trouverAction } from "./manifeste.ts";
@@ -28,49 +28,14 @@ function json(payload: unknown, status = 200): Response {
   });
 }
 
-// Un seul point d'appel du relais : toutes les actions inter-projets passent
-// ici. Renvoie la charge JSON du site ou leve une ErreurRelais.
-async function appelerRelais(
+// Canal « dossiers » du site : toutes les actions inter-projets de ce module
+// passent par env_dossiers_fn (relais partage _shared/relais.ts).
+function appelerRelais(
   site: Awaited<ReturnType<typeof chargerSite>>,
   corps: Record<string, unknown>,
   timeoutMs = 30000,
 ): Promise<unknown> {
-  const cible = preparerRelais(site);
-  if (!cible) throw new ErreurRelais("Site sans canal d'administration configure");
-  let reponse: Response;
-  try {
-    reponse = await fetch(cible.url, {
-      method: "POST",
-      headers: cible.headers,
-      body: JSON.stringify(corps),
-      // Deno n'impose aucun delai a fetch : sans ce signal, un site injoignable
-      // ferait pendre la fiche entiere jusqu'au delai de l'Edge Function.
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-  } catch (e) {
-    if (e instanceof DOMException && e.name === "TimeoutError") {
-      throw new ErreurRelais(
-        `Site ${site.id}: pas de reponse en ${Math.round(timeoutMs / 1000)}s`,
-        504,
-      );
-    }
-    throw e;
-  }
-  const texte = await reponse.text();
-  let charge: unknown;
-  try {
-    charge = JSON.parse(texte);
-  } catch {
-    charge = { brut: texte.slice(0, 500) };
-  }
-  if (!reponse.ok) {
-    throw new ErreurRelais(
-      `Site ${site.id}: HTTP ${reponse.status}`,
-      502,
-      { statut_site: reponse.status, corps: charge },
-    );
-  }
-  return charge;
+  return appelerRelaisSite(site, site.env_dossiers_fn, corps, timeoutMs);
 }
 
 // Le manifeste est demande POUR CE DOSSIER : c'est ainsi qu'un site n'expose
@@ -81,7 +46,7 @@ async function chargerManifeste(
   site: Awaited<ReturnType<typeof chargerSite>>,
   dossierId: string,
 ): Promise<{ actions: ActionFiche[]; erreur: string | null }> {
-  if (!relaisConfigure(site)) return { actions: [], erreur: null };
+  if (!relaisConfigure(site, site.env_dossiers_fn)) return { actions: [], erreur: null };
   try {
     // Lecture courte sur le chemin de l'affichage de la fiche : budget reduit
     // par rapport au defaut des actions (30s), une re-extraction pouvant etre
@@ -155,7 +120,7 @@ serve(async (req) => {
     if (action === "fichier" || action === "site-action") {
       const dossierId = typeof body.dossierId === "string" ? body.dossierId : "";
       if (!dossierId) return json({ data: null, error: "dossierId requis" }, 400);
-      if (!relaisConfigure(site)) {
+      if (!relaisConfigure(site, site.env_dossiers_fn)) {
         return json({ data: null, error: "Site sans canal d'administration configure" }, 400);
       }
 
@@ -343,7 +308,7 @@ serve(async (req) => {
             parPage: c.parPage,
             funnel,
             categories,
-            actions: relaisConfigure(site),
+            actions: relaisConfigure(site, site.env_dossiers_fn),
           },
           error: null,
         });

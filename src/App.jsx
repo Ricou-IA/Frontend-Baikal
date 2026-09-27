@@ -46,6 +46,7 @@ import Sites from './pages/Sites';
 import ConsoleBaikal from './pages/ConsoleBaikal';
 import Clients from './pages/Clients';
 import ComptesPro from './pages/ComptesPro';
+import ModulesSite from './pages/ModulesSite';
 import Prospects from './pages/Prospects';
 
 function App() {
@@ -259,6 +260,16 @@ function App() {
             element={
               <AdminRoute>
                 <ComptesPro />
+              </AdminRoute>
+            }
+          />
+
+          {/* Admin - Modules des organisations clientes (canal env_admin_fn) */}
+          <Route
+            path="/modules"
+            element={
+              <AdminRoute>
+                <ModulesSite />
               </AdminRoute>
             }
           />

@@ -1,6 +1,6 @@
 import { assertEquals, assertThrows } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { ErreurRelais, preparerRelais, relaisConfigure } from "./relais.ts";
-import type { Site } from "../_shared/sites.ts";
+import type { Site } from "./sites.ts";
 
 const siteComplet: Site = {
   id: "pack-vendeur",
@@ -15,27 +15,37 @@ const siteComplet: Site = {
   env_anon_key: "anon-jwt",
   env_dossiers_fn: "pv-admin-dossiers",
   env_prospects_fn: null,
+  env_admin_fn: "baikal-admin",
 };
 
 Deno.test("relaisConfigure: vrai quand les 4 champs sont presents", () => {
-  assertEquals(relaisConfigure(siteComplet), true);
+  assertEquals(relaisConfigure(siteComplet, siteComplet.env_dossiers_fn), true);
 });
-Deno.test("relaisConfigure: faux si env_dossiers_fn manque", () => {
-  assertEquals(relaisConfigure({ ...siteComplet, env_dossiers_fn: null }), false);
+Deno.test("relaisConfigure: faux si la fonction du canal manque", () => {
+  const s = { ...siteComplet, env_dossiers_fn: null };
+  assertEquals(relaisConfigure(s, s.env_dossiers_fn), false);
 });
 Deno.test("relaisConfigure: faux si env_url manque", () => {
-  assertEquals(relaisConfigure({ ...siteComplet, env_url: null }), false);
+  assertEquals(relaisConfigure({ ...siteComplet, env_url: null }, "pv-admin-dossiers"), false);
 });
 Deno.test("preparerRelais: null quand non configure", () => {
-  assertEquals(preparerRelais({ ...siteComplet, env_anon_key: null }), null);
+  assertEquals(preparerRelais({ ...siteComplet, env_anon_key: null }, "pv-admin-dossiers"), null);
 });
 Deno.test("preparerRelais: ErreurRelais si le secret n'est pas pose", () => {
   Deno.env.delete("RELAIS_TEST_CLE");
-  assertThrows(() => preparerRelais(siteComplet), ErreurRelais, "RELAIS_TEST_CLE");
+  assertThrows(() => preparerRelais(siteComplet, "pv-admin-dossiers"), ErreurRelais, "RELAIS_TEST_CLE");
+});
+Deno.test("preparerRelais: les canaux partagent secret et anon key, seule la fonction change", () => {
+  Deno.env.set("RELAIS_TEST_CLE", "s3cret");
+  const admin = preparerRelais(siteComplet, siteComplet.env_admin_fn)!;
+  assertEquals(admin.url, "https://exemple.supabase.co/functions/v1/baikal-admin");
+  assertEquals(admin.headers["X-Baikal-Key"], "s3cret");
+  assertEquals(admin.headers["apikey"], "anon-jwt");
+  Deno.env.delete("RELAIS_TEST_CLE");
 });
 Deno.test("preparerRelais: cible complete, slash final rogne", () => {
   Deno.env.set("RELAIS_TEST_CLE", "s3cret");
-  const cible = preparerRelais(siteComplet)!;
+  const cible = preparerRelais(siteComplet, siteComplet.env_dossiers_fn)!;
   assertEquals(cible.url, "https://exemple.supabase.co/functions/v1/pv-admin-dossiers");
   assertEquals(cible.headers["apikey"], "anon-jwt");
   assertEquals(cible.headers["Authorization"], "Bearer anon-jwt");

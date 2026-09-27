@@ -26,6 +26,9 @@ export interface Site {
   env_anon_key: string | null;
   env_dossiers_fn: string | null;
   env_prospects_fn: string | null;
+  // Canal d'administration du site (baikal-admin chez Majord'home) : meme
+  // env_url / env_anon_key / env_secret_ref que les autres canaux.
+  env_admin_fn: string | null;
 }
 
 export class ErreurSite extends Error {}
@@ -36,7 +39,7 @@ export async function chargerSite(
 ): Promise<Site> {
   const { data, error } = await admin.schema("config").from("apps")
     .select(
-      "id, name, is_active, domaine, db_schema, fuseau, db_ro_secret_ref, env_url, env_secret_ref, env_anon_key, env_dossiers_fn, env_prospects_fn",
+      "id, name, is_active, domaine, db_schema, fuseau, db_ro_secret_ref, env_url, env_secret_ref, env_anon_key, env_dossiers_fn, env_prospects_fn, env_admin_fn",
     )
     .eq("id", appId).maybeSingle();
   if (error) throw new ErreurSite(`Lecture du registre impossible: ${error.message}`);

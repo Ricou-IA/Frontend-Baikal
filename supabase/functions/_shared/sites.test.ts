@@ -31,6 +31,7 @@ const siteLocal: Site = {
   env_anon_key: null,
   env_dossiers_fn: null,
   env_prospects_fn: null,
+  env_admin_fn: null,
 };
 const siteDedie: Site = {
   ...siteLocal,

@@ -16,12 +16,16 @@ import { Ban, Eye, Pencil } from 'lucide-react';
 
 export const MODULES_CONSOLE = [
   { id: 'clients', label: 'Clients' },
+  { id: 'comptes_pro', label: 'Comptes pro' },
   { id: 'prospects', label: 'Prospects' },
   { id: 'finances', label: 'Finances' },
   { id: 'rapports', label: 'Rapports' },
   { id: 'seo', label: 'SEO' },
   { id: 'partenariats', label: 'Partenariats' },
   { id: 'users', label: 'Utilisateurs', lectureSeule: true },
+  // Ouvrir / fermer les modules des organisations clientes du site (canal
+  // env_admin_fn) : décision commerciale, droit à part.
+  { id: 'modules', label: 'Modules clients' },
 ];
 
 export const NIVEAUX = [

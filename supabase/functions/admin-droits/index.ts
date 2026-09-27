@@ -24,7 +24,9 @@ const corsHeaders = {
 
 // Même liste que core.modules_console() — la contrainte CHECK côté base
 // refuse tout autre nom ou niveau.
-const MODULES = ["clients", "prospects", "finances", "rapports", "seo", "partenariats", "users"];
+const MODULES = [
+  "clients", "comptes_pro", "prospects", "finances", "rapports", "seo", "partenariats", "users", "modules",
+];
 const NIVEAUX = ["lecture", "ecriture"];
 
 function json(payload: unknown, status = 200): Response {
