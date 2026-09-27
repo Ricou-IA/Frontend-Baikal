@@ -130,3 +130,15 @@ dpe.diag_certifie, synchronisée à 02h30 par le projet DPE) ».
 5. Ligne 399, préciser : « Registre rempli mais colonne absente → B2C/B2B ; slug publié mais absent du registre → le slug brut dans un badge neutre. » et ajouter `sky` au vocabulaire des couleurs (neutre froid, ajouté le 23/09).
 6. Ajouter une ligne : « Les règles communes à tous les contrats (grant ET policy `baikal_read` sur toute table source — invisible sur la base partagée lue en `postgres` BYPASSRLS ; colonne qu'on ne sait pas remplir = absente ; donnée partagée par deux vues = dérivée, jamais recalculée) sont dans `docs/contrats/README.md`. »
 ---
+
+## [2026-09-27 12:00] Canal d'administration des sites (env_admin_fn) et module Modules clients
+**Statut** : PENDING
+**Commit** : da3e67c
+**Contexte** : Baikal ouvre / ferme les modules des organisations clientes de Majord'home par l'edge `baikal-admin` du site (spec Majord'home `docs/superpowers/specs/2026-09-26-baikal-admin-modules-majordhome-design.md`). Migration `20260927100000_canal_admin_modules.sql` appliquée par `supabase db query --linked -f` + `migration repair` : l'historique distant ne correspond pas aux fichiers locaux, `db push` rejouerait des dizaines de migrations.
+**Proposition** :
+1. Colonnes propres au site : ajouter `env_admin_fn` (nom de l'EF d'administration du site, ex. `baikal-admin` ; un champ par canal comme `env_dossiers_fn` / `env_prospects_fn`, tous partagent `env_url`, `env_anon_key`, `env_secret_ref`).
+2. Liste des modules de `core.modules_console()` : `clients, comptes_pro, prospects, finances, rapports, seo, partenariats, users, modules` (listes à maintenir en parité : `admin-droits/index.ts` MODULES et `ModulesDroits.jsx` MODULES_CONSOLE).
+3. Nouveau point dans « Modules métier » : « **Modules clients** : page `/modules` (`src/pages/ModulesSite.jsx`) + EF `admin-modules` — une ligne par organisation cliente, une case par module du catalogue lu chez le site (jamais recopié), enregistrement par ligne. Relais `_shared/relais.ts` (partagé avec admin-dossiers, paramétré par la fonction du canal) ; droit `modules` (lecture = consulter, écriture = modifier), `auteur` = email du jeton ; erreurs du site remontées en 502 avec `canal: {statut_site, code, detail}`. Branché : majordhome (`ADMIN_ENV_MAJORDHOME_KEY` = `MDH_BAIKAL_KEY` côté site). »
+4. Secrets attendus : ajouter `ADMIN_ENV_MAJORDHOME_KEY`.
+5. Gotcha migrations : l'historique `supabase_migrations` du projet Baikal ne correspond pas aux fichiers locaux ; appliquer une migration isolée par `npx supabase db query --linked -f <fichier>` puis `npx supabase migration repair --linked --status applied <version>`, jamais `db push`.
+---
