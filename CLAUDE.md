@@ -225,9 +225,9 @@ npx supabase functions deploy <name>  # Deploy edge function
 - FLUX 4 (Excel ingestion) not implemented - Excel files routed to FLUX 3 will fail
 - `baikal-brain-v3` and `baikal-librarian-v4` are legacy - use `baikal-retrieval` v2.0 instead
 - Some older chunks (pre v5.0.0 pipeline) lack QQOQCCP enrichment
-- Les 7 fichiers ré-ingérés au Sprint 4 (5 Bessières + CCAG + NFP03-001) sont en FLUX 3 v5.0.0 (L0 + L1) ; leurs anciens chunks sont en `status = 'rejected'` avec `metadata.archive`
+- Les 7 fichiers ré-ingérés (5 Bessières + CCAG + NFP03-001) sont en FLUX 3 réparé (version n8n active 646c84e4 : chunking v5.1.0, QQOQCCP v1.1.0) depuis le 26/09 ; leurs anciens chunks sont en `status = 'rejected'` avec `metadata.archive` (raison `reingestion-flux3-repare`). Référence d'éval : `eval/reports/baseline-v2.4.0-flux3{,-synth}`
 - Les env `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` injectées dans les Edge Functions ne sont plus les JWT legacy envoyés par les clients : `baikal-retrieval/auth.ts` reconnaît le rôle par la claim `role` du JWT (signature vérifiée par la passerelle, `verify_jwt = true`)
-- `processing_status` in `sources.files` is never updated by FLUX 3 v5.0.0: node 3.8b calls `sources.complete_ingestion_job(…, undefined)` (`document_analysis.chunk_count` no longer exists in the v5 response → SQL error « column "undefined" does not exist »), so every execution ends in `error` after the chunks are inserted and node 3.9 Respond is never reached (root cause read on 2026-09-25 in the n8n executions 36484-36502) — fix = use `total_chunks` (or `inserted.rag_documents`) in node 3.8b
+- FLUX 3 (646c84e4) : 3.8b lit `inserted.rag_documents` (`processing_status`, `chunk_count`, `processed_at` de `sources.files` sont renseignés), retry 3 × 5 s sur 3.6d/3.6i, 3.6f tout-ou-rien, réparation du JSON Gemini dans 3.6e/3.6j. Toujours comparer `versionId` et `activeVersionId` avant de dire quelle version tourne ; ne jamais réécrire le workflow par le SDK n8n (identifiants masqués)
 - Cohere reranking is implemented but disabled for MVP (`enable_reranking: false`)
 - Frontend admin settings page not yet updated for baikal-retrieval agentic config
 - gemini-2.5-flash sur extraits boucle sur un caractère (espaces puis tirets) dans ~3-6 % des réponses quand la réflexion est coupée : garde `MAX_REPEAT_RUN` = 200 (flux coupé, `counts.runaway`), modèle non promu — budget de réflexion 256 testé au Sprint 4 (4 boucles / 37 réponses sur échantillon, coût ×2,2-2,8), non promu non plus
@@ -236,8 +236,7 @@ npx supabase functions deploy <name>  # Deploy edge function
 - FLUX 3 v5.0.0 produit parfois des sous-sections rattachées à un L1 (niveaux 2/3) ; `rag.resolve_chunk_hierarchy` ne lie que L1→L0 : la migration `rag_rattache_sous_sections_v5` les a rattachées au L0 — à rejouer après toute nouvelle ingestion
 - Un rejeu (retry idempotent) de l'ingestion d'un fichier déjà rattaché remet ses sous-sections en niveau 2/3 (l'upsert écrit `hierarchy_level`, pas `parent_chunk_id`) et la migration de rattachement les ignore alors (`parent_chunk_id` déjà posé) — Sprint 5 : porter le rattachement dans `rag.resolve_chunk_hierarchy` ou élargir le filtre à `parent_chunk_id IS NULL OR hierarchy_level >= 2`
 - `ingest-documents` v8.2.0 n'est plus tout-ou-rien : si le lot k échoue, les lots 1…k-1 restent `approved` sans hiérarchie ni concepts (le message d'erreur nomme le lot ; un nouvel appel du même payload répare) — vérifier `rag.documents` après tout échec
-- Le webhook FLUX 3 répond HTTP 200 corps vide dans tous les cas (conséquence du bug 3.8b ci-dessus) ; vérifier `rag.documents` et les journaux `ingest-documents` après chaque ingestion. Les vrais échecs du 24/09 étaient au nœud 3.6i (Gemini passe 2) : 400 sur micro-lot vide (`skip_gemini: true` non filtré par 3.6h→3.6i) et 503 transitoire sans retry
-- QQOQCCP (passe 2 de FLUX 3) enrichit une minorité des chunks (0-17 % au Sprint 4, 12-60 % en mars) — cause probable : QQOQCCP v1.0.0 actif plafonné à 8 192 tokens (v1.1.0 « fix MAX_TOKENS » en brouillon n8n non publié jusqu'au 25/09)
+- La passe 1 Gemini de FLUX 3 réécrit le contenu : deux ingestions du même fichier ne donnent ni le même découpage ni le même volume de texte
 - Les événements SSE agentiques ont un traitement UI dédié dans ARPET depuis v2.2.0 (T8) ; les
   nouveaux steps `search_named`, `full_document_unavailable`, `agentic_failed` sont rendus comme
   des steps génériques. L'événement SSE `analysis` (intent, rewritten_query) reste non consommé côté front.
@@ -260,7 +259,8 @@ site : `domaine`, `gsc_propriete`, `env_url`, `env_secret_ref` (NOM du secret, j
 valeur), `env_anon_key`, `env_dossiers_fn`, `db_schema` (schéma des données du produit),
 `db_ro_secret_ref` (nom du secret DSN lecture seule des produits sur base dédiée :
 `ADMIN_RO_MAJORDHOME_DSN`, `ADMIN_RO_PACKVENDEUR_DSN`), `funnel_etapes`,
-`categories_client`, `modele_comptes`, `repo_github`. Créer une app = un simple INSERT,
+`categories_client`, `modele_comptes`, `repo_github`, `fuseau` (calendrier des mesures,
+défaut Europe/Paris ; Baikal y pose ses bornes de fenêtre). Créer une app = un simple INSERT,
 fait par migration (le trigger `tr_create_documents_cles_on_app_insert` a été supprimé
 par `20260824150000_registre_sites_hub.sql`). La vue `public.apps` expose `domaine`,
 `db_schema`, `heberge_dedie` — jamais `db_ro_secret_ref`. Règle de partage : les
@@ -281,10 +281,22 @@ sites-design.md).
   seulement quand le site sélectionné est arpet ; SEO / Partenariats / Utilisateurs / Sites
   sont transverses ; `ConsoleLayout` masque les modules fermés par les droits. Les RPC
   `get_pending_users` / `get_users_for_admin` prennent `p_app_id`.
-- **Vue d'ensemble par site** : EF `admin-site-stats` (super_admin) — KPIs par site définis
-  dans `admin-site-stats/stats-sites.ts` (pack-vendeur, voirie, majordhome), repli
-  générique tables/volumes pour les autres. Affichée sur `/admin` quand le site sélectionné
-  n'est pas ARPET. Ajouter un site = une fonction dans `stats-sites.ts`, redéploiement.
+- **Mesures par chapitre** : contrat `docs/contrats/mesures-v1.sql` — le site publie une
+  vue `baikal_mesures` (une ligne par jour, clé et fenêtre ; `agregation` somme|dernier ;
+  `chapitre` clients|finances|comptes_pro ; `rendu` tuiles|entonnoir), Baikal la lit par
+  l'action `mesures` de l'EF `admin-site-stats` et affiche les tuiles en tête du chapitre
+  (`src/components/console/BandeauMesures.jsx`). Pas d'écran des statistiques. Tout ce qui
+  décide d'un nombre affiché est dans `admin-site-stats/mesures.ts`, pur et testé. Bornes de
+  fenêtre calculées en TypeScript, jamais en SQL (postgres.js envoie ses paramètres sans
+  type : `$1::date - $2` a été résolu en soustraction de deux dates). L'action `overview`
+  et `stats-sites.ts` survivent pour pack-vendeur, voirie et majordhome jusqu'à leur
+  bascule, ce qui garde `VueSite` dans `Admin.jsx`. Brancher un site = publier sa vue et
+  passer la recette du contrat, aucun code Baikal. Branché : monsieurdpe. Spec :
+  `docs/superpowers/specs/2026-09-23-contrat-mesures-design.md`.
+- Les règles communes à tous les contrats (grant ET policy `baikal_read` sur toute table
+  source — invisible sur la base partagée lue en `postgres` BYPASSRLS ; colonne qu'on ne
+  sait pas remplir = absente ; donnée partagée par deux vues = dérivée, jamais recalculée)
+  sont dans `docs/contrats/README.md`.
 
 ### Comptes, droits, étages
 
@@ -310,7 +322,7 @@ sites-design.md).
   que les profils du site courant et n'apparaît pas dans l'étage.
 - **Droits par site et par module** : table `admin.droits_sites` (service_role only),
   colonne `modules` jsonb `{module: lecture|ecriture}`, absent = fermé (modules :
-  `core.modules_console()` = clients, prospects, finances, rapports, seo, partenariats,
+  `core.modules_console()` = clients, comptes_pro, prospects, finances, rapports, seo, partenariats,
   users). Source de vérité `core.droits_modules(uid)` / `public.mes_droits_modules()`
   (sites : `core.sites_autorises(uid)` / `public.mes_droits_sites()`), consommée par
   `AuthContext` (`sitesAdmin`, `niveauModule`, `peutEcrire`), le hook `useDroitModule(module)`,
@@ -392,7 +404,7 @@ sites-design.md).
   - **Funnel** : `config.apps.funnel_etapes` (jsonb, NULL = pas de funnel, la vue
     dérive alors Payé/— de `paye_le`). Forme :
     `[{slug, libelle, couleur, masquee_par_defaut, apres_paiement}]`. `couleur` ∈
-    slate|blue|amber|emerald|red|violet. `apres_paiement: true` marque un état
+    slate|blue|amber|emerald|red|violet|sky (`sky` = neutre froid, ajouté le 23/09). `apres_paiement: true` marque un état
     d'APRÈS-VENTE (voirie `envoye`/`a_traiter`, dpe `abonne`) : la liste affiche
     alors `Payé` + l'état, sinon un client payant se lit comme non converti.
   - **Client payant = `paye_le` renseigné, JAMAIS un slug d'étape** (filtre
@@ -403,7 +415,8 @@ sites-design.md).
   - **Catégorie de client** : `config.apps.categories_client` (jsonb,
     `[{slug, libelle, couleur}]`, même mécanique que le funnel) ; la vue du site porte le
     slug dans la colonne optionnelle `categorie`. Registre rempli mais colonne absente →
-    la console retombe sur B2C/B2B. `perimetre` reste au contrat (Financier). Branché :
+    la console retombe sur B2C/B2B ; slug publié mais absent du registre → le slug brut
+    dans un badge neutre. `perimetre` reste au contrat (Financier). Branché :
     monsieurdpe (particulier, agent_immo, diagnostiqueur, entreprise_rge), pack-vendeur
     (particulier, pro), voirie (particulier, entreprise).
   - **Grain de la liste = l'événement commercial**, pas la personne : un compte qui
@@ -427,6 +440,12 @@ sites-design.md).
   - Cascade d'attribution portée en TS dans `admin-dossiers/canal.ts` — à maintenir en
     parité avec la fonction SQL `admin.canal_vente`.
   - Spec : `docs/superpowers/specs/2026-08-26-baikal-clients-design.md`.
+- **Comptes pro** : page `/comptes-pro` (`src/pages/ComptesPro.jsx`) + EF
+  `admin-comptes-pro` — les entreprises qui achètent au site (Clients liste l'acte,
+  Comptes pro le compte). Contrat `docs/contrats/comptes-pro-v1.sql` : vue
+  `baikal_comptes_pro`, noyau obligatoire, blocs optionnels déclarés par leur colonne pivot
+  (`credits_stock`, `ca_ttc`, `abo_statut`). Une liste ne porte jamais d'agrégat : les
+  tuiles viennent de `baikal_mesures`. Branché : monsieurdpe.
 - **Rapports** : page `/rapports` (`src/pages/Rapports.jsx`) + EF `admin-rapport` —
   rapport mensuel PDF au partenaire SEO du site (décompte du partenariat, ventes du mois
   sans donnée nominative, SEO Google/Bing, highlights par règles fixes, évolutions du

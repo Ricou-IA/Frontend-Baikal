@@ -119,7 +119,7 @@ dpe.diag_certifie, synchronisée à 02h30 par le projet DPE) ».
 ---
 
 ## [2026-09-24 12:00] Contrat de mesures et chapitre Comptes pro
-**Statut** : PENDING
+**Statut** : RESOLU (intégré le 2026-09-27, accord d'Eric)
 **Commit** : 6c0bdb4..97afe9a (voir `docs/superpowers/passation-2026-09-24-contrat-mesures.md`)
 **Contexte** : La vue d'ensemble par site était écrite en dur par site dans `admin-site-stats/stats-sites.ts`. Elle devient contractuelle : le site publie `baikal_mesures`, les tuiles remontent en tête des chapitres Clients, Finances et Comptes pro (pas d'écran des statistiques, décision d'Eric du 23/09). Un chapitre Comptes pro apparaît avec son contrat de liste. Le CLAUDE.md décrit encore l'ancien fonctionnement à trois endroits.
 **Proposition** :
@@ -142,3 +142,12 @@ dpe.diag_certifie, synchronisée à 02h30 par le projet DPE) ».
 4. Secrets attendus : ajouter `ADMIN_ENV_MAJORDHOME_KEY`.
 5. Gotcha migrations : l'historique `supabase_migrations` du projet Baikal ne correspond pas aux fichiers locaux ; appliquer une migration isolée par `npx supabase db query --linked -f <fichier>` puis `npx supabase migration repair --linked --status applied <version>`, jamais `db push`.
 ---
+
+## [2026-09-27 10:30] FLUX 3 réparé : 4 lignes « Known Issues » devenues fausses
+**Statut** : RESOLU (intégré le 2026-09-27, accord d'Eric)
+**Commit** : 3312ce7 (Baikal), 5ff8939 (ARPET)
+**Contexte** : FLUX 3 « copy 2 » réparé et publié le 25-26/09 (version active 646c84e4), les 7 fichiers ré-ingérés le 26/09 (754 chunks, QQOQCCP 754/754 contre 82/1 423). Quatre lignes de « Known Issues / Tech Debt » du CLAUDE.md décrivent l'état d'avant (lignes 228, 230, 239, 240).
+**Proposition** : remplacer ces 4 lignes par :
+- Les 7 fichiers ré-ingérés (5 Bessières + CCAG + NFP03-001) sont en FLUX 3 réparé (version n8n active 646c84e4 : chunking v5.1.0, QQOQCCP v1.1.0) depuis le 26/09 ; leurs anciens chunks sont en `status = 'rejected'` avec `metadata.archive` (raison `reingestion-flux3-repare`). Référence d'éval : `eval/reports/baseline-v2.4.0-flux3{,-synth}`
+- FLUX 3 (646c84e4) : 3.8b lit `inserted.rag_documents` (`processing_status`, `chunk_count`, `processed_at` de `sources.files` sont renseignés), retry 3 × 5 s sur 3.6d/3.6i, 3.6f tout-ou-rien, réparation du JSON Gemini dans 3.6e/3.6j. Toujours comparer `versionId` et `activeVersionId` avant de dire quelle version tourne ; ne jamais réécrire le workflow par le SDK n8n (identifiants masqués)
+- La passe 1 Gemini de FLUX 3 réécrit le contenu : deux ingestions du même fichier ne donnent ni le même découpage ni le même volume de texte
