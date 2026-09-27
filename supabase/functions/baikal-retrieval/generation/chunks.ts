@@ -2,7 +2,7 @@
 // baikal-retrieval - Generation: dispatch « extraits » par fournisseur (Sprint 3)
 // ============================================================================
 // providerFor(config.llm_model) choisit OpenAI ou Gemini. Gemini indisponible
-// AVANT le premier token → repli OpenAI (gpt-4o-mini). Après un token, l'erreur
+// AVANT le premier token → repli OpenAI (gpt-6-luna). Après un token, l'erreur
 // remonte : le chemin rapide ne peut plus écrire une seconde réponse.
 // ============================================================================
 
@@ -12,7 +12,7 @@ import { generateWithOpenAIStream } from "./openai.ts"
 import { generateWithGeminiChunksStream } from "./gemini-chunks.ts"
 import type { TokenUsage } from "./usage.ts"
 
-export const FALLBACK_CHUNKS_MODEL = 'gpt-4o-mini'
+export const FALLBACK_CHUNKS_MODEL = 'gpt-6-luna'
 
 export interface ChunksGenerationHooks {
   onUsage?: (u: TokenUsage) => void

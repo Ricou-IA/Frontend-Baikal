@@ -31,7 +31,7 @@ Deno.test("gemini-* → Gemini extraits", async () => {
   assertEquals(await collect(generateChunksStream('q', 'c', 's', cfg('gemini-2.5-flash'), KEYS, {}, deps)), 'GM')
 })
 
-Deno.test("Gemini en erreur avant le premier token → repli OpenAI gpt-4o-mini, onModel appele deux fois", async () => {
+Deno.test("Gemini en erreur avant le premier token → repli OpenAI gpt-6-luna, onModel appele deux fois", async () => {
   const models: string[] = []
   let openaiModel = ''
   const deps = {
@@ -40,8 +40,8 @@ Deno.test("Gemini en erreur avant le premier token → repli OpenAI gpt-4o-mini,
   } as any
   const out = await collect(generateChunksStream('q', 'c', 's', cfg('gemini-2.5-flash'), KEYS, { onModel: (m) => models.push(m) }, deps))
   assertEquals(out, 'repli')
-  assertEquals(openaiModel, 'gpt-4o-mini')
-  assertEquals(models, ['gemini-2.5-flash', 'gpt-4o-mini'])
+  assertEquals(openaiModel, 'gpt-6-luna')
+  assertEquals(models, ['gemini-2.5-flash', 'gpt-6-luna'])
 })
 
 Deno.test("Gemini en erreur apres un token → l'erreur remonte (pas de double reponse)", async () => {
@@ -49,7 +49,7 @@ Deno.test("Gemini en erreur apres un token → l'erreur remonte (pas de double r
   await assertRejects(() => collect(generateChunksStream('q', 'c', 's', cfg('gemini-2.5-flash'), KEYS, {}, deps)), Error, 'boom apres')
 })
 
-Deno.test("Gemini ne rend aucun token (reponse vide) → repli OpenAI gpt-4o-mini, onModel appele deux fois", async () => {
+Deno.test("Gemini ne rend aucun token (reponse vide) → repli OpenAI gpt-6-luna, onModel appele deux fois", async () => {
   const models: string[] = []
   let openaiModel = ''
   const deps = {
@@ -58,8 +58,8 @@ Deno.test("Gemini ne rend aucun token (reponse vide) → repli OpenAI gpt-4o-min
   } as any
   const out = await collect(generateChunksStream('q', 'c', 's', cfg('gemini-2.5-flash'), KEYS, { onModel: (m) => models.push(m) }, deps))
   assertEquals(out, 'repli vide')
-  assertEquals(openaiModel, 'gpt-4o-mini')
-  assertEquals(models, ['gemini-2.5-flash', 'gpt-4o-mini'])
+  assertEquals(openaiModel, 'gpt-6-luna')
+  assertEquals(models, ['gemini-2.5-flash', 'gpt-6-luna'])
 })
 
 Deno.test("gemini-* → onRunaway transmis au 8e argument de deps.gemini", async () => {
@@ -76,5 +76,5 @@ Deno.test("cle Gemini absente → OpenAI direct avec le modele de repli", async 
   let openaiModel = ''
   const deps = { openai: (_q: string, _c: string, _s: string, config: LibrarianConfig) => { openaiModel = config.llm_model; return fake(['o']) }, gemini: () => fake(['G']) } as any
   assertEquals(await collect(generateChunksStream('q', 'c', 's', cfg('gemini-2.5-flash'), { openai: 'OA', gemini: '' }, {}, deps)), 'o')
-  assertEquals(openaiModel, 'gpt-4o-mini')
+  assertEquals(openaiModel, 'gpt-6-luna')
 })

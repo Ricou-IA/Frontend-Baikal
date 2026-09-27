@@ -11,26 +11,10 @@
 import type { LibrarianConfig } from "../types.ts"
 import { usageFromGemini, type TokenUsage } from "./usage.ts"
 
-// Budget de réflexion Gemini : 0 = réflexion coupée (défaut, budget de latence).
-// 2.x : les *-pro refusent 0 (pas de thinkingConfig) et imposent un plancher de 128.
-// 3.x : les réglages acceptés varient d'un modèle à l'autre (relevé du 27/09/2026 : 3.5-flash-lite
-// refuse thinkingBudget 0, 3.8-flash refuse thinkingLevel minimal, 3.1-pro refuse les deux) →
-// liste de réglages essayés dans l'ordre, le suivant sur un 400. Les tokens de réflexion
-// comptent dans maxOutputTokens : sans réglage, 3.5-flash réfléchit ~190 tokens avant d'écrire.
-export type ThinkingConfig = { thinkingBudget: number } | { thinkingLevel: string }
-
-export function thinkingCandidates(model: string, budget = 0): (ThinkingConfig | undefined)[] {
-  const b = Number.isFinite(budget) ? Math.max(0, Math.floor(budget)) : 0
-  const pro = /-pro\b/i.test(model)
-  if (/^gemini-[3-9]/i.test(model)) {
-    if (pro) return b > 0 ? [{ thinkingBudget: Math.max(128, b) }, { thinkingLevel: 'low' }] : [{ thinkingLevel: 'low' }]
-    return b > 0
-      ? [{ thinkingBudget: b }, { thinkingLevel: 'low' }]
-      : [{ thinkingLevel: 'minimal' }, { thinkingBudget: 0 }, { thinkingLevel: 'low' }]
-  }
-  if (pro) return [b > 0 ? { thinkingBudget: Math.max(128, b) } : undefined]
-  return [{ thinkingBudget: b }]
-}
+// Réglages de réflexion : generation/gemini-thinking.ts (profil « sans réflexion » par défaut,
+// budget configurable par `generation.gemini_thinking_budget`).
+import { type ThinkingConfig, thinkingCandidates, fetchGeminiWithThinking, withThinking } from "./gemini-thinking.ts"
+export { thinkingCandidates } from "./gemini-thinking.ts"
 
 export function thinkingConfigFor(model: string, budget = 0): ThinkingConfig | undefined {
   return thinkingCandidates(model, budget)[0]
@@ -49,11 +33,7 @@ export function buildGeminiChunksBody(
   return {
     systemInstruction: { parts: [{ text: systemPrompt + '\n\n' + context + REGLE_DE_FORME }] },
     contents: [{ role: 'user', parts: [{ text: query }] }],
-    generationConfig: {
-      temperature: config.temperature,
-      maxOutputTokens: config.max_tokens,
-      ...(thinkingConfig ? { thinkingConfig } : {}),
-    },
+    generationConfig: withThinking({ temperature: config.temperature, maxOutputTokens: config.max_tokens }, thinkingConfig),
   }
 }
 
@@ -113,23 +93,16 @@ export async function* generateWithGeminiChunksStream(
   onRunaway?: () => void,
 ): AsyncGenerator<string, string, undefined> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${config.llm_model}:streamGenerateContent?alt=sse&key=${geminiApiKey}`
-  const candidates = thinkingCandidates(config.llm_model, config.gemini_thinking_budget)
-  let response: Response | null = null
-  for (let i = 0; i < candidates.length; i++) {
-    response = await fetchFn(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(buildGeminiChunksBody(query, context, systemPrompt, config, candidates[i])),
-      signal: AbortSignal.timeout(120_000),
-    })
-    if (response.ok) break
-    const text = await response.text()
-    if (response.status !== 400 || i === candidates.length - 1) {
-      throw new Error(`Gemini chunks error (${response.status}): ${text}`)
-    }
-    console.warn(`[gemini-chunks] ${config.llm_model} refuse ${JSON.stringify(candidates[i])}, essai suivant`)
+  const response = await fetchGeminiWithThinking(
+    url,
+    tc => buildGeminiChunksBody(query, context, systemPrompt, config, tc),
+    thinkingCandidates(config.llm_model, config.gemini_thinking_budget),
+    () => AbortSignal.timeout(120_000),
+    fetchFn,
+  )
+  if (!response.ok) {
+    throw new Error(`Gemini chunks error (${response.status}): ${await response.text()}`)
   }
-  if (!response) throw new Error("Gemini chunks error: aucun essai")
   const reader = response.body?.getReader()
   if (!reader) throw new Error("No response body reader")
 

@@ -13,6 +13,7 @@
 import type { AgenticConfig, ChunkResult } from "../types.ts"
 import { TOOL_DECLARATIONS } from "./tools.ts"
 import { type TokenUsage, usageFromGemini } from "../generation/usage.ts"
+import { agentThinkingCandidates, fetchGeminiWithThinking, withThinking } from "../generation/gemini-thinking.ts"
 
 // ============================================================================
 // TYPES
@@ -94,10 +95,6 @@ export async function callGeminiAgent(
     tools: [{
       functionDeclarations: TOOL_DECLARATIONS,
     }],
-    generationConfig: {
-      temperature: agenticConfig.temperature,
-      maxOutputTokens: 8192,
-    },
     toolConfig: {
       functionCallingConfig: {
         mode: "AUTO",  // Gemini decides: tool call or text
@@ -105,12 +102,13 @@ export async function callGeminiAgent(
     },
   }
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(Math.max(1000, opts.timeoutMs ?? 20_000)),
-  })
+  // Réflexion basse sur Gemini 3.x (appels d'outils) ; 2.x inchangé.
+  const response = await fetchGeminiWithThinking(
+    url,
+    tc => ({ ...body, generationConfig: withThinking({ temperature: agenticConfig.temperature, maxOutputTokens: 8192 }, tc) }),
+    agentThinkingCandidates(agenticConfig.model),
+    () => AbortSignal.timeout(Math.max(1000, opts.timeoutMs ?? 20_000)),
+  )
 
   if (!response.ok) {
     const errorText = await response.text()
@@ -169,18 +167,14 @@ export async function* streamGeminiAgentResponse(
     },
     contents: conversationHistory,
     // No tools in final generation — force text response
-    generationConfig: {
-      temperature: agenticConfig.temperature,
-      maxOutputTokens: 8192,
-    },
   }
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(120_000),
-  })
+  const response = await fetchGeminiWithThinking(
+    url,
+    tc => ({ ...body, generationConfig: withThinking({ temperature: agenticConfig.temperature, maxOutputTokens: 8192 }, tc) }),
+    agentThinkingCandidates(agenticConfig.model),
+    () => AbortSignal.timeout(120_000),
+  )
 
   if (!response.ok) {
     throw new Error(`Gemini stream error: ${await response.text()}`)

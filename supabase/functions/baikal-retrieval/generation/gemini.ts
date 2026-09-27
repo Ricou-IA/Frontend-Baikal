@@ -7,6 +7,7 @@ import type {
 } from "../types.ts"
 import { hashFileIds, hashPrompt } from "../utils.ts"
 import { type TokenUsage, usageFromGemini } from "./usage.ts"
+import { fetchGeminiWithThinking, thinkingCandidates, withThinking } from "./gemini-thinking.ts"
 
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY")!
 
@@ -208,21 +209,17 @@ export async function* generateWithGeminiStream(
 ): AsyncGenerator<string, string, undefined> {
   const fullQuery = meetingContext ? `${query}\n\n${meetingContext}` : query
 
-  const response = await fetch(
+  // Réflexion coupée (profil « sans réflexion ») : sur Gemini 3.x elle ajoute latence et
+  // tokens facturés ; 2.5-flash-lite / 2.5-pro gardent leur comportement historique.
+  const response = await fetchGeminiWithThinking(
     `https://generativelanguage.googleapis.com/v1beta/models/${effectiveParams.model}:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        cachedContent: cacheName,
-        contents: [{ role: "user", parts: [{ text: fullQuery }] }],
-        generationConfig: {
-          temperature: effectiveParams.temperature,
-          maxOutputTokens: effectiveParams.maxTokens,
-        },
-      }),
-      signal: AbortSignal.timeout(120_000),
-    },
+    tc => ({
+      cachedContent: cacheName,
+      contents: [{ role: "user", parts: [{ text: fullQuery }] }],
+      generationConfig: withThinking({ temperature: effectiveParams.temperature, maxOutputTokens: effectiveParams.maxTokens }, tc),
+    }),
+    /^gemini-[3-9]/i.test(effectiveParams.model) ? thinkingCandidates(effectiveParams.model) : [undefined],
+    () => AbortSignal.timeout(120_000),
   )
 
   if (!response.ok) {

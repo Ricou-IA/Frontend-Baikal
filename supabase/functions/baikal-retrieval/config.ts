@@ -45,7 +45,7 @@ const FALLBACK_LIBRARIAN: LibrarianConfig = {
     citation: { max_files: 1, min_similarity: 0.6, match_count: 4 },
     conversational: { max_files: 0, min_similarity: 0.5, match_count: 0 },
   },
-  gemini_model: "gemini-2.5-flash-lite",
+  gemini_model: "gemini-3.8-flash",
   gemini_max_files: 5,
   gemini_max_pages: 450,
   max_tokens: 6400,
@@ -60,7 +60,7 @@ const FALLBACK_LIBRARIAN: LibrarianConfig = {
   restrictions: { out_of_scope_message: '', no_data_message: '' },
   cache_ttl_minutes: 60,
   enable_global_cache: true,
-  llm_model: "gpt-4o-mini",
+  llm_model: "gemini-3.8-flash",
   gemini_thinking_budget: 0,
   max_context_length: 12000,
   google_file_ttl_hours: 47,
@@ -86,7 +86,7 @@ const FALLBACK_FEATURES: FeatureFlags = {
 
 const FALLBACK_AGENTIC: AgenticConfig = {
   enabled: true,
-  model: 'gemini-2.5-flash',
+  model: 'gemini-3.8-flash',
   max_iterations: 3,
   timeout_ms: 8000,
   temperature: 0.2,

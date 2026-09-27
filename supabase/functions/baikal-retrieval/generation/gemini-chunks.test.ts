@@ -51,9 +51,9 @@ Deno.test("thinkingConfigFor : budget configure transmis tel quel sur flash, pla
   assertEquals(thinkingConfigFor('gemini-2.5-flash', 300.7), { thinkingBudget: 300 })
 })
 
-Deno.test("thinkingCandidates : Gemini 3.x sans reflexion → minimal, puis budget 0, puis low ; pro → low", () => {
-  assertEquals(thinkingCandidates('gemini-3.5-flash', 0), [{ thinkingLevel: 'minimal' }, { thinkingBudget: 0 }, { thinkingLevel: 'low' }])
-  assertEquals(thinkingCandidates('gemini-3.8-flash'), [{ thinkingLevel: 'minimal' }, { thinkingBudget: 0 }, { thinkingLevel: 'low' }])
+Deno.test("thinkingCandidates : Gemini 3.x sans reflexion → budget 0, puis minimal, puis low ; pro → low", () => {
+  assertEquals(thinkingCandidates('gemini-3.5-flash', 0), [{ thinkingBudget: 0 }, { thinkingLevel: 'minimal' }, { thinkingLevel: 'low' }])
+  assertEquals(thinkingCandidates('gemini-3.8-flash'), [{ thinkingBudget: 0 }, { thinkingLevel: 'minimal' }, { thinkingLevel: 'low' }])
   assertEquals(thinkingCandidates('gemini-3.1-pro-preview', 0), [{ thinkingLevel: 'low' }])
   assertEquals(thinkingCandidates('gemini-3.5-flash', 256), [{ thinkingBudget: 256 }, { thinkingLevel: 'low' }])
   assertEquals(thinkingConfigFor('gemini-3.5-flash-lite'), { thinkingLevel: 'minimal' })
@@ -73,7 +73,7 @@ Deno.test("generateWithGeminiChunksStream : 400 sur un reglage de reflexion → 
     return Promise.resolve(sseResponse([{ candidates: [{ content: { parts: [{ text: 'OK' }] } }] }]))
   }) as unknown as typeof fetch
   let out = ''
-  for await (const t of generateWithGeminiChunksStream("q", "ctx", "sys", { ...CFG, llm_model: 'gemini-3.8-flash' } as LibrarianConfig, "KEY", undefined, fetchFn)) out += t
+  for await (const t of generateWithGeminiChunksStream("q", "ctx", "sys", { ...CFG, llm_model: 'gemini-3.5-flash-lite' } as LibrarianConfig, "KEY", undefined, fetchFn)) out += t
   assertEquals(out, 'OK')
   assertEquals(configs, [{ thinkingLevel: 'minimal' }, { thinkingBudget: 0 }])
 })

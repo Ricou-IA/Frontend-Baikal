@@ -8,6 +8,11 @@
 // ============================================================================
 
 import type { ConversationMessage } from "../types.ts"
+import { fetchGeminiWithThinking, thinkingCandidates, withThinking } from "../generation/gemini-thinking.ts"
+
+// Modèle de condensation (réflexion coupée). 2.5-flash-lite coupé le 16/10/2026 → 3.5-flash-lite
+// (mesure du 27/09 : médiane 711 ms, 6/6 sous 800 ms ; 3.8-flash : médiane 838 ms, 2/6).
+export const CONDENSER_MODEL = 'gemini-3.5-flash-lite'
 
 const FOLLOW_UP_OPENERS = /^(et|puis|ensuite|pareil|idem|aussi|donc|ok et|d'accord et|dans l'autre sens|même chose|meme chose)\b/i
 const PRONOUN_OPENERS = /^(il|elle|ils|elles|on|ça|ca|c'est|c est|lui|celui|celle|ceux|celles|y)\b/i
@@ -97,22 +102,23 @@ export async function condenseQuery(
   geminiApiKey: string,
   opts: { model?: string; timeoutMs?: number } = {},
 ): Promise<string> {
-  const model = opts.model ?? 'gemini-2.5-flash-lite'
-  const timeoutMs = opts.timeoutMs ?? 800
+  const model = opts.model ?? CONDENSER_MODEL
+  const timeoutMs = opts.timeoutMs ?? 1000
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
 
   try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: controller.signal,
-      body: JSON.stringify({
+    // Réflexion coupée : ses tokens mangeraient les 80 tokens de sortie (et le budget de 800 ms).
+    const response = await fetchGeminiWithThinking(
+      url,
+      tc => ({
         contents: [{ role: 'user', parts: [{ text: buildCondensePrompt(query, recent) }] }],
-        generationConfig: { temperature: 0, maxOutputTokens: 80 },
+        generationConfig: withThinking({ temperature: 0, maxOutputTokens: 80 }, tc),
       }),
-    })
+      thinkingCandidates(model),
+      () => controller.signal,
+    )
     if (!response.ok) {
       console.warn(`[condenser] HTTP ${response.status}, question brute conservée`)
       return query

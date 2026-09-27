@@ -24,9 +24,9 @@ Deno.test("parseLibrarianConfig lit parameters.generation.llm_model", () => {
   assertEquals(cfg.llm_model, 'gpt-4.1-mini')
 })
 
-Deno.test("parseLibrarianConfig sans llm_model garde le repli gpt-4o-mini", () => {
-  assertEquals(parseLibrarianConfig({ parameters: { generation: { max_tokens: 100 } } }).llm_model, 'gpt-4o-mini')
-  assertEquals(parseLibrarianConfig(null).llm_model, 'gpt-4o-mini')
+Deno.test("parseLibrarianConfig sans llm_model garde le repli gemini-3.8-flash", () => {
+  assertEquals(parseLibrarianConfig({ parameters: { generation: { max_tokens: 100 } } }).llm_model, 'gemini-3.8-flash')
+  assertEquals(parseLibrarianConfig(null).llm_model, 'gemini-3.8-flash')
 })
 
 // Sprint 4 : budget de réflexion Gemini sur extraits, repli 0.
