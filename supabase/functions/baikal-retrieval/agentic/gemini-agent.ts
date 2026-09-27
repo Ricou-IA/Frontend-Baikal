@@ -26,6 +26,9 @@ export interface AgentTurn {
   content?: string
   thinking?: string   // The LLM's reasoning (for SSE step display)
   usage?: TokenUsage
+  // Part d'appel d'outil telle que renvoyée par le modèle : Gemini 3 y joint une
+  // `thoughtSignature` qu'il faut lui rendre à l'identique dans l'historique (sinon 400).
+  callPart?: GeminiPart
 }
 
 interface GeminiMessage {
@@ -35,7 +38,7 @@ interface GeminiMessage {
 
 type GeminiPart =
   | { text: string }
-  | { functionCall: { name: string; args: Record<string, unknown> } }
+  | { functionCall: { name: string; args: Record<string, unknown> }; thoughtSignature?: string }
   | { functionResponse: { name: string; response: { content: string } } }
 
 // ============================================================================
@@ -131,6 +134,7 @@ export async function callGeminiAgent(
         name: part.functionCall.name,
         args: part.functionCall.args || {},
         thinking: extractThinking(candidate.content.parts),
+        callPart: part,
         usage,
       }
     }
@@ -245,14 +249,14 @@ export function appendToolCallToHistory(
   history: GeminiMessage[],
   toolName: string,
   toolArgs: Record<string, unknown>,
+  callPart?: GeminiPart,
 ): GeminiMessage[] {
+  // La part d'origine (avec sa thoughtSignature) quand on l'a ; sinon reconstruite (Gemini 2.x).
   return [
     ...history,
     {
       role: 'model',
-      parts: [{
-        functionCall: { name: toolName, args: toolArgs },
-      }],
+      parts: [callPart ?? { functionCall: { name: toolName, args: toolArgs } }],
     },
   ]
 }

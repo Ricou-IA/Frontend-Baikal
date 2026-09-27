@@ -169,7 +169,7 @@ export async function runAgenticLoop(
     })
 
     // Update conversation history for Gemini
-    history = appendToolCallToHistory(history, toolName, toolArgs)
+    history = appendToolCallToHistory(history, toolName, toolArgs, turn.callPart)
     const toolResultText = formatChunksForAgent(toolResult.chunks)
     history = appendToolResultToHistory(history, toolName, toolResultText)
   }

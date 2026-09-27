@@ -1,5 +1,5 @@
 // ============================================================================
-// baikal-retrieval v2.5.0 - "Agentic RAG" + Sprint 4 + compatibilité modèles récents (OpenAI max_completion_tokens et repli sans température, réglages de réflexion Gemini 3.x)
+// baikal-retrieval v2.5.1 - "Agentic RAG" + modèles Gemini 3.x (réglages de réflexion, signatures de pensée des appels d'outils) + OpenAI récents
 // ============================================================================
 //
 // Evolution from v1.3.0 "Search-First, Analyze-Later":
@@ -173,7 +173,7 @@ serve(async (req) => {
     const authMs = timer.mark('auth')
     console.log(`[auth] ${caller.kind} en ${authMs}ms`)
 
-    console.log(`[retrieval] === v2.5.0 === Query: "${query.substring(0, 60)}..."`)
+    console.log(`[retrieval] === v2.5.1 === Query: "${query.substring(0, 60)}..."`)
     const layerFlags = { app: include_app_layer, org: include_org_layer, project: include_project_layer, user: include_user_layer }
 
     const sseStream = new ReadableStream({
