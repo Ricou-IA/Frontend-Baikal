@@ -221,6 +221,11 @@ npm run build        # Production build
 npx supabase functions deploy <name>  # Deploy edge function
 ```
 
+Gotcha migrations : l'historique `supabase_migrations` du projet Baikal ne correspond pas aux
+fichiers locaux ; appliquer une migration isolée par `npx supabase db query --linked -f <fichier>`
+puis `npx supabase migration repair --linked --status applied <version>`, jamais `db push`
+(il rejouerait des dizaines de migrations).
+
 ### Known Issues / Tech Debt
 - FLUX 4 (Excel ingestion) not implemented - Excel files routed to FLUX 3 will fail
 - `baikal-brain-v3` and `baikal-librarian-v4` are legacy - use `baikal-retrieval` v2.0 instead
@@ -260,7 +265,9 @@ valeur), `env_anon_key`, `env_dossiers_fn`, `db_schema` (schéma des données du
 `db_ro_secret_ref` (nom du secret DSN lecture seule des produits sur base dédiée :
 `ADMIN_RO_MAJORDHOME_DSN`, `ADMIN_RO_PACKVENDEUR_DSN`), `funnel_etapes`,
 `categories_client`, `modele_comptes`, `repo_github`, `fuseau` (calendrier des mesures,
-défaut Europe/Paris ; Baikal y pose ses bornes de fenêtre). Créer une app = un simple INSERT,
+défaut Europe/Paris ; Baikal y pose ses bornes de fenêtre), `env_admin_fn` (nom de l'EF
+d'administration du site, ex. `baikal-admin` ; un champ par canal comme `env_dossiers_fn` /
+`env_prospects_fn`, tous partagent `env_url`, `env_anon_key`, `env_secret_ref`). Créer une app = un simple INSERT,
 fait par migration (le trigger `tr_create_documents_cles_on_app_insert` a été supprimé
 par `20260824150000_registre_sites_hub.sql`). La vue `public.apps` expose `domaine`,
 `db_schema`, `heberge_dedie` — jamais `db_ro_secret_ref`. Règle de partage : les
@@ -323,7 +330,8 @@ sites-design.md).
 - **Droits par site et par module** : table `admin.droits_sites` (service_role only),
   colonne `modules` jsonb `{module: lecture|ecriture}`, absent = fermé (modules :
   `core.modules_console()` = clients, comptes_pro, prospects, finances, rapports, seo, partenariats,
-  users). Source de vérité `core.droits_modules(uid)` / `public.mes_droits_modules()`
+  users, modules — listes à maintenir en parité : `admin-droits/index.ts` MODULES et
+  `ModulesDroits.jsx` MODULES_CONSOLE). Source de vérité `core.droits_modules(uid)` / `public.mes_droits_modules()`
   (sites : `core.sites_autorises(uid)` / `public.mes_droits_sites()`), consommée par
   `AuthContext` (`sitesAdmin`, `niveauModule`, `peutEcrire`), le hook `useDroitModule(module)`,
   le bandeau `LectureSeule`, et par les EF via `_shared/droits.ts` (`sitesAutorises`,
@@ -446,6 +454,14 @@ sites-design.md).
   `baikal_comptes_pro`, noyau obligatoire, blocs optionnels déclarés par leur colonne pivot
   (`credits_stock`, `ca_ttc`, `abo_statut`). Une liste ne porte jamais d'agrégat : les
   tuiles viennent de `baikal_mesures`. Branché : monsieurdpe.
+- **Modules clients** : page `/modules` (`src/pages/ModulesSite.jsx`) + EF `admin-modules` —
+  une ligne par organisation cliente, une case par module du catalogue lu chez le site
+  (jamais recopié), enregistrement par ligne. Relais `_shared/relais.ts` (partagé avec
+  admin-dossiers, paramétré par la fonction du canal) ; droit `modules` (lecture =
+  consulter, écriture = modifier), `auteur` = email du jeton ; erreurs du site remontées en
+  502 avec `canal: {statut_site, code, detail}`. Branché : majordhome
+  (`ADMIN_ENV_MAJORDHOME_KEY` = `MDH_BAIKAL_KEY` côté site). Spec côté Majord'home :
+  `docs/superpowers/specs/2026-09-26-baikal-admin-modules-majordhome-design.md`.
 - **Rapports** : page `/rapports` (`src/pages/Rapports.jsx`) + EF `admin-rapport` —
   rapport mensuel PDF au partenaire SEO du site (décompte du partenariat, ventes du mois
   sans donnée nominative, SEO Google/Bing, highlights par règles fixes, évolutions du
@@ -462,5 +478,6 @@ sites-design.md).
 — `ADMIN_RESEND_API_KEY` n'existe plus), `ADMIN_UNSUBSCRIBE_SECRET`, `ADMIN_GITHUB_TOKEN`,
 `ADMIN_RO_MAJORDHOME_DSN`, `ADMIN_RO_PACKVENDEUR_DSN`, `ADMIN_ENV_PACKVENDEUR_KEY` (même
 valeur que `BAIKAL_ADMIN_KEY` côté projet Pré-état-daté : c'est le secret partagé du canal
-d'administration). `ADMIN_ENV_MONSIEURDPE_KEY` n'est plus nécessaire (connecteur SQL).
+d'administration). `ADMIN_ENV_MAJORDHOME_KEY` (même valeur que `MDH_BAIKAL_KEY` côté
+Majord'home, canal `baikal-admin`). `ADMIN_ENV_MONSIEURDPE_KEY` n'est plus nécessaire (connecteur SQL).
 `COHERE_API_KEY` (optionnel, reranking).

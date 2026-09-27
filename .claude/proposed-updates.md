@@ -132,7 +132,7 @@ dpe.diag_certifie, synchronisée à 02h30 par le projet DPE) ».
 ---
 
 ## [2026-09-27 12:00] Canal d'administration des sites (env_admin_fn) et module Modules clients
-**Statut** : PENDING
+**Statut** : RESOLU (intégré le 2026-09-27, accord d'Eric)
 **Commit** : da3e67c
 **Contexte** : Baikal ouvre / ferme les modules des organisations clientes de Majord'home par l'edge `baikal-admin` du site (spec Majord'home `docs/superpowers/specs/2026-09-26-baikal-admin-modules-majordhome-design.md`). Migration `20260927100000_canal_admin_modules.sql` appliquée par `supabase db query --linked -f` + `migration repair` : l'historique distant ne correspond pas aux fichiers locaux, `db push` rejouerait des dizaines de migrations.
 **Proposition** :
