@@ -225,6 +225,16 @@ export const PRICES_DEFAULT: Record<string, { in: number; out: number }> = {
   'gemini-2.5-flash': { in: 0.30, out: 2.50 },
   'gemini-2.5-flash-lite': { in: 0.10, out: 0.40 },
   'gemini-2.5-pro': { in: 1.25, out: 10.00 },
+  // Relevé du 2026-09-27 (developers.openai.com, ai.google.dev/pricing) ; 3.6-3.8 flash : tarif
+  // garanti jusqu'au 2026-12-31, en hausse ensuite.
+  'gpt-6-luna': { in: 0.10, out: 0.50 },
+  'gpt-6-sol': { in: 2.00, out: 10.00 },
+  'gpt-6-astra': { in: 10.00, out: 50.00 },
+  'gemini-3.5-flash': { in: 1.50, out: 9.00 },
+  'gemini-3.5-flash-lite': { in: 0.30, out: 2.50 },
+  'gemini-3.8-flash': { in: 0.75, out: 3.75 },
+  'gemini-3.1-flash-lite': { in: 0.25, out: 1.50 },
+  'gemini-3.1-pro-preview': { in: 2.00, out: 12.00 },
 }
 
 export function costUsd(
