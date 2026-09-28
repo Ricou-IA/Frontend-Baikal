@@ -151,3 +151,17 @@ dpe.diag_certifie, synchronisée à 02h30 par le projet DPE) ».
 - Les 7 fichiers ré-ingérés (5 Bessières + CCAG + NFP03-001) sont en FLUX 3 réparé (version n8n active 646c84e4 : chunking v5.1.0, QQOQCCP v1.1.0) depuis le 26/09 ; leurs anciens chunks sont en `status = 'rejected'` avec `metadata.archive` (raison `reingestion-flux3-repare`). Référence d'éval : `eval/reports/baseline-v2.4.0-flux3{,-synth}`
 - FLUX 3 (646c84e4) : 3.8b lit `inserted.rag_documents` (`processing_status`, `chunk_count`, `processed_at` de `sources.files` sont renseignés), retry 3 × 5 s sur 3.6d/3.6i, 3.6f tout-ou-rien, réparation du JSON Gemini dans 3.6e/3.6j. Toujours comparer `versionId` et `activeVersionId` avant de dire quelle version tourne ; ne jamais réécrire le workflow par le SDK n8n (identifiants masqués)
 - La passe 1 Gemini de FLUX 3 réécrit le contenu : deux ingestions du même fichier ne donnent ni le même découpage ni le même volume de texte
+
+## [2026-09-28 00:30] Modèles Gemini 3.x : le pipeline RAG décrit encore gpt-4o-mini et Gemini 2.5
+**Statut** : PENDING
+**Commit** : e0df8be, 9a5b9f8, a866aee (Baikal) ; 4590777 (ARPET, §7.7)
+**Contexte** : Bascule du 27/09 (décision d'Eric) : génération, lecture intégrale, comparaisons et agent en gemini-3.8-flash, condensation en gemini-3.5-flash-lite, repli gpt-6-luna ; baikal-retrieval v2.5.1 ; référence d'éval baseline-v2.5.1. Le CLAUDE.md mentionne encore v2.4.0, « Gemini 2.5 Flash orchestrator », `gemini-2.5-flash` dans la table agentique, « repli OpenAI gpt-4o-mini » et la ligne « gemini-2.5-flash sur extraits boucle ».
+**Proposition** :
+1. Titres « RAG Pipeline » et « File Structure » : v2.4.0 → v2.5.1.
+2. Ligne « Génération sur extraits » : modèle par défaut `gemini-3.8-flash` ; « repli OpenAI gpt-4o-mini » → « repli OpenAI gpt-6-luna » ; ajouter « réglages de réflexion par `generation/gemini-thinking.ts` (profil sans réflexion : budget 0 → minimal → low, minimal d'abord pour les *-lite ; profil agent : low ; le suivant sur un 400) ».
+3. Phase B : « Gemini 2.5 Flash orchestrator » → « gemini-3.8-flash orchestrator (réflexion basse ; la part d'appel d'outil est rendue avec sa `thoughtSignature`, exigée par Gemini 3) ». Table Agentic Config : `model` = `gemini-3.8-flash`.
+4. Condensation : « Gemini flash-lite » → « gemini-3.5-flash-lite, délai 1 000 ms ».
+5. File Structure : ajouter `generation/gemini-thinking.ts ← Réglages de réflexion Gemini (profils, essais successifs sur 400)` ; `gemini-agent.ts` : « gemini-3.8-flash client ».
+6. Known Issues : remplacer la ligne « gemini-2.5-flash sur extraits boucle… » par « Gemini 2.5 coupé par Google à partir du 16/10/2026 : ARPET est en 3.x depuis le 27/09 ; FLUX 3 (n8n, nœuds 3.6d/3.6i) reste en gemini-2.5-flash tant qu'Eric n'a pas publié la bascule en gemini-3.8-flash. Tarif 3.8-flash garanti jusqu'au 31/12/2026. Lecture intégrale lente en 3.8-flash (20-24 s). » ; ligne « Les 8 fichiers ré-ingérés » : référence d'éval → `baseline-v2.5.1{,-synth}`.
+7. AI Models (en tête) : « OpenAI (embeddings, generation) » → « OpenAI (embeddings, repli de génération) », « Google Gemini (génération, agent, analyse de fichiers, ingestion) ».
+---
