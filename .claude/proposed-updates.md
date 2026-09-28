@@ -153,7 +153,7 @@ dpe.diag_certifie, synchronisée à 02h30 par le projet DPE) ».
 - La passe 1 Gemini de FLUX 3 réécrit le contenu : deux ingestions du même fichier ne donnent ni le même découpage ni le même volume de texte
 
 ## [2026-09-28 00:30] Modèles Gemini 3.x : le pipeline RAG décrit encore gpt-4o-mini et Gemini 2.5
-**Statut** : PENDING
+**Statut** : RESOLU (intégré le 2026-09-28, accord d'Eric)
 **Commit** : e0df8be, 9a5b9f8, a866aee (Baikal) ; 4590777 (ARPET, §7.7)
 **Contexte** : Bascule du 27/09 (décision d'Eric) : génération, lecture intégrale, comparaisons et agent en gemini-3.8-flash, condensation en gemini-3.5-flash-lite, repli gpt-6-luna ; baikal-retrieval v2.5.1 ; référence d'éval baseline-v2.5.1. Le CLAUDE.md mentionne encore v2.4.0, « Gemini 2.5 Flash orchestrator », `gemini-2.5-flash` dans la table agentique, « repli OpenAI gpt-4o-mini » et la ligne « gemini-2.5-flash sur extraits boucle ».
 **Proposition** :

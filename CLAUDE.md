@@ -34,7 +34,7 @@ sur un téléphone (usage « compagnon »).
 - **Backend:** Supabase (Postgres, Edge Functions in Deno/TypeScript, Storage, Auth)
 - **Ingestion pipeline:** n8n workflows (FLUX 1-6) calling Supabase Edge Functions
 - **Deployment:** Vercel (frontend) + Supabase Cloud (backend)
-- **AI Models:** OpenAI (embeddings, generation), Google Gemini (file analysis, generation), Cohere (reranking - feature flagged), LlamaParse (document parsing)
+- **AI Models:** OpenAI (embeddings, repli de génération gpt-6-luna), Google Gemini 3.x (génération, agent, lecture de fichiers, ingestion FLUX 3), Cohere (reranking - feature flagged), LlamaParse (document parsing)
 
 ## Architecture
 
@@ -108,12 +108,12 @@ FLUX 1 (Orchestrator) → Routes by file type
   └── FLUX 6 (Meeting Transcripts) → Chunking → Edge Function ingest
 ```
 
-### RAG Pipeline (baikal-retrieval v2.4.0)
+### RAG Pipeline (baikal-retrieval v2.5.1)
 
 ```
-User query → baikal-retrieval v2.4.0
+User query → baikal-retrieval v2.5.1
   ├── Accès (auth.ts) : identité lue dans le jeton, appartenance vérifiée par rag.resolve_access (parité RLS de core.projects) ; clé anon → 401, non-membre → 403 ; service_role = corps de confiance (banc d'éval)
-  ├── Analyse heuristique (intent par mots-clés, routing/analyzer.ts) + condensation des suivis (routing/condenser.ts, Gemini flash-lite)
+  ├── Analyse heuristique (intent par mots-clés, routing/analyzer.ts) + condensation des suivis (routing/condenser.ts, gemini-3.5-flash-lite, délai 1 000 ms)
   ├── Phase A: Fast Path
   │     → Embedding (text-embedding-3-small)
   │     → Hybrid search (match_documents_v15) + recherche ciblée par document nommé (search/targeted.ts, filter_file_ids, en parallèle) → fusion : extraits de chaque document nommé garantis
@@ -123,10 +123,10 @@ User query → baikal-retrieval v2.4.0
   │     → RRF fusion (k=60)
   │     → [Optional: Cohere reranking - disabled for MVP]
   │     → Quality gate: enough chunks + good similarity? → Generate response (SSE)
-  │     → Génération sur extraits : fournisseur déduit de `parameters.generation.llm_model` (`generation/chunks.ts`, `gpt-*` → OpenAI, `gemini-*` → `generation/gemini-chunks.ts` réflexion coupée par défaut, budget configurable `generation.gemini_thinking_budget`, règle de forme et garde de répétition ; repli OpenAI gpt-4o-mini avant le premier token ou sur réponse vide) ; tokens captés (`generation/usage.ts`) → `query_logs.counts.tokens_in/out/llm_calls/runaway`, payload `sources.usage`/`model` ; `eval_overrides` (`llm_model`, `gemini_thinking_budget`, `enable_reranking`) accepté en service_role seulement (banc)
+  │     → Génération sur extraits : fournisseur déduit de `parameters.generation.llm_model` (`generation/chunks.ts`, `gpt-*` → OpenAI, `gemini-*` → `generation/gemini-chunks.ts` réflexion coupée par défaut, budget configurable `generation.gemini_thinking_budget`, règle de forme et garde de répétition ; modèle en production `gemini-3.8-flash` depuis le 27/09 ; repli OpenAI gpt-6-luna avant le premier token ou sur réponse vide ; réglages de réflexion par `generation/gemini-thinking.ts` : profil sans réflexion = budget 0 → minimal → low, minimal d'abord pour les *-lite, profil agent = low, le suivant sur un 400) ; tokens captés (`generation/usage.ts`) → `query_logs.counts.tokens_in/out/llm_calls/runaway`, payload `sources.usage`/`model` ; `eval_overrides` (`llm_model`, `gemini_thinking_budget`, `enable_reranking`) accepté en service_role seulement (banc)
   │
   └── Phase B: Agentic (if fast path insufficient)
-        → Gemini 2.5 Flash orchestrator (tool-calling, ReAct loop)
+        → gemini-3.8-flash orchestrator (tool-calling, ReAct loop, réflexion basse ; la part d'appel d'outil est rendue avec sa `thoughtSignature`, exigée par Gemini 3)
         │   ├── Tool: search_documents (hybrid search with reformulated query)
         │   ├── Tool: list_project_files (list available documents)
         │   └── Tool: search_in_file (targeted search in specific file)
@@ -136,7 +136,7 @@ User query → baikal-retrieval v2.4.0
         → Streaming final generation via Gemini
 ```
 
-#### baikal-retrieval v2.4.0 File Structure
+#### baikal-retrieval v2.5.1 File Structure
 ```
 supabase/functions/baikal-retrieval/
   index.ts              ← Main handler: Phase A + quality gate + agentic decision
@@ -151,7 +151,7 @@ supabase/functions/baikal-retrieval/
     orchestrator.ts     ← ReAct loop (runAgenticLoop) : budget dédié, réponse directe streamée
     gate.ts             ← Gate agentique (n_vector, max_sim), raison tracée dans rag.query_logs
     tools.ts            ← 3 tool declarations + execution + file resolution
-    gemini-agent.ts     ← Gemini 2.5 Flash client (tool-calling + streaming)
+    gemini-agent.ts     ← gemini-3.8-flash client (tool-calling + streaming, thoughtSignature conservée)
   search/
     retrieval.ts        ← executeSearch (calls match_documents_v15)
     targeted.ts         ← Recherche ciblée par document nommé + fusion (Sprint 2)
@@ -162,7 +162,7 @@ supabase/functions/baikal-retrieval/
   routing/
     router.ts           ← Route resolution + conversational handling
     analyzer.ts         ← Analyse heuristique (intent par mots-clés)
-    condenser.ts        ← Condensation des questions de suivi (Gemini flash-lite, garde anti-recopie)
+    condenser.ts        ← Condensation des questions de suivi (gemini-3.5-flash-lite, garde anti-recopie)
     named-documents.ts  ← Documents nommés : extraction, résolution (projet puis couche application), bloc de prompt
     cross-ref.ts        ← Cross-document reference detection
     safety.ts           ← Safety checks
@@ -173,6 +173,7 @@ supabase/functions/baikal-retrieval/
     usage.ts            ← TokenUsage : capture des tokens de chaque appel de génération (Sprint 3)
     chunks.ts           ← Dispatch génération sur extraits par fournisseur (providerFor), repli OpenAI (Sprint 3)
     gemini-chunks.ts    ← Génération Gemini sur extraits, réflexion coupée, garde de répétition (Sprint 3)
+    gemini-thinking.ts  ← Réglages de réflexion Gemini (profils, essais successifs sur 400)
 ```
 
 ### Document Hierarchy
@@ -205,7 +206,7 @@ Key parameters (current values):
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `enabled` | `true` | Enable/disable agentic mode |
-| `model` | `gemini-2.5-flash` | LLM for orchestration (tool-calling) |
+| `model` | `gemini-3.8-flash` | LLM for orchestration (tool-calling) |
 | `max_iterations` | `3` | Maximum tool calls per query |
 | `timeout_ms` | `8000` | Total time budget for agentic loop |
 | `temperature` | `0.2` | Orchestrator reasoning temperature |
@@ -230,12 +231,12 @@ puis `npx supabase migration repair --linked --status applied <version>`, jamais
 - FLUX 4 (Excel ingestion) not implemented - Excel files routed to FLUX 3 will fail
 - `baikal-brain-v3` and `baikal-librarian-v4` are legacy - use `baikal-retrieval` v2.0 instead
 - Some older chunks (pre v5.0.0 pipeline) lack QQOQCCP enrichment
-- Les 8 fichiers ré-ingérés (les 6 PDF du projet Bessières + CCAG + NFP03-001) sont en FLUX 3 réparé (version n8n active 646c84e4 : chunking v5.1.0, QQOQCCP v1.1.0) depuis le 26-27/09 ; leurs anciens chunks sont en `status = 'rejected'` avec `metadata.archive` (raison `reingestion-flux3-repare`). Référence d'éval : `eval/reports/baseline-v2.4.0-bessieres{,-synth}`
+- Les 8 fichiers ré-ingérés (les 6 PDF du projet Bessières + CCAG + NFP03-001) sont en FLUX 3 réparé (version n8n active 646c84e4 : chunking v5.1.0, QQOQCCP v1.1.0) depuis le 26-27/09 ; leurs anciens chunks sont en `status = 'rejected'` avec `metadata.archive` (raison `reingestion-flux3-repare`). Référence d'éval : `eval/reports/baseline-v2.5.1{,-synth}`
 - Les env `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` injectées dans les Edge Functions ne sont plus les JWT legacy envoyés par les clients : `baikal-retrieval/auth.ts` reconnaît le rôle par la claim `role` du JWT (signature vérifiée par la passerelle, `verify_jwt = true`)
 - FLUX 3 (646c84e4) : 3.8b lit `inserted.rag_documents` (`processing_status`, `chunk_count`, `processed_at` de `sources.files` sont renseignés), retry 3 × 5 s sur 3.6d/3.6i, 3.6f tout-ou-rien, réparation du JSON Gemini dans 3.6e/3.6j. Toujours comparer `versionId` et `activeVersionId` avant de dire quelle version tourne ; ne jamais réécrire le workflow par le SDK n8n (identifiants masqués)
 - Cohere reranking is implemented but disabled for MVP (`enable_reranking: false`)
 - Frontend admin settings page not yet updated for baikal-retrieval agentic config
-- gemini-2.5-flash sur extraits boucle sur un caractère (espaces puis tirets) dans ~3-6 % des réponses quand la réflexion est coupée : garde `MAX_REPEAT_RUN` = 200 (flux coupé, `counts.runaway`), modèle non promu — budget de réflexion 256 testé au Sprint 4 (4 boucles / 37 réponses sur échantillon, coût ×2,2-2,8), non promu non plus
+- Gemini 2.5 coupé par Google à partir du 16/10/2026 : ARPET est en 3.x depuis le 27/09 ; FLUX 3 (n8n, nœuds 3.6d/3.6i) reste en gemini-2.5-flash tant qu'Eric n'a pas publié la bascule en gemini-3.8-flash. Tarif 3.8-flash garanti jusqu'au 31/12/2026. Lecture intégrale lente en 3.8-flash (20-24 s)
 - Cohere dormant faute de `COHERE_API_KEY` ; activation = clé + migration `features.enable_reranking`
 - `fts` de `rag.documents` pondéré depuis le Sprint 4 (`rag.update_fts` : A normes/lots, B localisations/titre de section, D contenu ; trigger sur content, comment_normes, qui_lots, qqoqccp, metadata)
 - FLUX 3 v5.0.0 produit parfois des sous-sections rattachées à un L1 (niveaux 2/3) ; `rag.resolve_chunk_hierarchy` ne lie que L1→L0 : la migration `rag_rattache_sous_sections_v5` les a rattachées au L0 — à rejouer après toute nouvelle ingestion
