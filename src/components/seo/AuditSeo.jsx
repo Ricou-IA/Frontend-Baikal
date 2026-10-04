@@ -92,6 +92,95 @@ function TexteAudit({ texte }) {
   );
 }
 
+const mono = (t) => <span className="font-mono text-xs">{t}</span>;
+
+// Les points de detail : ce qu'il faut regarder pour decider quoi changer sur
+// le site. Calcules par l'EF, jamais envoyes au partenaire (ni texte ni PDF).
+function PointsDeDetail({ d }) {
+  if (!d) return null;
+  const vide = !d.rendement.length && !d.opportunites.length && !d.disputees.length
+    && !d.ecart_moteurs.length && !d.hors_sitemap.length && !d.concentration;
+  if (vide) return null;
+  return (
+    <div className="space-y-4">
+      <div className="text-sm text-baikal-text">
+        <span className="font-semibold text-white">Points de détail</span>
+        <span className="opacity-60"> — pour décider quoi changer sur le site. Ils ne partent ni dans la lecture ni dans le rapport au partenaire.</span>
+      </div>
+      {d.concentration && (
+        <p className="text-sm text-baikal-text">
+          La page {mono(d.concentration.page)} porte <span className="text-white font-semibold">{pct(d.concentration.part)}</span> des clics Google de la période ({nb(d.concentration.clics)} clics).
+        </p>
+      )}
+      {d.rendement.length > 0 && (
+        <Tableau
+          titre="Rendement par page d'entrée organique — ventes pour 100 clics Google (mois entiers)"
+          colonnes={[
+            { titre: "Page d'entrée", valeur: (x) => mono(x.page) },
+            { titre: 'Clics Google', valeur: (x) => nb(x.clics), droite: true },
+            { titre: 'Dossiers', valeur: (x) => nb(x.dossiers), droite: true },
+            { titre: 'Ventes', valeur: (x) => nb(x.ventes), droite: true, gras: true },
+            { titre: 'Ventes / 100 clics', valeur: (x) => (x.ventes_pour_100_clics === null ? '—' : pos(x.ventes_pour_100_clics)), droite: true, gras: true },
+          ]}
+          lignes={d.rendement}
+          cle={(x) => x.page}
+        />
+      )}
+      <div className="grid md:grid-cols-2 gap-4">
+        <Tableau
+          titre="En page 1 et presque jamais cliquées (position ≤ 12, moins de 2 % de clics)"
+          colonnes={[
+            { titre: 'Requête', valeur: (x) => x.requete },
+            { titre: 'Page', valeur: (x) => <span className="font-mono text-xs opacity-70">{x.page}</span> },
+            { titre: 'Impr.', valeur: (x) => nb(x.impressions), droite: true },
+            { titre: 'Clics', valeur: (x) => nb(x.clics), droite: true, gras: true },
+            { titre: 'Pos.', valeur: (x) => pos(x.position), droite: true },
+          ]}
+          lignes={d.opportunites}
+          cle={(x) => `${x.requete}|${x.page}`}
+        />
+        <Tableau
+          titre="Requêtes que deux pages du site se disputent"
+          colonnes={[
+            { titre: 'Requête', valeur: (x) => x.requete },
+            { titre: 'Impr.', valeur: (x) => nb(x.impressions), droite: true },
+            { titre: 'Pages (impressions, position)', valeur: (x) => (
+              <div className="space-y-0.5">
+                {x.pages.map((p) => <div key={p.page} className="font-mono text-xs">{p.page} <span className="opacity-60">· {nb(p.impressions)} · {pos(p.position)}</span></div>)}
+              </div>
+            ) },
+          ]}
+          lignes={d.disputees}
+          cle={(x) => x.requete}
+        />
+      </div>
+      <div className="grid md:grid-cols-2 gap-4">
+        <Tableau
+          titre={`Bien classées sur Bing, loin sur Google — autorité, pas contenu${d.ecart_moteurs_releve_le ? ` (relevé Bing du ${dateFr(d.ecart_moteurs_releve_le)})` : ''}`}
+          colonnes={[
+            { titre: 'Page', valeur: (x) => mono(x.page) },
+            { titre: 'Pos. Bing', valeur: (x) => pos(x.position_bing), droite: true, gras: true },
+            { titre: 'Pos. Google', valeur: (x) => pos(x.position_google), droite: true, gras: true },
+            { titre: 'Impr. Google', valeur: (x) => nb(x.impressions_google), droite: true },
+          ]}
+          lignes={d.ecart_moteurs}
+          cle={(x) => x.page}
+        />
+        <Tableau
+          titre={d.sitemap_lu ? 'Adresses vues par Google et absentes du sitemap' : 'Adresses hors sitemap — sitemap illisible'}
+          colonnes={[
+            { titre: 'Adresse', valeur: (x) => mono(x.page) },
+            { titre: 'Clics', valeur: (x) => nb(x.clics), droite: true, gras: true },
+            { titre: 'Impr.', valeur: (x) => nb(x.impressions), droite: true },
+          ]}
+          lignes={d.hors_sitemap}
+          cle={(x) => x.page}
+        />
+      </div>
+    </div>
+  );
+}
+
 function Resultat({ audit, texte, setTexte, lectureSeule }) {
   const l = audit.lecture;
   const vc = l?.ventes?.par_creation;
@@ -208,6 +297,7 @@ function Resultat({ audit, texte, setTexte, lectureSeule }) {
           />
         </>
       )}
+      <PointsDeDetail d={l?.details} />
       <div className="space-y-2">
         <label className="text-sm text-baikal-text">
           <span className="font-semibold text-white">Lecture</span>

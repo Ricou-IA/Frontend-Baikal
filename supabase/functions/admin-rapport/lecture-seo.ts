@@ -13,6 +13,7 @@ import type { Commit } from "./github.ts";
 // ventes se lit sur l'attribution figee de chaque vente, par date de paiement.
 import { canalVente } from "../admin-dossiers/canal.ts";
 import { moisCouverts, type Periode, periodePrecedente } from "./periode.ts";
+import { construireDetailsSeo, type DetailsSeo } from "./details-seo.ts";
 
 export interface LigneCluster {
   cluster: string;
@@ -123,6 +124,9 @@ export interface LectureSeo {
   suivi: { requetes: LigneSuivi[]; pages: LignePageCle[]; disponible: boolean };
   autorite: LigneAutorite[];
   chantiers: Chantier[];
+  // Points de detail pour decider quoi changer sur le site. Absents des
+  // audits archives avant le 04/10/2026 ; jamais envoyes au partenaire.
+  details?: DetailsSeo | null;
   sources_manquantes: string[];
 }
 
@@ -595,6 +599,22 @@ export async function construireLectureSeo(
   if (panier.length === 0 && pagesCles.length === 0) manquantes.push("Requêtes suivies et pages clés non renseignées dans /sites");
   if (autorite.length === 0) manquantes.push("Aucun relevé d'autorité Moz");
 
+  // Le rendement par page rapproche des dossiers (au jour pres) de clics
+  // archives au mois : il ne vaut que sur des mois entiers.
+  const finMois = new Date(`${periode.fin}T00:00:00Z`);
+  finMois.setUTCDate(finMois.getUTCDate() + 1);
+  const moisEntiers = periode.debut.endsWith("-01") && finMois.getUTCDate() === 1;
+  let details: DetailsSeo | null = null;
+  try {
+    details = await construireDetailsSeo(
+      admin, appId, app?.domaine ?? null, mois, periode.fin, crM,
+      moisEntiers && parCreation.disponible ? parCreation.par_page : [],
+    );
+    if (!details.sitemap_lu) manquantes.push("Sitemap du site illisible : pas de contrôle des adresses hors sitemap");
+  } catch (e) {
+    manquantes.push(`Points de détail indisponibles : ${(e as Error).message}`);
+  }
+
   return {
     trafic: { google, bing },
     trafic_periode: { google: { periode: tgM, precedent: tgP }, bing: { periode: tbM, precedent: tbP } },
@@ -608,6 +628,7 @@ export async function construireLectureSeo(
     },
     autorite,
     chantiers: chantiersDepuis(declares.data ?? [], commits),
+    details,
     sources_manquantes: manquantes,
   };
 }
