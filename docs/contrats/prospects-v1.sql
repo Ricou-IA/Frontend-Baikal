@@ -10,6 +10,13 @@
 -- JAMAIS : un annuaire reimporte chaque nuit reste ou il est, et la vue le
 -- projette. Le materialiser ici recreerait la recopie de 03h30 et son ecart
 -- de +29 % entre ce que la console annonce et ce que la campagne adresse.
+--
+-- Colonne optionnelle de la vue baikal_prospects (projection propre au site) :
+-- `supprimable boolean` -- vrai uniquement pour une ligne de @SCHEMA@.prospect,
+-- la seule que prospect_action('supprimer') accepte. La console n'affiche
+-- "Supprimer" que si elle est vraie ; colonne absente, elle se replie sur la
+-- provenance import|scrape (juste quand les scrapes vivent dans le receptacle,
+-- faux des qu'un site les garde dans son annuaire : pack-vendeur).
 -- ---------------------------------------------------------------------------
 
 -- ------ 1. Le receptacle standard ------

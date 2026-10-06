@@ -13,7 +13,9 @@
  * absente n'affiche rien du tout (sinon le tiret ment sur ce qui a ete
  * demande au site).
  *
- * "Supprimer" n'apparait que pour provenance import/scrape : une ligne
+ * "Supprimer" suit d'abord la colonne optionnelle `supprimable` de la vue du
+ * site (vrai = la ligne vit dans le receptacle et la fonction l'accepte) ;
+ * sans cette colonne, repli sur la provenance import/scrape. Une ligne
  * d'annuaire (annuaire_public) reviendrait au prochain cron de toute facon,
  * et la fonction du site la refuse. Pour ne plus adresser un annuaire,
  * c'est "Desinscrire", qui est definitif -- l'opt-out prime sur tout statut
@@ -67,7 +69,12 @@ function BarreActions({
   // receptacle du site : la fonction prospect_action('supprimer', ...) la
   // refuserait de toute facon. Meme regle cote client, pour ne jamais
   // proposer un bouton voue a l'echec.
-  const peutSupprimer = prospect.provenance === 'import' || prospect.provenance === 'scrape';
+  // Un site qui publie `supprimable` dit lui-meme ce que sa fonction acceptera
+  // (chez Pack Vendeur, les scrapes vivent hors du receptacle et ne se
+  // suppriment pas). Sans la colonne, l'ancien proxy par provenance reste.
+  const peutSupprimer = prospect.supprimable !== undefined
+    ? prospect.supprimable === true
+    : (prospect.provenance === 'import' || prospect.provenance === 'scrape');
   const estDesinscrit = prospect.statut === 'desinscrit';
 
   const lancer = async (actionSite, params = {}) => {

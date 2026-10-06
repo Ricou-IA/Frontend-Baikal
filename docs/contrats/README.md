@@ -52,7 +52,7 @@ manquants.
 
 **Une colonne qu'un site ne sait pas remplir est absente, jamais présente et
 nulle.** La capacité se lit à la présence ; une colonne toujours vide se lit
-comme un fait, pas comme une absence de mesure.
+comme un fait, pas comme une absence de mesure. Exemple : `baikal_prospects.supprimable` (optionnelle) dit si « Supprimer » s'applique ; sans elle, la console déduit de la provenance — faux dès qu'un site garde ses scrapés hors du réceptacle (pack-vendeur).
 
 **Toute donnée présente dans deux vues contractuelles d'un même site se dérive
 de celle qui fait autorité, jamais recalculée.** Deux définitions du même fait
