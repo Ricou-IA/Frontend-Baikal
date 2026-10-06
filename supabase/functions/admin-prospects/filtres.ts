@@ -22,7 +22,7 @@ export interface Criteres {
 }
 
 const METIERS = new Set([
-  "notaire", "agent_immo", "syndic", "diagnostiqueur", "entreprise_rge", "autre",
+  "notaire", "agent_immo", "syndic", "diagnostiqueur", "entreprise_rge", "presse", "autre",
 ]);
 const STATUTS = new Set([
   "nouveau", "contacte", "relance", "repondu", "refus", "desinscrit",

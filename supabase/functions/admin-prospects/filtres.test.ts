@@ -65,3 +65,10 @@ Deno.test("recherche tronquee a 200 caracteres et trimmee", () => {
   assertEquals(normaliserCriteres({ recherche: "  toulouse " }).recherche, "toulouse");
   assertEquals(normaliserCriteres({ recherche: "x".repeat(500) }).recherche.length, 200);
 });
+
+Deno.test("presse est un metier de la taxonomie (contacts presse et createurs)", () => {
+  assertEquals(
+    normaliserCriteres({ metiers: ["presse", "notaire"] }).metiers,
+    ["presse", "notaire"],
+  );
+});
