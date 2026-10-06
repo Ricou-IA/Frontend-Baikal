@@ -190,7 +190,7 @@ export default function Fiche({ appId, dossierId, onClose }) {
           <BarreActions
             actions={donnees.actions}
             isSuperAdmin={isSuperAdmin}
-            onFait={() => setVersion((v) => v + 1)}
+            onFait={(actionId) => (actionId === 'supprimer' ? onClose() : setVersion((v) => v + 1))}
             module="clients"
             executer={(actionSite, parametres) =>
               dossiersService.executerActionSite(appId, dossierId, actionSite, parametres)}

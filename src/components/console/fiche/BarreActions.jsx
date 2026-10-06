@@ -197,7 +197,9 @@ export default function BarreActions({ actions, isSuperAdmin, onFait, executer, 
       setMessage({ ok: false, texte: error.message });
     } else {
       setMessage({ ok: true, texte: data?.message || 'Action exécutée.' });
-      onFait();
+      // L'id de l'action est transmis : une fiche sait ainsi qu'elle vient de
+      // supprimer son propre objet et se ferme au lieu de se recharger.
+      onFait(action.id);
     }
   };
 

@@ -64,6 +64,9 @@ function ComptesProContent() {
   const [ordre, setOrdre] = useState('asc');
   const [page, setPage] = useState(1);
   const [ficheId, setFicheId] = useState(null);
+  // La fermeture d'une fiche relit la liste : un crédit, une fermeture ou une
+  // suppression doivent s'y voir sans recharger la page.
+  const [version, setVersion] = useState(0);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -83,7 +86,7 @@ function ComptesProContent() {
   }), [recherche, actifsSeuls, exclureTests, inclureSupprimes, tri, ordre, page]);
 
   const { donnees, erreur, enCours } = useDonneesCachees(
-    `comptes-pro:${currentApp}:${JSON.stringify(criteres)}`,
+    `comptes-pro:${currentApp}:${version}:${JSON.stringify(criteres)}`,
     () => comptesProService.getListe(currentApp, criteres),
     currentApp,
   );
@@ -280,7 +283,11 @@ function ComptesProContent() {
       )}
 
       {ficheId && (
-        <FicheCompte appId={currentApp} compteId={ficheId} onClose={() => setFicheId(null)} />
+        <FicheCompte
+          appId={currentApp}
+          compteId={ficheId}
+          onClose={() => { setFicheId(null); setVersion((v) => v + 1); }}
+        />
       )}
     </Section>
   );

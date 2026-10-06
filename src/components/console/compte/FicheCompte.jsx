@@ -128,7 +128,7 @@ export default function FicheCompte({ appId, compteId, onClose }) {
           <BarreActions
             actions={donnees.actions}
             isSuperAdmin={isSuperAdmin}
-            onFait={() => setVersion((v) => v + 1)}
+            onFait={(actionId) => (actionId === 'supprimer' ? onClose() : setVersion((v) => v + 1))}
             module="comptes_pro"
             executer={(actionSite, parametres) =>
               comptesProService.executerActionSite(appId, compteId, actionSite, parametres)}
