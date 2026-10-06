@@ -364,7 +364,7 @@ sites-design.md).
   `relaisConfigure(site, env_prospects_fn)` pour ces sites. La validation d'une action est
   commune aux deux transports (`admin-prospects/actions.ts`, pur, testé). Métier `presse`
   ajouté à `admin.metier` (contacts presse et créateurs de pack-vendeur) — à exclure de tout
-  envoi commercial le jour du lot mailing.
+  envoi commercial le jour du lot mailing. Le réceptacle des sites accepte les huit métiers de `admin.metier` ; ajouter un métier = une ligne ici ET la contrainte `prospect.metier` du contrat chez chaque site.
 - **EF `admin-comptes`** (`scope: 'baikal' | <app_id>`, modales partagées
   `src/components/console/comptes/ModalesCompte.jsx`) : mot de passe (généré 14 car.
   lisibles ou saisi, affiché une fois), lien de réinitialisation `generateLink(recovery)` à

@@ -91,6 +91,7 @@ Deno.serve(async (req: Request) => {
   }
 
   const body = await req.json().catch(() => ({}));
+  if (!body || typeof body !== "object" || Array.isArray(body)) return jsonResponse({ error: "Corps JSON attendu" }, 400);
   const lu = lireCorps(body);
   if (!lu.ok) return jsonResponse({ error: lu.erreur }, 400);
 

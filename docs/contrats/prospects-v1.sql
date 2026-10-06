@@ -29,8 +29,11 @@
 create table if not exists @SCHEMA@.prospect (
   email        text        primary key,
   metier       text        not null
+               -- La liste miroite admin.metier de Baikal : en ajouter un la-bas
+               -- exige la meme ligne ici.
                check (metier in ('notaire','agent_immo','syndic',
-                                 'diagnostiqueur','entreprise_rge','autre')),
+                                 'diagnostiqueur','entreprise_rge',
+                                 'presse','fondateur','autre')),
   provenance   text        not null default 'import'
                check (provenance in ('annuaire_public','acquisition_propre',
                                      'import','scrape')),
@@ -297,7 +300,8 @@ revoke all on function public.baikal_prospect_importer(jsonb,text) from public;
 revoke all on function public.baikal_prospect_importer(jsonb,text) from anon, authenticated;
 grant execute on function public.baikal_prospect_importer(jsonb,text) to service_role;
 
--- Si le site porte des envois automatiques (cron, sequence), ils doivent lire
--- @SCHEMA@.prospect_etat et ecarter statut in ('refus','desinscrit') : un refus
--- pose depuis Baikal doit arreter les envois du site. Installation de
--- reference : Pack Vendeur (pv-email-cron + RPC pv_select_nurture_candidates).
+-- TOUS les envois du site, automatiques (cron, sequence) comme manuels
+-- (campagnes), doivent lire @SCHEMA@.prospect_etat et ecarter
+-- statut in ('refus','desinscrit') : un refus pose depuis Baikal doit arreter
+-- tous les envois du site. Installation de reference : Pack Vendeur
+-- (pv-email-cron, RPC pv_select_nurture_candidates, pv-admin-mailing).

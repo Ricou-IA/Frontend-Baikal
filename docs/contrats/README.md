@@ -28,7 +28,7 @@ dossier ou un abonné chez lui. `mesures-v1.sql` est un contrat de forme.
 5. Passer la recette du contrat quand il en porte une (`mesures-v1`, §3).
 6. **Site sur base dédiée** (il a un `db_ro_secret_ref` dans le registre) :
    Baikal lit la vue par sa connexion lecture seule mais ne peut pas écrire.
-   Trois fichiers et deux secrets de plus :
+   Deux fichiers et un secret de plus :
    - jouer aussi l'annexe « site dédié » de `prospects-v1.sql` (les deux
      wrappers publics sans `p_app_id`) ;
    - copier `prospects-relais-v1.ts` dans une Edge Function du site,
@@ -36,8 +36,7 @@ dossier ou un abonné chez lui. `mesures-v1.sql` est un contrat de forme.
      côté Baikal), déployer ;
    - renseigner `config.apps.env_prospects_fn` avec le nom de cette fonction.
    Sans `env_prospects_fn`, la page est en lecture seule — jamais une erreur.
-   Si le site envoie des emails automatiquement, ses envois lisent
-   `<schema>.prospect_etat` et écartent `refus` / `desinscrit`.
+   Tous les envois du site, automatiques ou manuels, lisent `<schema>.prospect_etat` et écartent `refus` / `desinscrit`.
 
 ## Règles
 
