@@ -38,10 +38,11 @@ const MODULES_SITE = {
 // Modules transverses, quel que soit le site.
 const MODULES_TRANSVERSES = [
     { id: 'clients', label: 'Clients', icon: FolderOpen, route: '/clients' },
-    // Comptes pro : les entreprises qui achetent au site, quand Clients liste
-    // l'acte commercial. L'id est celui du module (core.modules_console), sans
-    // quoi le filtrage par droits ci-dessous ne le verrait pas.
-    { id: 'comptes_pro', label: 'Comptes pro', icon: Building2, route: '/comptes-pro' },
+    // Comptes : ceux qui ont un compte chez le site, quand Clients liste
+    // l'acte commercial. Libelle « Comptes » depuis le 2026-10-06 ; l'id reste
+    // celui du module (core.modules_console), sans quoi le filtrage par droits
+    // ci-dessous ne le verrait pas, et les droits delegues y sont attaches.
+    { id: 'comptes_pro', label: 'Comptes', icon: Building2, route: '/comptes-pro' },
     { id: 'prospects', label: 'Prospects', icon: Target, route: '/prospect' },
     { id: 'finances', label: 'Finances', icon: Euro, route: '/finances' },
     { id: 'rapports', label: 'Rapports', icon: FileText, route: '/rapports' },

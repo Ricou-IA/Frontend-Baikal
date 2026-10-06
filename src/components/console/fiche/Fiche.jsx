@@ -188,11 +188,12 @@ export default function Fiche({ appId, dossierId, onClose }) {
 
         {d && (
           <BarreActions
-            appId={appId}
-            dossierId={dossierId}
             actions={donnees.actions}
             isSuperAdmin={isSuperAdmin}
             onFait={() => setVersion((v) => v + 1)}
+            module="clients"
+            executer={(actionSite, parametres) =>
+              dossiersService.executerActionSite(appId, dossierId, actionSite, parametres)}
           />
         )}
 

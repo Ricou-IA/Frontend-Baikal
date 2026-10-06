@@ -25,6 +25,7 @@ import {
   Chargement, ContenuEstompe, Erreur, LigneVide, Section, Vide,
 } from '../components/console/etats';
 import { comptesProService } from '../services/comptesPro.service';
+import FicheCompte from '../components/console/compte/FicheCompte';
 import { fmtDate, fmtEur } from '../components/console/badges-clients';
 
 const PAR_PAGE = 25;
@@ -62,6 +63,7 @@ function ComptesProContent() {
   const [tri, setTri] = useState('raison_sociale');
   const [ordre, setOrdre] = useState('asc');
   const [page, setPage] = useState(1);
+  const [ficheId, setFicheId] = useState(null);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -106,7 +108,7 @@ function ComptesProContent() {
 
   if (donnees && donnees.disponible === false) {
     return (
-      <Section titre="Comptes pro">
+      <Section titre="Comptes">
         <Vide message="Module non disponible pour ce site — la vue baikal_comptes_pro n'est pas publiée dans sa base. Voir docs/contrats/comptes-pro-v1.sql." />
       </Section>
     );
@@ -114,8 +116,8 @@ function ComptesProContent() {
 
   return (
     <Section
-      titre="Comptes pro"
-      sousTitre="Les entreprises qui achètent au site — lecture directe dans sa base"
+      titre="Comptes"
+      sousTitre="Ceux qui ont un compte chez le site — lecture directe dans sa base, actions relayées à son EF"
     >
       {/* Les tuiles du chapitre coiffent la liste, et viennent des mesures du
           site, jamais de cette vue : une liste ne porte pas d'agrégat. */}
@@ -191,7 +193,8 @@ function ComptesProContent() {
                 {comptes.map((c) => (
                   <tr
                     key={c.compte_id}
-                    className={`border-t border-baikal-border/50
+                    onClick={() => setFicheId(c.compte_id)}
+                    className={`border-t border-baikal-border/50 cursor-pointer hover:bg-baikal-bg/40
                       ${c.supprime_le ? 'opacity-50' : ''} ${c.actif === false ? 'opacity-60' : ''}`}
                   >
                     <td className="px-4 py-3">
@@ -274,6 +277,10 @@ function ComptesProContent() {
             </div>
           )}
         </ContenuEstompe>
+      )}
+
+      {ficheId && (
+        <FicheCompte appId={currentApp} compteId={ficheId} onClose={() => setFicheId(null)} />
       )}
     </Section>
   );

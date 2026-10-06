@@ -48,6 +48,23 @@ export const COLONNES = {
     { cle: 'statut', libelle: 'Statut' },
     { cle: 'erreur', libelle: 'Erreur' },
   ],
+  // Fiche d'un COMPTE (chapitre Comptes) : l'historique du contrat
+  // comptes-historique-v1 et les dossiers du compte (baikal_dossiers).
+  historique: [
+    { cle: 'survenu_le', libelle: 'Date', format: 'datetime' },
+    { cle: 'nature', libelle: 'Nature' },
+    { cle: 'libelle', libelle: 'Libellé' },
+    { cle: 'quantite', libelle: 'Crédits', format: 'nombre' },
+    { cle: 'montant_ttc', libelle: 'Montant TTC', format: 'euro' },
+    { cle: 'solde_apres', libelle: 'Solde après', format: 'nombre' },
+  ],
+  compte_dossiers: [
+    { cle: 'cree_le', libelle: 'Créé', format: 'date' },
+    { cle: 'libelle', libelle: 'Bien' },
+    { cle: 'email', libelle: 'Client' },
+    { cle: 'statut', libelle: 'Statut' },
+    { cle: 'paye_le', libelle: 'Payé', format: 'date' },
+  ],
 };
 
 // Libelles et rendu de chaque onglet. L'ordre de ce tableau est l'ordre a

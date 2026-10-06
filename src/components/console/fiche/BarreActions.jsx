@@ -15,7 +15,6 @@ import {
   AlertTriangle, Check, Coins, Download, Mail, RefreshCw, Send, Trash2,
 } from 'lucide-react';
 import ConfirmModal from '../../ui/ConfirmModal';
-import { dossiersService } from '../../../services/dossiers.service';
 import { useDroitModule } from '../../../hooks/useDroitModule';
 
 const ICONES = {
@@ -157,9 +156,13 @@ function choixManquant(valeurs, action) {
   );
 }
 
-export default function BarreActions({ appId, dossierId, actions, isSuperAdmin, onFait }) {
-  // Grille d'acces : en lecture sur Clients, aucune action relayee au site.
-  const { ecriture } = useDroitModule('clients');
+// `executer(actionId, parametres)` est fourni par la fiche qui porte la barre
+// (dossier ou compte) : la barre ne connait ni l'objet ni le service, elle ne
+// fait que rendre le manifeste et relayer le clic. `module` est le droit a
+// exiger en ecriture (clients, comptes_pro).
+export default function BarreActions({ actions, isSuperAdmin, onFait, executer, module = 'clients' }) {
+  // Grille d'acces : en lecture sur le module, aucune action relayee au site.
+  const { ecriture } = useDroitModule(module);
   // Array.isArray et pas `actions || []` : l'ancienne Edge Function renvoie
   // encore `actions` sous forme de BOOLEEN (relais configure ou non). Si le
   // front est deploye avant elle, `true.filter` leverait en plein rendu et la
@@ -188,9 +191,7 @@ export default function BarreActions({ appId, dossierId, actions, isSuperAdmin, 
     setMessage(null);
     const parametres = {};
     for (const p of action.parametres) parametres[p.id] = valeurPour(valeurs, action.id, p);
-    const { data, error } = await dossiersService.executerActionSite(
-      appId, dossierId, action.id, parametres,
-    );
+    const { data, error } = await executer(action.id, parametres);
     setEnCours(null);
     if (error) {
       setMessage({ ok: false, texte: error.message });
