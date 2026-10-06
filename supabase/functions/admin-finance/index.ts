@@ -49,8 +49,13 @@ function debutMois(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
 }
 
+// Jours civils inclus entre deux instants, comptes sur la date UTC de chacun.
+// La fin d'une fenetre est a 23 h 59 : arrondir l'ecart puis ajouter 1 comptait
+// un jour de trop sur chaque mois clos (septembre sortait a 31 jours).
 function joursEntre(a: Date, b: Date): number {
-  return Math.max(0, Math.round((b.getTime() - a.getTime()) / 86_400_000) + 1);
+  const jourA = Math.floor(a.getTime() / 86_400_000);
+  const jourB = Math.floor(b.getTime() / 86_400_000);
+  return Math.max(0, jourB - jourA + 1);
 }
 
 // Prorata journalier d'une charge mensuelle : 12 mois / 365 jours. Une charge
