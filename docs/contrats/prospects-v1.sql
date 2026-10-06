@@ -250,3 +250,47 @@ $$;
 revoke all on function @SCHEMA@.prospect_importer(jsonb,text) from public;
 revoke all on function @SCHEMA@.prospect_importer(jsonb,text) from anon, authenticated;
 grant execute on function @SCHEMA@.prospect_importer(jsonb,text) to service_role;
+
+-- ------ Annexe — site sur BASE DEDIEE ------
+--
+-- Un site heberge sur son propre projet n'expose pas public.baikal_prospect_action
+-- (p_app_id, ...) : Baikal ne peut pas atteindre sa base en ecriture. Il
+-- expose a la place ces deux wrappers SANS p_app_id (une base dediee n'a
+-- qu'un site), appeles par le passe-plat prospects-relais-v1.ts avec le
+-- service_role du site. Memes noms que sur la base partagee : rien a
+-- renommer d'un site a l'autre.
+
+create or replace function public.baikal_prospect_action(
+  p_action text,
+  p_email  text,
+  p_valeur text default null,
+  p_acteur text default null
+) returns jsonb
+language sql
+security definer
+set search_path = ''
+as $$
+  select @SCHEMA@.prospect_action(p_action, p_email, p_valeur, p_acteur);
+$$;
+revoke all on function public.baikal_prospect_action(text,text,text,text) from public;
+revoke all on function public.baikal_prospect_action(text,text,text,text) from anon, authenticated;
+grant execute on function public.baikal_prospect_action(text,text,text,text) to service_role;
+
+create or replace function public.baikal_prospect_importer(
+  p_lignes jsonb,
+  p_acteur text default null
+) returns jsonb
+language sql
+security definer
+set search_path = ''
+as $$
+  select @SCHEMA@.prospect_importer(p_lignes, p_acteur);
+$$;
+revoke all on function public.baikal_prospect_importer(jsonb,text) from public;
+revoke all on function public.baikal_prospect_importer(jsonb,text) from anon, authenticated;
+grant execute on function public.baikal_prospect_importer(jsonb,text) to service_role;
+
+-- Si le site porte des envois automatiques (cron, sequence), ils doivent lire
+-- @SCHEMA@.prospect_etat et ecarter statut in ('refus','desinscrit') : un refus
+-- pose depuis Baikal doit arreter les envois du site. Installation de
+-- reference : Pack Vendeur (pv-email-cron + RPC pv_select_nurture_candidates).

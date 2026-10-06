@@ -26,6 +26,18 @@ dossier ou un abonné chez lui. `mesures-v1.sql` est un contrat de forme.
    de DPE, pas un nom générique. Sans cette adaptation, « Désinscrire » échoue
    à chaque clic chez tout site dont la table d'opt-out porte un autre nom.
 5. Passer la recette du contrat quand il en porte une (`mesures-v1`, §3).
+6. **Site sur base dédiée** (il a un `db_ro_secret_ref` dans le registre) :
+   Baikal lit la vue par sa connexion lecture seule mais ne peut pas écrire.
+   Trois fichiers et deux secrets de plus :
+   - jouer aussi l'annexe « site dédié » de `prospects-v1.sql` (les deux
+     wrappers publics sans `p_app_id`) ;
+   - copier `prospects-relais-v1.ts` dans une Edge Function du site,
+     poser chez lui `BAIKAL_ADMIN_KEY` (la valeur de `ADMIN_ENV_<SITE>_KEY`
+     côté Baikal), déployer ;
+   - renseigner `config.apps.env_prospects_fn` avec le nom de cette fonction.
+   Sans `env_prospects_fn`, la page est en lecture seule — jamais une erreur.
+   Si le site envoie des emails automatiquement, ses envois lisent
+   `<schema>.prospect_etat` et écartent `refus` / `desinscrit`.
 
 ## Règles
 
@@ -58,7 +70,7 @@ deux vues, vérifier qu'elles s'accordent ligne à ligne.
 
 | Contrat | Nature | Version | Sites installés |
 |---|---|---|---|
-| `prospects-v1.sql` | module | 1 | monsieurdpe |
+| `prospects-v1.sql` | module | 1 | monsieurdpe, pack-vendeur (base dédiée : annexe + `prospects-relais-v1.ts`) |
 | `mesures-v1.sql` | forme | 1 | monsieurdpe (sans `chapitre`, à compléter) |
 | `comptes-pro-v1.sql` | forme | 1 | monsieurdpe, pack-vendeur |
 | `comptes-historique-v1.sql` | forme | 1 | pack-vendeur |

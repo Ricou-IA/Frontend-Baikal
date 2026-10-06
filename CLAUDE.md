@@ -358,6 +358,13 @@ sites-design.md).
   du site Baikal : vue `admin.baikal_prospects` sur `admin.demandes` + `admin.prospect_action`,
   migration `20260908130000`, métier `fondateur`). Promotion/rétrogradation super admin
   journalisées dans `core.role_changes_log`, jamais soi-même ni le dernier.
+  Depuis le 2026-10-06, un site sur base dédiée écrit par le relais HTTP `env_prospects_fn`
+  (`_shared/relais.ts`, passe-plat de référence `docs/contrats/prospects-relais-v1.ts`,
+  installé chez pack-vendeur sous `pv-admin-prospects`) ; `actionsDispo` vaut
+  `relaisConfigure(site, env_prospects_fn)` pour ces sites. La validation d'une action est
+  commune aux deux transports (`admin-prospects/actions.ts`, pur, testé). Métier `presse`
+  ajouté à `admin.metier` (contacts presse et créateurs de pack-vendeur) — à exclure de tout
+  envoi commercial le jour du lot mailing.
 - **EF `admin-comptes`** (`scope: 'baikal' | <app_id>`, modales partagées
   `src/components/console/comptes/ModalesCompte.jsx`) : mot de passe (généré 14 car.
   lisibles ou saisi, affiché une fois), lien de réinitialisation `generateLink(recovery)` à
