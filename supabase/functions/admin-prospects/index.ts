@@ -7,6 +7,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { chargerSite, ErreurSite, lecteurSite } from "../_shared/sites.ts";
 import { ErreurAcces, droitsModules, exigerModule, exigerSite, sitesAutorises } from "../_shared/droits.ts";
+import { appelerRelais, ErreurRelais, relaisConfigure } from "../_shared/relais.ts";
+import { preparerActionProspect } from "./actions.ts";
 import { normaliserCriteres } from "./filtres.ts";
 
 const corsHeaders = {
@@ -82,23 +84,13 @@ serve(async (req) => {
         .map((c) => c.column_name as string),
     );
 
-    // Ecriture possible ? UNIQUEMENT quand lecture et ecriture tombent sur
-    // LA MEME base. Le dispatch reel (action "action" plus bas) appelle
-    // admin.rpc(...) sur la base BAIKAL -- jamais sur `sql`, qui est la base
-    // DU SITE (lecteurSite ci-dessus). Pour un site sur base dediee
-    // (db_ro_secret_ref non nul : pack-vendeur, majordhome), `sql` peut tres
-    // bien y voir une fonction prospect_action -- mais admin.rpc ne peut pas
-    // l'atteindre, puisqu'il ne parle qu'a la base Baikal. Sans cette garde,
-    // actionsDispo mentirait des la publication de la vue du site : des
-    // boutons visibles qui echouent tous, pas juste un module absent.
-    //
-    // TODO(relais HTTP) : `env_prospects_fn` (relais vers l'Edge Function du
-    // site, decrit dans la spec) n'est PAS implemente dans cette branche --
-    // l'action "action" plus bas n'appelle que admin.rpc. Ne PAS l'ajouter
-    // seul a la condition ci-dessous tant que ce relais n'existe pas
-    // reellement : ce serait rouvrir le meme mensonge pour les sites qui le
-    // renseignent. C'est ici qu'ouvrir l'interrupteur une fois le relais
-    // ecrit (et l'action "action" plus bas mise a jour pour l'appeler).
+    // Ecriture : deux transports, jamais les deux a la fois.
+    //  - base partagee (db_ro_secret_ref nul) : la RPC baikal_prospect_action,
+    //    presente si le site a installe le module ;
+    //  - base dediee : le relais HTTP vers env_prospects_fn (passe-plat du kit,
+    //    docs/contrats/prospects-relais-v1.ts), configure si le registre porte
+    //    env_url, env_anon_key, env_secret_ref et la fonction.
+    // Sans l'un ni l'autre, pas de boutons : jamais une action qui echouerait.
     const partageBaseBaikal = !site.db_ro_secret_ref;
     let actionsDispo = false;
     if (partageBaseBaikal) {
@@ -106,6 +98,8 @@ serve(async (req) => {
         SELECT to_regprocedure(${schemaVues + ".prospect_action(text,text,text,text)"})
                IS NOT NULL AS rpc`;
       actionsDispo = Boolean(ecriture.rpc);
+    } else {
+      actionsDispo = relaisConfigure(site, site.env_prospects_fn);
     }
 
     if (action === "liste") {
@@ -234,45 +228,34 @@ serve(async (req) => {
     }
 
     if (action === "action") {
-      const ACTIONS = new Set(["statut", "note", "desinscrire", "creer", "supprimer"]);
-      const actionSite = typeof body.actionSite === "string" ? body.actionSite : "";
-      if (!ACTIONS.has(actionSite)) {
-        return json({ data: null, error: `Action inconnue: ${actionSite}` }, 400);
-      }
       if (!actionsDispo) {
         return json({ data: null, error: "Site sans interface d'ecriture des prospects" }, 400);
       }
-      const email = typeof body.email === "string" ? body.email : "";
-      if (!email) return json({ data: null, error: "email requis" }, 400);
+      const prep = preparerActionProspect(body);
+      if (!prep.ok) return json({ data: null, error: prep.erreur }, 400);
+      const acteur = user.email ?? user.id;
 
-      // "creer" est un import d'une seule ligne : meme fonction, donc meme
-      // regle de non-ecrasement. Deux chemins d'ecriture pour un meme geste
-      // finiraient par diverger.
-      if (actionSite === "creer") {
+      if (!partageBaseBaikal) {
+        // Base dediee : le site execute lui-meme son module, on ne fait que
+        // transmettre. Sa reponse (jsonb de prospect_action / prospect_importer)
+        // est rendue telle quelle.
+        const corps = prep.genre === "creer"
+          ? { action: "importer", lignes: [prep.ligne], acteur }
+          : { action: "action", actionSite: prep.actionSite, email: prep.email, valeur: prep.valeur, acteur };
+        const charge = await appelerRelais(site, site.env_prospects_fn, corps, 30000);
+        return json({ data: charge, error: null });
+      }
+
+      if (prep.genre === "creer") {
         const { data, error } = await admin.rpc("baikal_prospect_importer", {
-          p_app_id: appId,
-          p_lignes: [{
-            email,
-            metier: typeof body.metier === "string" ? body.metier : "autre",
-            provenance: "import",
-            nom_affiche: typeof body.nomAffiche === "string" ? body.nomAffiche : email,
-            commune: body.commune ?? null,
-            code_postal: body.codePostal ?? null,
-            telephone: body.telephone ?? null,
-            site_web: body.siteWeb ?? null,
-          }],
-          p_acteur: user.email ?? user.id,
+          p_app_id: appId, p_lignes: [prep.ligne], p_acteur: acteur,
         });
         if (error) return json({ data: null, error: error.message }, 400);
         return json({ data, error: null });
       }
-
       const { data, error } = await admin.rpc("baikal_prospect_action", {
-        p_app_id: appId,
-        p_action: actionSite,
-        p_email: email,
-        p_valeur: typeof body.valeur === "string" ? body.valeur : null,
-        p_acteur: user.email ?? user.id,
+        p_app_id: appId, p_action: prep.actionSite, p_email: prep.email,
+        p_valeur: prep.valeur, p_acteur: acteur,
       });
       if (error) return json({ data: null, error: error.message }, 400);
       return json({ data, error: null });
@@ -289,6 +272,14 @@ serve(async (req) => {
       if (lignes.length > 2000) {
         return json({ data: null, error: "2000 lignes maximum par lot" }, 400);
       }
+      if (!partageBaseBaikal) {
+        const charge = await appelerRelais(
+          site, site.env_prospects_fn,
+          { action: "importer", lignes, acteur: user.email ?? user.id },
+          60000,
+        );
+        return json({ data: charge, error: null });
+      }
       const { data, error } = await admin.rpc("baikal_prospect_importer", {
         p_app_id: appId,
         p_lignes: lignes,
@@ -302,6 +293,13 @@ serve(async (req) => {
   } catch (e) {
     if (e instanceof ErreurAcces) return json({ data: null, error: e.message }, 403);
     if (e instanceof ErreurSite) return json({ data: null, error: e.message }, 400);
+    if (e instanceof ErreurRelais) {
+      // Le motif reel vit dans la reponse du site ({ error }) : c'est lui que
+      // la fiche doit afficher, pas « HTTP 400 ».
+      const corps = (e.detail as { corps?: { error?: unknown } } | undefined)?.corps;
+      const motif = typeof corps?.error === "string" ? corps.error : e.message;
+      return json({ data: null, error: motif, detail: e.detail ?? null }, e.statutSortie ?? 500);
+    }
     console.error("[admin-prospects]", e);
     return json({ data: null, error: (e as Error).message }, 500);
   } finally {
