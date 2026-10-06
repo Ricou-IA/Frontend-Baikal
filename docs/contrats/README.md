@@ -60,9 +60,15 @@ deux vues, vérifier qu'elles s'accordent ligne à ligne.
 |---|---|---|---|
 | `prospects-v1.sql` | module | 1 | monsieurdpe |
 | `mesures-v1.sql` | forme | 1 | monsieurdpe (sans `chapitre`, à compléter) |
-| `comptes-pro-v1.sql` | forme | 1 | aucun |
+| `comptes-pro-v1.sql` | forme | 1 | monsieurdpe, pack-vendeur |
+| `comptes-historique-v1.sql` | forme | 1 | pack-vendeur |
 
 Les vues de liste et les mesures se répondent : `baikal_dossiers` porte le
 chapitre Clients, `baikal_comptes_pro` le chapitre Comptes pro, et
 `baikal_mesures` coiffe chaque chapitre de ses tuiles. Une liste ne porte
 jamais d'agrégat, une mesure ne porte jamais de personne.
+
+La fiche d'un compte s'ouvre avec `baikal_compte_historique` (contrat
+`comptes-historique-v1`) et la colonne optionnelle `compte_id` de
+`baikal_dossiers` ; les actions sur un compte passent par `env_admin_fn`, avec
+un manifeste par compte à clé `compte_id`, au format de celui des dossiers.

@@ -449,12 +449,21 @@ sites-design.md).
   - Cascade d'attribution portée en TS dans `admin-dossiers/canal.ts` — à maintenir en
     parité avec la fonction SQL `admin.canal_vente`.
   - Spec : `docs/superpowers/specs/2026-08-26-baikal-clients-design.md`.
-- **Comptes pro** : page `/comptes-pro` (`src/pages/ComptesPro.jsx`) + EF
-  `admin-comptes-pro` — les entreprises qui achètent au site (Clients liste l'acte,
-  Comptes pro le compte). Contrat `docs/contrats/comptes-pro-v1.sql` : vue
-  `baikal_comptes_pro`, noyau obligatoire, blocs optionnels déclarés par leur colonne pivot
-  (`credits_stock`, `ca_ttc`, `abo_statut`). Une liste ne porte jamais d'agrégat : les
-  tuiles viennent de `baikal_mesures`. Branché : monsieurdpe.
+- **Comptes** (libellé « Comptes » depuis le 2026-10-06, id de module `comptes_pro`, route
+  `/comptes-pro`) : page `src/pages/ComptesPro.jsx` + EF `admin-comptes-pro` — ceux qui ont
+  un compte chez le site (Clients liste l'acte, Comptes le compte). Liste : contrat
+  `docs/contrats/comptes-pro-v1.sql` (`baikal_comptes_pro`, noyau + blocs par colonne pivot
+  `credits_stock`, `ca_ttc`, `abo_statut`). Fiche
+  (`src/components/console/compte/FicheCompte.jsx`, action `fiche`) : tuiles, dossiers du
+  compte (`baikal_dossiers.compte_id`, colonne optionnelle), historique
+  (`docs/contrats/comptes-historique-v1.sql`, `baikal_compte_historique`), et barre d'actions
+  du manifeste du site (`env_admin_fn`, clé `compte_id`, actions `manifeste` / `site-action`
+  de l'EF, droit `comptes_pro` en écriture). Le manifeste et le relais d'une action sont
+  partagés avec les dossiers dans `_shared/actions-site.ts` (`chargerManifeste`,
+  `preparerActionSite`, testés) : un troisième objet n'a rien à écrire. `BarreActions` reçoit
+  `executer` et `module` de la fiche qui la porte. Une liste ne porte jamais d'agrégat : les
+  tuiles viennent de `baikal_mesures`. Branchés : monsieurdpe (liste), pack-vendeur (liste,
+  fiche, actions créditer / désactiver / réactiver / supprimer via `pv-admin-pros`).
 - **Modules clients** : page `/modules` (`src/pages/ModulesSite.jsx`) + EF `admin-modules` —
   une ligne par organisation cliente, une case par module du catalogue lu chez le site
   (jamais recopié), enregistrement par ligne. Relais `_shared/relais.ts` (partagé avec
