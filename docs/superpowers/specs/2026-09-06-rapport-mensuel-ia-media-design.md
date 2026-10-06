@@ -58,8 +58,11 @@ mois, des highlights, les évolutions du logiciel et un commentaire.
 
 - Partenariat : `public.admin_partenariat_serie(partenariat, NULL, NULL)`,
   filtré aux 12 derniers mois jusqu'au mois du rapport inclus.
-- Ventes : `admin.ventes_enrichies`, `perimetre = 'b2c'`, `NOT exclue`,
-  `montant_ttc > 0`, `paid_at` dans le mois.
+- Ventes : `admin.ventes_enrichies`, `NOT exclue`, `montant_ttc > 0`,
+  `paid_at` dans le mois. **B2C et packs de crédits B2B** depuis le
+  06/10/2026 (décision Eric : le contrat ne réserve pas le partage au B2C,
+  cf. migration `20261006100000`) ; l'ancien filtre `perimetre = 'b2c'`
+  venait du term sheet de juillet.
 - SEO totaux : `admin.seo_snapshots`, `granularity = 'day'`, `dimension =
   'site'`, sommé sur le mois pour `google` et `bing`. Position = moyenne
   pondérée par les impressions. La série quotidienne du site est la

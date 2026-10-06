@@ -542,7 +542,7 @@ async function ventesParCreation(admin: any, appId: string, p: Periode) {
 async function organiquesParPaiement(admin: any, appId: string, p: Periode): Promise<number> {
   const { data, error } = await admin.schema("admin").from("ventes_enrichies")
     .select("attribution")
-    .eq("app_id", appId).eq("perimetre", "b2c").eq("exclue", false)
+    .eq("app_id", appId).eq("exclue", false)
     .gt("montant_ttc", 0).eq("montant_rembourse", 0)
     .gte("paid_at", `${p.debut}T00:00:00Z`).lte("paid_at", `${p.fin}T23:59:59Z`);
   if (error) throw new Error(error.message);

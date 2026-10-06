@@ -149,12 +149,12 @@ async function lignesCumulees(admin: any, appId: string, dimension: string, mois
     .slice(0, limite);
 }
 
-// Ventes B2C encaissees (> 0 EUR) d'une periode : brutes et nettes de
+// Ventes encaissees (> 0 EUR, B2C et packs B2B) d'une periode : brutes et nettes de
 // remboursements (une vente remboursee n'est pas une Vente, art. 1).
 async function compterVentes(admin: any, appId: string, p: Periode): Promise<{ brutes: number; nettes: number }> {
   const { data, error } = await admin.schema("admin").from("ventes_enrichies")
     .select("montant_rembourse")
-    .eq("app_id", appId).eq("perimetre", "b2c").eq("exclue", false)
+    .eq("app_id", appId).eq("exclue", false)
     .gt("montant_ttc", 0)
     .gte("paid_at", `${p.debut}T00:00:00Z`).lte("paid_at", `${p.fin}T23:59:59Z`);
   if (error) throw new Error(error.message);
@@ -202,11 +202,12 @@ export async function construireFaits(admin: any, appId: string, periode: Period
     manquantes.push("Aucun contrat de partenariat sur ce site");
   }
 
-  // --- Ventes de la periode : B2C encaissees, jamais de donnee nominative,
+  // --- Ventes de la periode : toutes les ventes encaissees (B2C et packs
+  // B2B, decision du 06/10/2026), jamais de donnee nominative,
   // et sans origine : le partenaire ne descend pas a cette finesse (Eric, 06/09).
   const { data: ventes, error: eVentes } = await admin.schema("admin").from("ventes_enrichies")
     .select("paid_at, offre, montant_ttc, montant_ht, montant_rembourse, rembourse_le")
-    .eq("app_id", appId).eq("perimetre", "b2c").eq("exclue", false)
+    .eq("app_id", appId).eq("exclue", false)
     .gt("montant_ttc", 0)
     .gte("paid_at", `${periode.debut}T00:00:00Z`).lte("paid_at", `${periode.fin}T23:59:59Z`)
     .order("paid_at");
@@ -227,7 +228,7 @@ export async function construireFaits(admin: any, appId: string, periode: Period
   // debut de la periode, sinon la comparaison n'aurait pas de sens.
   const { count: avant } = await admin.schema("admin").from("ventes_enrichies")
     .select("id", { count: "exact", head: true })
-    .eq("app_id", appId).eq("perimetre", "b2c").eq("exclue", false)
+    .eq("app_id", appId).eq("exclue", false)
     .lt("paid_at", `${periode.debut}T00:00:00Z`);
   const precedent = Number(avant ?? 0) > 0 ? await compterVentes(admin, appId, prec) : null;
 
