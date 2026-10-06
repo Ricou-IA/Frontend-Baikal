@@ -23,6 +23,8 @@ import {
   sitesAutorises,
 } from "../_shared/droits.ts";
 import { blocsPresents, normaliserCriteres, triEffectif } from "./filtres.ts";
+import { appelerRelais, ErreurRelais, relaisConfigure } from "../_shared/relais.ts";
+import { chargerManifeste, estSuperAdmin, preparerActionSite } from "../_shared/actions-site.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -58,17 +60,56 @@ serve(async (req) => {
 
     const body = await req.json();
     const { action, appId } = body;
-    if (action !== "liste") {
+    const ACTIONS = new Set(["liste", "fiche", "manifeste", "site-action"]);
+    if (!ACTIONS.has(action)) {
       return json({ data: null, error: `Action inconnue: ${action}` }, 400);
     }
     if (!appId) return json({ data: null, error: "appId requis" }, 400);
     exigerSite(sites, appId);
-    exigerModule(await droitsModules(caller), appId, "comptes_pro", "lecture");
+    // Lecture pour la liste, la fiche et le manifeste ; écriture pour une
+    // action relayée au site.
+    exigerModule(
+      await droitsModules(caller),
+      appId,
+      "comptes_pro",
+      action === "site-action" ? "ecriture" : "lecture",
+    );
 
     const admin = createClient(supabaseUrl, serviceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
     const site = await chargerSite(admin, appId);
+
+    // Chemin relais : les actions sur un compte passent par l'EF
+    // d'administration du site (env_admin_fn), jamais par SQL. Même mécanique
+    // que la fiche Clients, clé d'objet compte_id (_shared/actions-site.ts).
+    if (action === "manifeste" || action === "site-action") {
+      const compteId = typeof body.compteId === "string" ? body.compteId : "";
+      if (!compteId) return json({ data: null, error: "compteId requis" }, 400);
+      if (!relaisConfigure(site, site.env_admin_fn)) {
+        return json(
+          { data: null, error: "Site sans canal d'administration des comptes (env_admin_fn)" },
+          400,
+        );
+      }
+      const manifeste = await chargerManifeste(site, site.env_admin_fn, "compte_id", compteId);
+      if (action === "manifeste") {
+        return json({ data: { actions: manifeste.actions, actionsErreur: manifeste.erreur }, error: null });
+      }
+      if (manifeste.erreur) {
+        return json({ data: null, error: `Manifeste indisponible: ${manifeste.erreur}` }, 502);
+      }
+      const prep = preparerActionSite(
+        manifeste.actions,
+        body.actionSite,
+        body.parametres,
+        await estSuperAdmin(caller, user.id),
+      );
+      if (!prep.ok) return json({ data: null, error: prep.erreur }, prep.statut);
+      const charge = await appelerRelais(site, site.env_admin_fn, { ...prep.corps, compte_id: compteId });
+      return json({ data: charge, error: null });
+    }
+
     if (!site.db_schema) {
       return json({ data: null, error: "Site sans base configuree (db_schema)" }, 400);
     }
@@ -98,6 +139,59 @@ serve(async (req) => {
           .map((col: { column_name: string }) => col.column_name),
       );
       const blocs = blocsPresents(colonnes);
+
+      if (action === "fiche") {
+        const compteId = typeof body.compteId === "string" ? body.compteId : "";
+        if (!compteId) return json({ data: null, error: "compteId requis" }, 400);
+        const [compte] = await sql`
+          SELECT * FROM ${sql(schemaVues)}.baikal_comptes_pro WHERE compte_id = ${compteId}`;
+        if (!compte) return json({ data: null, error: "Compte introuvable" }, 404);
+
+        // Les deux listes de la fiche sont optionnelles : la capacité se lit
+        // à la présence (vue historique) ou à la colonne (compte_id des
+        // dossiers). Absente, la liste ne s'affiche pas — pas une erreur.
+        const [dossiersVue] = await sql`
+          SELECT to_regclass(${schemaVues + ".baikal_dossiers"}) IS NOT NULL AS ok`;
+        let dossiersOk = false;
+        if (dossiersVue.ok) {
+          const cols = await sql`
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = ${schemaVues} AND table_name = 'baikal_dossiers'
+              AND column_name = 'compte_id'`;
+          dossiersOk = cols.length > 0;
+        }
+        const [histoVue] = await sql`
+          SELECT to_regclass(${schemaVues + ".baikal_compte_historique"}) IS NOT NULL AS ok`;
+
+        const dossiers = dossiersOk
+          ? await sql`
+            SELECT * FROM ${sql(schemaVues)}.baikal_dossiers
+            WHERE compte_id = ${compteId} ORDER BY cree_le DESC NULLS LAST LIMIT 100`
+          : [];
+        const historique = histoVue.ok
+          ? await sql`
+            SELECT * FROM ${sql(schemaVues)}.baikal_compte_historique
+            WHERE compte_id = ${compteId} ORDER BY survenu_le DESC NULLS LAST LIMIT 200`
+          : [];
+        const manifeste = relaisConfigure(site, site.env_admin_fn)
+          ? await chargerManifeste(site, site.env_admin_fn, "compte_id", compteId)
+          : { actions: [], erreur: null };
+
+        return json({
+          data: {
+            disponible: true,
+            compte,
+            blocs,
+            dossiers,
+            historique,
+            vues: { dossiers: dossiersOk, historique: Boolean(histoVue.ok) },
+            actions: manifeste.actions,
+            actionsErreur: manifeste.erreur,
+          },
+          error: null,
+        });
+      }
+
       const tri = triEffectif(c.tri, colonnes);
       const motif = `%${c.recherche}%`;
 
@@ -138,6 +232,9 @@ serve(async (req) => {
     console.error("[admin-comptes-pro]", e);
     if (e instanceof ErreurAcces) return json({ data: null, error: e.message }, 403);
     if (e instanceof ErreurSite) return json({ data: null, error: e.message }, 400);
+    if (e instanceof ErreurRelais) {
+      return json({ data: null, error: e.message, detail: e.detail ?? null }, e.statutSortie ?? 500);
+    }
     const message = e instanceof Error ? e.message : String(e);
     return json({ data: null, error: message }, 500);
   }
