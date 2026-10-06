@@ -13,7 +13,7 @@ import { canalVente } from "./canal.ts";
 import { appelerRelais as appelerRelaisSite, ErreurRelais, relaisConfigure } from "../_shared/relais.ts";
 import { ONGLETS, paginationOnglet, resoudreOnglet, triEffectif } from "./onglets.ts";
 import { grouperChamps } from "./champs.ts";
-import { type ActionFiche, normaliserManifeste, trouverAction } from "./manifeste.ts";
+import { chargerManifeste, estSuperAdmin, preparerActionSite } from "../_shared/actions-site.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -36,32 +36,6 @@ function appelerRelais(
   timeoutMs = 30000,
 ): Promise<unknown> {
   return appelerRelaisSite(site, site.env_dossiers_fn, corps, timeoutMs);
-}
-
-// Le manifeste est demande POUR CE DOSSIER : c'est ainsi qu'un site n'expose
-// une action que quand elle a un sens (credits pro sur un dossier b2b).
-// Un relais en panne ne doit pas rendre la fiche illisible : on renvoie une
-// liste vide et le motif.
-async function chargerManifeste(
-  site: Awaited<ReturnType<typeof chargerSite>>,
-  dossierId: string,
-): Promise<{ actions: ActionFiche[]; erreur: string | null }> {
-  if (!relaisConfigure(site, site.env_dossiers_fn)) return { actions: [], erreur: null };
-  try {
-    // Lecture courte sur le chemin de l'affichage de la fiche : budget reduit
-    // par rapport au defaut des actions (30s), une re-extraction pouvant etre
-    // synchrone cote site.
-    const charge = await appelerRelais(
-      site,
-      { action: "manifeste", dossier_id: dossierId },
-      8000,
-    );
-    return { actions: normaliserManifeste(charge), erreur: null };
-  } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    console.error("[admin-dossiers] manifeste", message);
-    return { actions: [], erreur: message };
-  }
 }
 
 interface EtapeFunnel {
@@ -140,36 +114,18 @@ serve(async (req) => {
       // site-action : on redemande le manifeste pour ce dossier, ce qui
       // remplace exactement l'ancienne liste en dur -- une action absente du
       // manifeste n'est pas relayee.
-      const manifeste = await chargerManifeste(site, dossierId);
+      const manifeste = await chargerManifeste(site, site.env_dossiers_fn, "dossier_id", dossierId);
       if (manifeste.erreur) {
         return json({ data: null, error: `Manifeste indisponible: ${manifeste.erreur}` }, 502);
       }
-      const def = trouverAction(manifeste.actions, body.actionSite);
-      if (!def) {
-        return json({ data: null, error: `Action site inconnue: ${body.actionSite}` }, 400);
-      }
-      if (def.superAdmin) {
-        const { data: profil } = await caller
-          .from("profiles").select("app_role").eq("id", user.id).single();
-        if (profil?.app_role !== "super_admin") {
-          return json({ data: null, error: "Action reservee au super_admin" }, 403);
-        }
-      }
-
-      // Les parametres sont relayes tels quels : c'est l'EF du site qui les
-      // valide, elle seule connait ses bornes metier.
-      const parametres: Record<string, unknown> = {};
-      for (const p of def.parametres) {
-        if (body.parametres && typeof body.parametres === "object") {
-          const fourni = (body.parametres as Record<string, unknown>)[p.id];
-          if (fourni !== undefined) parametres[p.id] = fourni;
-        }
-      }
-      const charge = await appelerRelais(site, {
-        action: def.id,
-        dossier_id: dossierId,
-        ...parametres,
-      });
+      const prep = preparerActionSite(
+        manifeste.actions,
+        body.actionSite,
+        body.parametres,
+        await estSuperAdmin(caller, user.id),
+      );
+      if (!prep.ok) return json({ data: null, error: prep.erreur }, prep.statut);
+      const charge = await appelerRelais(site, { ...prep.corps, dossier_id: dossierId });
       return json({ data: charge, error: null });
     }
 
@@ -355,7 +311,7 @@ serve(async (req) => {
           )
           : [];
 
-        const manifeste = await chargerManifeste(site, dossierId);
+        const manifeste = await chargerManifeste(site, site.env_dossiers_fn, "dossier_id", dossierId);
 
         return json({
           data: {
