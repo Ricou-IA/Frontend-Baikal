@@ -6,7 +6,7 @@
  * fois), navigation contextuelle (modules du site + modules transverses).
  *
  * Usage : <ConsoleLayout actif="seo">…contenu…</ConsoleLayout>
- * `actif` ∈ dashboard|knowledge|prompts|indexation|clients|comptes_pro|prospects|finances|rapports|seo|partenariats|users|modules|sites
+ * `actif` ∈ dashboard|knowledge|prompts|indexation|clients|comptes_pro|prospects|mailing|finances|rapports|seo|partenariats|users|modules|sites
  *         ou, pour l'etage Baikal (/baikal), baikal-comptes|baikal-sites
  * `badges` optionnel : { knowledge: 3 } affiche un badge sur l'onglet.
  * ============================================================================
@@ -16,7 +16,7 @@ import { useNavigate } from 'react-router-dom';
 import {
     LayoutDashboard, BookOpen, MessageSquareCode, Database, FolderOpen,
     TrendingUp, Mail, Users, Globe, Shield, Settings, LogOut, Euro, Target, FileText,
-    ListChecks, Building2, ToggleRight } from 'lucide-react';
+    ListChecks, Building2, ToggleRight, Send } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { AppProvider, useApp } from '../../contexts/AppContext';
 import SiteSidebar, { SiteBarre } from './SiteSidebar';
@@ -47,6 +47,7 @@ const MODULES_TRANSVERSES = [
     { id: 'finances', label: 'Finances', icon: Euro, route: '/finances' },
     { id: 'rapports', label: 'Rapports', icon: FileText, route: '/rapports' },
     { id: 'seo', label: 'SEO', icon: TrendingUp, route: '/seo' },
+    { id: 'mailing', label: 'Mailing', icon: Send, route: '/mailing' },
     { id: 'partenariats', label: 'Partenariats', icon: Mail, route: '/partenariats' },
     { id: 'users', label: 'Utilisateurs', icon: Users, route: '/admin/users' },
     // Modules des organisations clientes, par le canal d'administration du

@@ -83,3 +83,31 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/import_map.json"
 entrypoint = "./functions/baikal-demande/index.ts"
+
+# Mailing (spec 2026-10-13) : la console appelle admin-mailing avec la session ;
+# le worker est appele par pg_cron (X-Cron-Secret) ; le webhook par Resend
+# (signature Svix) ; la desinscription par la page publique et par
+# List-Unsubscribe-Post (jeton HMAC).
+[functions.admin-mailing]
+enabled = true
+verify_jwt = true
+import_map = "./functions/import_map.json"
+entrypoint = "./functions/admin-mailing/index.ts"
+
+[functions.admin-mailing-worker]
+enabled = true
+verify_jwt = false
+import_map = "./functions/import_map.json"
+entrypoint = "./functions/admin-mailing-worker/index.ts"
+
+[functions.admin-mailing-webhook]
+enabled = true
+verify_jwt = false
+import_map = "./functions/import_map.json"
+entrypoint = "./functions/admin-mailing-webhook/index.ts"
+
+[functions.mailing-desinscription]
+enabled = true
+verify_jwt = false
+import_map = "./functions/import_map.json"
+entrypoint = "./functions/mailing-desinscription/index.ts"

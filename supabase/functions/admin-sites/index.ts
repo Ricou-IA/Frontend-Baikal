@@ -30,6 +30,10 @@ const CHAMPS_SITE = [
   "expediteur_nom",
   "expediteur_email",
   "reply_to",
+  "resend_key_ref",
+  "resend_webhook_secret_ref",
+  "mailing_plafond_jour",
+  "env_mailing_fn",
   "modele_comptes",
   "repo_github",
   "seo_panier",
@@ -87,7 +91,8 @@ serve(async (req) => {
         if (profile?.app_role === "super_admin") {
           const { data, error } = await admin.schema("config").from("apps")
             .select("id, name, domaine, gsc_propriete, env_url, env_secret_ref, " +
-              "expediteur_nom, expediteur_email, reply_to, modele_comptes, repo_github, seo_panier, seo_pages_cles, is_active")
+              "expediteur_nom, expediteur_email, reply_to, resend_key_ref, resend_webhook_secret_ref, " +
+              "mailing_plafond_jour, env_mailing_fn, modele_comptes, repo_github, seo_panier, seo_pages_cles, is_active")
             .order("sort_order");
           if (error) throw error;
           return json({ data, error: null });
@@ -116,6 +121,13 @@ serve(async (req) => {
           } else {
             maj[champ] = s[champ] === "" ? null : s[champ];
           }
+        }
+        if ("mailing_plafond_jour" in maj && maj.mailing_plafond_jour !== null) {
+          const n = Number(maj.mailing_plafond_jour);
+          if (!Number.isInteger(n) || n <= 0) {
+            return json({ data: null, error: "Plafond mailing : un entier positif" }, 400);
+          }
+          maj.mailing_plafond_jour = n;
         }
         if (Object.keys(maj).length === 0) {
           return json({ data: null, error: "Aucun champ a enregistrer" }, 400);

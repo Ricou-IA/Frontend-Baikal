@@ -25,7 +25,7 @@ const corsHeaders = {
 // Même liste que core.modules_console() — la contrainte CHECK côté base
 // refuse tout autre nom ou niveau.
 const MODULES = [
-  "clients", "comptes_pro", "prospects", "finances", "rapports", "seo", "partenariats", "users", "modules",
+  "clients", "comptes_pro", "prospects", "finances", "rapports", "seo", "partenariats", "users", "modules", "mailing",
 ];
 const NIVEAUX = ["lecture", "ecriture"];
 

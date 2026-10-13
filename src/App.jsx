@@ -48,6 +48,8 @@ import Clients from './pages/Clients';
 import ComptesPro from './pages/ComptesPro';
 import ModulesSite from './pages/ModulesSite';
 import Prospects from './pages/Prospects';
+import Mailing from './pages/Mailing';
+import Desinscription from './pages/Desinscription';
 
 function App() {
   return (
@@ -84,6 +86,12 @@ function App() {
                 <Login />
               </PublicRoute>
             }
+          />
+
+          {/* Désinscription d'une campagne (publique, jeton HMAC dans l'URL) */}
+          <Route
+            path="/desinscription"
+            element={<Desinscription />}
           />
 
           {/* Réinitialisation de mot de passe (publique) */}
@@ -280,6 +288,16 @@ function App() {
             element={
               <AdminRoute>
                 <Prospects />
+              </AdminRoute>
+            }
+          />
+
+          {/* Admin - Mailing : campagnes du site selectionne */}
+          <Route
+            path="/mailing"
+            element={
+              <AdminRoute>
+                <Mailing />
               </AdminRoute>
             }
           />

@@ -18,6 +18,7 @@ export const MODULES_CONSOLE = [
   { id: 'clients', label: 'Clients' },
   { id: 'comptes_pro', label: 'Comptes pro' },
   { id: 'prospects', label: 'Prospects' },
+  { id: 'mailing', label: 'Mailing' },
   { id: 'finances', label: 'Finances' },
   { id: 'rapports', label: 'Rapports' },
   { id: 'seo', label: 'SEO' },

@@ -37,6 +37,9 @@ dossier ou un abonné chez lui. `mesures-v1.sql` est un contrat de forme.
    - renseigner `config.apps.env_prospects_fn` avec le nom de cette fonction.
    Sans `env_prospects_fn`, la page est en lecture seule — jamais une erreur.
    Tous les envois du site, automatiques ou manuels, lisent `<schema>.prospect_etat` et écartent `refus` / `desinscrit`.
+7. **Module mailing** (`mailing-v1.sql`) : adapter `baikal_mail_optout` (toutes les listes
+   d'exclusion du site) et `mail_desinscrire` (la table d'opt-out que tous ses envois lisent).
+   Le journal nominatif (`mail_envoi`) reste chez le site ; Baikal ne garde que la campagne.
 
 ## Règles
 
@@ -73,6 +76,7 @@ deux vues, vérifier qu'elles s'accordent ligne à ligne.
 | `mesures-v1.sql` | forme | 1 | monsieurdpe (sans `chapitre`, à compléter) |
 | `comptes-pro-v1.sql` | forme | 1 | monsieurdpe, pack-vendeur |
 | `comptes-historique-v1.sql` | forme | 1 | pack-vendeur |
+| `mailing-v1.sql` | module | 1 | monsieurdpe (base dédiée : annexe + `mailing-relais-v1.ts`) |
 
 Les vues de liste et les mesures se répondent : `baikal_dossiers` porte le
 chapitre Clients, `baikal_comptes_pro` le chapitre Comptes pro, et
