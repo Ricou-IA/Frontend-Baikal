@@ -4,7 +4,19 @@
  * Libelles, badges et formats partages par la liste, l'editeur et le suivi.
  * ============================================================================
  */
+// Entonnoir commun a tous les sites (Eric, 14/10/2026) : une adresse = une
+// etape, la plus avancee ; chaque etape porte une intention de mail.
+export const ETAPES = [
+  { id: 'a_conquerir', libelle: 'À conquérir', intention: 'Prospecter', couleur: 'slate' },
+  { id: 'lead', libelle: 'Lead', intention: 'Activer', couleur: 'sky' },
+  { id: 'engage', libelle: 'Engagé', intention: 'Convertir', couleur: 'amber' },
+  { id: 'client', libelle: 'Client', intention: 'Fidéliser', couleur: 'emerald' },
+  { id: 'recurrent', libelle: 'Récurrent', intention: 'Retenir', couleur: 'violet' },
+  { id: 'perdu', libelle: 'Perdu', intention: 'Réactiver', couleur: 'red' },
+];
+
 export const POPULATIONS = {
+  audience: 'Audience',
   prospects: 'Prospects',
   clients: 'Clients',
   comptes: 'Comptes',

@@ -8,15 +8,16 @@ import { chargerSite, ErreurSite, lecteurSite } from "../_shared/sites.ts";
 import { ErreurAcces, droitsModules, exigerModule, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 import { ErreurRelais } from "../_shared/relais.ts";
 import {
-  compterCandidats, estPopulation, normaliserCriteres, POPULATIONS, type Population, requeteCandidats,
+  compterCandidats, entonnoir, estPopulation, normaliserCriteres, POPULATIONS, type Population, requeteCandidats,
 } from "../_shared/mailing/segment.ts";
+import { redigerMail } from "../_shared/mailing/redaction.ts";
 import {
   chargerConfigMailing, cleResend, compteursCampagnes, ecritureConfiguree, envoyesDepuis, expediteur,
   populationsDisponibles, schemaMailing,
 } from "../_shared/mailing/site.ts";
 import { debutJourLocal, envoyerResend, PLAFOND_JOUR_DEFAUT } from "../_shared/mailing/envoi.ts";
 import { ErreurMessage, fabriquerMessage } from "../_shared/mailing/message.ts";
-import { VARIABLES } from "../_shared/mailing/rendu.ts";
+import { nettoyerCorps, VARIABLES } from "../_shared/mailing/rendu.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -30,7 +31,14 @@ function json(payload: unknown, status = 200): Response {
   });
 }
 
-const ECRITURE = ["enregistrer", "test", "lancer", "suspendre", "supprimer"];
+// « rediger » appelle un modele payant : ecriture, comme tout ce qui coute.
+const ECRITURE = ["enregistrer", "test", "lancer", "suspendre", "supprimer", "rediger"];
+
+// Plafond par jour d'une campagne continue : entier positif ou null.
+function plafond(x: unknown): number | null {
+  const n = Number(x);
+  return x === null || x === undefined || x === "" || !Number.isInteger(n) || n <= 0 ? null : n;
+}
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 serve(async (req) => {
@@ -106,6 +114,9 @@ serve(async (req) => {
             populations: Object.fromEntries(
               Object.entries(populations).map(([p, col]) => [p, [...col!]]),
             ),
+            // L'entonnoir commun quand le site publie baikal_audience ; les
+            // populations du lot 1 restent en repli pour les autres sites.
+            population_defaut: populations.audience ? "audience" : Object.keys(populations)[0] ?? null,
             campagnes: (liste ?? []).map((c) => ({ ...c, compteurs: compteurs[c.id] ?? null })),
             envoi: {
               expediteur: from,
@@ -133,6 +144,77 @@ serve(async (req) => {
         return json({ data: { total, echantillon }, error: null });
       }
 
+      case "entonnoir": {
+        if (!populations.audience) return json({ data: { disponible: false }, error: null });
+        const lignes = await entonnoir(sql, optionsSegment("audience", body.criteres));
+        return json({ data: { disponible: true, lignes }, error: null });
+      }
+
+      case "rediger": {
+        const crit = normaliserCriteres(body.criteres);
+        const r = await redigerMail({
+          site: site.name,
+          domaine: site.domaine,
+          // Une seule etape ciblee = une intention claire ; plusieurs = l'auteur la dit dans son brief.
+          etape: crit.etapes.length === 1 ? crit.etapes[0] : null,
+          profils: Array.isArray(body.profilsLibelles) ? body.profilsLibelles.map(String).slice(0, 10) : [],
+          brief: String(body.brief ?? "").slice(0, 2000),
+          consigne: String(body.consigne ?? "rediger"),
+          objet: String(body.objet ?? ""),
+          corps: nettoyerCorps(String(body.corps_html ?? "")),
+        });
+        return json({ data: r, error: null });
+      }
+
+      case "stats": {
+        const jours = [7, 30, 90].includes(Number(body.jours)) ? Number(body.jours) : 30;
+        const depuis = new Date(debutJourLocal(site.fuseau || "Europe/Paris").getTime() - (jours - 1) * 86_400_000);
+        const depuisJour = depuis.toISOString().slice(0, 10);
+        // Mails du site (vue agregee baikal_mail_stats, contrat mail-stats-v1).
+        let siteLignes: Record<string, unknown>[] = [];
+        let statsDispo = false;
+        for (const s of [site.db_schema, "public"].filter((x): x is string => Boolean(x))) {
+          const [r] = await sql`SELECT to_regclass(${s + ".baikal_mail_stats"}) IS NOT NULL AS ok`;
+          if (!r.ok) continue;
+          statsDispo = true;
+          siteLignes = await sql`
+            SELECT coalesce(groupe, 'Autres') AS groupe, type, coalesce(max(libelle), type) AS libelle,
+                   sum(envois)::int AS envois, sum(delivres)::int AS delivres, sum(ouverts)::int AS ouverts,
+                   sum(cliques)::int AS cliques, sum(rebonds)::int AS rebonds,
+                   sum(desinscrits)::int AS desinscrits, sum(plaintes)::int AS plaintes,
+                   (max(jour) FILTER (WHERE envois > 0))::text AS dernier
+            FROM ${sql(s)}.baikal_mail_stats
+            WHERE jour >= ${depuisJour}::date
+            GROUP BY 1, 2
+            HAVING sum(envois) > 0
+            ORDER BY 1, sum(envois) DESC`;
+          break;
+        }
+        // Campagnes Baikal, lues dans le journal du module (jamais dans la vue
+        // du site : elles y seraient comptees deux fois).
+        const baikal = await sql`
+          SELECT campagne_id::text AS id,
+                 count(envoye_le)::int AS envois, count(delivre_le)::int AS delivres,
+                 count(ouvert_le)::int AS ouverts, count(clique_le)::int AS cliques,
+                 count(rebond_le)::int AS rebonds, count(desinscrit_le)::int AS desinscrits,
+                 count(plainte_le)::int AS plaintes, max(envoye_le)::date::text AS dernier
+          FROM ${sql(schema)}.mail_envoi
+          WHERE envoye_le >= ${depuis.toISOString()}::timestamptz
+          GROUP BY campagne_id`;
+        const ids = baikal.map((b: { id: string }) => b.id);
+        const noms = ids.length
+          ? (await campagnes.select("id, nom").in("id", ids)).data ?? []
+          : [];
+        const nomDe = new Map(noms.map((n: { id: string; nom: string }) => [n.id, n.nom]));
+        const lignes = [
+          ...baikal.map((b: Record<string, unknown>) => ({
+            groupe: "Campagnes Baikal", type: `baikal:${b.id}`, libelle: nomDe.get(String(b.id)) ?? "Campagne", ...b,
+          })),
+          ...siteLignes,
+        ];
+        return json({ data: { jours, depuis: depuisJour, stats_site: statsDispo, lignes }, error: null });
+      }
+
       case "enregistrer": {
         const c = body.campagne ?? {};
         if (!estPopulation(c.population)) return json({ data: null, error: "population inconnue" }, 400);
@@ -141,7 +223,10 @@ serve(async (req) => {
           population: c.population,
           criteres: normaliserCriteres(c.criteres),
           objet: String(c.objet ?? ""),
-          corps_html: String(c.corps_html ?? ""),
+          // Toujours nettoye : ce qui est enregistre est ce qui part.
+          corps_html: nettoyerCorps(String(c.corps_html ?? "")),
+          continue: c.continue === true,
+          plafond_jour: plafond(c.plafond_jour),
           maj_le: new Date().toISOString(),
         };
         if (c.id) {
@@ -155,7 +240,10 @@ serve(async (req) => {
           }
           const maj = actuelle.statut === "brouillon"
             ? champs
-            : { objet: champs.objet, corps_html: champs.corps_html, nom: champs.nom, maj_le: champs.maj_le };
+            : {
+              objet: champs.objet, corps_html: champs.corps_html, nom: champs.nom,
+              plafond_jour: champs.plafond_jour, maj_le: champs.maj_le,
+            };
           const { data, error } = await campagnes.update(maj).eq("id", c.id).select("*").single();
           if (error) throw error;
           return json({ data, error: null });
@@ -225,11 +313,12 @@ serve(async (req) => {
           return json({ data: null, error: "Secret ADMIN_UNSUBSCRIBE_SECRET absent : aucun envoi possible" }, 400);
         }
         const restants = await compterCandidats(sql, optionsSegment(c.population, c.criteres, c.id));
-        if (restants === 0 && c.statut === "brouillon") {
+        // Une campagne continue peut partir a vide : elle attend les entrants.
+        if (restants === 0 && c.statut === "brouillon" && !c.continue) {
           return json({ data: null, error: "Aucun destinataire ne correspond à ce ciblage" }, 400);
         }
         const { data, error } = await campagnes.update({
-          statut: "en_cours", motif: null, maj_le: new Date().toISOString(),
+          statut: "en_cours", motif: null, attente_jusqu_au: null, maj_le: new Date().toISOString(),
           lancee_le: c.lancee_le ?? new Date().toISOString(),
         }).eq("id", c.id).select("*").single();
         if (error) throw error;

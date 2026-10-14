@@ -1,0 +1,66 @@
+-- ---------------------------------------------------------------------------
+-- Contrat Audience v1 — contrat de FORME (le corps de la vue appartient au site).
+--
+-- Une ligne par adresse joignable du site, toutes origines confondues
+-- (annuaire, leads, comptes, clients), placee a UNE etape de l'entonnoir
+-- commun a tous les sites (Eric, 14/10/2026), la plus avancee atteinte.
+-- Lue par le module Mailing de Baikal : ciblage etape x profil, entonnoir,
+-- campagnes continues (et sequences au lot 3, par etape_depuis).
+--
+-- Les six etapes et l'intention de mail qui leur correspond :
+--   a_conquerir  jamais interagi : annuaire, import, scrape          prospecter
+--   lead         a laisse son email / consomme le gratuit            activer
+--   engage       a commence sans payer : compte, dossier, panier     convertir
+--   client       a paye au moins une fois                            fideliser
+--   recurrent    abonnement actif, ou achats repetes                  retenir
+--   perdu        abonnement resilie, ou client inactif (au site
+--                de fixer le delai, et de l'ecrire ici)              reactiver
+--
+-- Colonnes :
+--   email         text         OBLIGATOIRE  minuscules, sans espaces, unique
+--   etape         text         OBLIGATOIRE  une des six valeurs ci-dessus
+--   etape_depuis  timestamptz  OBLIGATOIRE  entree dans l'etape
+--   profil        text         OBLIGATOIRE  slug ; libelle lu dans
+--                                          config.apps.categories_client, a
+--                                          defaut admin.metier, a defaut le slug
+--   nom           text         optionnelle  valeur de {{nom}}
+--   commune       text         optionnelle  valeur de {{commune}}
+--   code_postal   text         optionnelle  filtre departement
+--   est_test      boolean      optionnelle  exclu de tout envoi
+--
+-- Regles :
+--  - L'opt-out N'EST PAS filtre ici : il vit dans baikal_mail_optout (module
+--    mailing-v1), que Baikal applique. Filtrer deux fois cacherait les
+--    desinscrits de l'entonnoir sans le dire.
+--  - Une adresse, une ligne, une etape : la plus avancee.
+--  - Derivee des vues de liste existantes quand elles existent (README :
+--    une donnee partagee par deux vues se derive, jamais recalculee).
+--  - Lenteur : la vue peut etre MATERIALISEE (rafraichie au moins chaque
+--    heure, par pg_cron) ; baikal_audience est alors une vue simple sur la
+--    vue materialisee, et la console ne relit plus les vues de liste a
+--    chaque clic. Grant + policy baikal_read sur la vue materialisee.
+--
+-- Recette :
+--   select etape, count(*) from <schema>.baikal_audience group by 1;
+--     -> six etapes au plus, aucune valeur hors liste ;
+--   select email from <schema>.baikal_audience group by 1 having count(*) > 1;
+--     -> aucune ligne.
+-- ---------------------------------------------------------------------------
+
+-- Squelette (a remplir par le site) :
+--
+-- create materialized view @SCHEMA@.audience_mat as
+--   with personnes as (
+--     select email, 'a_conquerir' as etape, cree_le as etape_depuis, ... from <annuaire>
+--     union all select ..., 'lead', ...     from <leads>
+--     union all select ..., 'engage', ...   from <comptes / dossiers non payes>
+--     union all select ..., 'client', ...   from <paiements>
+--     union all select ..., 'recurrent', ... from <abonnements actifs>
+--     union all select ..., 'perdu', ...    from <abonnements resilies>
+--   )
+--   select distinct on (email) * from personnes
+--   order by email, array_position(array['a_conquerir','lead','engage','client','perdu','recurrent'], etape) desc;
+-- create unique index on @SCHEMA@.audience_mat (email);
+-- create or replace view @SCHEMA@.baikal_audience as select * from @SCHEMA@.audience_mat;
+-- select cron.schedule('audience-refresh', '7 * * * *',
+--   'refresh materialized view concurrently @SCHEMA@.audience_mat');

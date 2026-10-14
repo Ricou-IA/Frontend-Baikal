@@ -38,6 +38,9 @@ async function appelerEdge(corps) {
 export const mailingService = {
   etat: (appId) => appelerEdge({ action: 'etat', appId }),
   apercu: (appId, population, criteres) => appelerEdge({ action: 'apercu', appId, population, criteres }),
+  entonnoir: (appId, criteres) => appelerEdge({ action: 'entonnoir', appId, criteres }),
+  rediger: (appId, demande) => appelerEdge({ action: 'rediger', appId, ...demande }),
+  stats: (appId, jours) => appelerEdge({ action: 'stats', appId, jours }),
   enregistrer: (appId, campagne) => appelerEdge({ action: 'enregistrer', appId, campagne }),
   rendu: (appId, contenu) => appelerEdge({ action: 'rendu', appId, ...contenu }),
   test: (appId, contenu, destinataire) => appelerEdge({ action: 'test', appId, ...contenu, destinataire }),

@@ -1,7 +1,7 @@
 // Fabrique le message d'UN destinataire : le meme chemin pour l'envoi de test,
 // l'apercu et le worker, sans quoi le test ne prouve rien.
 import type { Site } from "../sites.ts";
-import { envelopper, remplacerVariables, signerJeton, versTexte } from "./rendu.ts";
+import { envelopper, nettoyerCorps, remplacerVariables, signerJeton, versTexte } from "./rendu.ts";
 import type { MessageResend } from "./envoi.ts";
 
 export interface Contenu {
@@ -56,7 +56,7 @@ export async function fabriquerMessage(o: {
   };
   const liens = await liensDesinscription(o.site.id, o.destinataire.email, o.campagneId, o.test);
   const html = envelopper({
-    corpsHtml: remplacerVariables(o.contenu.corps_html, valeurs, true),
+    corpsHtml: remplacerVariables(nettoyerCorps(o.contenu.corps_html), valeurs, true),
     nomSite: o.site.name,
     domaine: o.site.domaine,
     lienDesinscription: liens.page,

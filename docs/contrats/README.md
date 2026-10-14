@@ -76,7 +76,9 @@ deux vues, vérifier qu'elles s'accordent ligne à ligne.
 | `mesures-v1.sql` | forme | 1 | monsieurdpe (sans `chapitre`, à compléter) |
 | `comptes-pro-v1.sql` | forme | 1 | monsieurdpe, pack-vendeur |
 | `comptes-historique-v1.sql` | forme | 1 | pack-vendeur |
-| `mailing-v1.sql` | module | 1 | monsieurdpe (base dédiée : annexe + `mailing-relais-v1.ts`) |
+| `mailing-v1.sql` | module | 1 | monsieurdpe, pack-vendeur (base dédiée, `@SCHEMA@ = public` : annexe + `mailing-relais-v1.ts` sous `pv-admin-mailing-relais`) |
+| `audience-v1.sql` | forme | 1 | pack-vendeur (matérialisée, rafraîchie chaque heure) |
+| `mail-stats-v1.sql` | forme | 1 | pack-vendeur |
 
 Les vues de liste et les mesures se répondent : `baikal_dossiers` porte le
 chapitre Clients, `baikal_comptes_pro` le chapitre Comptes pro, et

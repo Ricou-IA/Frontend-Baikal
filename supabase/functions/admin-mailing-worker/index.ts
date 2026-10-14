@@ -45,6 +45,12 @@ serve(async (req) => {
   const rapport: Record<string, unknown>[] = [];
   for (const c of enCours ?? []) {
     if (Date.now() - debut > BUDGET_MS) break;
+    // Campagne continue sans nouvel entrant au dernier passage : elle ne
+    // re-interroge la vue du site qu'a l'heure dite.
+    if (c.attente_jusqu_au && new Date(c.attente_jusqu_au).getTime() > Date.now()) {
+      rapport.push({ id: c.id, saute: "attente" });
+      continue;
+    }
 
     // 1. Verrou : prendre la campagne seulement si aucun passage recent.
     const seuil = new Date(Date.now() - 55_000).toISOString();
@@ -81,8 +87,16 @@ serve(async (req) => {
       if (disj.coupe) { await arreter("suspendue", disj.motif); rapport.push({ id: c.id, coupe: disj.motif }); continue; }
 
       // 3. Quota du jour du site.
-      const envoyesJour = await envoyesDepuis(sql, schema, debutJourLocal(site.fuseau || "Europe/Paris"));
-      const lot = tailleLot(cfg.mailing_plafond_jour, envoyesJour);
+      // Quota du site (toutes campagnes) ET, s'il en a un, de la campagne.
+      const minuit = debutJourLocal(site.fuseau || "Europe/Paris");
+      const envoyesJour = await envoyesDepuis(sql, schema, minuit);
+      let lot = tailleLot(cfg.mailing_plafond_jour, envoyesJour);
+      if (c.plafond_jour) {
+        const [r] = await sql`
+          SELECT count(*)::int AS n FROM ${sql(schema)}.mail_envoi
+          WHERE campagne_id = ${c.id}::uuid AND envoye_le >= ${minuit.toISOString()}::timestamptz`;
+        lot = Math.min(lot, Math.max(0, c.plafond_jour - Number(r.n)));
+      }
       if (lot === 0) { rapport.push({ id: c.id, saute: "plafond du jour atteint" }); continue; }
 
       const from = expediteur(site, cfg);
@@ -108,6 +122,13 @@ serve(async (req) => {
 
       if (orphelins.length === 0 && nouveaux.length === 0) {
         const enAttente = cpt?.en_attente ?? 0;
+        if (c.continue) {
+          // Une campagne continue ne se termine jamais : elle attend les
+          // nouveaux entrants de sa cible, une heure plus tard.
+          await table().update({ attente_jusqu_au: new Date(Date.now() + 3600_000).toISOString() }).eq("id", c.id);
+          rapport.push({ id: c.id, attente: "aucun nouvel entrant" });
+          continue;
+        }
         if (enAttente === 0) await arreter("terminee", null);
         rapport.push({ id: c.id, termine: enAttente === 0 });
         continue;

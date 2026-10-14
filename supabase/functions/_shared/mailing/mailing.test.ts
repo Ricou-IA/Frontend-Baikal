@@ -102,3 +102,16 @@ Deno.test("evenements et tags", () => {
   assertEquals(lireTag([{ name: "app_id", value: "voirie" }], "app_id"), "voirie");
   assertEquals(lireTag(null, "app_id"), null);
 });
+
+import { nettoyerCorps, styliserBoutons } from "./rendu.ts";
+
+Deno.test("nettoyage : liste blanche, attributs retires, liens surs seulement", () => {
+  assertEquals(nettoyerCorps('<p style="x" onclick="y">A</p><script>alert(1)</script>'), "<p>A</p>");
+  assertEquals(nettoyerCorps('<a href="javascript:alert(1)">x</a>'), "<a>x</a>");
+  assertEquals(nettoyerCorps('<a href="https://a.fr" data-bouton class="z">Go</a>'), '<a href="https://a.fr" data-bouton>Go</a>');
+  assertEquals(nettoyerCorps('<div><img src="x"><b>ok</b></div>'), "<b>ok</b>");
+});
+
+Deno.test("bouton : un lien data-bouton devient un bouton style", () => {
+  assertStringIncludes(styliserBoutons('<a href="https://a.fr" data-bouton>Go</a>'), "display:inline-block");
+});

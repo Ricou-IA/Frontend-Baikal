@@ -60,7 +60,42 @@ export function envelopper(e: Enveloppe): string {
     `<meta name="viewport" content="width=device-width,initial-scale=1"></head>` +
     `<body style="margin:0;padding:0;background:#ffffff">` +
     `<div style="max-width:600px;margin:0 auto;padding:24px 20px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:24px;color:#111827">` +
-    `${e.corpsHtml}${pied(e)}</div></body></html>`;
+    `${styliserBoutons(e.corpsHtml)}${pied(e)}</div></body></html>`;
+}
+
+// ------ Nettoyage du corps ------
+//
+// Le corps vient de l'editeur de la console ou de l'IA : on ne garde qu'une
+// liste blanche de balises, sans aucun attribut sauf href (http, https,
+// mailto) et data-bouton sur un lien. Tout le reste est retire, jamais
+// interprete : un mail ne doit porter ni script, ni style, ni image pistee.
+
+const BALISES = new Set(["p", "br", "strong", "b", "em", "i", "u", "a", "ul", "ol", "li", "h2", "h3"]);
+
+export function nettoyerCorps(html: string): string {
+  return html
+    .replace(/<(script|style|head|title|iframe|object)[\s\S]*?<\/\1\s*>/gi, "")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<\/?([a-zA-Z0-9]+)([^>]*)>/g, (brut, nom: string, attrs: string) => {
+      const n = nom.toLowerCase();
+      if (!BALISES.has(n)) return "";
+      if (brut.startsWith("</")) return `</${n}>`;
+      if (n === "a") {
+        const href = /href\s*=\s*"([^"]*)"/i.exec(attrs)?.[1] ?? /href\s*=\s*'([^']*)'/i.exec(attrs)?.[1] ?? "";
+        const sur = /^(https?:\/\/|mailto:)/i.test(href.trim()) ? href.trim().replaceAll('"', "%22") : "";
+        const bouton = /data-bouton/i.test(attrs) ? " data-bouton" : "";
+        return sur ? `<a href="${sur}"${bouton}>` : "<a>";
+      }
+      return n === "br" ? "<br>" : `<${n}>`;
+    });
+}
+
+// Un lien marque data-bouton devient un bouton (styles en ligne : les
+// clients mail ignorent les feuilles de style).
+export function styliserBoutons(html: string): string {
+  return html.replace(/<a href="([^"]*)" data-bouton>([\s\S]*?)<\/a>/g, (_m, href, texte) =>
+    `<a href="${href}" style="display:inline-block;margin:8px 0;padding:12px 22px;background:#111827;color:#ffffff;` +
+    `text-decoration:none;border-radius:8px;font-weight:600">${texte}</a>`);
 }
 
 // Version texte derivee du HTML : sans elle, les filtres anti-spam penalisent.

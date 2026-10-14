@@ -93,7 +93,9 @@ export const AppProvider = ({
             try {
                 const { data, error: fetchError } = await supabaseClient
                     .from('apps')                        // Tables dans search_path
-                    .select('id, name, description, icon, color, sort_order, domaine, db_schema, heberge_dedie')
+                    // modele_comptes : Utilisateurs masque « En attente » et « Tous »
+                    // sur un site en modele « clients » (ses comptes sont ses clients).
+                    .select('id, name, description, icon, color, sort_order, domaine, db_schema, heberge_dedie, modele_comptes')
                     .eq('is_active', true)
                     .order('sort_order', { ascending: true });
 

@@ -7,13 +7,18 @@
 // Chaque filtre n'existe que si la colonne existe : la capacite se lit a la
 // presence (docs/contrats/README.md).
 
-export type Population = "prospects" | "clients" | "comptes";
+export type Population = "audience" | "prospects" | "clients" | "comptes";
+
+// Entonnoir commun (Eric, 14/10/2026) : une adresse = une etape, la plus
+// avancee. Contrat docs/contrats/audience-v1.sql.
+export const ETAPES = ["a_conquerir", "lead", "engage", "client", "recurrent", "perdu"] as const;
 
 export const POPULATIONS: Record<Population, {
   vue: string;
   id: string;
   libelle: string;
 }> = {
+  audience: { vue: "baikal_audience", id: "email", libelle: "Audience" },
   prospects: { vue: "baikal_prospects", id: "prospect_id", libelle: "Prospects" },
   clients: { vue: "baikal_dossiers", id: "dossier_id", libelle: "Clients" },
   comptes: { vue: "baikal_comptes_pro", id: "compte_id", libelle: "Comptes" },
@@ -24,6 +29,9 @@ export function estPopulation(x: unknown): x is Population {
 }
 
 export interface Criteres {
+  // audience
+  etapes: string[];
+  profils: string[];
   // prospects
   metiers: string[];
   statuts: string[];
@@ -58,6 +66,8 @@ export function normaliserCriteres(brut: unknown): Criteres {
   const b = (brut && typeof brut === "object" ? brut : {}) as Record<string, unknown>;
   const dep = typeof b.departement === "string" ? b.departement.trim().toUpperCase() : "";
   return {
+    etapes: listeTextes(b.etapes).filter((e) => (ETAPES as readonly string[]).includes(e)),
+    profils: listeTextes(b.profils),
     metiers: listeTextes(b.metiers),
     statuts: listeTextes(b.statuts).filter((s) => !STATUTS_EXCLUS.includes(s)),
     departement: /^(\d{2,3}|2[AB])$/.test(dep) ? dep : "",
@@ -73,6 +83,7 @@ export function normaliserCriteres(brut: unknown): Criteres {
 // Expression SQL du nom affiche dans {{nom}} (alias v), selon les colonnes
 // presentes. Constantes uniquement : elle est injectee telle quelle.
 export function colonneNom(population: Population, colonnes: Set<string>): string | null {
+  if (population === "audience") return colonnes.has("nom") ? "v.nom" : null;
   if (population === "prospects") return colonnes.has("nom_affiche") ? "v.nom_affiche" : null;
   if (population === "clients") return colonnes.has("contact_nom") ? "v.contact_nom" : null;
   if (colonnes.has("contact_nom") && colonnes.has("raison_sociale")) {
@@ -92,6 +103,9 @@ export interface OptionsRequete {
   criteres: Criteres;
   // Campagne en cours d'envoi : ses adresses deja reservees sont ecartees.
   campagneId?: string;
+  // Entonnoir : montrer aussi les profils exclus par defaut (presse), pour
+  // qu'on puisse les cocher explicitement.
+  sansExclusionParDefaut?: boolean;
 }
 
 // Fragment WHERE commun (alias v sur la vue de population).
@@ -124,6 +138,14 @@ function fragmentWhere(sql: Sql, o: OptionsRequete) {
           ? s`AND left(v.code_postal, ${departement.length}) = ${departement}` : s``}
         ${c.exclureClients && col.has("client_depuis") ? s`AND v.client_depuis IS NULL` : s``}
         ${c.jamaisContactes && col.has("dernier_contact_le") ? s`AND v.dernier_contact_le IS NULL` : s``}
+      ` : s``}
+      ${population === "audience" ? s`
+        ${c.etapes.length > 0 ? s`AND v.etape = ANY(${c.etapes})` : s``}
+        ${c.profils.length > 0 && col.has("profil") ? s`AND v.profil = ANY(${c.profils})` : s``}
+        ${!o.sansExclusionParDefaut && col.has("profil") && METIERS_EXCLUS_PAR_DEFAUT.filter((m) => !c.profils.includes(m)).length > 0
+          ? s`AND v.profil <> ALL(${METIERS_EXCLUS_PAR_DEFAUT.filter((m) => !c.profils.includes(m))})` : s``}
+        ${departement && col.has("code_postal")
+          ? s`AND left(v.code_postal, ${departement.length}) = ${departement}` : s``}
       ` : s``}
       ${population === "clients" ? s`
         ${c.paye === "payes" && col.has("paye_le") ? s`AND v.paye_le IS NOT NULL` : s``}
@@ -196,4 +218,21 @@ export async function relireDestinataires(
     FROM ${sql(schema)}.${sql(vue)} v
     WHERE lower(trim(v.email)) = ANY(${emails})
     ORDER BY lower(trim(v.email))` as Candidat[];
+}
+
+// L'entonnoir de la cible : effectif par etape et par profil, sous les MEMES
+// exclusions que l'envoi (optout, tests, deja ecrits), mais sans le filtre
+// d'etape/profil lui-meme (semantique de facette, comme les chips de
+// /prospect) — sinon cliquer une etape ecraserait les cinq autres a zero.
+export async function entonnoir(
+  sql: Sql,
+  o: OptionsRequete,
+): Promise<{ etape: string; profil: string | null; n: number }[]> {
+  const sansFacettes = { ...o, criteres: { ...o.criteres, etapes: [], profils: [] }, sansExclusionParDefaut: true };
+  return await sql`
+    SELECT v.etape, ${o.colonnes.has("profil") ? sql`v.profil` : sql`NULL::text`} AS profil,
+           count(DISTINCT lower(trim(v.email)))::int AS n
+    FROM ${sql(o.schema)}.baikal_audience v
+    ${fragmentWhere(sql, sansFacettes)}
+    GROUP BY 1, 2`;
 }

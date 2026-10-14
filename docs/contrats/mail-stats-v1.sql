@@ -1,0 +1,30 @@
+-- ---------------------------------------------------------------------------
+-- Contrat Statistiques mails v1 — contrat de FORME.
+--
+-- Tous les mails que le site envoie lui-meme (transactionnels, relances,
+-- nurtures, prospection), agreges par jour et par type, SANS aucune donnee
+-- nominative. Lue par l'onglet Statistiques du module Mailing de Baikal, qui
+-- y ajoute ses propres campagnes (journal mail_envoi du module mailing-v1) :
+-- ne JAMAIS inclure ici les envois des campagnes Baikal, ils seraient comptes
+-- deux fois.
+--
+-- Colonnes (toutes obligatoires) :
+--   jour         date  jour d'ENVOI, dans le fuseau du site
+--   type         text  identifiant stable du type de mail (magic_link...)
+--   groupe       text  regroupement affiche (« Activation funnel B2C »...)
+--   libelle      text  libelle humain du type
+--   envois       int   mails envoyes ce jour-la
+--   delivres     int   parmi eux, delivres
+--   ouverts      int   parmi eux, ouverts au moins une fois
+--   cliques      int   parmi eux, cliques au moins une fois
+--   rebonds      int   parmi eux, rebonds (tous types)
+--   desinscrits  int   parmi eux, desinscriptions consecutives
+--   plaintes     int   parmi eux, plaintes pour spam
+--
+-- Regle : un evenement est rattache au jour d'ENVOI du mail, jamais au jour
+-- de l'evenement ; sinon un taux d'ouverture sur une fenetre depasse 100 %.
+--
+-- Recette :
+--   select sum(delivres) <= sum(envois), sum(ouverts) <= sum(envois)
+--   from <schema>.baikal_mail_stats;  -> vrai, vrai
+-- ---------------------------------------------------------------------------
