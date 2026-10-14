@@ -181,7 +181,9 @@ function MailingContent() {
                           className="border-t border-baikal-border/50 cursor-pointer hover:bg-baikal-bg/50">
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-1.5 text-white truncate max-w-[280px]">
-                              {c.continue && <Repeat className="w-3.5 h-3.5 text-baikal-cyan shrink-0" title="En continu" />}
+                              {(c.relances || []).length > 0
+                                ? <span className="text-[10px] px-1.5 py-0.5 rounded bg-baikal-cyan/15 text-baikal-cyan shrink-0">{c.relances.length + 1} mails</span>
+                                : c.continue && <Repeat className="w-3.5 h-3.5 text-baikal-cyan shrink-0" title="En continu" />}
                               <span className="truncate">{c.nom}</span>
                             </div>
                             <div className="text-xs opacity-60 truncate max-w-[280px]">{c.objet || '—'}</div>

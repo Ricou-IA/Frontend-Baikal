@@ -32,10 +32,8 @@ coupe-circuit du lot 2 servent tels quels.
   clé `(campagne_id, email, touche)`. `mail_reserver` / `mail_marquer` lisent
   `touche` dans leurs lignes (absent = 1 : rétrocompatible). Migration chez
   MonsieurDPE et pré-état-daté.
-- Contrat `audience-v1`, colonne optionnelle `dernier_contact_le` : dernier
-  mail **commercial** envoyé par le site lui-même. Filtre « jamais écrits par
-  le site » : sans lui, la séquence Baikal renverrait la présentation aux 5 225
-  mandataires déjà contactés par `pv-email-cron`.
+- `admin.mail_campagnes.jours_ouvres boolean` : n'envoyer que du lundi au
+  vendredi (fuseau du site), comme `pv-email-cron`.
 
 ## Moteur
 
@@ -67,27 +65,22 @@ une campagne continue.
 
 | PV (`app_settings.prospecting`) | Baikal |
 |---|---|
-| `categories: [mandataire_immo]` | étape « À conquérir » × profil « Agent immo » ¹ |
+| `categories: [mandataire_immo]` | étape « À conquérir » × profil « Agent immo » (agences comprises, décision 1) |
 | `campaign_keys` 3 touches | Mail 1 + 2 relances |
 | `min_days_between_touches: 3` | délai 3 jours sur chaque relance |
 | `daily_cap: 20`, jours ouvrés seulement | « Au plus 20 envois par jour » + case « Jours ouvrés seulement » (`admin.mail_campagnes.jours_ouvres`, fuseau du site) |
 | `bounce_breaker 5 % / 50` | coupe-circuit (déjà identique) |
-| déjà contactés par le cron | « Jamais écrits par le site » (`dernier_contact_le`) |
 
-¹ L'audience de PV range `agence_immo` et `mandataire_immo` sous le profil
-`agent_immo` (taxonomie `admin.metier`). Pour cibler les seuls mandataires, il
-faut un profil `mandataire_immo` — décision d'Eric (question 1).
+## Décisions d'Eric (14/10/2026)
 
-## Questions pour Eric
-
-1. **Mandataires seuls ou agents immo** (agences comprises) pour reprendre la
-   prospection de PV ? Si mandataires seuls : un profil `mandataire_immo` dans
-   l'audience de PV et dans `admin.metier`.
-2. **Les 5 225 déjà contactés par le cron** : on les **exclut** (recommandé :
-   ils ont reçu la présentation, certains les relances), ou Baikal leur envoie
-   la suite ?
-3. **Le cron de PV** reste arrêté (`send_enabled: false`) une fois la séquence
-   Baikal lancée — deux moteurs sur la même cible écriraient deux fois.
+1. Mandataire ou agent immo, « c'est pareil » : profil `agent_immo` tel quel,
+   pas de nouveau profil.
+2. Les adresses déjà contactées par `pv-email-cron` peuvent recevoir la
+   séquence Baikal (« on va avoir un mail un peu différent ») : pas de filtre
+   `dernier_contact_le`, pas de colonne ajoutée à l'audience.
+3. Le bloc prospection de `pv-email-cron` (robot quotidien de PV) reste coupé
+   (`send_enabled: false`) ; le reste du robot (magic links, relances panier,
+   nurture) n'est pas concerné.
 
 ## Hors lot 3
 

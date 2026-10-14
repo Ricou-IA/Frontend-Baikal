@@ -115,3 +115,25 @@ Deno.test("nettoyage : liste blanche, attributs retires, liens surs seulement", 
 Deno.test("bouton : un lien data-bouton devient un bouton style", () => {
   assertStringIncludes(styliserBoutons('<a href="https://a.fr" data-bouton>Go</a>'), "display:inline-block");
 });
+
+import { normaliserRelances, ordreDeService } from "./segment.ts";
+
+Deno.test("relances : delais bornes, cinq au plus", () => {
+  const r = normaliserRelances([{ delai_jours: -2 }, { delai_jours: 400 }, { delai_jours: "4" }, {}, {}, {}, {}]);
+  assertEquals(r.length, 5);
+  assertEquals(r.map((x) => x.delai_jours), [0, 90, 4, 3, 3]);
+});
+
+Deno.test("ordre de service : relances d'abord, de la derniere au mail 1", () => {
+  const o = ordreDeService({ objet: "A", corps_html: "a", relances: [{ delai_jours: 3, objet: "B" }, { delai_jours: 5, objet: "C" }] });
+  assertEquals(o.map((m) => [m.rang, m.delaiJours, m.objet]), [[3, 5, "C"], [2, 3, "B"], [1, 0, "A"]]);
+  assertEquals(ordreDeService({ objet: "A", corps_html: "a" }).length, 1);
+});
+
+import { estJourOuvre } from "./envoi.ts";
+
+Deno.test("jours ouvres dans le fuseau du site", () => {
+  assertEquals(estJourOuvre("Europe/Paris", new Date("2026-10-17T10:00:00Z")), false); // samedi
+  assertEquals(estJourOuvre("Europe/Paris", new Date("2026-10-18T23:30:00Z")), true);  // lundi 01h30 a Paris
+  assertEquals(estJourOuvre("Europe/Paris", new Date("2026-10-16T22:30:00Z")), false); // samedi 00h30 a Paris
+});

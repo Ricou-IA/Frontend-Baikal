@@ -8,7 +8,8 @@ import { chargerSite, ErreurSite, lecteurSite } from "../_shared/sites.ts";
 import { ErreurAcces, droitsModules, exigerModule, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 import { ErreurRelais } from "../_shared/relais.ts";
 import {
-  compterCandidats, entonnoir, estPopulation, normaliserCriteres, POPULATIONS, type Population, requeteCandidats,
+  compterCandidats, entonnoir, estPopulation, normaliserCriteres, normaliserRelances, POPULATIONS, type Population,
+  requeteCandidats,
 } from "../_shared/mailing/segment.ts";
 import { redigerMail } from "../_shared/mailing/redaction.ts";
 import {
@@ -162,6 +163,14 @@ serve(async (req) => {
           consigne: String(body.consigne ?? "rediger"),
           objet: String(body.objet ?? ""),
           corps: nettoyerCorps(String(body.corps_html ?? "")),
+          rang: Math.max(1, Math.min(6, Number(body.rang) || 1)),
+          delaiJours: Math.max(0, Number(body.delaiJours) || 0),
+          precedent: body.precedent && typeof body.precedent === "object"
+            ? {
+              objet: String((body.precedent as Record<string, unknown>).objet ?? ""),
+              corps: nettoyerCorps(String((body.precedent as Record<string, unknown>).corps_html ?? "")),
+            }
+            : null,
         });
         return json({ data: r, error: null });
       }
@@ -193,23 +202,32 @@ serve(async (req) => {
         // Campagnes Baikal, lues dans le journal du module (jamais dans la vue
         // du site : elles y seraient comptees deux fois).
         const baikal = await sql`
-          SELECT campagne_id::text AS id,
+          SELECT campagne_id::text AS id, touche,
                  count(envoye_le)::int AS envois, count(delivre_le)::int AS delivres,
                  count(ouvert_le)::int AS ouverts, count(clique_le)::int AS cliques,
                  count(rebond_le)::int AS rebonds, count(desinscrit_le)::int AS desinscrits,
                  count(plainte_le)::int AS plaintes, max(envoye_le)::date::text AS dernier
           FROM ${sql(schema)}.mail_envoi
           WHERE envoye_le >= ${depuis.toISOString()}::timestamptz
-          GROUP BY campagne_id`;
-        const ids = baikal.map((b: { id: string }) => b.id);
+          GROUP BY campagne_id, touche
+          ORDER BY campagne_id, touche`;
+        const ids = [...new Set(baikal.map((b: { id: string }) => b.id))];
         const noms = ids.length
-          ? (await campagnes.select("id, nom").in("id", ids)).data ?? []
+          ? (await campagnes.select("id, nom, relances").in("id", ids)).data ?? []
           : [];
-        const nomDe = new Map(noms.map((n: { id: string; nom: string }) => [n.id, n.nom]));
+        const campDe = new Map(noms.map((n: { id: string; nom: string; relances: unknown[] }) => [n.id, n]));
         const lignes = [
-          ...baikal.map((b: Record<string, unknown>) => ({
-            groupe: "Campagnes Baikal", type: `baikal:${b.id}`, libelle: nomDe.get(String(b.id)) ?? "Campagne", ...b,
-          })),
+          ...baikal.map((b: Record<string, unknown>) => {
+            const camp = campDe.get(String(b.id));
+            const sequence = (camp?.relances?.length ?? 0) > 0;
+            const t = Number(b.touche);
+            return {
+              groupe: "Campagnes Baikal",
+              type: `baikal:${b.id}:${t}`,
+              libelle: `${camp?.nom ?? "Campagne"}${sequence ? (t === 1 ? " — mail 1" : ` — relance ${t - 1}`) : ""}`,
+              ...b,
+            };
+          }),
           ...siteLignes,
         ];
         return json({ data: { jours, depuis: depuisJour, stats_site: statsDispo, lignes }, error: null });
@@ -225,8 +243,11 @@ serve(async (req) => {
           objet: String(c.objet ?? ""),
           // Toujours nettoye : ce qui est enregistre est ce qui part.
           corps_html: nettoyerCorps(String(c.corps_html ?? "")),
-          continue: c.continue === true,
+          continue: c.continue === true || normaliserRelances(c.relances).length > 0,
           plafond_jour: plafond(c.plafond_jour),
+          relances: normaliserRelances(c.relances)
+            .map((x) => ({ ...x, corps_html: nettoyerCorps(x.corps_html) })),
+          jours_ouvres: c.jours_ouvres === true,
           maj_le: new Date().toISOString(),
         };
         if (c.id) {
@@ -242,7 +263,12 @@ serve(async (req) => {
             ? champs
             : {
               objet: champs.objet, corps_html: champs.corps_html, nom: champs.nom,
-              plafond_jour: champs.plafond_jour, maj_le: champs.maj_le,
+              plafond_jour: champs.plafond_jour, jours_ouvres: champs.jours_ouvres,
+              // Une sequence partie garde son nombre de mails (les journaux s'y
+              // referent) ; leur contenu et leur delai restent corrigeables.
+              relances: champs.relances.length === (actuelle.relances?.length ?? 0)
+                ? champs.relances : actuelle.relances,
+              maj_le: champs.maj_le,
             };
           const { data, error } = await campagnes.update(maj).eq("id", c.id).select("*").single();
           if (error) throw error;
@@ -351,7 +377,7 @@ serve(async (req) => {
         const parPage = 50;
         const statut = typeof body.statut === "string" && body.statut ? body.statut : null;
         const rows = await sql`
-          SELECT email, population, destinataire_id, statut, erreur, rebond_type,
+          SELECT email, touche, population, destinataire_id, statut, erreur, rebond_type,
                  envoye_le, delivre_le, ouvert_le, clique_le, rebond_le, plainte_le, desinscrit_le,
                  nb_ouvertures, nb_clics, count(*) OVER() AS total_lignes
           FROM ${sql(schema)}.mail_envoi
@@ -360,6 +386,13 @@ serve(async (req) => {
           ORDER BY coalesce(envoye_le, reserve_le) DESC, email
           LIMIT ${parPage} OFFSET ${(page - 1) * parPage}`;
         const [compteurs] = Object.values(await compteursCampagnes(sql, schema, [c.id]));
+        const parMail = await sql`
+          SELECT touche, count(envoye_le)::int AS envoyes, count(delivre_le)::int AS delivres,
+                 count(ouvert_le)::int AS ouverts, count(clique_le)::int AS cliques,
+                 count(rebond_le)::int AS rebonds, count(desinscrit_le)::int AS desinscrits,
+                 count(*) FILTER (WHERE statut = 'reserve')::int AS en_attente
+          FROM ${sql(schema)}.mail_envoi WHERE campagne_id = ${c.id}::uuid
+          GROUP BY touche ORDER BY touche`;
         const restants = c.statut === "terminee"
           ? 0
           : (populations[c.population as Population]
@@ -369,6 +402,7 @@ serve(async (req) => {
           data: {
             campagne: c,
             compteurs: compteurs ?? null,
+            par_mail: parMail,
             restants,
             lignes: rows.map(({ total_lignes: _t, ...r }: Record<string, unknown>) => r),
             total: rows.length ? Number(rows[0].total_lignes) : 0,

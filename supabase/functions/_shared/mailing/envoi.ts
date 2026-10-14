@@ -187,3 +187,10 @@ export function lireTag(tags: unknown, nom: string): string | null {
   }
   return null;
 }
+
+// Du lundi au vendredi dans le fuseau du site (les jours feries ne sont pas
+// connus : comme pv-email-cron, seul le week-end est saute).
+export function estJourOuvre(fuseau: string, maintenant = new Date()): boolean {
+  const jour = new Intl.DateTimeFormat("en-US", { timeZone: fuseau, weekday: "short" }).format(maintenant);
+  return jour !== "Sat" && jour !== "Sun";
+}

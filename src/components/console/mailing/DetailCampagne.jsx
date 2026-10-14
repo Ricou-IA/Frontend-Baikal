@@ -113,6 +113,40 @@ export default function DetailCampagne({ appId, campagneId, ecriture, onFerme, o
         <KpiCarte label="Erreurs" valeur={fmtNombre(k?.erreurs)} accent={(k?.erreurs ?? 0) > 0 ? 'danger' : 'default'} />
       </div>
 
+      {(donnees.par_mail || []).length > 1 && (
+        <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
+          <table className="w-full text-sm text-baikal-text">
+            <thead>
+              <tr className="text-xs opacity-70 border-b border-baikal-border">
+                <th className="px-4 py-2 text-left">Mail de la séquence</th>
+                <th className="px-4 py-2 text-right">Envoyés</th>
+                <th className="px-4 py-2 text-right">Délivrés</th>
+                <th className="px-4 py-2 text-right">Ouverts</th>
+                <th className="px-4 py-2 text-right">Cliqués</th>
+                <th className="px-4 py-2 text-right">Rebonds</th>
+                <th className="px-4 py-2 text-right">Désinscrits</th>
+              </tr>
+            </thead>
+            <tbody>
+              {donnees.par_mail.map((m) => (
+                <tr key={m.touche} className="border-t border-baikal-border/50">
+                  <td className="px-4 py-2 text-white">
+                    {m.touche === 1 ? 'Mail 1' : `Relance ${m.touche - 1}`}
+                    {m.touche > 1 && <span className="text-xs opacity-60 ml-1">J+{c.relances?.[m.touche - 2]?.delai_jours ?? '?'}</span>}
+                  </td>
+                  <td className="px-4 py-2 text-right tabular-nums">{fmtNombre(m.envoyes)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{fmtTaux(m.delivres, m.envoyes)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{fmtTaux(m.ouverts, m.envoyes)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{fmtTaux(m.cliques, m.envoyes)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{fmtNombre(m.rebonds)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{fmtNombre(m.desinscrits)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <div className="flex items-center gap-1.5 flex-wrap">
         <Chip actif={!statut} onClick={() => { setStatut(null); setPage(1); }}>Tous</Chip>
         {Object.entries(STATUTS_ENVOI).map(([s, [, l]]) => (
@@ -126,6 +160,7 @@ export default function DetailCampagne({ appId, campagneId, ecriture, onFerme, o
             <thead>
               <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
                 <th className="px-4 py-2">Destinataire</th>
+                {(c.relances || []).length > 0 && <th className="px-4 py-2">Mail</th>}
                 <th className="px-4 py-2">Statut</th>
                 <th className="px-4 py-2 whitespace-nowrap">Envoyé</th>
                 <th className="px-4 py-2 whitespace-nowrap">Ouvert</th>
@@ -134,10 +169,15 @@ export default function DetailCampagne({ appId, campagneId, ecriture, onFerme, o
               </tr>
             </thead>
             <tbody>
-              {donnees.lignes.length === 0 && <LigneVide colonnes={6} message="Aucun envoi pour l'instant." />}
+              {donnees.lignes.length === 0 && (
+                <LigneVide colonnes={(c.relances || []).length > 0 ? 7 : 6} message="Aucun envoi pour l'instant." />
+              )}
               {donnees.lignes.map((l) => (
-                <tr key={l.email} className="border-t border-baikal-border/50">
+                <tr key={`${l.email}:${l.touche ?? 1}`} className="border-t border-baikal-border/50">
                   <td className="px-4 py-2 text-white truncate max-w-[260px]">{l.email}</td>
+                  {(c.relances || []).length > 0 && (
+                    <td className="px-4 py-2 text-xs whitespace-nowrap">{l.touche > 1 ? `Relance ${l.touche - 1}` : 'Mail 1'}</td>
+                  )}
                   <td className="px-4 py-2"><BadgeEnvoi statut={l.statut} /></td>
                   <td className="px-4 py-2 whitespace-nowrap">{fmtDateHeure(l.envoye_le)}</td>
                   <td className="px-4 py-2 whitespace-nowrap">

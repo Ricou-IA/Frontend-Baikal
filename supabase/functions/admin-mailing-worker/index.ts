@@ -12,12 +12,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { chargerSite, lecteurSite, type Site } from "../_shared/sites.ts";
-import { normaliserCriteres, type Population, relireDestinataires, requeteCandidats } from "../_shared/mailing/segment.ts";
+import {
+  normaliserCriteres, ordreDeService, type Population, relireDestinataires, requeteCandidats,
+} from "../_shared/mailing/segment.ts";
 import {
   chargerConfigMailing, cleResend, compteursCampagnes, ecrivain, envoyesDepuis, expediteur,
   populationsDisponibles, schemaMailing,
 } from "../_shared/mailing/site.ts";
-import { debutJourLocal, envoyerResend, evaluerDisjoncteur, tailleLot } from "../_shared/mailing/envoi.ts";
+import { debutJourLocal, envoyerResend, estJourOuvre, evaluerDisjoncteur, tailleLot } from "../_shared/mailing/envoi.ts";
 import { fabriquerMessage } from "../_shared/mailing/message.ts";
 
 const PAUSE_MS = 250; // Resend : 5 requetes/s par defaut, on reste a ~3/s.
@@ -87,6 +89,13 @@ serve(async (req) => {
       if (disj.coupe) { await arreter("suspendue", disj.motif); rapport.push({ id: c.id, coupe: disj.motif }); continue; }
 
       // 3. Quota du jour du site.
+      // Jours ouvres seulement (parite pv-email-cron) : rien le samedi ni le
+      // dimanche, dans le fuseau du site.
+      if (c.jours_ouvres && !estJourOuvre(site.fuseau || "Europe/Paris")) {
+        rapport.push({ id: c.id, saute: "week-end" });
+        continue;
+      }
+
       // Quota du site (toutes campagnes) ET, s'il en a un, de la campagne.
       const minuit = debutJourLocal(site.fuseau || "Europe/Paris");
       const envoyesJour = await envoyesDepuis(sql, schema, minuit);
@@ -106,27 +115,80 @@ serve(async (req) => {
         continue;
       }
 
-      // 4. Candidats : d'abord les reservations orphelines (un passage
-      // interrompu entre reserver et marquer ; l'Idempotency-Key de Resend
-      // empeche le double envoi), puis de nouvelles adresses.
-      const orphelins = await sql`
-        SELECT email, destinataire_id FROM ${sql(schema)}.mail_envoi
-        WHERE campagne_id = ${c.id}::uuid AND statut = 'reserve'
-          AND reserve_le < now() - interval '3 minutes'
-        LIMIT ${lot}`;
-      const nouveaux = orphelins.length < lot
-        ? await requeteCandidats(sql, {
-          schema, population: c.population, colonnes, criteres: normaliserCriteres(c.criteres), campagneId: c.id,
-        }, lot - orphelins.length)
-        : [];
+      // 4. Les mails de la campagne dans l'ordre de service : pour une
+      // sequence, les relances d'abord (de la derniere a la premiere), puis le
+      // mail 1 ; une campagne simple n'a que le mail 1. Chaque mail prend sa
+      // part du lot dans cet ordre.
+      const criteres = normaliserCriteres(c.criteres);
+      const ecr = ecrivain(admin, site, cfg);
+      const marques: Record<string, unknown>[] = [];
+      let fatale: string | null = null;
+      let reste = lot;
+      let candidatsVus = 0;
 
-      if (orphelins.length === 0 && nouveaux.length === 0) {
+      for (const mail of ordreDeService(c)) {
+        if (reste <= 0 || fatale || Date.now() - debut > BUDGET_MS) break;
+
+        // Reservations orphelines de CE mail (passage interrompu entre
+        // reserver et marquer ; l'Idempotency-Key de Resend empeche le double
+        // envoi), puis de nouvelles adresses.
+        const orphelins = await sql`
+          SELECT email FROM ${sql(schema)}.mail_envoi
+          WHERE campagne_id = ${c.id}::uuid AND touche = ${mail.rang} AND statut = 'reserve'
+            AND reserve_le < now() - interval '3 minutes'
+          LIMIT ${reste}`;
+        const nouveaux = orphelins.length < reste
+          ? await requeteCandidats(sql, {
+            schema, population: c.population, colonnes, criteres, campagneId: c.id,
+            touche: { rang: mail.rang, delaiJours: mail.delaiJours },
+          }, reste - orphelins.length)
+          : [];
+        candidatsVus += orphelins.length + nouveaux.length;
+        if (orphelins.length === 0 && nouveaux.length === 0) continue;
+
+        // Reserver chez le site : seules les adresses reservees partent.
+        const reserves = new Set(nouveaux.length
+          ? await ecr.reserver(c.id, nouveaux.map((n) => ({
+            email: n.email, population: c.population, destinataire_id: n.destinataire_id, touche: mail.rang,
+          })))
+          : []);
+        const relus = await relireDestinataires(sql, schema, c.population, colonnes,
+          orphelins.map((o: { email: string }) => o.email));
+        const parEmail = new Map(relus.map((n) => [n.email, n]));
+        const aEnvoyer = [
+          ...orphelins.map((o: { email: string }) => parEmail.get(o.email) ?? { email: o.email, nom: null, commune: null }),
+          ...nouveaux.filter((n) => reserves.has(n.email)),
+        ];
+
+        const marquesMail: Record<string, unknown>[] = [];
+        for (const d of aEnvoyer) {
+          if (Date.now() - debut > BUDGET_MS) break;
+          const m = await fabriquerMessage({
+            site, from, replyTo: cfg.reply_to, contenu: { objet: mail.objet, corps_html: mail.corps_html },
+            destinataire: d, campagneId: c.id, touche: mail.rang,
+          });
+          const res = await envoyerResend(cle, m);
+          marquesMail.push(res.ok
+            ? { email: d.email, touche: mail.rang, resend_id: res.id }
+            : { email: d.email, touche: mail.rang, erreur: res.erreur });
+          if (res.fatale) { fatale = res.erreur ?? "Erreur Resend"; break; }
+          await attendre(PAUSE_MS);
+        }
+        if (marquesMail.length) await ecr.marquer(c.id, marquesMail);
+        marques.push(...marquesMail);
+        reste -= marquesMail.length;
+      }
+
+      if (fatale) await arreter("suspendue", `Envoi refusé par Resend : ${fatale}`);
+
+      if (candidatsVus === 0) {
         const enAttente = cpt?.en_attente ?? 0;
-        if (c.continue) {
-          // Une campagne continue ne se termine jamais : elle attend les
-          // nouveaux entrants de sa cible, une heure plus tard.
+        if (c.continue || ordreDeService(c).length > 1) {
+          // Continue ou sequence : elle ne se termine jamais d'elle-meme, elle
+          // attend les nouveaux entrants (ou l'echeance des relances), une
+          // heure plus tard.
           await table().update({ attente_jusqu_au: new Date(Date.now() + 3600_000).toISOString() }).eq("id", c.id);
-          rapport.push({ id: c.id, attente: "aucun nouvel entrant" });
+          rapport.push({ id: c.id, attente: "aucun destinataire a echeance" });
           continue;
         }
         if (enAttente === 0) await arreter("terminee", null);
@@ -134,40 +196,12 @@ serve(async (req) => {
         continue;
       }
 
-      // 5. Reserver chez le site : seules les adresses reservees partent.
-      const ecr = ecrivain(admin, site, cfg);
-      const reserves = new Set(await ecr.reserver(c.id, nouveaux.map((n) => ({
-        email: n.email, population: c.population, destinataire_id: n.destinataire_id,
-      }))));
-      // Les orphelins sont deja reserves : leurs variables sont relues dans la vue.
-      const relus = await relireDestinataires(sql, schema, c.population, colonnes,
-        orphelins.map((o: { email: string }) => o.email));
-      const parEmail = new Map(relus.map((n) => [n.email, n]));
-      const aEnvoyer = [
-        ...orphelins.map((o: { email: string }) => parEmail.get(o.email) ?? { email: o.email, nom: null, commune: null }),
-        ...nouveaux.filter((n) => reserves.has(n.email)),
-      ];
-
-      const marques: Record<string, unknown>[] = [];
-      let fatale: string | null = null;
-      for (const d of aEnvoyer) {
-        if (Date.now() - debut > BUDGET_MS) break;
-        const m = await fabriquerMessage({
-          site, from, replyTo: cfg.reply_to, contenu: { objet: c.objet, corps_html: c.corps_html },
-          destinataire: d, campagneId: c.id,
-        });
-        const r = await envoyerResend(cle, m);
-        marques.push(r.ok ? { email: d.email, resend_id: r.id } : { email: d.email, erreur: r.erreur });
-        if (r.fatale) { fatale = r.erreur ?? "Erreur Resend"; break; }
-        await attendre(PAUSE_MS);
-      }
-      if (marques.length) await ecr.marquer(c.id, marques);
-      if (fatale) await arreter("suspendue", `Envoi refusé par Resend : ${fatale}`);
-
       await table().update({ dernier_lot_le: new Date().toISOString() }).eq("id", c.id);
       rapport.push({
         id: c.id, envoyes: marques.filter((x) => x.resend_id).length,
         erreurs: marques.filter((x) => x.erreur).length, fatale,
+        par_mail: Object.fromEntries([...new Set(marques.map((x) => x.touche))]
+          .map((t) => [`mail_${t}`, marques.filter((x) => x.touche === t && x.resend_id).length])),
       });
     } catch (e) {
       console.error("[admin-mailing-worker]", c.id, e);

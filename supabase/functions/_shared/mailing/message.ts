@@ -47,6 +47,9 @@ export async function fabriquerMessage(o: {
   destinataire: Destinataire;
   campagneId: string | null;
   test?: boolean;
+  // Sequence : numero du mail (1 = premier). Chaque mail a sa propre cle
+  // d'idempotence, sans quoi Resend prendrait la relance pour un doublon.
+  touche?: number;
 }): Promise<MessageResend & { lien: string }> {
   const valeurs = {
     nom: o.destinataire.nom ?? null,
@@ -80,7 +83,9 @@ export async function fabriquerMessage(o: {
       { name: "app_id", value: o.site.id.replace(/[^A-Za-z0-9_-]/g, "_") },
       ...(o.campagneId ? [{ name: "campagne", value: o.campagneId }] : []),
     ],
-    idempotencyKey: o.campagneId && !o.test ? `${o.campagneId}:${o.destinataire.email}` : undefined,
+    idempotencyKey: o.campagneId && !o.test
+      ? `${o.campagneId}:${o.destinataire.email}${o.touche && o.touche > 1 ? `:${o.touche}` : ""}`
+      : undefined,
     lien: liens.page,
   };
 }

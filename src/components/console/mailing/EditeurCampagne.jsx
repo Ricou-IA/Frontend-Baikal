@@ -79,6 +79,9 @@ export default function EditeurCampagne({ appId, etat, campagne: initiale, ecrit
   // Les objets proposes par l'IA (trois angles) : le premier est applique,
   // les autres restent un clic plus loin.
   const [objets, setObjets] = useState([]);
+  // Sequence (lot 3) : le mail affiche dans la carte Message. 0 = mail 1,
+  // k = relance k ; les relances vivent dans c.relances.
+  const [iMail, setIMail] = useState(0);
   const [adresseTest, setAdresseTest] = useState(user?.email || '');
   const [message, setMessage] = useState(null);
   const [erreur, setErreur] = useState(null);
@@ -91,6 +94,33 @@ export default function EditeurCampagne({ appId, etat, campagne: initiale, ecrit
   const colonnes = new Set(etat.populations?.[c.population] || []);
   const crit = c.criteres || {};
   const setCrit = (maj) => setC((x) => ({ ...x, criteres: { ...(x.criteres || {}), ...maj } }));
+  const relances = c.relances || [];
+  const mailDe = (i) => (i === 0
+    ? { objet: c.objet, corps_html: c.corps_html, delai_jours: 0 }
+    : relances[i - 1] || { objet: '', corps_html: '', delai_jours: 3 });
+  const mailCourant = mailDe(iMail);
+  const majMail = (patch) => setC((x) => {
+    if (iMail === 0) return { ...x, ...patch };
+    const rs = [...(x.relances || [])];
+    rs[iMail - 1] = { ...rs[iMail - 1], ...patch };
+    return { ...x, relances: rs };
+  });
+  const sequence = relances.length > 0;
+  function ajouterRelance() {
+    setC((x) => ({
+      ...x,
+      continue: true,
+      relances: [...(x.relances || []), { delai_jours: 3, objet: '', corps_html: '<p>Bonjour {{nom|}},</p><p></p>' }],
+    }));
+    setIMail(relances.length + 1);
+    setObjets([]);
+  }
+  function retirerRelance(i) {
+    if (!window.confirm(`Retirer la relance ${i} ?`)) return;
+    setC((x) => ({ ...x, relances: (x.relances || []).filter((_, k) => k !== i - 1) }));
+    setIMail(0);
+    setObjets([]);
+  }
   const basculer = (cle, v) => {
     const liste = crit[cle] || [];
     setCrit({ [cle]: liste.includes(v) ? liste.filter((x) => x !== v) : [...liste, v] });
@@ -129,12 +159,12 @@ export default function EditeurCampagne({ appId, etat, campagne: initiale, ecrit
   }, [appId, cleCible]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Apercu fidele (le vrai message du premier destinataire).
-  const cleRendu = JSON.stringify([c.objet, c.corps_html, c.population, c.criteres]);
+  const cleRendu = JSON.stringify([mailCourant.objet, mailCourant.corps_html, c.population, c.criteres]);
   useEffect(() => {
     let actif = true;
     const t = setTimeout(() => {
       mailingService.rendu(appId, {
-        objet: c.objet, corps_html: c.corps_html, population: c.population, criteres: c.criteres,
+        objet: mailCourant.objet, corps_html: mailCourant.corps_html, population: c.population, criteres: c.criteres,
       }).then(({ data }) => { if (actif && data) setRendu(data); });
     }, 600);
     return () => { actif = false; clearTimeout(t); };
@@ -143,13 +173,18 @@ export default function EditeurCampagne({ appId, etat, campagne: initiale, ecrit
   async function rediger(consigne) {
     setRedaction(consigne); setErreur(null); setMessage(null);
     const { data, error } = await mailingService.rediger(appId, {
-      consigne, brief, criteres: c.criteres, objet: c.objet, corps_html: c.corps_html,
+      consigne, brief, criteres: c.criteres, objet: mailCourant.objet, corps_html: mailCourant.corps_html,
       profilsLibelles: (crit.profils || []).map(libelleProfil),
+      rang: iMail + 1, delaiJours: mailCourant.delai_jours,
+      precedent: iMail > 0 ? mailDe(iMail - 1) : null,
     });
     setRedaction(null);
     if (error) { setErreur(error.message); return; }
     setObjets(data.objets || []);
-    setC((x) => ({ ...x, objet: data.objet || x.objet, corps_html: data.corps_html || x.corps_html }));
+    majMail({
+      objet: data.objet || mailCourant.objet,
+      corps_html: data.corps_html || mailCourant.corps_html,
+    });
     // « objets » ne touche pas au corps : pas de relecture de l'editeur.
     if (data.corps_html) setVersionCorps((v) => v + 1);
   }
@@ -168,7 +203,7 @@ export default function EditeurCampagne({ appId, etat, campagne: initiale, ecrit
   async function envoyerTest() {
     setOccupe(true); setErreur(null); setMessage(null);
     const { data, error } = await mailingService.test(appId, {
-      objet: c.objet, corps_html: c.corps_html, population: c.population, criteres: c.criteres,
+      objet: mailCourant.objet, corps_html: mailCourant.corps_html, population: c.population, criteres: c.criteres,
     }, adresseTest);
     setOccupe(false);
     if (error) setErreur(error.message); else setMessage(`Test envoyé à ${data.envoye}`);
@@ -333,7 +368,40 @@ export default function EditeurCampagne({ appId, etat, campagne: initiale, ecrit
           </Carte>
 
           {/* 2. Quoi */}
-          <Carte numero={2} titre="Message" icone={PenLine}>
+          <Carte numero={2} titre={sequence ? `Séquence de ${relances.length + 1} mails` : 'Message'} icone={PenLine}>
+            {(sequence || (ecriture && c.statut === 'brouillon')) && (
+              <div className="flex items-center gap-1 flex-wrap border-b border-baikal-border -mx-4 px-4 -mt-1 pb-2">
+                {[0, ...relances.map((_, k) => k + 1)].map((i) => (
+                  <button key={i} type="button" onClick={() => { setIMail(i); setObjets([]); }}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors
+                      ${iMail === i ? 'bg-baikal-cyan/15 text-baikal-cyan' : 'text-baikal-text hover:text-white'}`}>
+                    {i === 0 ? 'Mail 1' : `Relance ${i}`}
+                    {i > 0 && <span className="opacity-60 ml-1">J+{relances[i - 1]?.delai_jours ?? 0}</span>}
+                  </button>
+                ))}
+                {ecriture && c.statut === 'brouillon' && relances.length < 5 && (
+                  <button type="button" onClick={ajouterRelance}
+                    className="px-3 py-1.5 rounded-md text-xs text-baikal-text hover:text-baikal-cyan">
+                    + Ajouter une relance
+                  </button>
+                )}
+              </div>
+            )}
+
+            {iMail > 0 && (
+              <div className="flex items-center gap-2 text-sm text-baikal-text flex-wrap">
+                <span>Envoyée</span>
+                <input type="number" min={0} max={90} value={mailCourant.delai_jours ?? 3} disabled={contenuFige}
+                  onChange={(e) => majMail({ delai_jours: Math.max(0, Math.min(90, Number(e.target.value) || 0)) })}
+                  className="w-16 px-2 py-1 bg-baikal-bg border border-baikal-border rounded-md text-white tabular-nums focus:outline-none focus:border-baikal-cyan" />
+                <span>jours après {iMail === 1 ? 'le mail 1' : `la relance ${iMail - 1}`}, à ceux qui sont toujours dans la cible.</span>
+                {ecriture && c.statut === 'brouillon' && (
+                  <button type="button" onClick={() => retirerRelance(iMail)}
+                    className="ml-auto text-xs text-red-300 hover:underline">Retirer cette relance</button>
+                )}
+              </div>
+            )}
+
             {ecriture && !contenuFige && (
               <div className="rounded-md border border-violet-500/30 bg-violet-500/5 p-3 space-y-2">
                 <div className="flex items-center gap-2 text-xs text-violet-200">
@@ -347,7 +415,7 @@ export default function EditeurCampagne({ appId, etat, campagne: initiale, ecrit
                   className={`${classeInput} text-sm`} />
                 <div className="flex items-center gap-1.5 flex-wrap">
                   {[['rediger', 'Rédiger'], ['court', 'Plus court'], ['chaleureux', 'Plus chaleureux'], ['reformuler', 'Reformuler']].map(([k, l]) => (
-                    <button key={k} type="button" disabled={Boolean(redaction) || (k !== 'rediger' && !c.corps_html)}
+                    <button key={k} type="button" disabled={Boolean(redaction) || (k !== 'rediger' && !mailCourant.corps_html)}
                       onClick={() => rediger(k)}
                       className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors disabled:opacity-40
                         ${k === 'rediger' ? 'border-violet-400 text-violet-100 bg-violet-500/20 hover:bg-violet-500/30' : 'border-baikal-border text-baikal-text hover:text-white'}`}>
@@ -361,11 +429,11 @@ export default function EditeurCampagne({ appId, etat, campagne: initiale, ecrit
             {/* L'objet : c'est lui qui fait ouvrir. L'IA en propose trois. */}
             <div className="space-y-1.5">
               <div className="relative">
-                <input value={c.objet} disabled={contenuFige} onChange={(e) => setC({ ...c, objet: e.target.value })}
-                  placeholder="Objet du mail" className={`${classeInput} pr-28`} />
+                <input value={mailCourant.objet} disabled={contenuFige} onChange={(e) => majMail({ objet: e.target.value })}
+                  placeholder={iMail === 0 ? 'Objet du mail' : `Objet de la relance ${iMail}`} className={`${classeInput} pr-28`} />
                 {ecriture && !contenuFige && (
                   <button type="button" onClick={() => rediger('objets')}
-                    disabled={Boolean(redaction) || !c.corps_html}
+                    disabled={Boolean(redaction) || !mailCourant.corps_html}
                     title="Proposer trois objets pour ce mail"
                     className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1 px-2 py-1 rounded text-xs text-violet-200 hover:bg-violet-500/20 disabled:opacity-40">
                     <Sparkles className="w-3.5 h-3.5" />{redaction === 'objets' ? 'Recherche…' : 'Proposer'}
@@ -376,23 +444,24 @@ export default function EditeurCampagne({ appId, etat, campagne: initiale, ecrit
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="text-[11px] text-baikal-text opacity-60">Autres accroches</span>
                   {objets.map((o) => (
-                    <button key={o} type="button" onClick={() => setC((x) => ({ ...x, objet: o }))}
+                    <button key={o} type="button" onClick={() => majMail({ objet: o })}
                       className={`px-2 py-1 rounded-md text-xs border text-left transition-colors
-                        ${c.objet === o ? 'border-violet-400 text-violet-100 bg-violet-500/15' : 'border-baikal-border text-baikal-text hover:text-white'}`}>
+                        ${mailCourant.objet === o ? 'border-violet-400 text-violet-100 bg-violet-500/15' : 'border-baikal-border text-baikal-text hover:text-white'}`}>
                       {o}
                     </button>
                   ))}
                 </div>
               )}
-              <p className={`text-[11px] tabular-nums ${c.objet.length > 50 ? 'text-amber-400' : 'text-baikal-text opacity-50'}`}>
-                {c.objet.length} caractères{c.objet.length > 50 ? ' — au-delà de 50, l\'objet est coupé sur mobile' : ''}
+              <p className={`text-[11px] tabular-nums ${mailCourant.objet.length > 50 ? 'text-amber-400' : 'text-baikal-text opacity-50'}`}>
+                {mailCourant.objet.length} caractères{mailCourant.objet.length > 50 ? ' — au-delà de 50, l\'objet est coupé sur mobile' : ''}
               </p>
             </div>
 
             <EditeurTexte
-              valeur={c.corps_html}
+              key={iMail}
+              valeur={mailCourant.corps_html}
               version={versionCorps}
-              onChange={(html) => setC((x) => ({ ...x, corps_html: html }))}
+              onChange={(html) => majMail({ corps_html: html })}
               variables={(etat.variables || []).filter((v) => v !== 'email')}
               disabled={contenuFige}
             />
@@ -405,7 +474,8 @@ export default function EditeurCampagne({ appId, etat, campagne: initiale, ecrit
                 [false, 'Une fois', `Aux ${fmtNombre(total)} destinataires actuels, puis la campagne se termine.`],
                 [true, 'En continu', 'Aux destinataires actuels, puis à chaque nouvel entrant de la cible.'],
               ].map(([v, titre, texte]) => (
-                <button key={titre} type="button" disabled={cibleFigee}
+                <button key={titre} type="button" disabled={cibleFigee || (sequence && !v)}
+                  title={sequence && !v ? 'Une séquence est toujours continue' : undefined}
                   onClick={() => setC({ ...c, continue: v })}
                   className={`text-left p-3 rounded-md border transition-colors disabled:cursor-default
                     ${Boolean(c.continue) === v ? 'border-baikal-cyan bg-baikal-cyan/10' : 'border-baikal-border hover:border-baikal-text/50'}`}>
@@ -424,6 +494,17 @@ export default function EditeurCampagne({ appId, etat, campagne: initiale, ecrit
               <span className="opacity-60">(site : {fmtNombre(plafondSite)}/jour)</span>
               {!c.continue && total > 0 && <span className="opacity-60">→ environ {jours} jour{jours > 1 ? 's' : ''}</span>}
             </div>
+            <label className={`flex items-center gap-1.5 text-sm text-baikal-text select-none ${contenuFige ? 'opacity-50' : 'cursor-pointer'}`}>
+              <input type="checkbox" checked={c.jours_ouvres === true} disabled={contenuFige}
+                onChange={(e) => setC({ ...c, jours_ouvres: e.target.checked })} className="accent-baikal-cyan" />
+              Jours ouvrés seulement (du lundi au vendredi)
+            </label>
+            {sequence && (
+              <p className="text-xs text-baikal-text opacity-70">
+                Chaque personne de la cible reçoit le mail 1, puis les relances à leur échéance ; elle sort de la séquence
+                dès qu'elle change d'étape, se désinscrit ou rebondit. Les relances passent avant les nouveaux entrants dans le plafond du jour.
+              </p>
+            )}
 
             {ecriture && (
               <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-baikal-border/60">

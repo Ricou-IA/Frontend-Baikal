@@ -77,6 +77,7 @@ deux vues, vérifier qu'elles s'accordent ligne à ligne.
 | `comptes-pro-v1.sql` | forme | 1 | monsieurdpe, pack-vendeur |
 | `comptes-historique-v1.sql` | forme | 1 | pack-vendeur |
 | `mailing-v1.sql` | module | 1 | monsieurdpe, pack-vendeur (base dédiée, `@SCHEMA@ = public` : annexe + `mailing-relais-v1.ts` sous `pv-admin-mailing-relais`) |
+| `mailing-v1.1-sequences.sql` | module (mise à jour) | 1.1 | monsieurdpe, pack-vendeur (une ligne par mail de séquence : colonne `touche`) |
 | `audience-v1.sql` | forme | 1 | pack-vendeur (matérialisée, rafraîchie chaque heure) |
 | `mail-stats-v1.sql` | forme | 1 | pack-vendeur |
 

@@ -103,8 +103,22 @@ export async function redigerMail(o: {
   consigne: string;
   objet: string;
   corps: string;
+  // Sequence : rang du mail (1 = premier), delai depuis le mail precedent,
+  // et ce mail precedent, pour qu'une relance s'y refere sans le repeter.
+  rang?: number;
+  delaiJours?: number;
+  precedent?: { objet: string; corps: string } | null;
 }): Promise<{ objet: string; objets: string[]; corps_html: string | null }> {
+  const relance = (o.rang ?? 1) > 1;
   const contexte = [
+    relance
+      ? `Ce mail est la relance n°${(o.rang ?? 2) - 1} d'une séquence, envoyée ${o.delaiJours ?? 0} jours après le mail précédent, `
+        + "à quelqu'un qui n'y a pas donné suite. Plus court que le précédent (40 à 90 mots), il s'y réfère sans le répéter, "
+        + "apporte un angle ou un argument nouveau, et garde la même action demandée. Son objet est différent du précédent."
+      : "",
+    relance && o.precedent?.corps ? `Mail précédent :
+Objet : ${o.precedent.objet}
+${o.precedent.corps}` : "",
     o.etape && INTENTIONS[o.etape] ? `Intention : ${INTENTIONS[o.etape]}` : "",
     o.profils.length ? `Destinataires : ${o.profils.join(", ")}.` : "",
     o.brief.trim() ? `Brief de l'auteur : ${o.brief.trim()}` : "",
@@ -132,7 +146,7 @@ export async function redigerMail(o: {
   const systeme = [
     `Tu rédiges des emails marketing en français pour le site ${o.site}${o.domaine ? ` (${o.domaine})` : ""}.`,
     "Style : phrases courtes, vouvoiement, ton direct et humain, aucune formule creuse,",
-    "aucune promesse chiffrée qui ne figure pas dans le brief. 80 à 160 mots.",
+    `aucune promesse chiffrée qui ne figure pas dans le brief. ${relance ? "40 à 90 mots." : "80 à 160 mots."}`,
     "Tu peux utiliser la variable {{nom}} (nom du destinataire) avec un repli vide, par exemple « Bonjour {{nom|}}, ».",
     "Format du corps : HTML simple uniquement, balises p, strong, em, ul, li, br et a href.",
     "Pour l'action principale, un seul lien bouton : <a href=\"URL\" data-bouton>Texte du bouton</a>.",

@@ -103,6 +103,12 @@ export interface OptionsRequete {
   criteres: Criteres;
   // Campagne en cours d'envoi : ses adresses deja reservees sont ecartees.
   campagneId?: string;
+  // Sequence (lot 3) : le mail vise. Rang 1 = ceux qui n'ont encore rien
+  // recu de la campagne (et entres dans leur etape depuis delaiJours) ;
+  // rang k = ceux qui ont recu le mail k-1 il y a delaiJours au moins et pas
+  // encore le mail k. La cible reste appliquee a chaque mail : changer
+  // d'etape ou se desinscrire fait sortir de la sequence, sans autre regle.
+  touche?: { rang: number; delaiJours: number };
   // Entonnoir : montrer aussi les profils exclus par defaut (presse), pour
   // qu'on puisse les cocher explicitement.
   sansExclusionParDefaut?: boolean;
@@ -120,14 +126,30 @@ function fragmentWhere(sql: Sql, o: OptionsRequete) {
                       WHERE o.email = lower(trim(v.email)))
       ${col.has("est_test") ? s`AND v.est_test IS NOT TRUE` : s``}
       ${col.has("supprime_le") ? s`AND v.supprime_le IS NULL` : s``}
-      ${o.campagneId
+      ${o.campagneId && (o.touche?.rang ?? 1) > 1
+        ? s`AND EXISTS (SELECT 1 FROM ${s(schema)}.mail_envoi e
+                        WHERE e.campagne_id = ${o.campagneId}
+                          AND e.email = lower(trim(v.email))
+                          AND e.touche = ${o.touche!.rang - 1}
+                          AND e.envoye_le IS NOT NULL
+                          AND e.statut NOT IN ('erreur', 'rebond', 'plainte')
+                          AND e.envoye_le <= now() - make_interval(days => ${o.touche!.delaiJours}))
+            AND NOT EXISTS (SELECT 1 FROM ${s(schema)}.mail_envoi e
+                            WHERE e.campagne_id = ${o.campagneId}
+                              AND e.email = lower(trim(v.email))
+                              AND e.touche = ${o.touche!.rang})`
+        : o.campagneId
         ? s`AND NOT EXISTS (SELECT 1 FROM ${s(schema)}.mail_envoi e
                             WHERE e.campagne_id = ${o.campagneId}
                               AND e.email = lower(trim(v.email)))`
         : s``}
+      ${o.touche && o.touche.rang === 1 && o.touche.delaiJours > 0 && col.has("etape_depuis")
+        ? s`AND v.etape_depuis <= now() - make_interval(days => ${o.touche.delaiJours})`
+        : s``}
       ${c.exclureDejaEcrits
         ? s`AND NOT EXISTS (SELECT 1 FROM ${s(schema)}.mail_envoi e2
-                            WHERE e2.email = lower(trim(v.email)) AND e2.envoye_le IS NOT NULL)`
+                            WHERE e2.email = lower(trim(v.email)) AND e2.envoye_le IS NOT NULL
+                              ${o.campagneId ? s`AND e2.campagne_id <> ${o.campagneId}` : s``})`
         : s``}
       ${population === "prospects" ? s`
         ${col.has("statut") ? s`AND v.statut <> ALL(${STATUTS_EXCLUS})` : s``}
@@ -235,4 +257,42 @@ export async function entonnoir(
     FROM ${sql(o.schema)}.baikal_audience v
     ${fragmentWhere(sql, sansFacettes)}
     GROUP BY 1, 2`;
+}
+
+// ------ Sequences ------
+
+export interface Relance {
+  delai_jours: number;
+  objet: string;
+  corps_html: string;
+}
+
+export const RELANCES_MAX = 5;
+
+// Relances telles que l'editeur les envoie : delai entier de 0 a 90 jours,
+// au plus cinq. Le contenu est nettoye par l'appelant (nettoyerCorps).
+export function normaliserRelances(brut: unknown): Relance[] {
+  return (Array.isArray(brut) ? brut : []).slice(0, RELANCES_MAX).map((r) => {
+    const o = (r && typeof r === "object" ? r : {}) as Record<string, unknown>;
+    const d = Math.round(Number(o.delai_jours));
+    return {
+      delai_jours: Number.isFinite(d) ? Math.min(90, Math.max(0, d)) : 3,
+      objet: String(o.objet ?? ""),
+      corps_html: String(o.corps_html ?? ""),
+    };
+  });
+}
+
+// Les mails d'une campagne dans l'ordre ou le worker les sert : les relances
+// d'abord, de la derniere a la premiere (finir les sequences en cours avant
+// d'en ouvrir de nouvelles), puis le mail 1.
+export function ordreDeService(
+  campagne: { objet: string; corps_html: string; relances?: unknown },
+): { rang: number; delaiJours: number; objet: string; corps_html: string }[] {
+  const relances = normaliserRelances(campagne.relances);
+  const mails = [
+    { rang: 1, delaiJours: 0, objet: campagne.objet, corps_html: campagne.corps_html },
+    ...relances.map((r, i) => ({ rang: i + 2, delaiJours: r.delai_jours, objet: r.objet, corps_html: r.corps_html })),
+  ];
+  return mails.reverse();
 }
