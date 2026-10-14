@@ -70,6 +70,30 @@ async function completer(systeme: string, utilisateur: string): Promise<string> 
   return String((await res.json()).choices?.[0]?.message?.content ?? "").trim();
 }
 
+// Regles d'un bon objet : c'est lui qui decide de l'ouverture.
+const REGLES_OBJET = [
+  "Un objet fait moins de 50 caractères, sans majuscules criardes, sans point d'exclamation multiple,",
+  "sans mots déclencheurs de spam (gratuit, urgent, offre exclusive, 100 %), sans emoji.",
+  "Il donne une raison concrète d'ouvrir, liée à l'intention et au brief.",
+  "Les objets proposés suivent trois angles différents : le bénéfice concret, la curiosité",
+  "(une information qu'on veut connaître), la question qui touche le problème du destinataire.",
+].join(" ");
+
+function lireJson(brut: string): Record<string, unknown> {
+  try {
+    return JSON.parse(brut.replace(/^```(?:json)?\s*|\s*```$/g, ""));
+  } catch {
+    throw new Error("Réponse de l'IA illisible, réessayez");
+  }
+}
+
+function objetsPropres(x: unknown): string[] {
+  return (Array.isArray(x) ? x : [])
+    .map((o) => String(o ?? "").replace(/[\r\n]+/g, " ").trim().slice(0, 150))
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
 export async function redigerMail(o: {
   site: string;
   domaine: string | null;
@@ -79,7 +103,32 @@ export async function redigerMail(o: {
   consigne: string;
   objet: string;
   corps: string;
-}): Promise<{ objet: string; corps_html: string }> {
+}): Promise<{ objet: string; objets: string[]; corps_html: string | null }> {
+  const contexte = [
+    o.etape && INTENTIONS[o.etape] ? `Intention : ${INTENTIONS[o.etape]}` : "",
+    o.profils.length ? `Destinataires : ${o.profils.join(", ")}.` : "",
+    o.brief.trim() ? `Brief de l'auteur : ${o.brief.trim()}` : "",
+  ];
+
+  // Objets seuls : trois accroches pour le mail tel qu'il est, corps intact.
+  if (o.consigne === "objets") {
+    const systeme = [
+      `Tu écris des objets d'emails en français pour le site ${o.site}${o.domaine ? ` (${o.domaine})` : ""}.`,
+      REGLES_OBJET,
+      "Réponds UNIQUEMENT en JSON : {\"objets\": [\"…\", \"…\", \"…\"]}, le meilleur en premier.",
+      "Orthographe française complète, avec tous les accents.",
+    ].join(" ");
+    const utilisateur = [
+      "Propose trois objets pour ce mail.",
+      ...contexte,
+      o.corps.trim() ? `Mail :\n${o.corps}` : "",
+      o.objet.trim() ? `Objet actuel, à dépasser : ${o.objet}` : "",
+    ].filter(Boolean).join("\n\n");
+    const objets = objetsPropres(lireJson(await completer(systeme, utilisateur)).objets);
+    if (objets.length === 0) throw new Error("L'IA n'a proposé aucun objet, réessayez");
+    return { objet: objets[0], objets, corps_html: null };
+  }
+
   const systeme = [
     `Tu rédiges des emails marketing en français pour le site ${o.site}${o.domaine ? ` (${o.domaine})` : ""}.`,
     "Style : phrases courtes, vouvoiement, ton direct et humain, aucune formule creuse,",
@@ -89,25 +138,21 @@ export async function redigerMail(o: {
     "Pour l'action principale, un seul lien bouton : <a href=\"URL\" data-bouton>Texte du bouton</a>.",
     "Si le brief ne donne pas d'URL, utilise la page d'accueil du site.",
     "Pas de signature d'entreprise ni de lien de désinscription : ils sont ajoutés automatiquement.",
-    "Réponds UNIQUEMENT en JSON : {\"objet\": \"…\", \"corps_html\": \"…\"}. Objet de moins de 60 caractères.",
+    "L'objet compte autant que le corps : c'est lui qui décide de l'ouverture.",
+    REGLES_OBJET,
+    "Réponds UNIQUEMENT en JSON : {\"objets\": [\"…\", \"…\", \"…\"], \"corps_html\": \"…\"}, le meilleur objet en premier.",
     "Orthographe française complète, avec tous les accents.",
   ].join(" ");
   const utilisateur = [
     `Consigne : ${CONSIGNES[o.consigne] ?? CONSIGNES.rediger}`,
-    o.etape && INTENTIONS[o.etape] ? `Intention : ${INTENTIONS[o.etape]}` : "",
-    o.profils.length ? `Destinataires : ${o.profils.join(", ")}.` : "",
-    o.brief.trim() ? `Brief de l'auteur : ${o.brief.trim()}` : "",
+    ...contexte,
     o.consigne !== "rediger" && o.corps.trim() ? `Mail actuel :\nObjet : ${o.objet}\n${o.corps}` : "",
   ].filter(Boolean).join("\n\n");
-  const brut = await completer(systeme, utilisateur);
-  let r: { objet?: unknown; corps_html?: unknown };
-  try {
-    r = JSON.parse(brut.replace(/^```(?:json)?\s*|\s*```$/g, ""));
-  } catch {
-    throw new Error("Réponse de l'IA illisible, réessayez");
-  }
+  const r = lireJson(await completer(systeme, utilisateur));
+  const objets = objetsPropres(r.objets ?? (r.objet ? [r.objet] : []));
   return {
-    objet: String(r.objet ?? "").replace(/[\r\n]+/g, " ").trim().slice(0, 150),
+    objet: objets[0] ?? "",
+    objets,
     corps_html: nettoyerCorps(String(r.corps_html ?? "")),
   };
 }

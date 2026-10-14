@@ -4,7 +4,8 @@
  * Composer une campagne en trois cartes, l'apercu fidele a droite :
  *  1. Qui   — l'entonnoir commun (etape x profil) quand le site publie
  *             baikal_audience ; sinon les populations du lot 1 (repli).
- *  2. Quoi  — objet, redaction assistee par IA (intention = etape ciblee),
+ *  2. Quoi  — redaction assistee par IA (intention = etape ciblee ; l'IA
+ *             propose aussi trois objets, l'accroche qui fait ouvrir), objet,
  *             corps en traitement de texte (jamais de HTML visible).
  *  3. Quand — ponctuelle ou continue (plafond par jour), test, lancement.
  *
@@ -75,6 +76,9 @@ export default function EditeurCampagne({ appId, etat, campagne: initiale, ecrit
   const [mobile, setMobile] = useState(false);
   const [brief, setBrief] = useState('');
   const [redaction, setRedaction] = useState(null); // consigne en cours
+  // Les objets proposes par l'IA (trois angles) : le premier est applique,
+  // les autres restent un clic plus loin.
+  const [objets, setObjets] = useState([]);
   const [adresseTest, setAdresseTest] = useState(user?.email || '');
   const [message, setMessage] = useState(null);
   const [erreur, setErreur] = useState(null);
@@ -144,8 +148,10 @@ export default function EditeurCampagne({ appId, etat, campagne: initiale, ecrit
     });
     setRedaction(null);
     if (error) { setErreur(error.message); return; }
+    setObjets(data.objets || []);
     setC((x) => ({ ...x, objet: data.objet || x.objet, corps_html: data.corps_html || x.corps_html }));
-    setVersionCorps((v) => v + 1);
+    // « objets » ne touche pas au corps : pas de relecture de l'editeur.
+    if (data.corps_html) setVersionCorps((v) => v + 1);
   }
 
   async function enregistrer() {
@@ -328,9 +334,6 @@ export default function EditeurCampagne({ appId, etat, campagne: initiale, ecrit
 
           {/* 2. Quoi */}
           <Carte numero={2} titre="Message" icone={PenLine}>
-            <input value={c.objet} disabled={contenuFige} onChange={(e) => setC({ ...c, objet: e.target.value })}
-              placeholder="Objet du mail" className={classeInput} />
-
             {ecriture && !contenuFige && (
               <div className="rounded-md border border-violet-500/30 bg-violet-500/5 p-3 space-y-2">
                 <div className="flex items-center gap-2 text-xs text-violet-200">
@@ -354,6 +357,37 @@ export default function EditeurCampagne({ appId, etat, campagne: initiale, ecrit
                 </div>
               </div>
             )}
+
+            {/* L'objet : c'est lui qui fait ouvrir. L'IA en propose trois. */}
+            <div className="space-y-1.5">
+              <div className="relative">
+                <input value={c.objet} disabled={contenuFige} onChange={(e) => setC({ ...c, objet: e.target.value })}
+                  placeholder="Objet du mail" className={`${classeInput} pr-28`} />
+                {ecriture && !contenuFige && (
+                  <button type="button" onClick={() => rediger('objets')}
+                    disabled={Boolean(redaction) || !c.corps_html}
+                    title="Proposer trois objets pour ce mail"
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1 px-2 py-1 rounded text-xs text-violet-200 hover:bg-violet-500/20 disabled:opacity-40">
+                    <Sparkles className="w-3.5 h-3.5" />{redaction === 'objets' ? 'Recherche…' : 'Proposer'}
+                  </button>
+                )}
+              </div>
+              {objets.length > 1 && !contenuFige && (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[11px] text-baikal-text opacity-60">Autres accroches</span>
+                  {objets.map((o) => (
+                    <button key={o} type="button" onClick={() => setC((x) => ({ ...x, objet: o }))}
+                      className={`px-2 py-1 rounded-md text-xs border text-left transition-colors
+                        ${c.objet === o ? 'border-violet-400 text-violet-100 bg-violet-500/15' : 'border-baikal-border text-baikal-text hover:text-white'}`}>
+                      {o}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <p className={`text-[11px] tabular-nums ${c.objet.length > 50 ? 'text-amber-400' : 'text-baikal-text opacity-50'}`}>
+                {c.objet.length} caractères{c.objet.length > 50 ? ' — au-delà de 50, l\'objet est coupé sur mobile' : ''}
+              </p>
+            </div>
 
             <EditeurTexte
               valeur={c.corps_html}
