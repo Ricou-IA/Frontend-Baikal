@@ -46,6 +46,12 @@ function listeProfils(brut: unknown): string[] {
     typeof v === "string" && /^[a-z0-9_]{1,40}$/.test(v)))].slice(0, 20);
 }
 
+// Un desinscrit n'est plus un prospect (Eric, 17/10/2026) : hors de la
+// liste et de l'entonnoir, sauf si on le demande en cochant le statut.
+export function exclureDesinscrits(c: Pick<Criteres, "statuts">): boolean {
+  return !c.statuts.includes("desinscrit");
+}
+
 function listeBlanche(brut: unknown, permis: Set<string>): string[] {
   if (!Array.isArray(brut)) return [];
   return brut.filter((v): v is string => typeof v === "string" && permis.has(v)).slice(0, 20);

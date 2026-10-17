@@ -9,7 +9,7 @@ import { chargerSite, ErreurSite, lecteurSite } from "../_shared/sites.ts";
 import { ErreurAcces, droitsModules, exigerModule, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 import { appelerRelais, ErreurRelais, relaisConfigure } from "../_shared/relais.ts";
 import { preparerActionProspect } from "./actions.ts";
-import { normaliserCriteres } from "./filtres.ts";
+import { exclureDesinscrits, normaliserCriteres } from "./filtres.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -150,6 +150,9 @@ serve(async (req) => {
           ${!avecAudience && avecMetier && c.metiers.length > 0 ? requete`AND metier = ANY(${c.metiers})` : requete``}
           ${avecAudience && avecMetier && c.etapes.length > 0 ? requete`AND etape = ANY(${c.etapes})` : requete``}
           ${avecAudience && avecMetier && c.profils.length > 0 ? requete`AND profil = ANY(${c.profils})` : requete``}
+          ${exclureDesinscrits(c) && colonnes.has("statut")
+            ? requete`AND statut IS DISTINCT FROM 'desinscrit'`
+            : requete``}
           ${c.statuts.length > 0 ? requete`AND statut = ANY(${c.statuts})` : requete``}
           ${c.provenances.length > 0 ? requete`AND provenance = ANY(${c.provenances})` : requete``}
           ${departementFiltre

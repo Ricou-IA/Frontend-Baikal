@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { normaliserCriteres } from "./filtres.ts";
+import { exclureDesinscrits, normaliserCriteres } from "./filtres.ts";
 
 Deno.test("body vide -> valeurs par defaut", () => {
   assertEquals(normaliserCriteres({}), {
@@ -82,4 +82,10 @@ Deno.test("etapes de l'entonnoir en liste blanche, profils controles par la form
   });
   assertEquals(c.etapes, ["a_conquerir", "lead"]);
   assertEquals(c.profils, ["agent_immo", "particulier"]);
+});
+
+Deno.test("desinscrits hors de la liste, sauf statut coche explicitement", () => {
+  assertEquals(exclureDesinscrits(normaliserCriteres({})), true);
+  assertEquals(exclureDesinscrits(normaliserCriteres({ statuts: ["contacte"] })), true);
+  assertEquals(exclureDesinscrits(normaliserCriteres({ statuts: ["desinscrit"] })), false);
 });

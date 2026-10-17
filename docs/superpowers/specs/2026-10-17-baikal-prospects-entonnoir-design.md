@@ -76,9 +76,10 @@ fait*. Le premier devient la grille principale, le second un filtre.
 - Par défaut « À conquérir + Lead » ; pas de tuile Désinscrits.
 - Les barres de l'entonnoir de Prospects comptent **les prospects** (la jointure
   listée), pas l'audience ni les seules adresses écrivables : chaque nombre affiché
-  est le nombre de lignes qu'un clic ramène. Écarts attendus avec Mailing : les
-  désinscrits (listés dans Prospects, écartés par Mailing), et les étapes
-  Engagé/Client, qui dans Mailing comptent aussi les acheteurs jamais prospectés.
+  est le nombre de lignes qu'un clic ramène. Les désinscrits ne sont plus des
+  prospects (Eric, 17/10) : hors liste et hors entonnoir, sauf statut « Désinscrit »
+  coché. À conquérir (37 754) et Lead (178) égalent alors Mailing ; seuls Engagé et
+  Client diffèrent, Mailing y comptant aussi les acheteurs jamais prospectés.
 - Le profil vient de l'audience (`particulier` pour les 196 leads), le métier n'est
   plus filtrable quand l'entonnoir est là.
 
