@@ -63,6 +63,9 @@ serve(async (req) => {
     // console possede, et le seul vocabulaire commun a tous les sites.
     const { data: metiers } = await admin.schema("admin").from("metier")
       .select("slug, libelle, couleur, ordre").order("ordre");
+    // Libelles des profils de l'entonnoir (registre du site, comme Mailing).
+    const { data: registre } = await admin.schema("config").from("apps")
+      .select("categories_client").eq("id", appId).maybeSingle();
 
     sql = lecteurSite(site);
 
@@ -81,7 +84,7 @@ serve(async (req) => {
       (await sql`
         SELECT column_name FROM information_schema.columns
         WHERE table_schema = ${schemaVues} AND table_name = 'baikal_prospects'`)
-        .map((c) => c.column_name as string),
+        .map((c: { column_name: string }) => c.column_name),
     );
 
     // Ecriture : deux transports, jamais les deux a la fois.
@@ -120,14 +123,33 @@ serve(async (req) => {
       // nulle a ce point du flux) une fois pour toutes.
       const requete = sql;
 
-      // Fragment de filtres, compose deux fois : avec le metier (liste et
-      // total affiches) et sans (compteurs des chips, voir plus bas). Une
-      // seule fonction pour ne jamais laisser les deux usages diverger.
+      // Entonnoir (spec 2026-10-17-baikal-prospects-entonnoir) : quand le
+      // site publie baikal_audience, chaque prospect porte l'etape et le
+      // profil que Mailing lui donne. Prospects devient la vue liste de
+      // l'entonnoir : filtre par etape et profil, plus de case « clients »
+      // (un client est une etape). Sans la vue, l'ecran d'avant.
+      const [aud] = await requete`
+        SELECT to_regclass(${schemaVues + ".baikal_audience"}) IS NOT NULL AS ok`;
+      const avecAudience = Boolean(aud.ok);
+      const source = avecAudience
+        ? requete`(
+            SELECT p.*, coalesce(a.etape, 'a_conquerir') AS etape,
+                   coalesce(a.profil, p.metier) AS profil
+            FROM ${requete(schemaVues)}.baikal_prospects p
+            LEFT JOIN ${requete(schemaVues)}.baikal_audience a ON a.email = p.email) v`
+        : requete`${requete(schemaVues)}.baikal_prospects`;
+
+      // Fragment de filtres, compose deux fois : avec les facettes (liste
+      // et total affiches) et sans (compteurs des chips et de l'entonnoir,
+      // voir plus bas). Une seule fonction pour ne jamais laisser les deux
+      // usages diverger.
       const fragmentFiltres = (avecMetier: boolean) => requete`
         WHERE true
           ${c.exclureTests && colonnes.has("est_test") ? requete`AND est_test IS NOT TRUE` : requete``}
-          ${c.exclureClients && colonnes.has("client_depuis") ? requete`AND client_depuis IS NULL` : requete``}
-          ${avecMetier && c.metiers.length > 0 ? requete`AND metier = ANY(${c.metiers})` : requete``}
+          ${!avecAudience && c.exclureClients && colonnes.has("client_depuis") ? requete`AND client_depuis IS NULL` : requete``}
+          ${!avecAudience && avecMetier && c.metiers.length > 0 ? requete`AND metier = ANY(${c.metiers})` : requete``}
+          ${avecAudience && avecMetier && c.etapes.length > 0 ? requete`AND etape = ANY(${c.etapes})` : requete``}
+          ${avecAudience && avecMetier && c.profils.length > 0 ? requete`AND profil = ANY(${c.profils})` : requete``}
           ${c.statuts.length > 0 ? requete`AND statut = ANY(${c.statuts})` : requete``}
           ${c.provenances.length > 0 ? requete`AND provenance = ANY(${c.provenances})` : requete``}
           ${departementFiltre
@@ -153,7 +175,7 @@ serve(async (req) => {
 
       const rows = await requete`
         SELECT *, count(*) OVER() AS total_lignes
-        FROM ${requete(schemaVues)}.baikal_prospects
+        FROM ${source}
         ${filtres}
         ORDER BY ${colonneTri} ${directionTri} NULLS LAST, email ${directionTri}
         LIMIT ${c.parPage} OFFSET ${(c.page - 1) * c.parPage}`;
@@ -163,7 +185,7 @@ serve(async (req) => {
         // count(*) OVER() n'existe que sur les lignes renvoyees : une page
         // au-dela du dernier resultat perdrait le total sans ce repli.
         const [compte] = await requete`
-          SELECT count(*) AS total FROM ${requete(schemaVues)}.baikal_prospects ${filtres}`;
+          SELECT count(*) AS total FROM ${source} ${filtres}`;
         total = Number(compte.total);
       }
 
@@ -174,13 +196,22 @@ serve(async (req) => {
       // ecrase tous les autres a zero (ils ne matchent plus le seul metier
       // alors filtre) : exactement le "deux ecrans, deux nombres" que ce
       // lot existe pour supprimer, reproduit des le premier clic.
-      const compteurs = await requete`
+      // Avec l'entonnoir, une seule requete : la grille etape x profil, que
+      // le composant Entonnoir de Mailing replie en facettes cote client.
+      const entonnoir = avecAudience
+        ? await requete`
+          SELECT etape, profil, count(*)::int AS n
+          FROM ${source}
+          ${fragmentFiltres(false)}
+          GROUP BY etape, profil`
+        : null;
+      const compteurs = avecAudience ? [] : await requete`
         SELECT metier, count(*)::int AS n
         FROM ${requete(schemaVues)}.baikal_prospects
         ${fragmentFiltres(false)}
         GROUP BY metier`;
 
-      const [kpi] = await sql`
+      const [kpi] = avecAudience ? [null] : await sql`
         SELECT count(*)::int AS adressables,
                count(*) FILTER (WHERE statut = 'nouveau')::int AS nouveaux,
                count(*) FILTER (WHERE dernier_contact_le IS NOT NULL)::int AS contactes,
@@ -191,7 +222,7 @@ serve(async (req) => {
       // Le KPI "convertis" doit exclure les tests comme les quatre autres :
       // deux tuiles voisines sur des perimetres differents, c'est le defaut
       // "deux ecrans, deux nombres" que ce lot existe pour supprimer.
-      const [convertis] = colonnes.has("client_depuis")
+      const [convertis] = !avecAudience && colonnes.has("client_depuis")
         ? await sql`
           SELECT count(*)::int AS n FROM ${sql(schemaVues)}.baikal_prospects
           WHERE client_depuis IS NOT NULL
@@ -201,13 +232,15 @@ serve(async (req) => {
       return json({
         data: {
           disponible: true,
-          prospects: rows.map(({ total_lignes: _t, ...p }) => p),
+          prospects: rows.map(({ total_lignes: _t, ...p }: Record<string, unknown>) => p),
           total,
           page: c.page,
           parPage: c.parPage,
           metiers: metiers ?? [],
-          compteurs: Object.fromEntries(compteurs.map((r) => [r.metier, r.n])),
-          kpi: { ...kpi, convertis: convertis.n },
+          compteurs: Object.fromEntries(compteurs.map((r: { metier: string; n: number }) => [r.metier, r.n])),
+          kpi: avecAudience ? null : { ...kpi, convertis: convertis.n },
+          entonnoir,
+          categories: avecAudience ? (registre?.categories_client ?? []) : [],
           colonnes: [...colonnes],
           actions: actionsDispo,
         },

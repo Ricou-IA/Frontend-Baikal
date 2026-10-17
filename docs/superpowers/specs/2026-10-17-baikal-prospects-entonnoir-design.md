@@ -71,6 +71,17 @@ fait*. Le premier devient la grille principale, le second un filtre.
 6. **Site sans `baikal_audience`** (MonsieurDPE aujourd'hui) : Prospects garde ses
    tuiles actuelles et aucun lien n'apparaît. Capacité lue à la présence.
 
+## Décisions d'Eric (17/10) et écart d'implémentation
+
+- Par défaut « À conquérir + Lead » ; pas de tuile Désinscrits.
+- Les barres de l'entonnoir de Prospects comptent **les prospects** (la jointure
+  listée), pas l'audience ni les seules adresses écrivables : chaque nombre affiché
+  est le nombre de lignes qu'un clic ramène. Écarts attendus avec Mailing : les
+  désinscrits (listés dans Prospects, écartés par Mailing), et les étapes
+  Engagé/Client, qui dans Mailing comptent aussi les acheteurs jamais prospectés.
+- Le profil vient de l'audience (`particulier` pour les 196 leads), le métier n'est
+  plus filtrable quand l'entonnoir est là.
+
 ## Hors périmètre
 
 - Unifier les deux vues côté site (`baikal_prospects` reste le contrat de la

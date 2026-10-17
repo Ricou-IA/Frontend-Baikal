@@ -5,11 +5,17 @@
  * contractuelle baikal_prospects (spec 2026-08-27). Baikal ne stocke aucun
  * prospect. Une seule liste : le metier est un filtre, pas un onglet.
  * Un site sans vue n'a pas le module (etat explicite, pas une erreur).
+ *
+ * Site qui publie baikal_audience : Prospects est la vue liste de l'entonnoir
+ * de Mailing (spec 2026-10-17-baikal-prospects-entonnoir). En tete les etapes
+ * et profils, par defaut « A conquerir + Lead » ; « Ecrire a cette
+ * selection » ouvre une campagne avec le meme ciblage.
  * ============================================================================
  */
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  ChevronLeft, ChevronRight, Search, Upload,
+  ChevronLeft, ChevronRight, Search, Send, Upload,
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import ConsoleLayout from '../components/console/ConsoleLayout';
@@ -22,6 +28,8 @@ import { useDroitModule } from '../hooks/useDroitModule';
 import LectureSeule from '../components/console/LectureSeule';
 import ImportProspectsDialog from '../components/console/ImportProspectsDialog';
 import { prospectsService } from '../services/prospects.service';
+import Entonnoir from '../components/console/mailing/Entonnoir';
+import { Badge as BadgeMail, ETAPES } from '../components/console/mailing/commun';
 import {
   BadgeClient, BadgeMetier, BadgeStatut, fmtDate, fmtNombre,
 } from '../components/console/badges-prospects';
@@ -35,6 +43,9 @@ const PROVENANCES = [
   ['import', 'Import'], ['scrape', 'Scrape'],
 ];
 const PAR_PAGE = 25;
+const ETAPES_DEFAUT = ['a_conquerir', 'lead'];
+// Lien Mailing -> Prospects : /prospect?etapes=a,b&profils=x&dept=31
+const lireListe = (v) => (v ? v.split(',').filter(Boolean) : null);
 
 function Chip({ actif, onClick, children }) {
   return (
@@ -61,11 +72,16 @@ function Case({ coche, onChange, children }) {
 
 function ProspectsContent() {
   const { currentApp } = useApp();
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const { ecriture: ecritureMailing } = useDroitModule('mailing');
   const [saisieRecherche, setSaisieRecherche] = useState('');
   const [recherche, setRecherche] = useState('');
-  const [saisieDepartement, setSaisieDepartement] = useState('');
-  const [departement, setDepartement] = useState('');
+  const [saisieDepartement, setSaisieDepartement] = useState(() => params.get('dept') || '');
+  const [departement, setDepartement] = useState(() => params.get('dept') || '');
   const [metiers, setMetiers] = useState([]);
+  const [etapes, setEtapes] = useState(() => lireListe(params.get('etapes')) ?? ETAPES_DEFAUT);
+  const [profils, setProfils] = useState(() => lireListe(params.get('profils')) ?? []);
   const [statuts, setStatuts] = useState([]);
   const [provenances, setProvenances] = useState([]);
   const [avecTelephone, setAvecTelephone] = useState(false);
@@ -140,7 +156,7 @@ function ProspectsContent() {
     let actif = true;
     setChargement(true);
     prospectsService.getListe(currentApp, {
-      recherche, metiers, statuts, provenances, departement,
+      recherche, metiers, etapes, profils, statuts, provenances, departement,
       avecTelephone, exclureTests, exclureClients, page, parPage: PAR_PAGE,
     }).then(({ data, error }) => {
       if (!actif) return;
@@ -149,7 +165,7 @@ function ProspectsContent() {
       setChargement(false);
     });
     return () => { actif = false; };
-  }, [currentApp, recherche, metiers, statuts, provenances, departement,
+  }, [currentApp, recherche, metiers, etapes, profils, statuts, provenances, departement,
       avecTelephone, exclureTests, exclureClients, page, versionListe]);
 
   function basculer(liste, setListe, valeur) {
@@ -169,6 +185,25 @@ function ProspectsContent() {
   }
 
   const aTelephone = (donnees.colonnes || []).includes('telephone');
+  // Capacite lue a la presence : le serveur ne renvoie l'entonnoir que si le
+  // site publie baikal_audience.
+  const audience = Array.isArray(donnees.entonnoir);
+  const libelleProfil = (slug) => (donnees.categories || []).find((k) => k.slug === slug)?.libelle
+    || (donnees.metiers || []).find((m) => m.slug === slug)?.libelle
+    || slug;
+  const etapeDe = (id) => ETAPES.find((e) => e.id === id);
+  const nonRepris = [
+    statuts.length > 0 && 'statut', provenances.length > 0 && 'provenance',
+    recherche && 'recherche', avecTelephone && 'téléphone',
+  ].filter(Boolean);
+  function ecrire() {
+    const q = new URLSearchParams({ depuis: 'prospects' });
+    if (etapes.length) q.set('etapes', etapes.join(','));
+    if (profils.length) q.set('profils', profils.join(','));
+    if (departement) q.set('dept', departement);
+    if (nonRepris.length) q.set('non_repris', nonRepris.join(','));
+    navigate(`/mailing?${q}`);
+  }
 
   return (
     <>
@@ -190,6 +225,43 @@ function ProspectsContent() {
         </button>
       )}
     >
+      {audience ? (
+        <div className="bg-baikal-surface border border-baikal-border rounded-lg p-4 space-y-3">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <h3 className="text-sm font-semibold text-white">Où en sont ces adresses</h3>
+              <p className="text-xs text-baikal-text opacity-70">
+                Les étapes de l'entonnoir de Mailing. Le statut, plus bas, dit ce qu'on leur a déjà envoyé.
+              </p>
+            </div>
+            {ecritureMailing && (
+              <div className="text-right">
+                <button
+                  onClick={ecrire}
+                  className="flex items-center gap-2 px-3 py-2 text-sm rounded-md border border-baikal-cyan text-baikal-cyan hover:bg-baikal-cyan/10"
+                >
+                  <Send className="w-4 h-4" />
+                  Écrire à cette sélection
+                </button>
+                {nonRepris.length > 0 && (
+                  <p className="text-[11px] text-baikal-text opacity-60 mt-1">
+                    Mailing ne reprend pas : {nonRepris.join(', ')}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+          <Entonnoir
+            lignes={donnees.entonnoir}
+            etapes={etapes}
+            profils={profils}
+            libelleProfil={libelleProfil}
+            onEtapes={(v) => { setEtapes(v); setPage(1); }}
+            onProfils={(v) => { setProfils(v); setPage(1); }}
+          />
+        </div>
+      ) : (
+      <>
       {/* KPI : le parc ENTIER du site (tests exclus), pas la selection filtree
           ci-dessous (qui exclut aussi les clients par defaut). Les deux
           nombres ne coincident pas — volontairement, voir le texte sous le
@@ -218,7 +290,9 @@ function ProspectsContent() {
       <div className="bg-baikal-surface border border-baikal-border rounded-lg p-4">
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-xs text-baikal-text opacity-60 mr-1">Métier</span>
-          {(donnees.metiers || []).map((m) => (
+          {(donnees.metiers || [])
+            .filter((m) => (donnees.compteurs?.[m.slug] ?? 0) > 0 || metiers.includes(m.slug))
+            .map((m) => (
             <Chip key={m.slug} actif={metiers.includes(m.slug)}
               onClick={() => basculer(metiers, setMetiers, m.slug)}>
               {m.libelle} · <span className="tabular-nums">{fmtNombre(donnees.compteurs?.[m.slug] ?? 0)}</span>
@@ -226,6 +300,9 @@ function ProspectsContent() {
           ))}
         </div>
       </div>
+
+      </>
+      )}
 
       {/* Barre de filtres */}
       <div className="bg-baikal-surface border border-baikal-border rounded-lg p-4 space-y-3">
@@ -285,10 +362,12 @@ function ProspectsContent() {
             onChange={(e) => { setExclureTests(!e.target.checked); setPage(1); }}>
             Voir les tests
           </Case>
-          <Case coche={!exclureClients}
-            onChange={(e) => { setExclureClients(!e.target.checked); setPage(1); }}>
-            Voir les clients
-          </Case>
+          {!audience && (
+            <Case coche={!exclureClients}
+              onChange={(e) => { setExclureClients(!e.target.checked); setPage(1); }}>
+              Voir les clients
+            </Case>
+          )}
         </div>
       </div>
 
@@ -302,7 +381,7 @@ function ProspectsContent() {
             <thead>
               <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
                 <th className="px-4 py-2">Nom</th>
-                <th className="px-4 py-2">Métier</th>
+                <th className="px-4 py-2">{audience ? 'Profil' : 'Métier'}</th>
                 <th className="px-4 py-2">Spécialité</th>
                 <th className="px-4 py-2">Commune</th>
                 <th className="px-4 py-2">Statut</th>
@@ -324,7 +403,9 @@ function ProspectsContent() {
                     <div className="text-xs opacity-60 truncate max-w-[240px]">{p.email}</div>
                   </td>
                   <td className="px-4 py-3">
-                    <BadgeMetier slug={p.metier} metiers={donnees.metiers} />
+                    {audience
+                      ? <BadgeMetier slug={p.profil} metiers={[...(donnees.metiers || []), ...(donnees.categories || [])]} />
+                      : <BadgeMetier slug={p.metier} metiers={donnees.metiers} />}
                   </td>
                   <td className="px-4 py-3 text-xs">
                     {Array.isArray(p.specialite) && p.specialite.length > 0 ? (
@@ -339,7 +420,11 @@ function ProspectsContent() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <BadgeClient depuis={p.client_depuis} />
+                      {audience
+                        ? !ETAPES_DEFAUT.includes(p.etape) && etapeDe(p.etape) && (
+                          <BadgeMail couleur={etapeDe(p.etape).couleur}>{etapeDe(p.etape).libelle}</BadgeMail>
+                        )
+                        : <BadgeClient depuis={p.client_depuis} />}
                       <BadgeStatut statut={p.statut} />
                     </div>
                   </td>

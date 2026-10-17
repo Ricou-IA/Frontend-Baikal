@@ -7,6 +7,10 @@
 export interface Criteres {
   recherche: string;
   metiers: string[];
+  // Entonnoir (site qui publie baikal_audience) : etape et profil de
+  // l'adresse, memes valeurs que le ciblage Mailing (segment.ts).
+  etapes: string[];
+  profils: string[];
   statuts: string[];
   provenances: string[];
   departement: string;
@@ -24,12 +28,23 @@ export interface Criteres {
 const METIERS = new Set([
   "notaire", "agent_immo", "syndic", "diagnostiqueur", "entreprise_rge", "presse", "autre",
 ]);
+export const ETAPES = new Set([
+  "a_conquerir", "lead", "engage", "client", "recurrent", "perdu",
+]);
 const STATUTS = new Set([
   "nouveau", "contacte", "relance", "repondu", "refus", "desinscrit",
 ]);
 const PROVENANCES = new Set([
   "annuaire_public", "acquisition_propre", "import", "scrape",
 ]);
+
+// Profils : vocabulaire du site (registre ou admin.metier), pas une liste
+// fermee ici. Parametres SQL lies, donc seule la forme est controlee.
+function listeProfils(brut: unknown): string[] {
+  if (!Array.isArray(brut)) return [];
+  return [...new Set(brut.filter((v): v is string =>
+    typeof v === "string" && /^[a-z0-9_]{1,40}$/.test(v)))].slice(0, 20);
+}
 
 function listeBlanche(brut: unknown, permis: Set<string>): string[] {
   if (!Array.isArray(brut)) return [];
@@ -46,6 +61,8 @@ export function normaliserCriteres(body: Record<string, unknown>): Criteres {
       ? body.recherche.trim().slice(0, 200)
       : "",
     metiers: listeBlanche(body.metiers, METIERS),
+    etapes: listeBlanche(body.etapes, ETAPES),
+    profils: listeProfils(body.profils),
     statuts: listeBlanche(body.statuts, STATUTS),
     provenances: listeBlanche(body.provenances, PROVENANCES),
     departement: /^(?:[0-9]{2}|2[AB]|[0-9]{3})$/.test(departement) ? departement : "",

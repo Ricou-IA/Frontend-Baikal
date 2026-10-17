@@ -11,6 +11,7 @@
  * ============================================================================
  */
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { BarChart3, Mail, Plus, Repeat } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import ConsoleLayout from '../components/console/ConsoleLayout';
@@ -52,6 +53,9 @@ function MailingContent() {
   const [onglet, setOnglet] = useState('campagnes');
   // vue : null = liste ; {mode:'editer', campagne} ; {mode:'suivre', id}
   const [vue, setVue] = useState(null);
+  // Arrivee depuis Prospects (« Ecrire a cette selection ») : l'editeur
+  // s'ouvre sur le meme ciblage, une fois l'etat du site charge.
+  const [params, setParams] = useSearchParams();
 
   // Changement de site : vidage pendant le rendu (meme principe que /prospect),
   // jamais une image des campagnes de l'ancien site sous le nom du nouveau.
@@ -80,6 +84,20 @@ function MailingContent() {
     return () => clearInterval(t);
   }, [enCours, vue, onglet]);
 
+  useEffect(() => {
+    if (!etat || params.get('depuis') !== 'prospects') return;
+    const liste = (cle) => (params.get(cle) || '').split(',').filter(Boolean);
+    if (ecriture && etat.populations?.audience) {
+      setVue({
+        mode: 'editer',
+        campagne: null,
+        criteres: { etapes: liste('etapes'), profils: liste('profils'), departement: params.get('dept') || '' },
+        nonRepris: liste('non_repris'),
+      });
+    }
+    setParams({}, { replace: true });
+  }, [etat, params, ecriture, setParams]);
+
   const rafraichir = () => setVersion((v) => v + 1);
 
   if (erreur) return <Erreur message={erreur} />;
@@ -94,6 +112,8 @@ function MailingContent() {
         appId={currentApp}
         etat={etat}
         campagne={vue.campagne}
+        criteresInitiaux={vue.criteres}
+        nonRepris={vue.nonRepris}
         ecriture={ecriture}
         onChange={rafraichir}
         onFerme={(id, suivre) => { setVue(id && suivre ? { mode: 'suivre', id } : null); rafraichir(); }}

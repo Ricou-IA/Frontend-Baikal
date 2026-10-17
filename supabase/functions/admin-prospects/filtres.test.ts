@@ -5,6 +5,8 @@ Deno.test("body vide -> valeurs par defaut", () => {
   assertEquals(normaliserCriteres({}), {
     recherche: "",
     metiers: [],
+    etapes: [],
+    profils: [],
     statuts: [],
     provenances: [],
     departement: "",
@@ -71,4 +73,13 @@ Deno.test("presse est un metier de la taxonomie (contacts presse et createurs)",
     normaliserCriteres({ metiers: ["presse", "notaire"] }).metiers,
     ["presse", "notaire"],
   );
+});
+
+Deno.test("etapes de l'entonnoir en liste blanche, profils controles par la forme", () => {
+  const c = normaliserCriteres({
+    etapes: ["a_conquerir", "lead", "prospect", 3],
+    profils: ["agent_immo", "agent_immo", "Presse", "x; drop", "particulier"],
+  });
+  assertEquals(c.etapes, ["a_conquerir", "lead"]);
+  assertEquals(c.profils, ["agent_immo", "particulier"]);
 });

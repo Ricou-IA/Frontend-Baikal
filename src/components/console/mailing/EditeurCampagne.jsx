@@ -15,6 +15,7 @@
  * ============================================================================
  */
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   ArrowLeft, Monitor, Rocket, Save, Send, Smartphone, Sparkles, Trash2, Users, PenLine, Clock,
 } from 'lucide-react';
@@ -56,13 +57,15 @@ function Case({ coche, onChange, children, disabled }) {
   );
 }
 
-export default function EditeurCampagne({ appId, etat, campagne: initiale, ecriture, onFerme, onChange }) {
+export default function EditeurCampagne({
+  appId, etat, campagne: initiale, criteresInitiaux, nonRepris, ecriture, onFerme, onChange,
+}) {
   const { user } = useAuth();
   const populations = Object.keys(etat.populations || {});
   const [c, setC] = useState(() => initiale ?? {
     nom: '',
-    population: etat.population_defaut || populations[0],
-    criteres: {},
+    population: criteresInitiaux ? 'audience' : (etat.population_defaut || populations[0]),
+    criteres: criteresInitiaux || {},
     objet: '',
     corps_html: '<p>Bonjour {{nom|}},</p><p></p>',
     statut: 'brouillon',
@@ -268,6 +271,13 @@ export default function EditeurCampagne({ appId, etat, campagne: initiale, ecrit
           {/* 1. Qui */}
           <Carte numero={1} titre="Destinataires" icone={Users}
             droite={<span className="text-sm text-baikal-text"><span className="text-baikal-cyan font-semibold tabular-nums">{fmtNombre(total)}</span> ciblé(s)</span>}>
+            {criteresInitiaux && !c.id && (
+              <p className="text-xs text-baikal-text bg-baikal-cyan/5 border border-baikal-cyan/30 rounded-md px-3 py-2">
+                Ciblage repris de Prospects : étapes, profils et département.
+                {(nonRepris || []).length > 0 && ` Non repris : ${nonRepris.join(', ')}.`}
+                {' '}Les désinscrits sont écartés, et la presse aussi tant qu'elle n'est pas cochée.
+              </p>
+            )}
             {populations.length > 1 && !audience && (
               <div className="flex gap-1.5 flex-wrap">
                 {populations.map((p) => (
@@ -348,12 +358,26 @@ export default function EditeurCampagne({ appId, etat, campagne: initiale, ecrit
                 onChange={(v) => setCrit({ exclureDejaEcrits: v })}>
                 Sauf ceux déjà écrits par une campagne
               </Case>
-              {(apercu?.echantillon || []).length > 0 && (
-                <button type="button" onClick={() => setVoirEchantillon((v) => !v)}
-                  className="text-xs text-baikal-cyan hover:underline ml-auto">
-                  {voirEchantillon ? 'Masquer' : 'Voir'} des exemples
-                </button>
-              )}
+              <span className="ml-auto flex items-center gap-3">
+                {(apercu?.echantillon || []).length > 0 && (
+                  <button type="button" onClick={() => setVoirEchantillon((v) => !v)}
+                    className="text-xs text-baikal-cyan hover:underline">
+                    {voirEchantillon ? 'Masquer' : 'Voir'} des exemples
+                  </button>
+                )}
+                {/* Prospects ne liste que des prospects : le lien n'existe que
+                    si la cible ne vise que les etapes ou l'on prospecte. */}
+                {audience && (crit.etapes || []).length > 0
+                  && crit.etapes.every((e) => ['a_conquerir', 'lead'].includes(e)) && (
+                  <Link to={`/prospect?${new URLSearchParams({
+                    etapes: crit.etapes.join(','),
+                    ...((crit.profils || []).length ? { profils: crit.profils.join(',') } : {}),
+                    ...(crit.departement ? { dept: crit.departement } : {}),
+                  })}`} className="text-xs text-baikal-cyan hover:underline">
+                    Voir la liste
+                  </Link>
+                )}
+              </span>
             </div>
             {voirEchantillon && (
               <ul className="text-xs text-baikal-text space-y-0.5 max-h-40 overflow-y-auto">
