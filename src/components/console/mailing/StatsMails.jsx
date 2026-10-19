@@ -16,6 +16,8 @@ import { Chargement, Erreur, Vide } from '../etats';
 import { Chip, fmtNombre } from './commun';
 
 const PERIODES = [[7, '7 jours'], [30, '30 jours'], [90, '90 jours']];
+// Libelle de groupe pose par admin-mailing (action stats) sur ses campagnes.
+const GROUPE_BAIKAL = 'Campagnes Baikal';
 
 function Cellule({ n, base, couleur = 'text-white', alerte }) {
   const pct = base ? (100 * (n || 0)) / base : null;
@@ -101,8 +103,19 @@ export default function StatsMails({ appId }) {
         </div>
       )}
 
-      {groupes.map(([groupe, lignes]) => (
+      {groupes.map(([groupe, lignes], k) => (
         <div key={groupe} className="space-y-1.5">
+          {/* Les groupes du site viennent apres « Campagnes Baikal » (ordre de
+              l'EF) : un intertitre dit d'ou ils viennent et pourquoi ils ne
+              se modifient pas ici (recette du 19/10/2026). */}
+          {groupe !== GROUPE_BAIKAL && (k === 0 || groupes[k - 1][0] === GROUPE_BAIKAL) && (
+            <div className="pt-2 pb-1 border-b border-baikal-border/60 mb-2">
+              <p className="text-sm font-semibold text-white">Mails automatiques du site</p>
+              <p className="text-xs text-baikal-text opacity-70">
+                Codés et envoyés par le site lui-même : Baikal les mesure mais ne les pilote pas encore.
+              </p>
+            </div>
+          )}
           <h3 className="text-xs font-semibold uppercase tracking-wide text-baikal-text opacity-70">{groupe}</h3>
           <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
             <table data-mobile="1,2,4" className="w-full text-sm text-baikal-text">
