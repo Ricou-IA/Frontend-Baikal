@@ -8,7 +8,7 @@ import { chargerSite, ErreurSite, lecteurSite } from "../_shared/sites.ts";
 import { ErreurAcces, droitsModules, exigerModule, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 import { ErreurRelais } from "../_shared/relais.ts";
 import {
-  compterCandidats, entonnoir, estPopulation, mailsIncomplets, normaliserCriteres, normaliserRelances, POPULATIONS,
+  compterCandidats, EMAILS_MAX, entonnoir, estPopulation, mailsIncomplets, normaliserCriteres, normaliserRelances, POPULATIONS,
   type Population,
   requeteCandidats,
 } from "../_shared/mailing/segment.ts";
@@ -34,7 +34,7 @@ function json(payload: unknown, status = 200): Response {
 }
 
 // « rediger » appelle un modele payant : ecriture, comme tout ce qui coute.
-const ECRITURE = ["enregistrer", "test", "lancer", "suspendre", "supprimer", "rediger"];
+const ECRITURE = ["enregistrer", "test", "lancer", "suspendre", "supprimer", "rediger", "envoyer_direct"];
 
 // Plafond par jour d'une campagne continue : entier positif ou null.
 function plafond(x: unknown): number | null {
@@ -99,6 +99,32 @@ serve(async (req) => {
     const from = expediteur(site, cfg);
     const resend = cleResend(cfg);
 
+    // Ce qui empeche tout envoi reel, commun a « lancer » et a l'envoi direct.
+    function obstacleEnvoi(): string | null {
+      if (!from) return "Aucun expéditeur : renseigner l'expéditeur du site dans Paramétrage";
+      if (!resend.cle) return `Secret ${resend.source} absent des Edge Function Secrets`;
+      if (!ecritureConfiguree(site, cfg)) return "Site sur base dédiée sans relais mailing (env_mailing_fn)";
+      if (!Deno.env.get("ADMIN_UNSUBSCRIBE_SECRET")) {
+        return "Secret ADMIN_UNSUBSCRIBE_SECRET absent : aucun envoi possible";
+      }
+      return null;
+    }
+
+    // Reveille le worker sans attendre le cron de la minute (envoi direct).
+    // Sans danger s'il tourne deja : seules les adresses reservees partent.
+    function reveillerWorker() {
+      const secret = Deno.env.get("ADMIN_SEO_CRON_SECRET");
+      if (!secret) return;
+      const appel = fetch(`${supabaseUrl}/functions/v1/admin-mailing-worker`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Cron-Secret": secret },
+        body: "{}",
+      }).then((r) => r.body?.cancel()).catch((e) => console.error("[admin-mailing] reveil worker", e));
+      // deno-lint-ignore no-explicit-any
+      const runtime = (globalThis as any).EdgeRuntime;
+      if (runtime?.waitUntil) runtime.waitUntil(appel);
+    }
+
     switch (action) {
       case "etat": {
         const { data: liste, error } = await campagnes.select("*").eq("app_id", appId)
@@ -139,9 +165,11 @@ serve(async (req) => {
       case "apercu": {
         if (!estPopulation(body.population)) return json({ data: null, error: "population inconnue" }, 400);
         const o = optionsSegment(body.population, body.criteres);
+        // Une liste (lot 4) se montre en entier : la console nomme chaque
+        // destinataire retenu et ceux que les exclusions ont ecartes.
         const [total, echantillon] = await Promise.all([
           compterCandidats(sql, o),
-          requeteCandidats(sql, o, 10),
+          requeteCandidats(sql, o, o.criteres.emails.length > 0 ? EMAILS_MAX : 10),
         ]);
         return json({ data: { total, echantillon }, error: null });
       }
@@ -330,17 +358,11 @@ serve(async (req) => {
         if (!["brouillon", "suspendue"].includes(c.statut)) {
           return json({ data: null, error: `Campagne ${c.statut} : rien à lancer` }, 400);
         }
-        if (!from) return json({ data: null, error: "Aucun expéditeur : renseigner l'expéditeur du site dans Paramétrage" }, 400);
-        if (!resend.cle) return json({ data: null, error: `Secret ${resend.source} absent des Edge Function Secrets` }, 400);
-        if (!ecritureConfiguree(site, cfg)) {
-          return json({ data: null, error: "Site sur base dédiée sans relais mailing (env_mailing_fn)" }, 400);
-        }
+        const obstacle = obstacleEnvoi();
+        if (obstacle) return json({ data: null, error: obstacle }, 400);
         const incomplets = mailsIncomplets(c);
         if (incomplets.length > 0) {
           return json({ data: null, error: `Objet et texte requis : ${incomplets.join(", ")}` }, 400);
-        }
-        if (!Deno.env.get("ADMIN_UNSUBSCRIBE_SECRET")) {
-          return json({ data: null, error: "Secret ADMIN_UNSUBSCRIBE_SECRET absent : aucun envoi possible" }, 400);
         }
         const restants = await compterCandidats(sql, optionsSegment(c.population, c.criteres, c.id));
         // Une campagne continue peut partir a vide : elle attend les entrants.
@@ -373,6 +395,71 @@ serve(async (req) => {
         const { error } = await campagnes.delete().eq("id", c.id);
         if (error) throw error;
         return json({ data: { supprimee: c.id }, error: null });
+      }
+
+      case "envoyer_direct": {
+        // Lot 4 : un mail a une personne depuis sa fiche = une campagne liste
+        // d'une adresse, lancee aussitot. Meme WHERE, meme worker, meme
+        // journal, meme suivi que toute campagne.
+        if (!estPopulation(body.population) || !populations[body.population as Population]) {
+          return json({ data: null, error: "population inconnue" }, 400);
+        }
+        const email = String(body.email ?? "").trim().toLowerCase();
+        if (!EMAIL.test(email)) return json({ data: null, error: "Adresse invalide" }, 400);
+        const obstacle = obstacleEnvoi();
+        if (obstacle) return json({ data: null, error: obstacle }, 400);
+        const contenu = { objet: String(body.objet ?? ""), corps_html: nettoyerCorps(String(body.corps_html ?? "")) };
+        if (mailsIncomplets(contenu).length > 0) return json({ data: null, error: "Objet et texte requis" }, 400);
+        const criteres = normaliserCriteres({ emails: [email] });
+        const n = await compterCandidats(sql, optionsSegment(body.population, criteres));
+        if (n === 0) {
+          return json({ data: null, error: "Cette adresse ne reçoit pas de mail (désinscrite ou refus)" }, 400);
+        }
+        const libelle = String(body.nom ?? "").trim() || email;
+        const maintenant = new Date().toISOString();
+        const { data, error } = await campagnes.insert({
+          app_id: appId, cree_par: user.email ?? user.id, direct: true,
+          nom: `Mail à ${libelle}`.slice(0, 200), population: body.population, criteres,
+          objet: contenu.objet, corps_html: contenu.corps_html, continue: false, relances: [],
+          statut: "en_cours", lancee_le: maintenant, maj_le: maintenant,
+        }).select("*").single();
+        if (error) throw error;
+        reveillerWorker();
+        return json({ data, error: null });
+      }
+
+      case "historique": {
+        // Les mails Baikal recus par une adresse (fiche) : jamais ceux du
+        // site, que le contrat ne journalise pas par personne.
+        const email = String(body.email ?? "").trim().toLowerCase();
+        if (!EMAIL.test(email)) return json({ data: null, error: "Adresse invalide" }, 400);
+        const rows = await sql`
+          SELECT campagne_id::text AS campagne_id, touche, statut, envoye_le, delivre_le,
+                 ouvert_le, clique_le, rebond_le, desinscrit_le, reserve_le
+          FROM ${sql(schema)}.mail_envoi
+          WHERE email = ${email}
+          ORDER BY coalesce(envoye_le, reserve_le) DESC
+          LIMIT 30`;
+        const ids = [...new Set(rows.map((r: { campagne_id: string }) => r.campagne_id))];
+        const noms = ids.length
+          ? (await campagnes.select("id, nom, objet, relances, direct").eq("app_id", appId).in("id", ids)).data ?? []
+          : [];
+        const parId = new Map(noms.map((n: { id: string }) => [n.id, n]));
+        return json({
+          data: rows.map((r: Record<string, unknown>) => {
+            const c = parId.get(String(r.campagne_id)) as
+              | { nom: string; objet: string; relances: { objet: string }[]; direct: boolean }
+              | undefined;
+            const t = Number(r.touche);
+            return {
+              ...r,
+              campagne: c?.nom ?? null,
+              direct: c?.direct === true,
+              objet: t > 1 ? c?.relances?.[t - 2]?.objet ?? null : c?.objet ?? null,
+            };
+          }),
+          error: null,
+        });
       }
 
       case "detail": {

@@ -31,6 +31,7 @@ import ConfirmModal from '../ui/ConfirmModal';
 import {
   BadgeClient, BadgeMetier, BadgeStatut, fmtDate, fmtNombre,
 } from './badges-prospects';
+import EnvoiDirect from './mailing/EnvoiDirect';
 
 // "desinscrit" est volontairement absent de cette liste : voir le
 // commentaire au-dessus du select dans BarreActions.
@@ -297,6 +298,13 @@ export default function FicheProspect({
                 </Ligne>
               )}
             </dl>
+          )}
+          {/* Lot 4 : ecrire a ce prospect sans quitter sa fiche. */}
+          {pro && (
+            <div className="mt-4 pt-4 border-t border-baikal-border">
+              <EnvoiDirect population="prospects" email={email}
+                nom={pro.nom_affiche && pro.nom_affiche !== email ? pro.nom_affiche : null} />
+            </div>
           )}
         </div>
       </div>

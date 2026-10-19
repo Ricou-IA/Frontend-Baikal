@@ -29,6 +29,7 @@ import LectureSeule from '../components/console/LectureSeule';
 import ImportProspectsDialog from '../components/console/ImportProspectsDialog';
 import { prospectsService } from '../services/prospects.service';
 import Entonnoir from '../components/console/mailing/Entonnoir';
+import { BandeauSelection, CaseEntete, CaseLigne, useSelectionMail } from '../components/console/mailing/SelectionMail';
 import { Badge as BadgeMail, ETAPES } from '../components/console/mailing/commun';
 import {
   BadgeClient, BadgeMetier, BadgeStatut, fmtDate, fmtNombre,
@@ -75,6 +76,7 @@ function ProspectsContent() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const { ecriture: ecritureMailing } = useDroitModule('mailing');
+  const selection = useSelectionMail(currentApp);
   const [saisieRecherche, setSaisieRecherche] = useState('');
   const [recherche, setRecherche] = useState('');
   const [saisieDepartement, setSaisieDepartement] = useState(() => params.get('dept') || '');
@@ -374,12 +376,14 @@ function ProspectsContent() {
       <p className="text-sm text-baikal-text">
         <span className="text-baikal-cyan font-semibold tabular-nums">{fmtNombre(donnees.total)}</span> prospects correspondent à ces filtres
       </p>
+      <BandeauSelection selection={selection} population="prospects" />
 
       <ContenuEstompe enCours={chargement}>
         <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
-          <table data-mobile="1,4,5" className="w-full text-sm text-baikal-text">
+          <table data-mobile="1,2,5,6" className="w-full text-sm text-baikal-text">
             <thead>
               <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
+                <CaseEntete selection={selection} emails={(donnees.prospects || []).map((p) => p.email)} />
                 <th className="px-4 py-2">Nom</th>
                 <th className="px-4 py-2">{audience ? 'Profil' : 'Métier'}</th>
                 <th className="px-4 py-2">Spécialité</th>
@@ -390,7 +394,7 @@ function ProspectsContent() {
             </thead>
             <tbody>
               {(donnees.prospects || []).length === 0 && (
-                <LigneVide colonnes={6} message="Aucun prospect ne correspond aux filtres." />
+                <LigneVide colonnes={7} message="Aucun prospect ne correspond aux filtres." />
               )}
               {(donnees.prospects || []).map((p) => (
                 <tr
@@ -398,6 +402,7 @@ function ProspectsContent() {
                   onClick={() => setEmailOuvert(p.email)}
                   className="border-t border-baikal-border/50 cursor-pointer hover:bg-baikal-bg/50"
                 >
+                  <CaseLigne selection={selection} email={p.email} />
                   <td className="px-4 py-3">
                     <div className="text-white truncate max-w-[240px]">{p.nom_affiche || p.email}</div>
                     <div className="text-xs opacity-60 truncate max-w-[240px]">{p.email}</div>

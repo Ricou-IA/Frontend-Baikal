@@ -47,6 +47,8 @@ export const mailingService = {
   lancer: (appId, campagneId) => appelerEdge({ action: 'lancer', appId, campagneId }),
   suspendre: (appId, campagneId) => appelerEdge({ action: 'suspendre', appId, campagneId }),
   supprimer: (appId, campagneId) => appelerEdge({ action: 'supprimer', appId, campagneId }),
+  envoyerDirect: (appId, envoi) => appelerEdge({ action: 'envoyer_direct', appId, ...envoi }),
+  historique: (appId, email) => appelerEdge({ action: 'historique', appId, email }),
   detail: (appId, campagneId, page = 1, statut = null) =>
     appelerEdge({ action: 'detail', appId, campagneId, page, statut }),
 };

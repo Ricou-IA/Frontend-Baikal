@@ -46,6 +46,21 @@ export interface Criteres {
   actifs: boolean;
   // toutes : ne jamais reecrire une adresse deja servie par une campagne Baikal
   exclureDejaEcrits: boolean;
+  // Campagne « liste » (lot 4) : des personnes choisies une a une. Seul
+  // critere applique ; les exclusions par defaut (presse, clients, tests)
+  // tombent — la personne a ete cochee —, les exclusions dures restent
+  // (desinscrits, refus).
+  emails: string[];
+}
+
+// Au-dela, c'est une campagne de ciblage, pas un envoi a des personnes.
+export const EMAILS_MAX = 50;
+
+export function normaliserEmails(x: unknown): string[] {
+  if (!Array.isArray(x)) return [];
+  return [...new Set(x.filter((v): v is string => typeof v === "string")
+    .map((v) => v.trim().toLowerCase())
+    .filter((v) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v) && v.length <= 254))].slice(0, EMAILS_MAX);
 }
 
 // Statuts de prospection qui ne recoivent JAMAIS de mail, quel que soit le
@@ -77,6 +92,7 @@ export function normaliserCriteres(brut: unknown): Criteres {
     categories: listeTextes(b.categories),
     actifs: b.actifs !== false,
     exclureDejaEcrits: b.exclureDejaEcrits === true,
+    emails: normaliserEmails(b.emails),
   };
 }
 
@@ -120,11 +136,13 @@ function fragmentWhere(sql: Sql, o: OptionsRequete) {
   const s = sql;
   const departement = /^2[AB]$/.test(c.departement) ? "20" : c.departement;
   const metiersExclus = METIERS_EXCLUS_PAR_DEFAUT.filter((m) => !c.metiers.includes(m));
+  const liste = c.emails.length > 0;
   return s`
     WHERE v.email IS NOT NULL AND trim(v.email) <> ''
       AND NOT EXISTS (SELECT 1 FROM ${s(schema)}.baikal_mail_optout o
                       WHERE o.email = lower(trim(v.email)))
-      ${col.has("est_test") ? s`AND v.est_test IS NOT TRUE` : s``}
+      ${liste ? s`AND lower(trim(v.email)) = ANY(${c.emails})` : s``}
+      ${!liste && col.has("est_test") ? s`AND v.est_test IS NOT TRUE` : s``}
       ${col.has("supprime_le") ? s`AND v.supprime_le IS NULL` : s``}
       ${o.campagneId && (o.touche?.rang ?? 1) > 1
         ? s`AND EXISTS (SELECT 1 FROM ${s(schema)}.mail_envoi e
@@ -151,8 +169,8 @@ function fragmentWhere(sql: Sql, o: OptionsRequete) {
                             WHERE e2.email = lower(trim(v.email)) AND e2.envoye_le IS NOT NULL
                               ${o.campagneId ? s`AND e2.campagne_id <> ${o.campagneId}` : s``})`
         : s``}
-      ${population === "prospects" ? s`
-        ${col.has("statut") ? s`AND v.statut <> ALL(${STATUTS_EXCLUS})` : s``}
+      ${population === "prospects" && col.has("statut") ? s`AND v.statut <> ALL(${STATUTS_EXCLUS})` : s``}
+      ${population === "prospects" && !liste ? s`
         ${c.metiers.length > 0 && col.has("metier") ? s`AND v.metier = ANY(${c.metiers})` : s``}
         ${metiersExclus.length > 0 && col.has("metier") ? s`AND v.metier <> ALL(${metiersExclus})` : s``}
         ${c.statuts.length > 0 && col.has("statut") ? s`AND v.statut = ANY(${c.statuts})` : s``}
@@ -161,7 +179,7 @@ function fragmentWhere(sql: Sql, o: OptionsRequete) {
         ${c.exclureClients && col.has("client_depuis") ? s`AND v.client_depuis IS NULL` : s``}
         ${c.jamaisContactes && col.has("dernier_contact_le") ? s`AND v.dernier_contact_le IS NULL` : s``}
       ` : s``}
-      ${population === "audience" ? s`
+      ${population === "audience" && !liste ? s`
         ${c.etapes.length > 0 ? s`AND v.etape = ANY(${c.etapes})` : s``}
         ${c.profils.length > 0 && col.has("profil") ? s`AND v.profil = ANY(${c.profils})` : s``}
         ${!o.sansExclusionParDefaut && col.has("profil") && METIERS_EXCLUS_PAR_DEFAUT.filter((m) => !c.profils.includes(m)).length > 0
@@ -169,14 +187,14 @@ function fragmentWhere(sql: Sql, o: OptionsRequete) {
         ${departement && col.has("code_postal")
           ? s`AND left(v.code_postal, ${departement.length}) = ${departement}` : s``}
       ` : s``}
-      ${population === "clients" ? s`
+      ${population === "clients" && !liste ? s`
         ${c.paye === "payes" && col.has("paye_le") ? s`AND v.paye_le IS NOT NULL` : s``}
         ${c.paye === "non_payes" && col.has("paye_le") ? s`AND v.paye_le IS NULL` : s``}
       ` : s``}
-      ${population === "comptes" ? s`
+      ${population === "comptes" && !liste ? s`
         ${c.actifs && col.has("actif") ? s`AND v.actif IS TRUE` : s``}
       ` : s``}
-      ${population !== "prospects" && c.categories.length > 0 && col.has("categorie")
+      ${!liste && population !== "prospects" && c.categories.length > 0 && col.has("categorie")
         ? s`AND v.categorie = ANY(${c.categories})` : s``}`;
 }
 

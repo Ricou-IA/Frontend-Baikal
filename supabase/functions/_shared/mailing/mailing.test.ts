@@ -164,3 +164,13 @@ Deno.test("mails incomplets d'une sequence, nommes", () => {
   }), ["relance 2"]);
   assertEquals(mailsIncomplets({ objet: "", corps_html: "", relances: [] }), ["mail 1"]);
 });
+
+import { EMAILS_MAX, normaliserEmails } from "./segment.ts";
+
+Deno.test("liste : adresses normalisees, dedoublonnees, plafonnees", () => {
+  assertEquals(normaliserEmails([" A@B.fr ", "a@b.fr", "pas-une-adresse", 3, "c@d.com"]), ["a@b.fr", "c@d.com"]);
+  const beaucoup = Array.from({ length: 80 }, (_, i) => `p${i}@x.fr`);
+  assertEquals(normaliserEmails(beaucoup).length, EMAILS_MAX);
+  assertEquals(normaliserCriteres({}).emails, []);
+  assertEquals(normaliserCriteres({ emails: ["X@Y.FR"] }).emails, ["x@y.fr"]);
+});

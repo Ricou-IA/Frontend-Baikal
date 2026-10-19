@@ -11,7 +11,7 @@
  * ============================================================================
  */
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { BarChart3, Mail, Plus, Repeat } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import ConsoleLayout from '../components/console/ConsoleLayout';
@@ -38,6 +38,8 @@ function Onglet({ actif, onClick, icone: Icone, children }) {
 
 // « Engagé, Lead » pour une campagne sur l'entonnoir ; la population sinon.
 function libelleCible(c) {
+  const n = (c.criteres?.emails || []).length;
+  if (n > 0) return `${n} personne${n > 1 ? 's' : ''} choisie${n > 1 ? 's' : ''}`;
   if (c.population !== 'audience') return POPULATIONS[c.population] || c.population;
   const etapes = c.criteres?.etapes || [];
   if (etapes.length === 0) return 'Toute l\'audience';
@@ -51,11 +53,19 @@ function MailingContent() {
   const [erreur, setErreur] = useState(null);
   const [version, setVersion] = useState(0);
   const [onglet, setOnglet] = useState('campagnes');
+  // Les envois directs (lot 4, depuis une fiche) sont replies par defaut :
+  // ils noieraient les campagnes.
+  const [masquerDirects, setMasquerDirects] = useState(true);
   // vue : null = liste ; {mode:'editer', campagne} ; {mode:'suivre', id}
   const [vue, setVue] = useState(null);
   // Arrivee depuis Prospects (« Ecrire a cette selection ») : l'editeur
   // s'ouvre sur le meme ciblage, une fois l'etat du site charge.
   const [params, setParams] = useSearchParams();
+  // Arrivee depuis des lignes cochees (lot 4) : les adresses passent par
+  // l'etat de navigation, jamais par l'URL (donnees personnelles).
+  const location = useLocation();
+  const navigate = useNavigate();
+  const selection = location.state?.selection;
 
   // Changement de site : vidage pendant le rendu (meme principe que /prospect),
   // jamais une image des campagnes de l'ancien site sous le nom du nouveau.
@@ -98,6 +108,20 @@ function MailingContent() {
     setParams({}, { replace: true });
   }, [etat, params, ecriture, setParams]);
 
+  useEffect(() => {
+    if (!etat || !selection) return;
+    if (ecriture && etat.populations?.[selection.population] && (selection.emails || []).length > 0) {
+      setVue({
+        mode: 'editer',
+        campagne: null,
+        criteres: { emails: selection.emails },
+        population: selection.population,
+        origine: 'selection',
+      });
+    }
+    navigate(location.pathname, { replace: true, state: null });
+  }, [etat, selection, ecriture, navigate, location.pathname]);
+
   const rafraichir = () => setVersion((v) => v + 1);
 
   if (erreur) return <Erreur message={erreur} />;
@@ -113,6 +137,8 @@ function MailingContent() {
         etat={etat}
         campagne={vue.campagne}
         criteresInitiaux={vue.criteres}
+        populationInitiale={vue.population}
+        origine={vue.origine}
         nonRepris={vue.nonRepris}
         ecriture={ecriture}
         onChange={rafraichir}
@@ -136,7 +162,9 @@ function MailingContent() {
     );
   }
 
-  const campagnes = etat.campagnes || [];
+  const toutes = etat.campagnes || [];
+  const nbDirects = toutes.filter((c) => c.direct).length;
+  const campagnes = masquerDirects ? toutes.filter((c) => !c.direct) : toutes;
   const e = etat.envoi || {};
   const sansPopulation = Object.keys(etat.populations || {}).length === 0;
 
@@ -169,6 +197,13 @@ function MailingContent() {
               </span>
               {!e.cle && <Badge couleur="red">clé Resend absente</Badge>}
               {e.ecriture === false && <Badge couleur="amber">relais mailing du site non configuré</Badge>}
+              {nbDirects > 0 && (
+                <label className="ml-auto flex items-center gap-1.5 cursor-pointer select-none">
+                  <input type="checkbox" checked={masquerDirects} onChange={(ev) => setMasquerDirects(ev.target.checked)}
+                    className="accent-baikal-cyan" />
+                  Masquer les envois directs ({fmtNombre(nbDirects)})
+                </label>
+              )}
             </div>
 
             {sansPopulation ? (
@@ -201,6 +236,7 @@ function MailingContent() {
                           className="border-t border-baikal-border/50 cursor-pointer hover:bg-baikal-bg/50">
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-1.5 text-white truncate max-w-[280px]">
+                              {c.direct && <Badge couleur="sky">Direct</Badge>}
                               {(c.relances || []).length > 0
                                 ? <span className="text-[10px] px-1.5 py-0.5 rounded bg-baikal-cyan/15 text-baikal-cyan shrink-0">{c.relances.length + 1} mails</span>
                                 : c.continue && <Repeat className="w-3.5 h-3.5 text-baikal-cyan shrink-0" title="En continu" />}

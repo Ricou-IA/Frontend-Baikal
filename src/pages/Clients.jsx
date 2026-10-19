@@ -21,6 +21,7 @@ import {
 } from '../components/console/etats';
 import { dossiersService } from '../services/dossiers.service';
 import Fiche from '../components/console/fiche/Fiche';
+import { BandeauSelection, CaseEntete, CaseLigne, useSelectionMail } from '../components/console/mailing/SelectionMail';
 import BandeauMesures from '../components/console/BandeauMesures';
 import { BadgeCanal, BadgeCategorie, BadgeEtape, fmtDate } from '../components/console/badges-clients';
 
@@ -67,6 +68,7 @@ function ClientsContent() {
   const [inclureSupprimes, setInclureSupprimes] = useState(false);
   const [page, setPage] = useState(1);
   const [ficheId, setFicheId] = useState(null);
+  const selection = useSelectionMail(currentApp);
 
   // Debounce de la recherche : 400 ms apres la derniere frappe.
   useEffect(() => {
@@ -228,10 +230,12 @@ function ClientsContent() {
       {!donnees && !erreur && <Chargement />}
       {donnees && donnees.disponible !== false && (
         <ContenuEstompe enCours={enCours}>
+          <BandeauSelection selection={selection} population="clients" />
           <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
-            <table data-mobile={aAbonnement ? '2,4,7' : '2,4,6'} className="w-full text-sm text-baikal-text">
+            <table data-mobile={aAbonnement ? '1,3,5,8' : '1,3,5,7'} className="w-full text-sm text-baikal-text">
               <thead>
                 <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
+                  <CaseEntete selection={selection} emails={dossiers.map((d) => d.email)} />
                   <th className="px-4 py-2">ID</th>
                   <th className="px-4 py-2">Contact</th>
                   <th className="px-4 py-2">Origine</th>
@@ -244,7 +248,7 @@ function ClientsContent() {
               </thead>
               <tbody>
                 {dossiers.length === 0 && (
-                  <LigneVide colonnes={aAbonnement ? 8 : 7}
+                  <LigneVide colonnes={aAbonnement ? 9 : 8}
                     message="Aucun dossier ne correspond aux filtres." />
                 )}
                 {dossiers.map((d) => (
@@ -254,6 +258,7 @@ function ClientsContent() {
                     className={`border-t border-baikal-border/50 cursor-pointer hover:bg-baikal-bg/50
                       ${d.supprime_le ? 'opacity-50' : ''}`}
                   >
+                    <CaseLigne selection={selection} email={d.email} />
                     <td className="px-4 py-3 font-mono text-xs opacity-60">
                       {d.dossier_id.slice(0, 8)}
                     </td>

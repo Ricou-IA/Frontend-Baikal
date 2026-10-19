@@ -70,14 +70,42 @@ function Case({ coche, onChange, children, disabled }) {
   );
 }
 
+// Campagne « liste » (lot 4) : les personnes cochees, nommees une a une.
+// Retenues = celles que le serveur garde (meme WHERE que l'envoi) ; les
+// autres sont ecartees par une exclusion dure (desinscrit, refus).
+function ListeDestinataires({ emails, retenus, disabled, onRetirer }) {
+  const parEmail = new Map((retenus || []).map((d) => [d.email, d]));
+  return (
+    <ul className="divide-y divide-baikal-border/50 border border-baikal-border rounded-md">
+      {emails.map((e) => {
+        const d = parEmail.get(e);
+        const ecarte = retenus && !d;
+        return (
+          <li key={e} className={`flex items-center gap-2 px-3 py-2 text-sm ${ecarte ? 'opacity-50' : ''}`}>
+            <span className="flex-1 min-w-0 truncate">
+              {d?.nom ? <span className="text-white">{d.nom} · </span> : null}
+              <span className="text-baikal-text">{e}</span>
+            </span>
+            {ecarte && <span className="text-[11px] text-amber-300">écarté (désinscrit ou refus)</span>}
+            {!disabled && (
+              <button type="button" onClick={() => onRetirer(e)} title="Retirer"
+                className="text-xs text-baikal-text hover:text-red-300">×</button>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 export default function EditeurCampagne({
-  appId, etat, campagne: initiale, criteresInitiaux, nonRepris, ecriture, onFerme, onChange,
+  appId, etat, campagne: initiale, criteresInitiaux, populationInitiale, origine, nonRepris, ecriture, onFerme, onChange,
 }) {
   const { user } = useAuth();
   const populations = Object.keys(etat.populations || {});
   const [c, setC] = useState(() => initiale ?? {
     nom: '',
-    population: criteresInitiaux ? 'audience' : (etat.population_defaut || populations[0]),
+    population: populationInitiale || (criteresInitiaux ? 'audience' : (etat.population_defaut || populations[0])),
     criteres: criteresInitiaux || {},
     objet: '',
     corps_html: '<p>Bonjour {{nom|}},</p><p></p>',
@@ -111,6 +139,7 @@ export default function EditeurCampagne({
   const crit = c.criteres || {};
   const setCrit = (maj) => setC((x) => ({ ...x, criteres: { ...(x.criteres || {}), ...maj } }));
   const relances = c.relances || [];
+  const liste = (crit.emails || []).length > 0;
   const mailDe = (i) => (i === 0
     ? { objet: c.objet, corps_html: c.corps_html, delai_jours: 0 }
     : relances[i - 1] || { objet: '', corps_html: '', delai_jours: 3 });
@@ -288,13 +317,29 @@ export default function EditeurCampagne({
           {/* 1. Qui */}
           <Carte numero={1} titre="Destinataires" icone={Users}
             droite={<span className="text-sm text-baikal-text"><span className="text-baikal-cyan font-semibold tabular-nums">{fmtNombre(total)}</span> ciblé(s)</span>}>
-            {criteresInitiaux && !c.id && (
+            {criteresInitiaux && !c.id && !liste && (
               <p className="text-xs text-baikal-text bg-baikal-cyan/5 border border-baikal-cyan/30 rounded-md px-3 py-2">
                 Ciblage repris de Prospects : étapes, profils et département.
                 {(nonRepris || []).length > 0 && ` Non repris : ${nonRepris.join(', ')}.`}
                 {' '}Les désinscrits sont écartés, et la presse aussi tant qu'elle n'est pas cochée.
               </p>
             )}
+            {liste ? (
+              <div className="space-y-2">
+                <p className="text-xs text-baikal-text">
+                  {origine === 'selection' && !c.id ? 'Personnes cochées' : 'Personnes choisies'} ·{' '}
+                  {POPULATIONS[c.population] || c.population}. Les exclusions par défaut (presse, clients, tests)
+                  ne s'appliquent pas à une liste ; les désinscrits restent écartés.
+                </p>
+                <ListeDestinataires
+                  emails={crit.emails}
+                  retenus={apercu?.echantillon || null}
+                  disabled={cibleFigee}
+                  onRetirer={(e) => setCrit({ emails: crit.emails.filter((x) => x !== e) })}
+                />
+              </div>
+            ) : (
+            <>
             {populations.length > 1 && !audience && (
               <div className="flex gap-1.5 flex-wrap">
                 {populations.map((p) => (
@@ -405,6 +450,8 @@ export default function EditeurCampagne({
                   </li>
                 ))}
               </ul>
+            )}
+                      </>
             )}
           </Carte>
 

@@ -26,6 +26,7 @@ import {
 } from '../components/console/etats';
 import { comptesProService } from '../services/comptesPro.service';
 import FicheCompte from '../components/console/compte/FicheCompte';
+import { BandeauSelection, CaseEntete, CaseLigne, useSelectionMail } from '../components/console/mailing/SelectionMail';
 import { fmtDate, fmtEur } from '../components/console/badges-clients';
 
 const PAR_PAGE = 25;
@@ -64,6 +65,7 @@ function ComptesProContent() {
   const [ordre, setOrdre] = useState('asc');
   const [page, setPage] = useState(1);
   const [ficheId, setFicheId] = useState(null);
+  const selection = useSelectionMail(currentApp);
   // La fermeture d'une fiche relit la liste : un crédit, une fermeture ou une
   // suppression doivent s'y voir sans recharger la page.
   const [version, setVersion] = useState(0);
@@ -159,10 +161,12 @@ function ComptesProContent() {
 
       {donnees && (
         <ContenuEstompe enCours={enCours}>
+          <BandeauSelection selection={selection} population="comptes" />
           <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
             <table className="w-full min-w-[720px] text-sm text-baikal-text">
               <thead>
                 <tr className="text-left text-xs opacity-70 border-b border-baikal-border">
+                  <CaseEntete selection={selection} emails={comptes.map((c) => c.email)} />
                   <th className="px-4 py-2 cursor-pointer" onClick={() => trierPar('raison_sociale')}>
                     Société<Fleche colonne="raison_sociale" />
                   </th>
@@ -191,7 +195,7 @@ function ComptesProContent() {
               </thead>
               <tbody>
                 {comptes.length === 0 && (
-                  <LigneVide colonnes={8} message="Aucun compte ne correspond aux filtres." />
+                  <LigneVide colonnes={9} message="Aucun compte ne correspond aux filtres." />
                 )}
                 {comptes.map((c) => (
                   <tr
@@ -200,6 +204,7 @@ function ComptesProContent() {
                     className={`border-t border-baikal-border/50 cursor-pointer hover:bg-baikal-bg/40
                       ${c.supprime_le ? 'opacity-50' : ''} ${c.actif === false ? 'opacity-60' : ''}`}
                   >
+                    <CaseLigne selection={selection} email={c.email} />
                     <td className="px-4 py-3">
                       <div className="text-white truncate max-w-[260px]">{c.raison_sociale}</div>
                       {c.actif === false && (

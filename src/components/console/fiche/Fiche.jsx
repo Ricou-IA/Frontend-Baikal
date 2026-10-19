@@ -24,6 +24,7 @@ import OngletConversation from './OngletConversation';
 import OngletFiche from './OngletFiche';
 import OngletListe from './OngletListe';
 import OngletTimeline from './OngletTimeline';
+import EnvoiDirect from '../mailing/EnvoiDirect';
 
 const VIDES = {
   documents: 'Aucune pièce déposée sur ce dossier.',
@@ -234,6 +235,11 @@ export default function Fiche({ appId, dossierId, onClose }) {
           {!donnees && !erreur && <Chargement />}
           {d && actif?.cle === 'vue' && (
             <OngletFiche dossier={d} sections={donnees.sections} categories={donnees.categories} />
+          )}
+          {d && actif?.cle === 'vue' && d.email && (
+            <div className="pt-4 border-t border-baikal-border">
+              <EnvoiDirect population="clients" email={d.email} nom={d.contact_nom || null} />
+            </div>
           )}
           {d && actif && actif.cle !== 'vue' && (
             <ContenuOnglet

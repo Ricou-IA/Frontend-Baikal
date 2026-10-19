@@ -20,6 +20,7 @@ import BarreActions from '../fiche/BarreActions';
 import Fiche from '../fiche/Fiche';
 import { COLONNES } from '../fiche/colonnes';
 import { formaterValeur } from '../fiche/formats';
+import EnvoiDirect from '../mailing/EnvoiDirect';
 
 function Tuile({ libelle, valeur }) {
   return (
@@ -141,6 +142,10 @@ export default function FicheCompte({ appId, compteId, onClose }) {
             <p className="text-xs text-amber-300">Actions indisponibles : {donnees.actionsErreur}</p>
           )}
           {!donnees && !erreur && <Chargement />}
+
+          {c?.email && (
+            <EnvoiDirect population="comptes" email={c.email} nom={c.contact_nom || c.raison_sociale || null} />
+          )}
 
           {c && (blocs.credits || blocs.argent) && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
