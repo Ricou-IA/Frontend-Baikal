@@ -147,3 +147,20 @@ Deno.test("jours ouvres dans le fuseau du site", () => {
   assertEquals(estJourOuvre("Europe/Paris", new Date("2026-10-18T23:30:00Z")), true);  // lundi 01h30 a Paris
   assertEquals(estJourOuvre("Europe/Paris", new Date("2026-10-16T22:30:00Z")), false); // samedi 00h30 a Paris
 });
+
+import { mailIncomplet, mailsIncomplets } from "./segment.ts";
+
+Deno.test("mail incomplet : sans objet, ou corps reduit a la formule d'appel", () => {
+  assertEquals(mailIncomplet({ objet: "", corps_html: "<p>Texte</p>" }), true);
+  assertEquals(mailIncomplet({ objet: "Relance", corps_html: "<p>Bonjour {{nom|}},</p><p></p>" }), true);
+  assertEquals(mailIncomplet({ objet: "Relance", corps_html: "<p>Bonjour&nbsp;,</p><p><br></p>" }), true);
+  assertEquals(mailIncomplet({ objet: "Relance", corps_html: "<p>Bonjour {{nom|}},</p><p>Avez-vous vu ?</p>" }), false);
+});
+
+Deno.test("mails incomplets d'une sequence, nommes", () => {
+  assertEquals(mailsIncomplets({
+    objet: "A", corps_html: "<p>Bonjour, voici</p>",
+    relances: [{ delai_jours: 3, objet: "B", corps_html: "<p>Suite</p>" }, { delai_jours: 3, objet: "", corps_html: "" }],
+  }), ["relance 2"]);
+  assertEquals(mailsIncomplets({ objet: "", corps_html: "", relances: [] }), ["mail 1"]);
+});

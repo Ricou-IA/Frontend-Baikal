@@ -8,7 +8,8 @@ import { chargerSite, ErreurSite, lecteurSite } from "../_shared/sites.ts";
 import { ErreurAcces, droitsModules, exigerModule, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 import { ErreurRelais } from "../_shared/relais.ts";
 import {
-  compterCandidats, entonnoir, estPopulation, normaliserCriteres, normaliserRelances, POPULATIONS, type Population,
+  compterCandidats, entonnoir, estPopulation, mailsIncomplets, normaliserCriteres, normaliserRelances, POPULATIONS,
+  type Population,
   requeteCandidats,
 } from "../_shared/mailing/segment.ts";
 import { redigerMail } from "../_shared/mailing/redaction.ts";
@@ -334,7 +335,10 @@ serve(async (req) => {
         if (!ecritureConfiguree(site, cfg)) {
           return json({ data: null, error: "Site sur base dédiée sans relais mailing (env_mailing_fn)" }, 400);
         }
-        if (!c.objet.trim() || !c.corps_html.trim()) return json({ data: null, error: "Objet et corps requis" }, 400);
+        const incomplets = mailsIncomplets(c);
+        if (incomplets.length > 0) {
+          return json({ data: null, error: `Objet et texte requis : ${incomplets.join(", ")}` }, 400);
+        }
         if (!Deno.env.get("ADMIN_UNSUBSCRIBE_SECRET")) {
           return json({ data: null, error: "Secret ADMIN_UNSUBSCRIBE_SECRET absent : aucun envoi possible" }, 400);
         }

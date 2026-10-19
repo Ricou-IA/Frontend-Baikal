@@ -269,6 +269,32 @@ export interface Relance {
 
 export const RELANCES_MAX = 5;
 
+// Un mail est incomplet sans objet, ou si son corps ne dit rien au-dela de
+// la formule d'appel (le gabarit d'une relance ajoutee est « Bonjour
+// {{nom|}}, »). Lancement refuse, et le worker ne sert jamais un tel mail :
+// une relance oubliee ne part pas vide (recette du 19/10/2026).
+export function mailIncomplet(m: { objet?: string; corps_html?: string }): boolean {
+  if (!String(m.objet ?? "").trim()) return true;
+  const texte = String(m.corps_html ?? "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\{\{[^}]*\}\}/g, " ")
+    .replace(/^\s*bonjour\b/i, "")
+    .replace(/[^\p{L}\p{N}]/gu, "");
+  return texte === "";
+}
+
+// Libelles des mails incomplets d'une campagne, dans l'ordre de la sequence.
+export function mailsIncomplets(
+  c: { objet?: string; corps_html?: string; relances?: unknown },
+): string[] {
+  const relances = normaliserRelances(c.relances);
+  return [
+    ...(mailIncomplet(c) ? ["mail 1"] : []),
+    ...relances.flatMap((r, i) => (mailIncomplet(r) ? [`relance ${i + 1}`] : [])),
+  ];
+}
+
 // Relances telles que l'editeur les envoie : delai entier de 0 a 90 jours,
 // au plus cinq. Le contenu est nettoye par l'appelant (nettoyerCorps).
 export function normaliserRelances(brut: unknown): Relance[] {

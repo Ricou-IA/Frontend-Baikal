@@ -13,7 +13,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { chargerSite, lecteurSite, type Site } from "../_shared/sites.ts";
 import {
-  normaliserCriteres, ordreDeService, type Population, relireDestinataires, requeteCandidats,
+  mailIncomplet, normaliserCriteres, ordreDeService, type Population, relireDestinataires, requeteCandidats,
 } from "../_shared/mailing/segment.ts";
 import {
   chargerConfigMailing, cleResend, compteursCampagnes, ecrivain, envoyesDepuis, expediteur,
@@ -128,6 +128,9 @@ serve(async (req) => {
 
       for (const mail of ordreDeService(c)) {
         if (reste <= 0 || fatale || Date.now() - debut > BUDGET_MS) break;
+        // Garde : le lancement refuse deja un mail incomplet, mais une
+        // campagne lancee avant cette regle ne doit pas en servir un.
+        if (mailIncomplet(mail)) continue;
 
         // Reservations orphelines de CE mail (passage interrompu entre
         // reserver et marquer ; l'Idempotency-Key de Resend empeche le double

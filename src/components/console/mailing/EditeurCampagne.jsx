@@ -26,6 +26,19 @@ import Entonnoir from './Entonnoir';
 import EditeurTexte from './EditeurTexte';
 import { Badge, BadgeCampagne, Bouton, Chip, ETAPES, fmtNombre, POPULATIONS } from './commun';
 
+// Miroir de mailIncomplet (_shared/mailing/segment.ts) : le serveur refuse
+// le lancement, la console le dit avant.
+function mailIncomplet(m) {
+  if (!String(m?.objet ?? '').trim()) return true;
+  const texte = String(m?.corps_html ?? '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\{\{[^}]*\}\}/g, ' ')
+    .replace(/^\s*bonjour\b/i, '')
+    .replace(/[^\p{L}\p{N}]/gu, '');
+  return texte === '';
+}
+
 const STATUTS_PROSPECT = [
   ['nouveau', 'Nouveau'], ['contacte', 'Contacté'], ['relance', 'Relancé'], ['repondu', 'A répondu'],
 ];
@@ -109,6 +122,10 @@ export default function EditeurCampagne({
     return { ...x, relances: rs };
   });
   const sequence = relances.length > 0;
+  const incomplets = [
+    ...(mailIncomplet(c) ? ['mail 1'] : []),
+    ...relances.flatMap((r, k) => (mailIncomplet(r) ? [`relance ${k + 1}`] : [])),
+  ];
   function ajouterRelance() {
     setC((x) => ({
       ...x,
@@ -396,12 +413,21 @@ export default function EditeurCampagne({
             {(sequence || (ecriture && c.statut === 'brouillon')) && (
               <div className="flex items-center gap-1 flex-wrap border-b border-baikal-border -mx-4 px-4 -mt-1 pb-2">
                 {[0, ...relances.map((_, k) => k + 1)].map((i) => (
-                  <button key={i} type="button" onClick={() => { setIMail(i); setObjets([]); }}
-                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors
-                      ${iMail === i ? 'bg-baikal-cyan/15 text-baikal-cyan' : 'text-baikal-text hover:text-white'}`}>
-                    {i === 0 ? 'Mail 1' : `Relance ${i}`}
-                    {i > 0 && <span className="opacity-60 ml-1">J+{relances[i - 1]?.delai_jours ?? 0}</span>}
-                  </button>
+                  <span key={i} className={`flex items-center rounded-md transition-colors
+                    ${iMail === i ? 'bg-baikal-cyan/15 text-baikal-cyan' : 'text-baikal-text hover:text-white'}`}>
+                    <button type="button" onClick={() => { setIMail(i); setObjets([]); }}
+                      className="px-3 py-1.5 text-xs font-medium flex items-center gap-1">
+                      {i === 0 ? 'Mail 1' : `Relance ${i}`}
+                      {i > 0 && <span className="opacity-60">J+{relances[i - 1]?.delai_jours ?? 0}</span>}
+                      {sequence && mailIncomplet(mailDe(i)) && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400" title="À rédiger" />
+                      )}
+                    </button>
+                    {i > 0 && ecriture && c.statut === 'brouillon' && (
+                      <button type="button" onClick={() => retirerRelance(i)} title={`Retirer la relance ${i}`}
+                        className="pr-2 -ml-1 text-xs opacity-50 hover:opacity-100 hover:text-red-300">×</button>
+                    )}
+                  </span>
                 ))}
                 {ecriture && c.statut === 'brouillon' && relances.length < 5 && (
                   <button type="button" onClick={ajouterRelance}
@@ -504,7 +530,11 @@ export default function EditeurCampagne({
                   className={`text-left p-3 rounded-md border transition-colors disabled:cursor-default
                     ${Boolean(c.continue) === v ? 'border-baikal-cyan bg-baikal-cyan/10' : 'border-baikal-border hover:border-baikal-text/50'}`}>
                   <span className="block text-sm text-white font-medium">{titre}</span>
-                  <span className="block text-xs text-baikal-text mt-0.5">{texte}</span>
+                  <span className="block text-xs text-baikal-text mt-0.5">
+                    {sequence && !v
+                      ? 'Indisponible avec des relances : une séquence reste ouverte pour servir les relances à leur échéance.'
+                      : texte}
+                  </span>
                 </button>
               ))}
             </div>
@@ -534,15 +564,20 @@ export default function EditeurCampagne({
               <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-baikal-border/60">
                 <input value={adresseTest} onChange={(e) => setAdresseTest(e.target.value)} placeholder="Adresse de test"
                   className={`${classeInput} flex-1 min-w-[200px]`} />
-                <Bouton onClick={envoyerTest} disabled={occupe || !envoiPret || !c.objet.trim()}>
+                <Bouton onClick={envoyerTest} disabled={occupe || !envoiPret || !String(mailCourant.objet || '').trim()}>
                   <Send className="w-4 h-4" />Tester
                 </Bouton>
                 {['brouillon', 'suspendue'].includes(c.statut) && (
                   <Bouton variante="primaire" onClick={lancer}
-                    disabled={occupe || !envoiPret || (total === 0 && !c.continue) || !c.objet.trim()}
+                    disabled={occupe || !envoiPret || (total === 0 && !c.continue) || incomplets.length > 0}
                     titre={!envoiPret ? 'Expéditeur, clé Resend ou relais du site manquant' : undefined}>
                     <Rocket className="w-4 h-4" />{c.statut === 'suspendue' ? 'Reprendre' : 'Lancer'}
                   </Bouton>
+                )}
+                {['brouillon', 'suspendue'].includes(c.statut) && incomplets.length > 0 && (
+                  <p className="w-full text-xs text-amber-300">
+                    À rédiger avant de lancer : {incomplets.join(', ')} (objet et texte).
+                  </p>
                 )}
               </div>
             )}
