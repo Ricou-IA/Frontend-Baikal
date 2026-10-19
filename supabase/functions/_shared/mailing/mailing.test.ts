@@ -116,6 +116,16 @@ Deno.test("bouton : un lien data-bouton devient un bouton style", () => {
   assertStringIncludes(styliserBoutons('<a href="https://a.fr" data-bouton>Go</a>'), "display:inline-block");
 });
 
+Deno.test("bouton seul dans son paragraphe : cellule de tableau, pas de <p> autour", () => {
+  const h = styliserBoutons('<p>Avant</p><p><a href="https://a.fr/presse" data-bouton>Voir</a></p><p>Apres</p>');
+  assertStringIncludes(h, '<td bgcolor="#111827"');
+  assertStringIncludes(h, 'padding:12px 22px"><a href="https://a.fr/presse"');
+  assertEquals(h.includes("<p><table"), false);
+  assertEquals(h.includes("data-bouton"), false);
+  assertEquals(h.startsWith("<p>Avant</p><table"), true);
+  assertEquals(h.endsWith("</table><p>Apres</p>"), true);
+});
+
 import { normaliserRelances, ordreDeService } from "./segment.ts";
 
 Deno.test("relances : delais bornes, cinq au plus", () => {

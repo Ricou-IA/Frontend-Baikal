@@ -91,11 +91,22 @@ export function nettoyerCorps(html: string): string {
 }
 
 // Un lien marque data-bouton devient un bouton (styles en ligne : les
-// clients mail ignorent les feuilles de style).
+// clients mail ignorent les feuilles de style). Seul dans son paragraphe —
+// le cas de l'editeur —, il devient une cellule de tableau coloree : le fond
+// et la marge portes par un <a> (inline-block, padding) sont ignores par
+// Outlook et d'autres clients, qui n'affichaient qu'un texte souligne
+// surligne de noir (recette du 19/10/2026). Ailleurs, repli en lien style.
+const STYLE_LIEN_BOUTON = "color:#ffffff;text-decoration:none;font-weight:600;display:inline-block";
+
 export function styliserBoutons(html: string): string {
-  return html.replace(/<a href="([^"]*)" data-bouton>([\s\S]*?)<\/a>/g, (_m, href, texte) =>
-    `<a href="${href}" style="display:inline-block;margin:8px 0;padding:12px 22px;background:#111827;color:#ffffff;` +
-    `text-decoration:none;border-radius:8px;font-weight:600">${texte}</a>`);
+  return html
+    .replace(/<p>\s*<a href="([^"]*)" data-bouton>([\s\S]*?)<\/a>\s*<\/p>/g, (_m, href, texte) =>
+      `<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:8px 0">` +
+      `<tr><td bgcolor="#111827" style="background:#111827;border-radius:8px;padding:12px 22px">` +
+      `<a href="${href}" style="${STYLE_LIEN_BOUTON}">${texte}</a></td></tr></table>`)
+    .replace(/<a href="([^"]*)" data-bouton>([\s\S]*?)<\/a>/g, (_m, href, texte) =>
+      `<a href="${href}" style="${STYLE_LIEN_BOUTON};margin:8px 0;padding:12px 22px;background:#111827;` +
+      `border-radius:8px">${texte}</a>`);
 }
 
 // Version texte derivee du HTML : sans elle, les filtres anti-spam penalisent.
