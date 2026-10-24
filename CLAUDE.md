@@ -415,8 +415,9 @@ sites-design.md).
   eux). **La capacité d'un site se lit à la PRÉSENCE des vues et des colonnes** :
   pas de vue → pas de module (`disponible:false`, jamais une erreur) ; pas de
   colonnes `abo_*` → pas d'abonnement affiché. Branchés à ce jour : pack-vendeur
-  (complet), monsieurdpe, voirie. Ajouter un site = publier sa vue + poser son
-  funnel, aucun code Baikal.
+  (complet), monsieurdpe (publie `attribution` depuis le 24/10/2026 : premier contact
+  capté par le site, lead partenaire lu « Référent · pre-etat-date.ai »), voirie.
+  Ajouter un site = publier sa vue + poser son funnel, aucun code Baikal.
   - **Funnel** : `config.apps.funnel_etapes` (jsonb, NULL = pas de funnel, la vue
     dérive alors Payé/— de `paye_le`). Forme :
     `[{slug, libelle, couleur, masquee_par_defaut, apres_paiement}]`. `couleur` ∈
