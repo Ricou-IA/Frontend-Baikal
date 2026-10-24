@@ -165,3 +165,25 @@ dpe.diag_certifie, synchronisée à 02h30 par le projet DPE) ».
 6. Known Issues : remplacer la ligne « gemini-2.5-flash sur extraits boucle… » par « Gemini 2.5 coupé par Google à partir du 16/10/2026 : ARPET est en 3.x depuis le 27/09 ; FLUX 3 (n8n, nœuds 3.6d/3.6i) reste en gemini-2.5-flash tant qu'Eric n'a pas publié la bascule en gemini-3.8-flash. Tarif 3.8-flash garanti jusqu'au 31/12/2026. Lecture intégrale lente en 3.8-flash (20-24 s). » ; ligne « Les 8 fichiers ré-ingérés » : référence d'éval → `baseline-v2.5.1{,-synth}`.
 7. AI Models (en tête) : « OpenAI (embeddings, generation) » → « OpenAI (embeddings, repli de génération) », « Google Gemini (génération, agent, analyse de fichiers, ingestion) ».
 ---
+
+## [2026-10-13 18:00] Module Mailing
+**Statut** : RESOLU (intégré le 2026-10-24 dans « Modules métier », accord d'Eric)
+**Commit** : 694934d
+**Contexte** : Nouveau module console `/mailing` (spec 2026-10-13-baikal-mailing-design.md). Baikal garde la campagne, le journal nominatif vit chez le site (module mailing-v1). Worker pg_cron chaque minute, webhook Resend, désinscription publique.
+**Proposition** : ajouter sous « Modules métier » :
+- **Mailing** : page `/mailing` (`src/pages/Mailing.jsx`) + EF `admin-mailing` (console), `admin-mailing-worker` (pg_cron chaque minute si une campagne est `en_cours`, `X-Cron-Secret` = `ADMIN_SEO_CRON_SECRET`), `admin-mailing-webhook` (Resend/Svix ; `?site=` = webhook du compte du site, sinon tag `app_id` + `MAILING_RESEND_WEBHOOK_SECRET`), `mailing-desinscription` (page publique `/desinscription` + List-Unsubscribe-Post). Campagnes dans `admin.mail_campagnes` (rien de nominatif) ; journal `<schema>.mail_envoi` et opt-out `baikal_mail_optout` chez le site (module `docs/contrats/mailing-v1.sql`, branché : monsieurdpe). Ciblage : `_shared/mailing/segment.ts` est la SEULE source du WHERE (compteur = envoi). Registre : `resend_key_ref` (monsieurdpe = `DPE_RESEND_API_KEY`), `resend_webhook_secret_ref`, `mailing_plafond_jour` (NULL = 200), `env_mailing_fn`. Coupe-circuit : ≥ 50 envois et rebonds définitifs > 5 % ou plaintes > 0,3 %.
+---
+
+## [2026-10-14 18:00] Mailing lot 2 : entonnoir commun, IA, stats, continu
+**Statut** : RESOLU (intégré le 2026-10-24 dans « Modules métier », accord d'Eric)
+**Commit** : (lot 2)
+**Contexte** : Spec 2026-10-14-baikal-mailing-lot2-design.md. Site pilote pack-vendeur. Ciblage par l'entonnoir commun à 6 étapes (contrat audience-v1), stats de tous les mails du site (mail-stats-v1), éditeur sans HTML avec rédaction IA, campagnes continues.
+**Proposition** : compléter l'entrée Mailing : « Entonnoir commun (Eric 14/10) : a_conquerir → lead → engage → client → recurrent → perdu, une étape par adresse, publié par le site dans `baikal_audience` (contrat `audience-v1`, matérialisable). Population `audience` prioritaire, prospects/clients/comptes en repli. Presse exclue par défaut. Stats : `baikal_mail_stats` (contrat `mail-stats-v1`) + campagnes Baikal tirées de `mail_envoi`. Rédaction : action `rediger` (`_shared/mailing/redaction.ts`, `ADMIN_MAILING_MODELE`, défaut gemini-3.8-flash, ~12 s), corps nettoyé par liste blanche (`nettoyerCorps`). Campagnes continues : `continue`, `plafond_jour`, `attente_jusqu_au` (1 h sans entrant). Branché : pack-vendeur (module en `public`, relais `pv-admin-mailing-relais`, `resend_key_ref = DPE_RESEND_API_KEY` — compte Resend commun à tous les sites). »
+---
+
+## [2026-10-14 20:00] Mailing lot 3 : séquences
+**Statut** : RESOLU (intégré le 2026-10-24 dans « Modules métier », accord d'Eric)
+**Commit** : (lot 3)
+**Contexte** : Spec 2026-10-14-baikal-mailing-lot3-sequences-design.md. Une campagne avec relances est une séquence continue ; une ligne par mail dans mail_envoi (module v1.1).
+**Proposition** : compléter l'entrée Mailing : « Séquences : `admin.mail_campagnes.relances` [{delai_jours, objet, corps_html}] (5 max), `jours_ouvres` ; journal `mail_envoi.touche`, clé (campagne_id, email, touche) — module `mailing-v1.1-sequences.sql` joué chez monsieurdpe et pack-vendeur. Relance k due si mail k-1 envoyé depuis delai_jours et toujours dans la cible (`segment.ts`, option `touche`) : changer d'étape ou se désinscrire fait sortir de la séquence. Le worker sert les relances avant les nouveaux entrants (`ordreDeService`). Prospection de PV reprise dans Baikal : le bloc prospection de pv-email-cron reste à `send_enabled: false`. »
+---

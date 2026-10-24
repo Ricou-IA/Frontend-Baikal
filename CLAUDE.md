@@ -488,6 +488,38 @@ sites-design.md).
   `config.apps.repo_github`, jeton `ADMIN_GITHUB_TOKEN` (lecture seule Contents). Spec :
   `docs/superpowers/specs/2026-09-06-rapport-mensuel-ia-media-design.md`.
 
+- **Mailing** : page `/mailing` (`src/pages/Mailing.jsx`) + EF `admin-mailing` (console),
+  `admin-mailing-worker` (pg_cron chaque minute si une campagne est `en_cours`, `X-Cron-Secret`
+  = `ADMIN_SEO_CRON_SECRET`), `admin-mailing-webhook` (Resend/Svix ; `?site=` = webhook du
+  compte du site, sinon tag `app_id` + `MAILING_RESEND_WEBHOOK_SECRET`), `mailing-desinscription`
+  (page publique `/desinscription` + List-Unsubscribe-Post). Campagnes dans
+  `admin.mail_campagnes` (rien de nominatif) ; journal `<schema>.mail_envoi` et opt-out
+  `baikal_mail_optout` chez le site (module `docs/contrats/mailing-v1.sql`). Ciblage :
+  `_shared/mailing/segment.ts` est la SEULE source du WHERE (compteur = envoi). Registre :
+  `resend_key_ref` (= `DPE_RESEND_API_KEY` pour tous les sites : compte Resend commun),
+  `resend_webhook_secret_ref`, `mailing_plafond_jour` (NULL = 200), `env_mailing_fn`.
+  Coupe-circuit : ≥ 50 envois et rebonds définitifs > 5 % ou plaintes > 0,3 %. Spec :
+  `docs/superpowers/specs/2026-10-13-baikal-mailing-design.md`.
+  - **Lot 2** (spec `2026-10-14-baikal-mailing-lot2-design.md`) : entonnoir commun (Eric,
+    14/10) a_conquerir → lead → engage → client → recurrent → perdu, une étape par adresse,
+    publié par le site dans `baikal_audience` (contrat `audience-v1`, matérialisable) ;
+    population `audience` prioritaire, prospects/clients/comptes en repli ; presse exclue par
+    défaut. Stats : `baikal_mail_stats` (contrat `mail-stats-v1`) + campagnes Baikal tirées de
+    `mail_envoi`. Rédaction : action `rediger` (`_shared/mailing/redaction.ts`,
+    `ADMIN_MAILING_MODELE`, défaut gemini-3.8-flash, ~12 s), corps nettoyé par liste blanche
+    (`nettoyerCorps`). Campagnes continues : `continue`, `plafond_jour`, `attente_jusqu_au`
+    (1 h sans entrant).
+  - **Lot 3** (spec `2026-10-14-baikal-mailing-lot3-sequences-design.md`) : séquences —
+    `admin.mail_campagnes.relances` `[{delai_jours, objet, corps_html}]` (5 max),
+    `jours_ouvres` ; journal `mail_envoi.touche`, clé (campagne_id, email, touche), module
+    `mailing-v1.1-sequences.sql`. Relance k due si le mail k-1 est envoyé depuis `delai_jours`
+    et que l'adresse est toujours dans la cible (`segment.ts`, option `touche`) : changer
+    d'étape ou se désinscrire fait sortir de la séquence. Le worker sert les relances avant
+    les nouveaux entrants (`ordreDeService`). Prospection de PV reprise dans Baikal : le bloc
+    prospection de `pv-email-cron` reste à `send_enabled: false`.
+  - Branchés : monsieurdpe (module dans `dpe`), pack-vendeur (module dans `public`, relais
+    `pv-admin-mailing-relais`).
+
 ### Secrets attendus
 
 `GOOGLE_GSC_OAUTH_CLIENT_ID|CLIENT_SECRET|REFRESH_TOKEN` (repli `GOOGLE_ADS_OAUTH_*`),
@@ -497,4 +529,5 @@ sites-design.md).
 valeur que `BAIKAL_ADMIN_KEY` côté projet Pré-état-daté : c'est le secret partagé du canal
 d'administration). `ADMIN_ENV_MAJORDHOME_KEY` (même valeur que `MDH_BAIKAL_KEY` côté
 Majord'home, canal `baikal-admin`). `ADMIN_ENV_MONSIEURDPE_KEY` n'est plus nécessaire (connecteur SQL).
-`COHERE_API_KEY` (optionnel, reranking).
+`COHERE_API_KEY` (optionnel, reranking). Mailing : `DPE_RESEND_API_KEY` (compte Resend commun),
+`MAILING_RESEND_WEBHOOK_SECRET`, `ADMIN_MAILING_MODELE` (optionnel).
