@@ -72,6 +72,7 @@ deux vues, vérifier qu'elles s'accordent ligne à ligne.
 
 | Contrat | Nature | Version | Sites installés |
 |---|---|---|---|
+| `dossiers-v1.sql` | forme | 1 | pack-vendeur (huit vues), monsieurdpe (six : sans documents, chat ni logs IA, faute de donnée rattachable à une personne) |
 | `prospects-v1.sql` | module | 1 | monsieurdpe, pack-vendeur (base dédiée : annexe + `prospects-relais-v1.ts`) |
 | `mesures-v1.sql` | forme | 1 | monsieurdpe (sans `chapitre`, à compléter) |
 | `comptes-pro-v1.sql` | forme | 1 | monsieurdpe, pack-vendeur |
@@ -82,7 +83,7 @@ deux vues, vérifier qu'elles s'accordent ligne à ligne.
 | `mail-stats-v1.sql` | forme | 1 | pack-vendeur |
 
 Les vues de liste et les mesures se répondent : `baikal_dossiers` porte le
-chapitre Clients, `baikal_comptes_pro` le chapitre Comptes pro, et
+chapitre Clients (contrat `dossiers-v1`, avec les sept vues de la fiche), `baikal_comptes_pro` le chapitre Comptes pro, et
 `baikal_mesures` coiffe chaque chapitre de ses tuiles. Une liste ne porte
 jamais d'agrégat, une mesure ne porte jamais de personne.
 
