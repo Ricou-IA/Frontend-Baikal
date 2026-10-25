@@ -257,8 +257,9 @@ puis `npx supabase migration repair --linked --status applied <version>`, jamais
 
 ## Modules admin multi-sites (2026-08-20, consolidé le 2026-09-17)
 
-`config.apps` est le **registre des sites administrés** (12 produits déclarés, zelty
-inactif ; Baikal lui-même y figure : `id = 'baikal'`, withbaikal.io, modèle « clients »,
+`config.apps` est le **registre des sites administrés** (12 produits déclarés, 7 actifs ;
+zelty, linktrack, cosette, legifrance, snapstudio et karedas en `is_active = false` — retirés
+le 25/10/2026, rien à y administrer, réversible ; Baikal lui-même y figure : `id = 'baikal'`, withbaikal.io, modèle « clients »,
 `sort_order` 0 — SEO dès que `gsc_propriete` est renseigné, Finances au Stripe, pas de
 vue `baikal_dossiers` donc Clients fermé jusqu'à l'étage locataire). Colonnes propres au
 site : `domaine`, `gsc_propriete`, `env_url`, `env_secret_ref` (NOM du secret, jamais la
