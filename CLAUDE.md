@@ -269,7 +269,9 @@ valeur), `env_anon_key`, `env_dossiers_fn`, `db_schema` (schéma des données du
 `categories_client`, `modele_comptes`, `repo_github`, `fuseau` (calendrier des mesures,
 défaut Europe/Paris ; Baikal y pose ses bornes de fenêtre), `env_admin_fn` (nom de l'EF
 d'administration du site, ex. `baikal-admin` ; un champ par canal comme `env_dossiers_fn` /
-`env_prospects_fn`, tous partagent `env_url`, `env_anon_key`, `env_secret_ref`). Créer une app = un simple INSERT,
+`env_prospects_fn`, tous partagent `env_url`, `env_anon_key`, `env_secret_ref`), `nom_public`
+(marque lue par le destinataire des mails : pied et `{{site}}` ; NULL = `name`, le nom de la
+console ; jamais `expediteur_nom`, qui peut être une personne). Créer une app = un simple INSERT,
 fait par migration (le trigger `tr_create_documents_cles_on_app_insert` a été supprimé
 par `20260824150000_registre_sites_hub.sql`). La vue `public.apps` expose `domaine`,
 `db_schema`, `heberge_dedie` — jamais `db_ro_secret_ref`. Règle de partage : les
