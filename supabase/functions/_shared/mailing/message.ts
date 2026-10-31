@@ -1,7 +1,9 @@
 // Fabrique le message d'UN destinataire : le meme chemin pour l'envoi de test,
 // l'apercu et le worker, sans quoi le test ne prouve rien.
 import type { Site } from "../sites.ts";
-import { envelopper, nettoyerCorps, nomPublic, remplacerVariables, signerJeton, versTexte } from "./rendu.ts";
+import {
+  casseCommune, casseNom, envelopper, nettoyerCorps, nomPublic, remplacerVariables, signerJeton, versTexte,
+} from "./rendu.ts";
 import type { MessageResend } from "./envoi.ts";
 
 export interface Contenu {
@@ -56,9 +58,10 @@ export async function fabriquerMessage(o: {
 }): Promise<MessageResend & { lien: string }> {
   const nomSite = nomPublic(o.nomPublic, o.site.name);
   const valeurs = {
-    nom: o.destinataire.nom ?? null,
+    // Casse reprise ici : corps et objet lisent les memes valeurs.
+    nom: casseNom(o.destinataire.nom),
     email: o.destinataire.email,
-    commune: o.destinataire.commune ?? null,
+    commune: casseCommune(o.destinataire.commune),
     site: nomSite,
   };
   const liens = await liensDesinscription(o.site.id, o.destinataire.email, o.campagneId, o.test);

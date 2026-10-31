@@ -1,6 +1,6 @@
 import { assert, assertEquals, assertStringIncludes } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { colonneNom, normaliserCriteres } from "./segment.ts";
-import { envelopper, nomPublic, remplacerVariables, signerJeton, verifierJeton, versTexte } from "./rendu.ts";
+import { casseCommune, casseNom, envelopper, nomPublic, remplacerVariables, signerJeton, verifierJeton, versTexte } from "./rendu.ts";
 import {
   debutJourLocal, evaluerDisjoncteur, lireTag, signerSvix, tailleLot, typeEvenement, verifierSvix,
 } from "./envoi.ts";
@@ -65,6 +65,68 @@ Deno.test("pied : nom et domaine distincts, les deux ; egaux, une fois en lien",
     assert(!pv.includes(" · "));
   }
   assertStringIncludes(envelopper({ ...base, nomSite: "ARPET", domaine: null }), "de la part de ARPET.");
+});
+
+Deno.test("casse : commune en nom propre, sans accent ni tiret inventes", () => {
+  const cas: [string, string][] = [
+    ["PARIS", "Paris"],
+    ["SAINT-ETIENNE", "Saint-Etienne"],
+    ["LE PUY-EN-VELAY", "Le Puy-en-Velay"],
+    ["AIX EN PROVENCE", "Aix en Provence"],
+    ["Aix-En-Provence", "Aix-en-Provence"],
+    ["SAINT-JEAN-D'ANGELY", "Saint-Jean-d'Angely"],
+    ["L'ISLE-SUR-LA-SORGUE", "L'Isle-sur-la-Sorgue"],
+    ["Pont-l&#x27;Evêque", "Pont-l'Evêque"],
+    ["Paris 15e Arrondissement", "Paris 15e Arrondissement"],
+    ["PARIS 15E ARRONDISSEMENT", "Paris 15e Arrondissement"],
+    ["MARSEILLE 1ER", "Marseille 1er"],
+    ["LES SABLES-D'OLONNE", "Les Sables-d'Olonne"],
+    ["Bruyères-le-Châtel", "Bruyères-le-Châtel"],
+    ["Saint-Jean-aux-Amognes", "Saint-Jean-aux-Amognes"],
+    ["Saint Jean De Luz", "Saint Jean de Luz"],
+    ["SAINT-BONNET-PRES-ORCIVAL", "Saint-Bonnet-pres-Orcival"],
+    ["MEZIDON VALLEE D AUGE", "Mezidon Vallee d Auge"],
+    ["CASTELNAU-LE-LEZ", "Castelnau-le-Lez"],
+    ["Castelnau-le-Lez", "Castelnau-le-Lez"],
+    ["Ingrandes-Le Fresne sur Loire", "Ingrandes-Le Fresne sur Loire"],
+    ["Palau-del-Vidre", "Palau-del-Vidre"],
+    ["Mont-près-Chambord", "Mont-près-Chambord"],
+    ["Jugon-les-Lacs - Commune nouvelle", "Jugon-les-Lacs - Commune nouvelle"],
+    ["Paris 17ème", "Paris 17ᵉ"],
+    ["Paris-8E-Arrondissement", "Paris-8e-Arrondissement"],
+  ];
+  for (const [avant, apres] of cas) assertEquals(casseCommune(avant), apres, avant);
+  assertEquals(casseCommune(null), null);
+  assertEquals(casseCommune(""), "");
+});
+
+Deno.test("casse : nom repris seulement s'il est uniforme, ordinaux toujours", () => {
+  const cas: [string, string][] = [
+    ["Era 12 Eme Avenue", "Era 12ᵉ Avenue"],
+    ["ERA 12EME AVENUE", "ERA 12ᵉ Avenue"],
+    ["agence du 12ème", "Agence du 12ᵉ"],
+    ["IMMO DU 1ER", "Immo du 1er"],
+    ["SAMUEL ROSIER", "Samuel Rosier"],
+    ["BAGES IMMOBILIER CARMAUX", "Bages Immobilier Carmaux"],
+    ["AGENCE DE LA GARE", "Agence de la Gare"],
+    ["JEAN LE BLANC", "Jean Le Blanc"],
+    ["SCP DUPONT ET MARTIN", "SCP Dupont et Martin"],
+    ["L'ADRESSE", "L'Adresse"],
+    ["ERA Immobilier", "ERA Immobilier"],
+    ["iad", "iad"],
+    ["IAD FRANCE", "iad France"],
+    ["ORPI AGENCE DU CENTRE", "Orpi Agence du Centre"],
+    ["L'Adresse", "L'Adresse"],
+    ["Lionel CODINA", "Lionel CODINA"],
+    ["Guy Hoquet Fay De Bretagne", "Guy Hoquet Fay De Bretagne"],
+  ];
+  for (const [avant, apres] of cas) assertEquals(casseNom(avant), apres, avant);
+  assertEquals(casseNom(null), null);
+});
+
+Deno.test("casse : l'objet lit les memes valeurs que le corps", () => {
+  const v = { nom: casseNom("SAMUEL ROSIER"), commune: casseCommune("PARIS") };
+  assertEquals(remplacerVariables("{{nom}} a {{commune}}", v, false), "Samuel Rosier a Paris");
 });
 
 Deno.test("texte : liens explicites, balises retirees", () => {

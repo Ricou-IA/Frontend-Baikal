@@ -28,6 +28,127 @@ export function remplacerVariables(gabarit: string, valeurs: ValeursMail, html =
   });
 }
 
+// ------ Casse de {{nom}} et {{commune}} ------
+//
+// Les bases des sites portent ce que les annuaires ont saisi : « PARIS »,
+// « Aix-En-Provence », « Era 12 Eme Avenue », des entites HTML
+// (« Pont-l&#x27;Eveque »). On remet la casse a l'envoi, sans jamais
+// ajouter d'accent ni de tiret.
+
+const ENTITES: Record<string, string> = { amp: "&", quot: '"', apos: "'", lt: "<", gt: ">", nbsp: " " };
+
+function decoderEntites(x: string): string {
+  return x.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (brut, e: string) => {
+    if (e[0] === "#") {
+      const code = e[1].toLowerCase() === "x" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+      return Number.isFinite(code) && code > 0 && code < 0x110000 ? String.fromCodePoint(code) : brut;
+    }
+    return ENTITES[e.toLowerCase()] ?? brut;
+  });
+}
+
+// « 12 Eme », « 12EME », « 12ème » → « 12ᵉ » ; « 1ER » → « 1er » ;
+// « 1ERE » → « 1re » ; « 8E » → « 8e ».
+function ordinaux(x: string): string {
+  return x
+    .replace(/(?<![\p{L}\d])1\s*[eèé]re(?!\p{L})/giu, "1re")
+    .replace(/(?<![\p{L}\d])1\s*er(?!\p{L})/giu, "1er")
+    .replace(/(?<![\p{L}\d])(\d+)\s*[eèé]me(?!\p{L})/giu, "$1ᵉ")
+    .replace(/(?<![\p{L}\d])(\d+)E(?!\p{L})/gu, "$1e");
+}
+
+// Premiere lettre en majuscule, apres une ponctuation (« (PARIS) ») mais
+// jamais apres un chiffre (« 15E » → « 15e »).
+function majuscule(mot: string): string {
+  return mot.toLowerCase().replace(/^([^\p{L}\d]*)(\p{L})/u, (_m, avant, l) => avant + l.toUpperCase());
+}
+
+interface Recasage {
+  // Le mot (en minuscules) est-il un mot de liaison, apres `precedent` ?
+  liaison: (mot: string, precedent: string) => boolean;
+  // Ecriture imposee d'un sigle, ou null.
+  forme?: (mot: string) => string | null;
+  // Casse deja mixte : seuls les mots de liaison ecrits « En », « Sur »
+  // sont repris, tout le reste est garde tel quel.
+  liaisonsSeulement?: boolean;
+}
+
+// Mot par mot, separateurs (espaces, tirets) gardes. Un mot de liaison ne
+// passe en minuscules qu'entre deux separateurs de meme nature : jamais en
+// tete ni en fin (« Castelnau-le-Lez »), ni entre un tiret et une espace
+// (« Ingrandes-Le Fresne sur Loire », commune nouvelle). « d' » et « l' » se
+// detachent du mot qu'ils precedent : « D'ANGELY » → « d'Angely ».
+function recaser(x: string, r: Recasage): string {
+  const p = x.replaceAll("’", "'").split(/([\s-]+)/);
+  const nature = (sep: string | undefined) => (sep === undefined ? null : sep.includes("-") ? "-" : " ");
+  return p.map((m, i) => {
+    if (i % 2 === 1 || m === "") return m;
+    const premier = i === 0;
+    const interieur = !premier && i < p.length - 1 && nature(p[i - 1]) === nature(p[i + 1]);
+    const bas = m.toLowerCase();
+    const precedent = (p[i - 2] ?? "").toLowerCase();
+    if (interieur && r.liaison(bas, precedent)) {
+      return r.liaisonsSeulement && m !== majuscule(m) ? m : bas;
+    }
+    if (r.liaisonsSeulement) return m;
+    const elision = /^([dl])'(.+)$/i.exec(m);
+    if (elision) return `${premier ? elision[1].toUpperCase() : elision[1].toLowerCase()}'${majuscule(elision[2])}`;
+    return r.forme?.(m) ?? majuscule(m);
+  }).join("");
+}
+
+function uniforme(x: string): boolean {
+  return x === x.toUpperCase() || x === x.toLowerCase();
+}
+
+const LIAISONS_COMMUNE = new Set([
+  "en", "de", "des", "du", "la", "le", "les", "sur", "sous", "lès", "pres", "près", "et", "aux", "au", "à",
+  "d", "l", "del", "dels", "di",
+]);
+
+// Commune : « LE PUY-EN-VELAY » → « Le Puy-en-Velay », « AIX EN PROVENCE »
+// → « Aix en Provence » (les tirets manquants ne sont pas inventes). Une
+// commune deja mixte n'a que ses liaisons reprises : « Aix-En-Provence » →
+// « Aix-en-Provence », mais « Palau-del-Vidre » et « Carnon plage » restent.
+export function casseCommune(x: string | null | undefined): string | null {
+  if (!x?.trim()) return x ?? null;
+  const v = decoderEntites(x).trim();
+  return ordinaux(recaser(v, { liaison: (m) => LIAISONS_COMMUNE.has(m), liaisonsSeulement: !uniforme(v) }));
+}
+
+// Sigles d'un nom recase, sous leur forme de marque : formes sociales et
+// reseaux d'agences (« iad » s'ecrit en minuscules, « Orpi » en nom
+// propre) ; un mot de 2 a 4 lettres sans voyelle (« SCP », « JLM ») reste
+// en majuscules.
+const SIGLES = new Map(
+  ["ERA", "SAFTI", "SCI", "SARL", "SAS", "SASU", "EURL", "SA", "SNC", "SELARL", "SELAS", "SCP", "FNAIM",
+    "UNIS", "CIC", "LCL", "BNP", "SNPI", "iad", "Orpi"].map((s) => [s.toUpperCase(), s]),
+);
+
+function sigle(mot: string): string | null {
+  const m = mot.toUpperCase();
+  if (SIGLES.has(m)) return SIGLES.get(m)!;
+  return /^\p{Lu}{2,4}$/u.test(m) && !/[AEIOUYÀÂÄÉÈÊËÎÏÔÖÙÛÜŸ]/.test(m) ? m : null;
+}
+
+// Nom : la casse n'est reprise que si elle est uniforme (tout en majuscules
+// ou tout en minuscules) ; une casse mixte est voulue (« ERA Immobilier »,
+// « Lionel CODINA ») et se garde. Les ordinaux sont toujours repris. Dans un
+// nom, le/la/les ne passent en minuscules qu'apres de, a, sur, sous
+// (« Agence de la Gare », mais « Jean Le Blanc »).
+const LIAISONS_NOM = new Set(["de", "des", "du", "et", "en", "sur", "sous", "aux", "au", "à", "lès"]);
+const AVANT_ARTICLE = new Set(["de", "à", "sur", "sous"]);
+
+export function casseNom(x: string | null | undefined): string | null {
+  if (!x?.trim()) return x ?? null;
+  const v = decoderEntites(x).trim();
+  if (!uniforme(v)) return ordinaux(v);
+  return ordinaux(recaser(v, {
+    liaison: (m, prec) => LIAISONS_NOM.has(m) || (["le", "la", "les"].includes(m) && AVANT_ARTICLE.has(prec)),
+    forme: sigle,
+  }));
+}
+
 export interface Enveloppe {
   corpsHtml: string;
   nomSite: string;
