@@ -22,6 +22,7 @@ const CHAMPS = [
   ['gsc_propriete', 'Propriete GSC'],
   ['env_url', 'URL environnement'],
   ['env_secret_ref', 'Nom du secret'],
+  ['nom_public', 'Nom public (pied des mails, vide = nom de la console)'],
   ['expediteur_nom', 'Expediteur (nom)'],
   ['expediteur_email', 'Expediteur (email)'],
   ['reply_to', 'Reply-to'],

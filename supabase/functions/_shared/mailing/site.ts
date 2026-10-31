@@ -7,6 +7,7 @@ import { appelerRelais, relaisConfigure } from "../relais.ts";
 import { POPULATIONS, type Population } from "./segment.ts";
 
 export interface ConfigMailing {
+  nom_public: string | null;
   expediteur_nom: string | null;
   expediteur_email: string | null;
   reply_to: string | null;
@@ -18,7 +19,7 @@ export interface ConfigMailing {
 
 export async function chargerConfigMailing(admin: SupabaseClient, appId: string): Promise<ConfigMailing> {
   const { data, error } = await admin.schema("config").from("apps")
-    .select("expediteur_nom, expediteur_email, reply_to, resend_key_ref, " +
+    .select("nom_public, expediteur_nom, expediteur_email, reply_to, resend_key_ref, " +
       "resend_webhook_secret_ref, mailing_plafond_jour, env_mailing_fn")
     .eq("id", appId).maybeSingle();
   if (error) throw new Error(`Lecture du registre impossible: ${error.message}`);

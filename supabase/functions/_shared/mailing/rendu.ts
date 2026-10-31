@@ -35,12 +35,32 @@ export interface Enveloppe {
   lienDesinscription: string | null;
 }
 
+// Nom que lit le destinataire (pied, {{site}}) : config.apps.nom_public, la
+// marque (« Pre-etat-date.ai »), sinon config.apps.name, le nom de la console
+// (« Pack Vendeur »). Jamais expediteur_nom : il peut etre une personne
+// (« Eric de MonsieurDPE »).
+export function nomPublic(nomPublicSite: string | null | undefined, nomConsole: string): string {
+  return nomPublicSite?.trim() || nomConsole;
+}
+
+// Casse et accents ignores : « Pré-état-daté.ai » et « pre-etat-date.ai »
+// sont le meme nom.
+function memeNom(a: string, b: string): boolean {
+  const n = (x: string) => x.normalize("NFD").replace(/\p{M}/gu, "").trim().toLowerCase();
+  return n(a) === n(b);
+}
+
 // Pied commun : qui ecrit, et comment ne plus recevoir. Obligatoire (CNIL,
-// et Gmail/Yahoo exigent la desinscription des envois en volume).
+// et Gmail/Yahoo exigent la desinscription des envois en volume). Un nom egal
+// au domaine n'est ecrit qu'une fois, en lien.
 function pied(e: Enveloppe): string {
-  const qui = e.domaine
-    ? `${echapperHtml(e.nomSite)} · <a href="https://${echapperHtml(e.domaine)}" style="color:#6b7280">${echapperHtml(e.domaine)}</a>`
-    : echapperHtml(e.nomSite);
+  const lien = (texte: string) =>
+    `<a href="https://${echapperHtml(e.domaine!)}" style="color:#6b7280">${echapperHtml(texte)}</a>`;
+  const qui = !e.domaine
+    ? echapperHtml(e.nomSite)
+    : memeNom(e.nomSite, e.domaine)
+    ? lien(e.nomSite)
+    : `${echapperHtml(e.nomSite)} · ${lien(e.domaine)}`;
   const desinscription = e.lienDesinscription
     ? `<br><a href="${echapperHtml(e.lienDesinscription)}" style="color:#6b7280">Se désinscrire</a>`
     : "";

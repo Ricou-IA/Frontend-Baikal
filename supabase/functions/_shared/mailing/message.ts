@@ -1,7 +1,7 @@
 // Fabrique le message d'UN destinataire : le meme chemin pour l'envoi de test,
 // l'apercu et le worker, sans quoi le test ne prouve rien.
 import type { Site } from "../sites.ts";
-import { envelopper, nettoyerCorps, remplacerVariables, signerJeton, versTexte } from "./rendu.ts";
+import { envelopper, nettoyerCorps, nomPublic, remplacerVariables, signerJeton, versTexte } from "./rendu.ts";
 import type { MessageResend } from "./envoi.ts";
 
 export interface Contenu {
@@ -41,6 +41,9 @@ export async function liensDesinscription(
 
 export async function fabriquerMessage(o: {
   site: Site;
+  // config.apps.nom_public : la marque lue par le destinataire (pied et
+  // {{site}}) ; null = config.apps.name.
+  nomPublic: string | null;
   from: string;
   replyTo: string | null;
   contenu: Contenu;
@@ -51,16 +54,17 @@ export async function fabriquerMessage(o: {
   // d'idempotence, sans quoi Resend prendrait la relance pour un doublon.
   touche?: number;
 }): Promise<MessageResend & { lien: string }> {
+  const nomSite = nomPublic(o.nomPublic, o.site.name);
   const valeurs = {
     nom: o.destinataire.nom ?? null,
     email: o.destinataire.email,
     commune: o.destinataire.commune ?? null,
-    site: o.site.name,
+    site: nomSite,
   };
   const liens = await liensDesinscription(o.site.id, o.destinataire.email, o.campagneId, o.test);
   const html = envelopper({
     corpsHtml: remplacerVariables(nettoyerCorps(o.contenu.corps_html), valeurs, true),
-    nomSite: o.site.name,
+    nomSite,
     domaine: o.site.domaine,
     lienDesinscription: liens.page,
   });

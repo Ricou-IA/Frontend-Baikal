@@ -323,7 +323,7 @@ serve(async (req) => {
           if (premier) dest = premier;
         }
         const m = await fabriquerMessage({
-          site, from: from ?? `${site.name} <non-configure@exemple.fr>`, replyTo: cfg.reply_to,
+          site, nomPublic: cfg.nom_public, from: from ?? `${site.name} <non-configure@exemple.fr>`, replyTo: cfg.reply_to,
           contenu, destinataire: dest, campagneId: null, test: true,
         });
         return json({ data: { html: m.html, objet: m.subject.replace(/^\[TEST\] /, ""), destinataire: dest.email }, error: null });
@@ -346,7 +346,7 @@ serve(async (req) => {
           if (premier) dest = { ...premier, email: vers };
         }
         const m = await fabriquerMessage({
-          site, from, replyTo: cfg.reply_to, contenu, destinataire: dest, campagneId: null, test: true,
+          site, nomPublic: cfg.nom_public, from, replyTo: cfg.reply_to, contenu, destinataire: dest, campagneId: null, test: true,
         });
         const r = await envoyerResend(resend.cle, m);
         if (!r.ok) return json({ data: null, error: r.erreur }, 502);

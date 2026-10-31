@@ -167,7 +167,7 @@ serve(async (req) => {
         for (const d of aEnvoyer) {
           if (Date.now() - debut > BUDGET_MS) break;
           const m = await fabriquerMessage({
-            site, from, replyTo: cfg.reply_to, contenu: { objet: mail.objet, corps_html: mail.corps_html },
+            site, nomPublic: cfg.nom_public, from, replyTo: cfg.reply_to, contenu: { objet: mail.objet, corps_html: mail.corps_html },
             destinataire: d, campagneId: c.id, touche: mail.rang,
           });
           const res = await envoyerResend(cle, m);

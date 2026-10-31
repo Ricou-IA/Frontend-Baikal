@@ -1,6 +1,6 @@
 import { assert, assertEquals, assertStringIncludes } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { colonneNom, normaliserCriteres } from "./segment.ts";
-import { envelopper, remplacerVariables, signerJeton, verifierJeton, versTexte } from "./rendu.ts";
+import { envelopper, nomPublic, remplacerVariables, signerJeton, verifierJeton, versTexte } from "./rendu.ts";
 import {
   debutJourLocal, evaluerDisjoncteur, lireTag, signerSvix, tailleLot, typeEvenement, verifierSvix,
 } from "./envoi.ts";
@@ -47,6 +47,24 @@ Deno.test("enveloppe : pied et desinscription, document complet respecte", () =>
   assertStringIncludes(frag, "Se désinscrire");
   const doc = envelopper({ ...e, corpsHtml: "<html><body><p>A</p></body></html>" });
   assert(doc.indexOf("Se désinscrire") < doc.indexOf("</body>"));
+});
+
+Deno.test("nom public : la marque, sinon le nom de la console", () => {
+  assertEquals(nomPublic("Pre-etat-date.ai", "Pack Vendeur"), "Pre-etat-date.ai");
+  assertEquals(nomPublic(null, "MonsieurDPE"), "MonsieurDPE");
+  assertEquals(nomPublic("  ", "MonsieurDPE"), "MonsieurDPE");
+});
+
+Deno.test("pied : nom et domaine distincts, les deux ; egaux, une fois en lien", () => {
+  const base = { corpsHtml: "<p>A</p>", lienDesinscription: "https://x/d?t=1" };
+  const dpe = envelopper({ ...base, nomSite: "MonsieurDPE", domaine: "monsieurdpe.fr" });
+  assertStringIncludes(dpe, 'de la part de MonsieurDPE · <a href="https://monsieurdpe.fr" style="color:#6b7280">monsieurdpe.fr</a>.');
+  for (const nom of ["Pre-etat-date.ai", "Pré-état-daté.ai"]) {
+    const pv = envelopper({ ...base, nomSite: nom, domaine: "pre-etat-date.ai" });
+    assertStringIncludes(pv, `de la part de <a href="https://pre-etat-date.ai" style="color:#6b7280">${nom}</a>.`);
+    assert(!pv.includes(" · "));
+  }
+  assertStringIncludes(envelopper({ ...base, nomSite: "ARPET", domaine: null }), "de la part de ARPET.");
 });
 
 Deno.test("texte : liens explicites, balises retirees", () => {

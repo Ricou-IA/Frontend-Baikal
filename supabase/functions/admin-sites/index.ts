@@ -27,6 +27,7 @@ const CHAMPS_SITE = [
   "gsc_propriete",
   "env_url",
   "env_secret_ref",
+  "nom_public",
   "expediteur_nom",
   "expediteur_email",
   "reply_to",
@@ -91,14 +92,14 @@ serve(async (req) => {
         if (profile?.app_role === "super_admin") {
           const { data, error } = await admin.schema("config").from("apps")
             .select("id, name, domaine, gsc_propriete, env_url, env_secret_ref, " +
-              "expediteur_nom, expediteur_email, reply_to, resend_key_ref, resend_webhook_secret_ref, " +
+              "nom_public, expediteur_nom, expediteur_email, reply_to, resend_key_ref, resend_webhook_secret_ref, " +
               "mailing_plafond_jour, env_mailing_fn, modele_comptes, repo_github, seo_panier, seo_pages_cles, is_active")
             .order("sort_order");
           if (error) throw error;
           return json({ data, error: null });
         }
         const { data, error } = await admin.schema("config").from("apps")
-          .select("id, name, domaine, expediteur_nom, expediteur_email, reply_to, is_active")
+          .select("id, name, domaine, nom_public, expediteur_nom, expediteur_email, reply_to, is_active")
           .in("id", sites)
           .order("sort_order");
         if (error) throw error;
