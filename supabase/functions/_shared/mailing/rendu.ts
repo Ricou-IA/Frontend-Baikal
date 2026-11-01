@@ -122,7 +122,7 @@ export function casseCommune(x: string | null | undefined): string | null {
 // en majuscules.
 const SIGLES = new Map(
   ["ERA", "SAFTI", "SCI", "SARL", "SAS", "SASU", "EURL", "SA", "SNC", "SELARL", "SELAS", "SCP", "FNAIM",
-    "UNIS", "CIC", "LCL", "BNP", "SNPI", "iad", "Orpi"].map((s) => [s.toUpperCase(), s]),
+    "UNIS", "CIC", "LCL", "BNP", "SNPI", "EI", "EIRL", "iad", "Orpi"].map((s) => [s.toUpperCase(), s]),
 );
 
 function sigle(mot: string): string | null {
@@ -131,18 +131,57 @@ function sigle(mot: string): string | null {
   return /^\p{Lu}{2,4}$/u.test(m) && !/[AEIOUYÀÂÄÉÈÊËÎÏÔÖÙÛÜŸ]/.test(m) ? m : null;
 }
 
-// Nom : la casse n'est reprise que si elle est uniforme (tout en majuscules
-// ou tout en minuscules) ; une casse mixte est voulue (« ERA Immobilier »,
-// « Lionel CODINA ») et se garde. Les ordinaux sont toujours repris. Dans un
+// Mots d'activite : un nom qui en porte un est une agence, pas une personne.
+const ACTIVITES = new Set([
+  "agence", "agences", "immobilier", "immobiliere", "immobiliers", "conseil", "conseils", "transaction",
+  "transactions", "groupe", "group", "cabinet", "notaire", "notaires", "office", "invest", "investissement",
+  "patrimoine", "habitat", "gestion", "home", "homes", "realty", "property", "properties", "estate",
+  "sarl", "sas", "sasu", "sci", "eurl", "selarl", "snc", "france", "international",
+]);
+
+function sansAccent(x: string): string {
+  return x.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+}
+
+// « Prénom NOM » : 2 a 5 mots, aucun mot d'activite (ni « immo » dans un
+// mot : « Saphir Immo », « Babimmo »).
+function personne(v: string): boolean {
+  const mots = v.split(/\s+/).filter(Boolean);
+  if (mots.length < 2 || mots.length > 5) return false;
+  return !mots.some((m) => {
+    const s = sansAccent(m).replace(/[^\p{L}]/gu, "");
+    return ACTIVITES.has(s) || s.includes("immo");
+  });
+}
+
+// Dans une personne, chaque mot tout en majuscules (2 lettres ou plus)
+// passe en nom propre, tiret et apostrophe compris : « D'AURIA » →
+// « D'Auria », « MARTIN-DUPONT » → « Martin-Dupont » ; une elision deja en
+// minuscule est gardee (« d'AMÉCOURT » → « d'Amécourt »). Un sigle de la
+// liste ou un mot sans voyelle reste tel qu'il est ecrit.
+function nomDePersonne(v: string): string {
+  return v.split(/(\s+)/).map((m) => {
+    const [, elision = "", reste = m] = /^([dl]['’])(.+)$/.exec(m) ?? [];
+    const lettres = reste.replace(/[^\p{L}]/gu, "");
+    if (lettres.length < 2 || lettres !== lettres.toUpperCase() || sigle(lettres) !== null) return m;
+    return elision + reste.split(/([-'’])/).map((s, i) => (i % 2 === 1 ? s : majuscule(s))).join("");
+  }).join("");
+}
+
+// Nom tout en majuscules ou tout en minuscules : recase entierement. Dans un
 // nom, le/la/les ne passent en minuscules qu'apres de, a, sur, sous
-// (« Agence de la Gare », mais « Jean Le Blanc »).
+// (« Agence de la Gare », mais « Jean Le Blanc »). Casse mixte : une
+// personne a ses mots en majuscules repris (« Lionel CODINA » → « Lionel
+// Codina », « LE TONQUEZE Renée » → « Le Tonqueze Renée ») ; une agence
+// (« ERA Immobilier », « Agence ABC Immo ») se garde telle quelle. Les
+// ordinaux sont toujours repris.
 const LIAISONS_NOM = new Set(["de", "des", "du", "et", "en", "sur", "sous", "aux", "au", "à", "lès"]);
 const AVANT_ARTICLE = new Set(["de", "à", "sur", "sous"]);
 
 export function casseNom(x: string | null | undefined): string | null {
   if (!x?.trim()) return x ?? null;
   const v = decoderEntites(x).trim();
-  if (!uniforme(v)) return ordinaux(v);
+  if (!uniforme(v)) return ordinaux(personne(v) ? nomDePersonne(v) : v);
   return ordinaux(recaser(v, {
     liaison: (m, prec) => LIAISONS_NOM.has(m) || (["le", "la", "les"].includes(m) && AVANT_ARTICLE.has(prec)),
     forme: sigle,
