@@ -40,6 +40,8 @@ dossier ou un abonné chez lui. `mesures-v1.sql` est un contrat de forme.
 7. **Module mailing** (`mailing-v1.sql`) : adapter `baikal_mail_optout` (toutes les listes
    d'exclusion du site) et `mail_desinscrire` (la table d'opt-out que tous ses envois lisent).
    Le journal nominatif (`mail_envoi`) reste chez le site ; Baikal ne garde que la campagne.
+8. **Module événements** (`evenements-v1.md`) : le relais tourne chez le site, l'identification
+   ne vient que de son serveur, la branche Events se dérive de `baikal_evenements`.
 
 ## Règles
 
@@ -81,6 +83,7 @@ deux vues, vérifier qu'elles s'accordent ligne à ligne.
 | `mailing-v1.1-sequences.sql` | module (mise à jour) | 1.1 | monsieurdpe, pack-vendeur (une ligne par mail de séquence : colonne `touche`) |
 | `audience-v1.sql` | forme | 1 | pack-vendeur (matérialisée, rafraîchie chaque heure) |
 | `mail-stats-v1.sql` | forme | 1 | pack-vendeur |
+| `evenements-v1.sql` + `evenements-relais-v1.ts` + `evenements-v1.js` | module | 1 | aucun site encore (guide : `evenements-v1.md`) |
 
 Les vues de liste et les mesures se répondent : `baikal_dossiers` porte le
 chapitre Clients (contrat `dossiers-v1`, avec les sept vues de la fiche), `baikal_comptes_pro` le chapitre Comptes pro, et

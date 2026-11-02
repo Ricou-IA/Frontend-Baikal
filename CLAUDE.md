@@ -308,6 +308,9 @@ sites-design.md).
   source — invisible sur la base partagée lue en `postgres` BYPASSRLS ; colonne qu'on ne
   sait pas remplir = absente ; donnée partagée par deux vues = dérivée, jamais recalculée)
   sont dans `docs/contrats/README.md`.
+- Module événements (`docs/contrats/evenements-v1.md`) : le mouchard standard des sites,
+  vocabulaire fermé de treize gestes, aucun site branché au 02/11/2026. Spec :
+  `docs/superpowers/specs/2026-11-02-contrat-evenements-design.md`.
 
 ### Comptes, droits, étages
 
