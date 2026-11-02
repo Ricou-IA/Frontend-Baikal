@@ -82,3 +82,80 @@ Deno.test("dossier_id et est_test sont lus", () => {
   const l = r.lignes[0] as { dossier_id: string; est_test: boolean };
   assertEquals([l.dossier_id, l.est_test], ["D1", true]);
 });
+
+// ------ traiterBalise ------
+
+import { traiterBalise } from "./evenements-relais-v1.ts";
+
+const deps = (erreur: string | null = null) => {
+  const recus: unknown[] = [];
+  const logs: string[] = [];
+  return {
+    recus,
+    logs,
+    deps: {
+      enregistrer: (l: unknown) => { recus.push(l); return Promise.resolve({ error: erreur }); },
+      journal: (m: string) => { logs.push(m); },
+    },
+  };
+};
+const post = (corps: string, entetes: Record<string, string> = {}) =>
+  new Request("https://x/api/evenements", { method: "POST", body: corps, headers: { "user-agent": "Mozilla/5.0", ...entetes } });
+
+Deno.test("un POST sans content-type (sendBeacon) est lu et écrit, réponse 204", async () => {
+  const d = deps();
+  const r = await traiterBalise(post(JSON.stringify({ lignes: [ligne()] })), d.deps);
+  assertEquals([r.status, d.recus.length, d.logs.length], [204, 1, 0]);
+  assertEquals((d.recus[0] as unknown[]).length, 1);
+});
+
+Deno.test("un corps illisible répond 204 et journalise", async () => {
+  const d = deps();
+  const r = await traiterBalise(post("{pas du json"), d.deps);
+  assertEquals([r.status, d.recus.length, d.logs.length], [204, 0, 1]);
+});
+
+Deno.test("un lot de forme invalide répond 204 et journalise", async () => {
+  const d = deps();
+  const r = await traiterBalise(post(JSON.stringify({ lignes: [] })), d.deps);
+  assertEquals([r.status, d.recus.length, d.logs.length], [204, 0, 1]);
+});
+
+Deno.test("un robot répond 204 sans écrire ni journaliser", async () => {
+  const d = deps();
+  const r = await traiterBalise(post(JSON.stringify({ lignes: [ligne()] }), { "user-agent": "Googlebot/2.1" }), d.deps);
+  assertEquals([r.status, d.recus.length, d.logs.length], [204, 0, 0]);
+});
+
+Deno.test("enregistrer en erreur : 204 quand même, erreur journalisée", async () => {
+  const d = deps("42501");
+  const r = await traiterBalise(post(JSON.stringify({ lignes: [ligne()] })), d.deps);
+  assertEquals([r.status, d.recus.length, d.logs.length], [204, 1, 1]);
+  assertEquals(d.logs[0].includes("42501"), true);
+});
+
+Deno.test("enregistrer qui lève : 204 quand même, journalisé", async () => {
+  const logs: string[] = [];
+  const r = await traiterBalise(post(JSON.stringify({ lignes: [ligne()] })), {
+    enregistrer: () => Promise.reject(new Error("réseau")),
+    journal: (m: string) => { logs.push(m); },
+  });
+  assertEquals([r.status, logs.length], [204, 1]);
+});
+
+Deno.test("OPTIONS répond 204 avec les en-têtes CORS de l'origine donnée", async () => {
+  const r = await traiterBalise(new Request("https://x/api/evenements", { method: "OPTIONS" }), { ...deps().deps, origine: "https://www.monsite.fr" });
+  assertEquals(r.status, 204);
+  assertEquals(r.headers.get("access-control-allow-origin"), "https://www.monsite.fr");
+  assertEquals(r.headers.get("access-control-allow-methods"), "POST, OPTIONS");
+});
+
+Deno.test("sans origine configurée, CORS vaut *", async () => {
+  const r = await traiterBalise(new Request("https://x/api/evenements", { method: "OPTIONS" }), deps().deps);
+  assertEquals(r.headers.get("access-control-allow-origin"), "*");
+});
+
+Deno.test("GET répond 405", async () => {
+  const r = await traiterBalise(new Request("https://x/api/evenements", { method: "GET" }), deps().deps);
+  assertEquals(r.status, 405);
+});

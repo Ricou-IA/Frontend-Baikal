@@ -129,3 +129,95 @@ export function lireLot(corps: unknown, userAgent: string | null): LotLu {
   }
   return { ok: true, lignes, rejetees };
 }
+
+// ------ Le gestionnaire HTTP ------
+
+export type DependancesRelais = {
+  /** Écrit le lot : l'appel RPC evenement_enregistrer du site. */
+  enregistrer: (lignes: Ligne[]) => Promise<{ error: string | null }>;
+  /** Où vont les erreurs : console.error chez la plupart des sites. */
+  journal?: (message: string) => void;
+  /** L'origine autorisée (https://www.monsite.fr) ; '*' à défaut. */
+  origine?: string;
+};
+
+function entetesCors(origine: string | undefined): Record<string, string> {
+  return {
+    "Access-Control-Allow-Origin": origine ?? "*",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "content-type",
+  };
+}
+
+/**
+ * Traite une balise. Répond 204 à tout POST, quoi qu'il arrive : le visiteur
+ * ne doit jamais rien voir, et une erreur se lit dans le journal du relais.
+ * Ne lève jamais.
+ */
+export async function traiterBalise(req: Request, deps: DependancesRelais): Promise<Response> {
+  const cors = entetesCors(deps.origine);
+  const journal = deps.journal ?? (() => {});
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+  if (req.method !== "POST") return new Response(null, { status: 405, headers: cors });
+
+  const muet = () => new Response(null, { status: 204, headers: cors });
+  let corps: unknown;
+  try {
+    // En texte puis parsé : sendBeacon envoie text/plain, req.json() refuserait.
+    corps = JSON.parse(await req.text());
+  } catch {
+    journal("[evenements] corps illisible");
+    return muet();
+  }
+
+  const lot = lireLot(corps, req.headers.get("user-agent"));
+  if (!lot.ok) {
+    if (lot.motif !== "robot") journal(`[evenements] lot refusé : ${lot.motif}`);
+    return muet();
+  }
+  if (lot.lignes.length === 0) {
+    journal(`[evenements] lot sans ligne valide, ${lot.rejetees} rejetée(s)`);
+    return muet();
+  }
+  try {
+    const { error } = await deps.enregistrer(lot.lignes);
+    if (error !== null) journal(`[evenements] écriture refusée : ${error}`);
+  } catch (e) {
+    journal(`[evenements] écriture en échec : ${e instanceof Error ? e.message : String(e)}`);
+  }
+  return muet();
+}
+
+// ------ Les deux enrobages, à copier chez le site ------
+//
+// Dans les deux cas, le client Supabase est celui de service_role, et la RPC
+// s'appelle dans le schéma du site : createClient(url, cle, { db: { schema: "<schema>" } }).
+//
+// 1. Route Next, sur le domaine du site (app/api/evenements/route.ts) :
+//
+//   import { createClient } from "@supabase/supabase-js";
+//   import { traiterBalise } from "@/lib/evenements-relais-v1";
+//   const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_CLE_SERVICE!,
+//     { db: { schema: "<schema>" } });
+//   const deps = {
+//     enregistrer: (lignes) => supabase.rpc("evenement_enregistrer", { p_lignes: lignes })
+//       .then(({ error }) => ({ error: error?.message ?? null })),
+//     journal: console.error,
+//   };
+//   export const POST = (req: Request) => traiterBalise(req, deps);
+//   export const OPTIONS = POST;
+//
+// 2. Edge Function Deno (supabase/functions/<schema>-evenements/index.ts) :
+//    verify_jwt = false OBLIGATOIRE, sendBeacon ne pose aucun en-tête ; sans le
+//    drapeau, la fonction meurt en 401 sans un bruit et rien n'est jamais écrit.
+//
+//   import { createClient } from "jsr:@supabase/supabase-js@2";
+//   import { traiterBalise } from "../_shared/evenements-relais-v1.ts";
+//   const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+//     { db: { schema: "<schema>" } });
+//   Deno.serve((req) => traiterBalise(req, {
+//     enregistrer: (lignes) => supabase.rpc("evenement_enregistrer", { p_lignes: lignes })
+//       .then(({ error }) => ({ error: error?.message ?? null })),
+//     journal: console.error,
+//     origine: "https://www.monsite.fr",
+//   }));
