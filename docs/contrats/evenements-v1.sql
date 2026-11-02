@@ -30,7 +30,10 @@
 create table if not exists @SCHEMA@.evenement (
   id          bigint generated always as identity primary key,
   -- Heure du serveur à la réception : celle du navigateur n'est pas fiable.
-  survenu_le  timestamptz not null default now(),
+  -- clock_timestamp() et non now() : les vingt gestes d'un lot sont écrits
+  -- dans une seule transaction, et now() leur donnerait tous la même heure,
+  -- ce qui perdrait leur ordre sur la timeline.
+  survenu_le  timestamptz not null default clock_timestamp(),
   visiteur_id uuid        not null,
   -- L'identité, minuscules. Posée par evenement_identifier, jamais reçue du
   -- navigateur.
@@ -47,6 +50,10 @@ create table if not exists @SCHEMA@.evenement (
   referent    text        check (referent is null or char_length(referent) <= 200),
   est_test    boolean     not null default false
 );
+
+-- Une installation d'avant le 02/11/2026 portait default now() : le
+-- `if not exists` ne corrige pas un défaut, cette ligne le fait.
+alter table @SCHEMA@.evenement alter column survenu_le set default clock_timestamp();
 
 comment on table @SCHEMA@.evenement is
   'Un geste d''un visiteur du site. Écrit par evenement_enregistrer (relais) et '
@@ -136,7 +143,12 @@ begin
       values (
         v_visiteur,
         v_rattache.email,
-        coalesce(v_ligne ->> 'dossier_id', v_rattache.dossier_id),
+        -- Le dossier_id du navigateur n'est gardé que pour un visiteur déjà
+        -- rattaché : sinon n'importe qui écrirait sur la timeline du dossier
+        -- de son choix. Un anonyme reçoit le sien à l'identification.
+        case when v_rattache.email is not null
+             then coalesce(v_ligne ->> 'dossier_id', v_rattache.dossier_id)
+             else null end,
         v_geste,
         left(v_ligne ->> 'libelle', 200),
         v_page,
@@ -174,13 +186,21 @@ declare
   v_email text := lower(trim(p_email));
   v_rattaches int;
   v_dernier record;
+  v_deja boolean;
 begin
   if p_visiteur_id is null then
     return jsonb_build_object('ok', false, 'erreur', 'visiteur requis');
   end if;
-  if v_email !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' then
+  if v_email is null or v_email !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' then
     return jsonb_build_object('ok', false, 'erreur', 'email invalide');
   end if;
+
+  -- Déjà rattaché à cette adresse : on complète sans réécrire le geste
+  -- identification, sinon chaque page connectée en ajouterait un.
+  select exists (
+    select 1 from @SCHEMA@.evenement_visiteur ev
+    where ev.visiteur_id = p_visiteur_id and ev.email = v_email
+  ) into v_deja;
 
   insert into @SCHEMA@.evenement_visiteur (visiteur_id, email, dossier_id, identifie_le, origine)
   values (p_visiteur_id, v_email, p_dossier_id, now(), left(coalesce(p_origine, 'formulaire'), 40))
@@ -194,6 +214,10 @@ begin
     set email = v_email, dossier_id = coalesce(dossier_id, p_dossier_id)
   where visiteur_id = p_visiteur_id and email is null;
   get diagnostics v_rattaches = row_count;
+
+  if v_deja then
+    return jsonb_build_object('ok', true, 'rattaches', v_rattaches);
+  end if;
 
   select e.page, e.est_test into v_dernier
   from @SCHEMA@.evenement e
@@ -287,5 +311,9 @@ begin
   if exists (select 1 from pg_extension where extname = 'pg_cron') then
     perform cron.schedule('@SCHEMA@-evenements-purge', '17 3 * * *',
                           'select @SCHEMA@.evenement_purger()');
+  else
+    -- Sans purge, les anonymes sont gardés sans limite et la page de
+    -- confidentialité du site ment. Le dire, plutôt que de se taire.
+    raise warning 'pg_cron absent : la purge des visiteurs anonymes à 90 jours n''est pas planifiée, appeler @SCHEMA@.evenement_purger() autrement';
   end if;
 end $$;

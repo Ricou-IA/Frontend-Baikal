@@ -187,6 +187,65 @@ begin
   if v_reste <> 4 then raise exception 'contrôle 9 : les gestes identifiés de 91 jours ont été purgés (% restent)', v_reste; end if;
 end $$;
 
+-- 10. Deux gestes d'un même lot gardent leur ordre : survenu_le strictement croissant.
+do $$
+declare v_n int;
+begin
+  perform @SCHEMA@.evenement_enregistrer('[
+    {"visiteur_id":"00000000-0000-4000-8000-000000000008","geste":"page_vue","page":"/a"},
+    {"visiteur_id":"00000000-0000-4000-8000-000000000008","geste":"clic","page":"/a"},
+    {"visiteur_id":"00000000-0000-4000-8000-000000000008","geste":"filtre","page":"/a"}
+  ]'::jsonb);
+  select count(*) into v_n from (
+    select survenu_le, lag(survenu_le) over (order by id) as precedent
+    from @SCHEMA@.evenement where visiteur_id = '00000000-0000-4000-8000-000000000008'
+  ) s where precedent is not null and survenu_le <= precedent;
+  if v_n <> 0 then raise exception 'contrôle 10 : % geste(s) d''un même lot sans ordre', v_n; end if;
+end $$;
+
+-- 11. Le dossier_id du navigateur n'est gardé que pour un visiteur déjà rattaché.
+do $$
+declare v_dossier text;
+begin
+  perform @SCHEMA@.evenement_enregistrer('[
+    {"visiteur_id":"00000000-0000-4000-8000-000000000009","geste":"clic","page":"/d","dossier_id":"AUTRUI"}
+  ]'::jsonb);
+  select dossier_id into v_dossier from @SCHEMA@.evenement where visiteur_id = '00000000-0000-4000-8000-000000000009';
+  if v_dossier is not null then raise exception 'contrôle 11 : un anonyme a posé dossier_id %', v_dossier; end if;
+  perform @SCHEMA@.evenement_identifier('00000000-0000-4000-8000-000000000009', 'neuf@recette.evenements', 'D9', 'connexion');
+  perform @SCHEMA@.evenement_enregistrer('[
+    {"visiteur_id":"00000000-0000-4000-8000-000000000009","geste":"clic","page":"/d","dossier_id":"D9b"}
+  ]'::jsonb);
+  select dossier_id into v_dossier from @SCHEMA@.evenement
+  where visiteur_id = '00000000-0000-4000-8000-000000000009' order by id desc limit 1;
+  if v_dossier is distinct from 'D9b' then raise exception 'contrôle 11 : un rattaché perd son dossier_id (%)', v_dossier; end if;
+end $$;
+
+-- 12. Identifier deux fois à l'identique n'écrit qu'un seul geste identification.
+do $$
+declare v jsonb; v_n int;
+begin
+  v := @SCHEMA@.evenement_identifier('00000000-0000-4000-8000-000000000009', 'neuf@recette.evenements', null, 'connexion');
+  if v <> '{"ok":true,"rattaches":0}'::jsonb then raise exception 'contrôle 12 : second appel, obtenu %', v; end if;
+  select count(*) into v_n from @SCHEMA@.evenement
+  where visiteur_id = '00000000-0000-4000-8000-000000000009' and geste = 'identification';
+  if v_n <> 1 then raise exception 'contrôle 12 : % geste(s) identification au lieu de 1', v_n; end if;
+  v := @SCHEMA@.evenement_identifier('00000000-0000-4000-8000-000000000009', 'autre@recette.evenements', null, 'connexion');
+  select count(*) into v_n from @SCHEMA@.evenement
+  where visiteur_id = '00000000-0000-4000-8000-000000000009' and geste = 'identification';
+  if v_n <> 2 then raise exception 'contrôle 12 : une autre adresse doit écrire un second geste (%)', v_n; end if;
+end $$;
+
+-- 13. La purge est planifiée dès que pg_cron existe.
+do $$
+declare v_n int;
+begin
+  if exists (select 1 from pg_extension where extname = 'pg_cron') then
+    select count(*) into v_n from cron.job where jobname = '@SCHEMA@-evenements-purge';
+    if v_n <> 1 then raise exception 'contrôle 13 : job de purge absent'; end if;
+  end if;
+end $$;
+
 -- Nettoyage de ce que la recette a écrit.
 delete from @SCHEMA@.evenement where visiteur_id::text like '00000000-0000-4000-8000-00000000000%';
 delete from @SCHEMA@.evenement_visiteur where visiteur_id::text like '00000000-0000-4000-8000-00000000000%';

@@ -145,3 +145,55 @@ Deno.test("installer() émet une page vue, puis une autre à chaque pushState ve
   ecouteurs["visibilitychange"]();
   assertEquals([f.envois.length, m.file.length], [1, 0]);
 });
+
+// ------ ne jamais casser la page ------
+
+Deno.test("sans window, installer() et creerMouchard() rendent un mouchard inerte sans lever", () => {
+  const m = installer({ relais: "/api/evenements", nomCookie: "x_visiteur" });
+  m.geste("clic", "x", {}, null);
+  m.pageVue();
+  m.vider();
+  assertEquals([m.visiteur(), m.file.length], [null, 0]);
+  assertEquals(creerMouchard({ relais: "/api/evenements", nomCookie: "x_visiteur" }).visiteur(), null);
+});
+
+Deno.test("un stockage qui lève n'empêche ni visiteur() ni geste()", () => {
+  const f = faux();
+  f.options.stockage = { getItem() { throw new Error("SecurityError"); }, setItem() { throw new Error("SecurityError"); }, removeItem() { throw new Error("SecurityError"); } };
+  const m = creerMouchard(f.options);
+  assertMatch(m.visiteur(), /^[0-9a-f-]{36}$/);
+  m.geste("clic", "x", {}, null);
+  assertEquals(m.file.length, 1);
+});
+
+Deno.test("une fenêtre dont localStorage lève à l'accès donne un mouchard qui marche", () => {
+  const f = faux();
+  delete f.options.stockage;
+  Object.defineProperty(f.fenetre, "localStorage", { get() { throw new Error("SecurityError"); } });
+  const m = creerMouchard(f.options);
+  assertMatch(m.visiteur(), /^[0-9a-f-]{36}$/);
+});
+
+Deno.test("sans crypto.randomUUID, un identifiant valide est quand même produit", () => {
+  const f = faux({ crypto: { getRandomValues: (a) => { for (let i = 0; i < a.length; i++) a[i] = (i * 37) & 255; return a; } } });
+  const id = creerMouchard(f.options).visiteur();
+  // Les octets i*37 & 255, avec la version 4 et la variante posées.
+  assertEquals(id, "00254a6f-94b9-4e03-a84d-7297bce1062b");
+});
+
+Deno.test("installer() deux fois sur la même fenêtre rend le même mouchard, une seule page vue", () => {
+  const f = faux({ history: { pushState() {}, replaceState() {} }, addEventListener() {}, setInterval: () => 0,
+    document: { title: "A", referrer: "", cookie: "", addEventListener() {}, visibilityState: "visible" } });
+  const a = installer(f.options);
+  const b = installer(f.options);
+  assertEquals(a === b, true);
+  assertEquals(a.file.length, 1);
+});
+
+Deno.test("option titre: false, la page vue part sans libellé", () => {
+  const f = faux();
+  creerMouchard({ ...f.options, titre: false }).pageVue();
+  const m = creerMouchard({ ...f.options, titre: false });
+  m.pageVue();
+  assertEquals(m.file[0].libelle, null);
+});

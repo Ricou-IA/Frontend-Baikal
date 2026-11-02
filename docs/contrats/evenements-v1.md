@@ -32,8 +32,12 @@ l'attribution (le premier contact reste au contrat `attribution`), et pas un
    paramètres, imposé. `libelle` et `detail` sont libres, et le site sait ce
    qu'il a promis de ne pas conserver : un geste `recherche` dont le libellé
    est la question tapée est légitime sur un outil pro, interdit sur une page
-   qui promet qu'une adresse recherchée n'est jamais gardée. Le site ajoute
-   la ligne correspondante à sa page de confidentialité.
+   qui promet qu'une adresse recherchée n'est jamais gardée. Deux choses
+   partent sans que le site les écrive : le **titre de la page** (libellé de
+   `page_vue`) et les **segments du chemin**. Un site dont un titre ou un
+   chemin peut porter une adresse ou un nom installe avec `titre: false` et
+   vérifie ses chemins. Le site ajoute la ligne correspondante à sa page de
+   confidentialité.
 4. **Les tests sont exclus à la source.** `?staff=1` sur n'importe quelle page
    pose un drapeau persistant, `?staff=0` le retire ; les gestes partent en
    `est_test` et la vue standard les écarte. À poser une fois sur chaque
@@ -61,15 +65,28 @@ l'attribution (le premier contact reste au contrat `attribution`), et pas un
    en-tête, et sans ce drapeau la fonction meurt en 401 sans un bruit. Dans
    les deux cas le client Supabase est celui de `service_role`, créé avec
    `db: { schema: "<schema>" }`.
-3. **La bibliothèque.** Copier `evenements-v1.js` dans le site. Dans la coque
-   de l'application, une fois au montage (un composant client dans le layout
-   Next, le point d'entrée Vite, ou un `<script type="module">`) :
+3. **La bibliothèque.** Copier `evenements-v1.js` dans le site, avec un
+   module d'accès qui l'installe une fois et la rend partout :
    ```js
+   // lib/mouchard.js
    import { installer } from "./evenements-v1.js";
-   export const mouchard = installer({ relais: "/api/evenements", nomCookie: "<schema>_visiteur" });
+   export function mouchard() {
+     return installer({ relais: "/api/evenements", nomCookie: "<schema>_visiteur" });
+   }
    ```
+   `installer` ne s'exécute qu'une fois par fenêtre (un second appel rend le
+   même mouchard) et rend un mouchard inerte hors navigateur : l'appeler
+   pendant un rendu serveur ne casse rien. Dans un layout Next, un composant
+   client le monte :
+   ```jsx
+   "use client";
+   import { useEffect } from "react";
+   import { mouchard } from "@/lib/mouchard";
+   export function Mouchard() { useEffect(() => { mouchard(); }, []); return null; }
+   ```
+   Dans un site Vite ou statique, `mouchard()` au point d'entrée suffit.
    La page vue est émise par la bibliothèque, au chargement et à chaque
-   navigation interne. Rien d'autre à faire pour elle.
+   navigation interne. Partout ailleurs, `mouchard().geste(...)`.
 4. **Les gestes.** Aux endroits de l'interface qui comptent :
    `mouchard.geste(geste, libelle, detail, dossierId)`. Le vocabulaire et les
    libellés attendus sont au §4. Commencer par ce qui manque à la timeline
@@ -127,8 +144,17 @@ p_email, p_dossier_id, p_origine })`. Trois cas couvrent presque tout :
   de la session de paiement ; le webhook le relit et appelle la fonction
   avec `p_origine = 'paiement'` et le `dossier_id` de l'achat.
 
-Un visiteur, une adresse : la dernière identification gagne. Une adresse
-invalide rend `{ ok: false, erreur: "email invalide" }` et n'écrit rien.
+Un visiteur, une adresse : la dernière identification gagne. Un second
+appel avec la même adresse complète le rattachement sans réécrire de geste
+`identification` : la fonction peut s'appeler à chaque requête connectée
+sans inonder la timeline. Une adresse invalide rend
+`{ ok: false, erreur: "email invalide" }` et n'écrit rien.
+
+**Le `dossier_id` envoyé par le navigateur n'est gardé que pour un visiteur
+déjà rattaché.** Sinon n'importe qui écrirait sur la timeline du dossier de
+son choix. Les gestes d'un anonyme sur la page d'un dossier reçoivent leur
+`dossier_id` à l'identification, par l'argument `p_dossier_id`, qui doit
+donc venir du serveur (la session, l'achat), jamais du corps de la requête.
 
 ## 6. La branche Events
 
@@ -170,21 +196,20 @@ utile, puis l'ancienne branche tombe.
 
 ## 8. La recette
 
-Sept contrôles. Un site qui ne les passe pas tous n'est pas installé. Les
-contrôles 1, 2 et 5 sont automatiques :
+Sept contrôles. Un site qui ne les passe pas tous n'est pas installé.
 
-```powershell
-# depuis le dépôt Baikal, ou avec le même script copié chez le site
-.\scripts\sql-api.ps1 -Ref <projet> -Fichier docs/contrats/evenements-v1.recette.sql -Schema <schema>
-```
+Les contrôles 1 et 2, et la moitié serveur du 5, sont automatiques : jouer
+`evenements-v1.recette.sql`, `@SCHEMA@` substitué, dans n'importe quel client
+SQL du projet (l'éditeur SQL de Supabase, `psql`, ou l'API de gestion). Elle
+ne rend rien quand tout passe et nomme le contrôle manqué sinon. Elle couvre
+aussi le comportement des fonctions, l'ordre des gestes d'un lot, le refus
+du `dossier_id` d'un anonyme, l'identification idempotente et la purge
+planifiée. Sur la base partagée, où Baikal lit en `postgres` avec BYPASSRLS,
+le contrôle 2 vérifie les policies dans `pg_policies` et non par le résultat
+d'une lecture : une policy manquante n'y cacherait rien aujourd'hui, mais
+tout le jour où le site passe sur une base dédiée.
 
-Elle ne rend rien quand tout passe et nomme le contrôle manqué sinon. Sur la
-base partagée, où Baikal lit en `postgres` avec BYPASSRLS, le contrôle 2
-vérifie les policies dans `pg_policies` et non par le résultat d'une lecture :
-une policy manquante n'y cacherait rien aujourd'hui, mais tout le jour où le
-site passe sur une base dédiée.
-
-Les quatre autres se font dans un navigateur, d'abord **hors** mode staff :
+Les contrôles 3 à 7 se font dans un navigateur, d'abord **hors** mode staff :
 
 3. Charger une page du site. Dans la minute :
    `select page, referent from <schema>.evenement where geste = 'page_vue' order by survenu_le desc limit 1`

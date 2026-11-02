@@ -96,7 +96,7 @@ console.log("identifier →", JSON.stringify(ident[0].r));
 // 4. Ce que Baikal lit.
 const gestes = await sql<{ geste: string; libelle: string | null; page: string; email: string | null; detail: unknown }>(
   `select geste, libelle, page, email, detail from ${SCHEMA}.baikal_evenements
-   where email = 'test@evt.fr' order by survenu_le, geste`,
+   where email = 'test@evt.fr' order by survenu_le`,
 );
 for (const g of gestes) console.log(`  ${g.geste.padEnd(16)} ${g.page.padEnd(14)} ${g.libelle ?? ""}  ${JSON.stringify(g.detail)}`);
 if (journal.length > 0) console.log("journal du relais :", journal);

@@ -106,23 +106,61 @@ function envoyerParDefaut(fenetre) {
   };
 }
 
+/** Un identifiant v4 ; `crypto.randomUUID` n'existe pas hors contexte sécurisé. */
+function nouvelIdentifiant(cryptoObj) {
+  if (cryptoObj && typeof cryptoObj.randomUUID === "function") return cryptoObj.randomUUID();
+  const octets = cryptoObj.getRandomValues(new Uint8Array(16));
+  octets[6] = (octets[6] & 0x0f) | 0x40;
+  octets[8] = (octets[8] & 0x3f) | 0x80;
+  const hex = Array.from(octets, (o) => o.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+/** Le mouchard qui ne fait rien : hors navigateur, ou quand tout a échoué. */
+function inerte() {
+  return { visiteur: () => null, geste() {}, pageVue() {}, vider() {}, file: [] };
+}
+
+/** `localStorage` peut lever à l'accès (cookies bloqués) : alors null. */
+function stockageDe(options, fenetre) {
+  try {
+    return options.stockage ?? fenetre.localStorage ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Le mouchard, sans rien brancher sur la page : `installer` s'en charge.
  * Tout est injectable pour le test ; en production seuls `relais` et
- * `nomCookie` se donnent.
+ * `nomCookie` se donnent, plus `titre: false` pour une page vue sans titre
+ * (quand un titre de page peut porter une donnée que le site ne garde pas).
+ * Ne lève jamais : sans fenêtre, il rend un mouchard inerte.
  */
 export function creerMouchard(options) {
-  const fenetre = options.fenetre ?? globalThis.window;
-  const stockage = options.stockage ?? fenetre.localStorage;
+  try {
+    const fenetre = options.fenetre ?? globalThis.window;
+    if (!fenetre || !fenetre.document || !fenetre.location) return inerte();
+    return creerMouchardDans(options, fenetre);
+  } catch {
+    return inerte();
+  }
+}
+
+function creerMouchardDans(options, fenetre) {
+  const stockage = stockageDe(options, fenetre);
   const envoyer = options.envoyer ?? envoyerParDefaut(fenetre);
+  const avecTitre = options.titre !== false;
   const file = [];
+  let dernier = null;
 
   function visiteur() {
     let id = null;
-    try { id = stockage.getItem(CLE_VISITEUR); } catch { /* stockage bloqué */ }
+    try { id = stockage?.getItem(CLE_VISITEUR) ?? null; } catch { /* stockage bloqué */ }
     if (!UUID.test(id ?? "")) id = lireCookie(fenetre.document.cookie, options.nomCookie);
-    if (!UUID.test(id ?? "")) id = globalThis.crypto.randomUUID();
-    try { stockage.setItem(CLE_VISITEUR, id); } catch { /* stockage bloqué */ }
+    if (!UUID.test(id ?? "")) id = dernier ?? nouvelIdentifiant(fenetre.crypto ?? globalThis.crypto);
+    dernier = id;
+    try { stockage?.setItem(CLE_VISITEUR, id); } catch { /* stockage bloqué */ }
     try {
       fenetre.document.cookie = `${options.nomCookie}=${id}; Max-Age=31536000; Path=/; SameSite=Lax`;
     } catch { /* cookies bloqués */ }
@@ -151,7 +189,7 @@ export function creerMouchard(options) {
       detail: nettoyerDetail(detail),
       dossier_id: texte(dossierId),
       referent,
-      est_test: lireStaff(fenetre.location.search, stockage),
+      est_test: stockage === null ? false : lireStaff(fenetre.location.search, stockage),
     };
   }
 
@@ -164,16 +202,35 @@ export function creerMouchard(options) {
   function pageVue() {
     try {
       const referent = hoteReferent(fenetre.document.referrer, fenetre.location.hostname);
-      pousser(ligneDe("page_vue", fenetre.document.title, {}, null, referent));
+      pousser(ligneDe("page_vue", avecTitre ? fenetre.document.title : null, {}, null, referent));
     } catch { /* jamais bloquant */ }
   }
 
   return { visiteur, geste, pageVue, vider, file };
 }
 
-/** Crée le mouchard et le branche sur la page. */
+const CLE_INSTALLE = "__mouchardEvenements";
+
+/**
+ * Crée le mouchard et le branche sur la page. Une seule fois par fenêtre :
+ * un second appel (remontage, StrictMode) rend le même mouchard sans
+ * nouvelle page vue ni second intervalle. Hors navigateur (rendu serveur),
+ * rend un mouchard inerte. Ne lève jamais.
+ */
 export function installer(options) {
-  const fenetre = options.fenetre ?? globalThis.window;
+  try {
+    const fenetre = options.fenetre ?? globalThis.window;
+    if (!fenetre || !fenetre.document || !fenetre.location) return inerte();
+    if (fenetre[CLE_INSTALLE]) return fenetre[CLE_INSTALLE];
+    const mouchard = installerDans(options, fenetre);
+    fenetre[CLE_INSTALLE] = mouchard;
+    return mouchard;
+  } catch {
+    return inerte();
+  }
+}
+
+function installerDans(options, fenetre) {
   const mouchard = creerMouchard({ ...options, fenetre });
   let pageCourante = nettoyerPage(fenetre.location.href);
   mouchard.pageVue();
