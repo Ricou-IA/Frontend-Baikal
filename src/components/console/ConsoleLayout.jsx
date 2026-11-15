@@ -21,6 +21,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { AppProvider, useApp } from '../../contexts/AppContext';
 import SiteSidebar, { SiteBarre } from './SiteSidebar';
 import NouvelleVersion from './NouvelleVersion';
+import { routeAccueilSite } from './accueilSite';
 import { BoutonSite, FeuilleSites, BarreBasse, PRINCIPAUX_SITE, PRINCIPAUX_BAIKAL } from './NavMobile';
 import { ProfileSwitcher } from '../admin';
 import supabase from '../../lib/supabaseClient';
@@ -61,11 +62,6 @@ const MODULES_BAIKAL = [
     { id: 'baikal-comptes', label: 'Comptes', icon: Users, route: '/baikal?tab=comptes' },
     { id: 'baikal-sites', label: 'Sites', icon: ListChecks, route: '/baikal?tab=sites' },
 ];
-
-// Page d'arrivee quand on quitte l'etage Baikal pour un site.
-function routeAccueilSite(appId) {
-    return appId === 'arpet' ? '/admin' : '/clients';
-}
 
 function Onglet({ tab, actif, badge, onClick }) {
     const Icon = tab.icon;
@@ -274,7 +270,7 @@ function LayoutInterne({ actif, badges = {}, children }) {
                 <div className="flex-1 min-w-0">
                     <div className="hidden md:block bg-baikal-surface border-b border-baikal-border">
                         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                            <nav ref={navRef} className="flex gap-1 -mb-px overflow-x-auto items-center">
+                            <nav ref={navRef} className="flex gap-1 -mb-px overflow-x-auto items-center [scrollbar-width:thin] [scrollbar-color:#334155_transparent]">
                                 {estBaikal && (
                                     <span className="flex items-center gap-1.5 pr-3 mr-1 text-xs font-mono uppercase tracking-wider text-baikal-cyan border-r border-baikal-border">
                                         <Shield className="w-3.5 h-3.5" /> Baikal

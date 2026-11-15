@@ -6,8 +6,9 @@
  * L'enrobage (header, selecteur de site global, navigation) vit dans
  * ConsoleLayout. L'onglet actif est pilote par l'URL (/admin?tab=…) :
  * - dashboard (defaut), knowledge, prompts (super_admin), indexation (super_admin)
- * Ces modules n'existent que pour ARPET ; pour un autre site selectionne,
- * la page affiche la carte du site (registre config.apps).
+ * Ces modules n'existent que pour ARPET. Un autre site s'ouvre sur son premier
+ * chapitre (accueilSite.js) ; seuls Voirie et Majord'home affichent encore ici
+ * leurs chiffres historiques, jusqu'a leur bascule sur le contrat des mesures.
  *
  * Acces :
  * - super_admin : tout voir, toutes les orgs, toutes les couches
@@ -16,13 +17,14 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
 import { useOrganization } from '../hooks/useOrganization';
 import { documentsService } from '../services/documents.service';
 import { siteStatsService } from '../services/siteStats.service';
 import ConsoleLayout from '../components/console/ConsoleLayout';
+import { routeAccueilSite } from '../components/console/accueilSite';
 import {
     AdminDashboard,
     IndexationSettings,
@@ -118,24 +120,13 @@ function VueSite({ appId }) {
     }
     if (!stats) return null;
 
+    // Un site sans chiffres propres à cette page n'a rien à y montrer : ses
+    // mesures sont en tête de ses chapitres (contrat des mesures). On l'ouvre
+    // donc sur son premier chapitre, au lieu d'une liste de tables qui ne
+    // servait à personne (Eric, 15/11/2026). Voirie et Majord'home gardent
+    // leurs chiffres ici jusqu'à leur bascule.
     if (stats.mode === 'generique') {
-        return (
-            <div className="bg-baikal-surface border border-baikal-border rounded-lg p-4 sm:p-6 overflow-x-auto">
-                <h3 className="text-sm font-mono text-baikal-text mb-3">
-                    TABLES DU SITE (volumes estimes)
-                </h3>
-                <table className="w-full text-sm text-baikal-text">
-                    <tbody>
-                        {stats.tables.map((t) => (
-                            <tr key={t.table} className="border-t border-baikal-border">
-                                <td className="py-1.5 font-mono">{t.table}</td>
-                                <td className="py-1.5 text-right">{new Intl.NumberFormat('fr-FR').format(t.lignes_estimees)}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        );
+        return <Navigate to={routeAccueilSite(appId)} replace />;
     }
 
     return (
