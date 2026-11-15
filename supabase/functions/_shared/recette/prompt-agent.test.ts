@@ -22,7 +22,9 @@ Deno.test("il nomme le site et fait identifier le bon projet avant tout", () => 
   assert(p.includes("https://www.monsaas.fr"));
   const etape0 = p.slice(p.indexOf("## Étape 0"), p.indexOf("## Les règles"));
   assert(etape0.includes("« monsaas.fr »"), "l'agent cherche le domaine dans le code");
-  assert(etape0.includes("Attends son accord"), "rien n'est créé avant l'accord du fondateur");
+  assert(etape0.includes("continue sans demander"), "un seul projet possible : pas de confirmation");
+  assert(etape0.includes("le SEUL cas où tu poses une question"), "la seule question permise : deux projets indépartageables");
+  assert(etape0.includes("ne branche que le schéma de ce site"), "base partagée : un seul schéma");
   assert(etape0.includes("Postgres"), "une autre base l'apprend tout de suite");
   // Le projet s'identifie AVANT le rôle et les vues.
   assert(p.indexOf("## Étape 0") < p.indexOf("## Étape 1"));
@@ -58,6 +60,27 @@ Deno.test("les deux contrats entiers, sans schéma deviné, et jamais de mot de 
   // Les étapes se suivent sans trou.
   const numeros = [...p.matchAll(/^## Étape (\d+) —/gm)].map((m) => Number(m[1]));
   assertEquals(numeros, numeros.map((_, i) => i));
+});
+
+Deno.test("un résultat, pas une conversation : d'une traite, sans confirmation ni questions de définition", () => {
+  const p = prompt();
+  const entete = p.slice(0, p.indexOf("## Étape 0"));
+  assert(entete.includes("D'UNE TRAITE"));
+  assert(entete.includes("pas une conversation"));
+  // Ce qui faisait s'arrêter l'agent du premier essai n'est plus demandé.
+  for (const arret of ["Attends son accord", "attends son accord", "pose la question au fondateur", "Montre la migration au fondateur"]) {
+    assertEquals(p.includes(arret), false, arret);
+  }
+  // Il tranche, et le dit à la fin : le fondateur corrige après avoir vu son résultat.
+  assert(p.includes("note-la"));
+  assert(p.includes("Les choix que tu as faits à sa place"));
+  // Rien d'existant n'est touché : c'est ce qui permet d'appliquer sans demander.
+  assert(p.includes("s'AJOUTE et ne sert qu'à lire"));
+  assert(p.includes("Ne modifie aucune table, aucune colonne, aucune donnée existante"));
+  // La réponse finale commence par le lien, et l'agent ne tourne pas en rond.
+  const fin = p.slice(p.lastIndexOf("## Étape"));
+  assert(fin.indexOf(`https://withbaikal.io/tester/r/${JETON}`) < fin.indexOf("Le projet que tu as branché"));
+  assert(fin.includes("après trois corrections, arrête-toi"));
 });
 
 Deno.test("même entrée, même prompt ; un autre site, un autre prompt", () => {

@@ -160,7 +160,9 @@ export function fabriquerPromptAgent(options: OptionsPromptAgent): string {
   const parties = [
     `# Brancher ${site.domaine} à Baikal
 
-Tu vas brancher le site ${site.url} à Baikal, la console d'administration de son fondateur. Baikal ne lit que des VUES que le site publie, sous un rôle Postgres en lecture seule. Tu fais tout le travail : identifier le projet, créer le rôle, écrire les vues, lancer le test en ligne, corriger jusqu'à zéro échec. À la fin, tu rends UN lien au fondateur.
+Tu vas brancher le site ${site.url} à Baikal, la console d'administration de son fondateur. Baikal ne lit que des VUES que le site publie, sous un rôle Postgres en lecture seule. Tu fais tout le travail, D'UNE TRAITE : identifier le projet, créer le rôle, écrire les vues, lancer le test en ligne, corriger jusqu'à zéro échec. À la fin, tu rends UN lien au fondateur.
+
+Le fondateur attend un résultat, pas une conversation. Ne fais pas de point d'étape, ne demande pas de confirmation, ne pose pas de questions de définition : tranche d'après le code, et écris tes choix dans ta réponse finale. Tu ne l'interromps que si tu ne peux vraiment pas continuer.
 
 Le niveau 1 tient en deux vues : ${vues.join(" et ")}. Le niveau 2 (les onglets de la fiche client, l'origine des clients) vient après, et il est optionnel.`,
 
@@ -171,18 +173,19 @@ Le site à brancher est ${site.url}. Tu as peut-être plusieurs dépôts et plus
 - Trouve le dépôt de CE site : cherche « ${site.domaine} » dans le code, la configuration de déploiement et les variables d'environnement.
 - Trouve SA base de données : \`DATABASE_URL\`, \`SUPABASE_URL\` ou équivalent dans ce dépôt. Si tu as un connecteur (MCP) vers l'hébergeur, c'est le projet dont l'adresse correspond à ces variables, pas un autre.
 - Baikal ne lit que Postgres (Supabase, Neon, un serveur à soi : peu importe). Si la base n'en est pas une, dis-le et arrête-toi là.
-- Dis au fondateur, en trois lignes, ce que tu as trouvé : le dépôt, l'hébergeur de la base, l'identifiant du projet. Attends son accord avant de créer quoi que ce soit. Si deux projets peuvent correspondre, demande-lui lequel au lieu de deviner.`,
+- Un seul projet correspond : continue sans demander, tu le nommeras dans ta réponse finale. Deux projets correspondent et rien dans le code ne les départage : c'est le SEUL cas où tu poses une question, une seule, avant d'aller plus loin.
+- Une base partagée entre plusieurs produits : ne branche que le schéma de ce site.`,
 
     `## Les règles
 
 - Ne modifie aucune table, aucune colonne, aucune donnée existante. Tu ne crées qu'un rôle, des vues, des grants et des policies de lecture.
 - Le mot de passe du rôle n'apparaît dans AUCUN fichier : ni dépôt, ni migration, ni journal, ni message de commit. Tu le tires au hasard, tu le gardes en mémoire le temps de ce travail, et tu le donnes au fondateur à la fin s'il le demande.
-- Montre la migration au fondateur et attends son accord avant de l'appliquer à sa base.
+- Tout ce que tu crées s'AJOUTE et ne sert qu'à lire : applique-le sans demander. Si un changement devait modifier ou supprimer quelque chose d'existant, ne le fais pas, et dis-le dans ta réponse finale.
 - Le contrat fige la FORME (noms des vues, colonnes, types). Le corps de chaque vue t'appartient : toi seul sais ce qu'est un dossier, un achat ou un abonné dans ce code. Lis le code du site avant d'écrire.
 - Une colonne que tu ne sais pas remplir est ABSENTE, jamais présente et nulle : Baikal lit la capacité à la présence de la colonne.
 - Les tests et les supprimés se définissent dans la vue (\`est_test\`, \`supprime_le\`), pas ailleurs.
 - Une donnée présente dans deux vues se dérive de celle qui fait autorité : \`baikal_mesures\` lit \`baikal_dossiers\`, elle ne recompte pas les tables.
-- Si une information manque pour décider (où vit la date de paiement, ce qu'est un compte de test), pose la question au fondateur plutôt que de deviner.`,
+- Quand le code laisse un choix (ce qu'est un dossier, où vit la date de paiement, ce qu'est un compte de test), prends la lecture la plus fidèle au code et note-la : le fondateur la corrigera après avoir vu son résultat, pas avant.`,
 
     `## Étape 1 — Le rôle en lecture seule
 
@@ -241,13 +244,19 @@ Dix tests par heure : corrige tout ce que le rapport montre avant de relancer.`,
 
     `## Étape ${n + 4} — Rends le lien
 
-Quand \`niveau1_pret\` vaut \`true\`, réponds au fondateur avec :
+Quand \`niveau1_pret\` vaut \`true\`, écris ta seule réponse au fondateur. Elle commence par le lien, seul sur sa ligne :
 
-1. Le lien de son résultat : ${urlResultat}
-2. Ce que tu as créé, en cinq lignes au plus : le rôle, les vues, la migration.
-3. Ce qui reste pour le niveau 2, si le rapport en parle.
+${urlResultat}
 
-Ce lien est privé et reste valable trente jours. C'est la seule chose qu'il a besoin d'ouvrir.`,
+Puis, en dix lignes au plus :
+
+1. Le projet que tu as branché : le dépôt, la base, le schéma.
+2. Ce que tu as créé : le rôle, les vues, la migration.
+3. Les choix que tu as faits à sa place : ce que tu as pris pour un dossier, pour un paiement, pour un compte de test.
+
+Ce lien est privé et reste valable trente jours. C'est la seule chose qu'il a besoin d'ouvrir : dis-le-lui.
+
+Si tu n'arrives pas à \`niveau1_pret\` après trois corrections, arrête-toi : donne le même lien, et dis en trois lignes ce qui bloque.`,
   ];
 
   return parties.join("\n\n") + "\n";

@@ -661,9 +661,9 @@ export default function TesterMonSite() {
                 {site && (
                   <ol className="space-y-3">
                     {[
-                      ['Il retrouve votre projet', 'Le bon dépôt et la bonne base, parmi ceux qu\'il a sous la main. Il vous le dit et attend votre accord.'],
-                      ['Il écrit ce qu\'il faut', 'Un rôle qui ne peut que lire, et deux vues. Il vous montre la migration avant de l\'appliquer.'],
-                      ['Il lance le test et vous rend un lien', 'Il corrige jusqu\'à zéro échec. Le lien est celui de cette page.'],
+                      ['Il retrouve votre projet', 'Le bon dépôt et la bonne base, parmi ceux qu\'il a sous la main.'],
+                      ['Il écrit ce qu\'il faut', 'Un rôle qui ne peut que lire, et deux vues. Il n\'ajoute que de la lecture et ne touche à rien d\'existant.'],
+                      ['Il lance le test et vous rend un lien', 'D\'une traite, sans vous poser de questions. Le lien est celui de cette page : le résultat s\'y affiche tout seul.'],
                     ].map(([titre, texte], i) => (
                       <li key={titre} className="flex gap-4">
                         <span className="font-mono text-baikal-cyan shrink-0">{i + 1}</span>
