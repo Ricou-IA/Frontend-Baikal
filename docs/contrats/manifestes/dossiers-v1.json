@@ -1,0 +1,287 @@
+{
+  "contrat": "dossiers-v1",
+  "source": "docs/contrats/dossiers-v1.sql",
+  "titre": "Clients : la liste des événements commerciaux et la fiche client",
+  "types": "Types attendus : text, int (smallint, integer, bigint), numeric (et entiers, réels), boolean, timestamptz, date, jsonb.",
+  "vues": [
+    {
+      "nom": "baikal_dossiers",
+      "obligatoire": true,
+      "niveau": 1,
+      "role": "La liste Clients : une ligne par événement commercial (lead, inscription, achat).",
+      "colonnes": [
+        { "nom": "dossier_id", "type": "text", "obligatoire": true, "bloc": "noyau" },
+        { "nom": "email", "type": "text", "obligatoire": true, "bloc": "noyau" },
+        { "nom": "contact_nom", "type": "text", "obligatoire": true, "bloc": "noyau" },
+        { "nom": "statut", "type": "text", "obligatoire": true, "bloc": "noyau" },
+        { "nom": "perimetre", "type": "text", "obligatoire": true, "bloc": "noyau" },
+        { "nom": "cree_le", "type": "timestamptz", "obligatoire": true, "bloc": "noyau" },
+        { "nom": "paye_le", "type": "timestamptz", "obligatoire": true, "bloc": "noyau" },
+        { "nom": "est_test", "type": "boolean", "obligatoire": true, "bloc": "noyau" },
+        { "nom": "supprime_le", "type": "timestamptz", "obligatoire": true, "bloc": "noyau" },
+        { "nom": "emails_envoyes", "type": "int", "obligatoire": true, "bloc": "noyau" },
+        { "nom": "emails_ouverts", "type": "int", "obligatoire": true, "bloc": "noyau" },
+        { "nom": "montant_ttc", "type": "numeric", "obligatoire": true, "bloc": "transaction" },
+        { "nom": "devise", "type": "text", "obligatoire": true, "bloc": "transaction" },
+        { "nom": "stripe_payment_intent_id", "type": "text", "obligatoire": true, "bloc": "transaction" },
+        { "nom": "attribution", "type": "jsonb", "obligatoire": false, "bloc": "attribution" },
+        { "nom": "apporteur", "type": "text", "obligatoire": false, "bloc": "origine" },
+        { "nom": "libelle", "type": "text", "obligatoire": false, "bloc": "libelle" },
+        { "nom": "categorie", "type": "text", "obligatoire": false, "bloc": "categorie" },
+        { "nom": "compte_id", "type": "text", "obligatoire": false, "bloc": "compte" },
+        { "nom": "documents_purges_le", "type": "timestamptz", "obligatoire": false, "bloc": "purge" },
+        { "nom": "email_capture_le", "type": "timestamptz", "obligatoire": false, "bloc": "capture" },
+        { "nom": "maj_le", "type": "timestamptz", "obligatoire": false, "bloc": "activite" },
+        { "nom": "abo_statut", "type": "text", "obligatoire": false, "bloc": "abonnement" },
+        { "nom": "abo_plan", "type": "text", "obligatoire": false, "bloc": "abonnement" },
+        { "nom": "abo_montant_mensuel", "type": "numeric", "obligatoire": false, "bloc": "abonnement" },
+        { "nom": "abo_prochaine_echeance", "type": "timestamptz", "obligatoire": false, "bloc": "abonnement" },
+        { "nom": "abo_resilie_le", "type": "timestamptz", "obligatoire": false, "bloc": "abonnement" }
+      ]
+    },
+    {
+      "nom": "baikal_dossier_champs",
+      "obligatoire": false,
+      "niveau": 2,
+      "role": "Onglet Vue de la fiche : les sections et champs déclarés par le site.",
+      "jointure": "dossier_id",
+      "colonnes": [
+        { "nom": "dossier_id", "type": "text", "obligatoire": true },
+        { "nom": "section", "type": "text", "obligatoire": true },
+        { "nom": "ordre_section", "type": "int", "obligatoire": false },
+        { "nom": "libelle", "type": "text", "obligatoire": true },
+        { "nom": "ordre", "type": "int", "obligatoire": false },
+        { "nom": "valeur", "type": "text", "obligatoire": true },
+        { "nom": "format", "type": "text", "obligatoire": false },
+        { "nom": "niveau", "type": "text", "obligatoire": false }
+      ]
+    },
+    {
+      "nom": "baikal_dossier_documents",
+      "obligatoire": false,
+      "niveau": 2,
+      "role": "Onglet Documents : ce que le client a déposé.",
+      "jointure": "dossier_id",
+      "colonnes": [
+        { "nom": "dossier_id", "type": "text", "obligatoire": true },
+        { "nom": "document_id", "type": "text", "obligatoire": true },
+        { "nom": "libelle", "type": "text", "obligatoire": true },
+        { "nom": "nature", "type": "text", "obligatoire": false },
+        { "nom": "type", "type": "text", "obligatoire": false },
+        { "nom": "mime", "type": "text", "obligatoire": false },
+        { "nom": "taille_octets", "type": "int", "obligatoire": false },
+        { "nom": "pages", "type": "int", "obligatoire": false },
+        { "nom": "depose_le", "type": "timestamptz", "obligatoire": false },
+        { "nom": "source", "type": "text", "obligatoire": false },
+        { "nom": "statut", "type": "text", "obligatoire": false },
+        { "nom": "ouvrable", "type": "boolean", "obligatoire": false },
+        { "nom": "details", "type": "jsonb", "obligatoire": false }
+      ]
+    },
+    {
+      "nom": "baikal_dossier_resultats",
+      "obligatoire": false,
+      "niveau": 2,
+      "role": "Onglet Résultat : ce que le client a obtenu.",
+      "jointure": "dossier_id",
+      "colonnes": [
+        { "nom": "dossier_id", "type": "text", "obligatoire": true },
+        { "nom": "resultat_id", "type": "text", "obligatoire": true },
+        { "nom": "libelle", "type": "text", "obligatoire": true },
+        { "nom": "nature", "type": "text", "obligatoire": false },
+        { "nom": "produit_le", "type": "timestamptz", "obligatoire": false },
+        { "nom": "version", "type": "int", "obligatoire": false },
+        { "nom": "statut", "type": "text", "obligatoire": false },
+        { "nom": "url_publique", "type": "text", "obligatoire": false },
+        { "nom": "consulte_le", "type": "timestamptz", "obligatoire": false },
+        { "nom": "telechargements", "type": "int", "obligatoire": false },
+        { "nom": "ouvrable", "type": "boolean", "obligatoire": false },
+        { "nom": "details", "type": "jsonb", "obligatoire": false }
+      ]
+    },
+    {
+      "nom": "baikal_dossier_emails",
+      "obligatoire": false,
+      "niveau": 2,
+      "role": "Onglet Emails : les envois au client.",
+      "jointure": "dossier_id",
+      "colonnes": [
+        { "nom": "dossier_id", "type": "text", "obligatoire": true },
+        { "nom": "envoye_le", "type": "timestamptz", "obligatoire": true },
+        { "nom": "sujet", "type": "text", "obligatoire": true },
+        { "nom": "destinataire", "type": "text", "obligatoire": false },
+        { "nom": "statut", "type": "text", "obligatoire": false },
+        { "nom": "ouvert_le", "type": "timestamptz", "obligatoire": false },
+        { "nom": "type", "type": "text", "obligatoire": false },
+        { "nom": "erreur", "type": "text", "obligatoire": false },
+        { "nom": "details", "type": "jsonb", "obligatoire": false }
+      ]
+    },
+    {
+      "nom": "baikal_dossier_messages",
+      "obligatoire": false,
+      "niveau": 2,
+      "role": "Onglet Chat : les échanges avec le client.",
+      "jointure": "dossier_id",
+      "colonnes": [
+        { "nom": "dossier_id", "type": "text", "obligatoire": true },
+        { "nom": "message_id", "type": "text", "obligatoire": false },
+        { "nom": "survenu_le", "type": "timestamptz", "obligatoire": true },
+        { "nom": "role", "type": "text", "obligatoire": true },
+        { "nom": "contenu", "type": "text", "obligatoire": true },
+        { "nom": "canal", "type": "text", "obligatoire": false },
+        { "nom": "contexte", "type": "text", "obligatoire": false },
+        { "nom": "details", "type": "jsonb", "obligatoire": false }
+      ]
+    },
+    {
+      "nom": "baikal_dossier_ia",
+      "obligatoire": false,
+      "niveau": 2,
+      "role": "Onglet Logs IA : les appels IA rattachés au dossier.",
+      "jointure": "dossier_id",
+      "colonnes": [
+        { "nom": "dossier_id", "type": "text", "obligatoire": true },
+        { "nom": "survenu_le", "type": "timestamptz", "obligatoire": true },
+        { "nom": "operation", "type": "text", "obligatoire": false },
+        { "nom": "modele", "type": "text", "obligatoire": false },
+        { "nom": "tokens_entree", "type": "int", "obligatoire": false },
+        { "nom": "tokens_sortie", "type": "int", "obligatoire": false },
+        { "nom": "tokens_total", "type": "int", "obligatoire": false },
+        { "nom": "cout_usd", "type": "numeric", "obligatoire": false },
+        { "nom": "latence_ms", "type": "int", "obligatoire": false },
+        { "nom": "statut", "type": "text", "obligatoire": false },
+        { "nom": "erreur", "type": "text", "obligatoire": false },
+        { "nom": "details", "type": "jsonb", "obligatoire": false }
+      ]
+    },
+    {
+      "nom": "baikal_dossier_donnees",
+      "obligatoire": false,
+      "niveau": 2,
+      "role": "Onglet Données : le brut, par blocs.",
+      "jointure": "dossier_id",
+      "colonnes": [
+        { "nom": "dossier_id", "type": "text", "obligatoire": true },
+        { "nom": "bloc", "type": "text", "obligatoire": true },
+        { "nom": "libelle", "type": "text", "obligatoire": true },
+        { "nom": "ordre", "type": "int", "obligatoire": false },
+        { "nom": "contenu", "type": "jsonb", "obligatoire": true },
+        { "nom": "maj_le", "type": "timestamptz", "obligatoire": false }
+      ]
+    },
+    {
+      "nom": "baikal_dossier_events",
+      "obligatoire": false,
+      "niveau": 2,
+      "role": "Onglet Events : le parcours du client, geste par geste.",
+      "jointure": "dossier_id",
+      "colonnes": [
+        { "nom": "dossier_id", "type": "text", "obligatoire": true },
+        { "nom": "survenu_le", "type": "timestamptz", "obligatoire": true },
+        { "nom": "type", "type": "text", "obligatoire": true },
+        { "nom": "libelle", "type": "text", "obligatoire": false },
+        { "nom": "acteur", "type": "text", "obligatoire": false },
+        { "nom": "detail", "type": "jsonb", "obligatoire": false }
+      ]
+    }
+  ],
+  "controles": [
+    {
+      "id": "dossiers.noyau_complet",
+      "ref": "§4 (1)",
+      "niveau": 1,
+      "vue": "baikal_dossiers",
+      "titre": "Le noyau est complet",
+      "requiert": ["dossier_id", "statut", "perimetre", "cree_le", "est_test", "emails_envoyes", "emails_ouverts", "devise"],
+      "sql": "select dossier_id, statut, perimetre, cree_le, est_test, emails_envoyes, emails_ouverts, devise from @SCHEMA@.baikal_dossiers where dossier_id is null or statut is null or perimetre is null or cree_le is null or est_test is null or emails_envoyes is null or emails_ouverts is null or devise is null",
+      "si_echec": "Ces lignes s'affichent sans statut, sans date ou sans compteur : la liste les classe mal et les filtres les perdent, sans erreur.",
+      "correction": "Remplir chaque colonne du noyau : coalesce(..., 0) pour les compteurs, coalesce(..., false) pour est_test, 'EUR' pour devise."
+    },
+    {
+      "id": "dossiers.identifiant_unique",
+      "ref": "§4 (2)",
+      "niveau": 1,
+      "vue": "baikal_dossiers",
+      "titre": "Chaque dossier_id est unique",
+      "requiert": ["dossier_id"],
+      "sql": "select dossier_id, count(*) as lignes from @SCHEMA@.baikal_dossiers group by 1 having count(*) > 1",
+      "si_echec": "Deux lignes partagent un identifiant : la fiche ouvre l'une ou l'autre au hasard, et les onglets mélangent les deux clients.",
+      "correction": "Préfixer l'identifiant par la nature de l'acte quand la vue réunit plusieurs tables (ex. 'achat-' || id, 'compte-' || id)."
+    },
+    {
+      "id": "dossiers.perimetre_vocabulaire",
+      "ref": "§1 noyau",
+      "niveau": 1,
+      "vue": "baikal_dossiers",
+      "titre": "Le périmètre vaut b2c ou b2b",
+      "requiert": ["perimetre"],
+      "sql": "select dossier_id, perimetre from @SCHEMA@.baikal_dossiers where perimetre not in ('b2c', 'b2b')",
+      "si_echec": "Ces lignes disparaissent du filtre B2C / B2B : le client existe, la console ne le montre dans aucun des deux.",
+      "correction": "Ramener perimetre à 'b2c' ou 'b2b' par un case dans la vue."
+    },
+    {
+      "id": "dossiers.montant_sans_paiement",
+      "ref": "§4 (3)",
+      "niveau": 1,
+      "vue": "baikal_dossiers",
+      "titre": "Un montant payé a toujours sa date de paiement",
+      "requiert": ["montant_ttc", "paye_le"],
+      "sql": "select dossier_id, montant_ttc, statut from @SCHEMA@.baikal_dossiers where montant_ttc > 0 and paye_le is null",
+      "si_echec": "Ces clients ont payé mais se lisent non convertis : Baikal compte un client payant à paye_le, jamais au statut.",
+      "correction": "Renseigner paye_le pour toute ligne encaissée (date du paiement Stripe, ou de la commande payée)."
+    },
+    {
+      "id": "dossiers.statut_funnel",
+      "ref": "§1 noyau",
+      "niveau": 1,
+      "vue": "baikal_dossiers",
+      "titre": "Chaque statut est une étape du funnel déclaré",
+      "requiert": ["statut"],
+      "type": "funnel",
+      "sql": "select statut, count(*) as lignes from @SCHEMA@.baikal_dossiers group by 1 order by 2 desc",
+      "si_echec": "Ces statuts ne sont pas des étapes du funnel : la liste les affiche en badge brut et le filtre de statut ne les propose pas.",
+      "correction": "Soit ramener la valeur à une étape du funnel, soit ajouter l'étape au funnel déclaré."
+    },
+    {
+      "id": "dossiers.categorie_stable",
+      "ref": "§4 (4)",
+      "niveau": 2,
+      "vue": "baikal_dossiers",
+      "titre": "La catégorie est celle de la personne, identique sur toutes ses lignes",
+      "requiert": ["email", "categorie"],
+      "sql": "select email, count(distinct categorie) as categories from @SCHEMA@.baikal_dossiers where email is not null group by email having count(distinct categorie) > 1",
+      "si_echec": "La même personne apparaît dans deux catégories : la répartition par catégorie la compte deux fois, et le filtre la montre sous l'une ou l'autre selon la ligne.",
+      "correction": "Calculer la catégorie une fois par adresse (sous-requête ou vue intermédiaire par email) et la joindre à chaque ligne."
+    },
+    {
+      "id": "dossiers.attribution_jamais_vide",
+      "ref": "§4 (5)",
+      "niveau": 2,
+      "vue": "baikal_dossiers",
+      "titre": "L'attribution n'est jamais {} et ses domaines sont normalisés",
+      "requiert": ["attribution"],
+      "sql": "select dossier_id, attribution from @SCHEMA@.baikal_dossiers where attribution = '{}'::jsonb or attribution ->> 'referrer_domaine' ~ '^www\\.|[A-Z]'",
+      "si_echec": "Un objet vide se lit « capté, sans signal » au lieu de « inconnu », et un domaine en www. ou en majuscules crée un faux canal : le tableau des origines ment, sans erreur.",
+      "correction": "Publier NULL quand l'origine est inconnue (nullif(attribution, '{}'::jsonb)), et le domaine en minuscules sans www."
+    }
+  ],
+  "concordances": [
+    {
+      "id": "dossiers.categorie_comptes_pro",
+      "ref": "comptes-pro-v1 §3 et README, règle des deux vues",
+      "niveau": 2,
+      "gauche": { "vue": "baikal_dossiers", "colonne": "categorie" },
+      "droite": { "vue": "baikal_comptes_pro", "colonne": "categorie" },
+      "cle": "email",
+      "titre": "La catégorie d'une personne est la même dans Clients et dans Comptes",
+      "si_echec": "La même personne est « agent immobilier » dans Clients et « inscrit sans fiche » dans Comptes : deux écrans, deux réponses.",
+      "correction": "Dériver la catégorie de baikal_comptes_pro de celle de baikal_dossiers (ou l'inverse), jamais deux cascades."
+    }
+  ],
+  "verifications_manuelles": [
+    { "ref": "§4 (7)", "texte": "Les colonnes publiées sont celles du contrat, et rien d'autre : une colonne hors contrat n'est pas rendue, mais elle trompe le prochain lecteur de la vue." },
+    { "ref": "§4 (10)", "texte": "Le nombre de payés hors tests de la liste (paye_le non nul, est_test faux, supprime_le nul) est celui de la tuile du chapitre 'clients' de baikal_mesures." },
+    { "ref": "§4 (11)", "texte": "Ouvrir la fiche d'un client réel et vérifier que chaque onglet raconte ce qu'il a fait, consulté, activé." }
+  ]
+}
