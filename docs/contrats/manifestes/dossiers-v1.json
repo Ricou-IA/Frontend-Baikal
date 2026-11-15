@@ -205,7 +205,7 @@
       "vue": "baikal_dossiers",
       "titre": "Chaque dossier_id est unique",
       "requiert": ["dossier_id"],
-      "sql": "select dossier_id, count(*) as lignes from @SCHEMA@.baikal_dossiers group by 1 having count(*) > 1",
+      "sql": "select dossier_id, count(*)::int as lignes from @SCHEMA@.baikal_dossiers group by 1 having count(*) > 1",
       "si_echec": "Deux lignes partagent un identifiant : la fiche ouvre l'une ou l'autre au hasard, et les onglets mélangent les deux clients.",
       "correction": "Préfixer l'identifiant par la nature de l'acte quand la vue réunit plusieurs tables (ex. 'achat-' || id, 'compte-' || id)."
     },
@@ -239,7 +239,7 @@
       "titre": "Chaque statut est une étape du funnel déclaré",
       "requiert": ["statut"],
       "type": "funnel",
-      "sql": "select statut, count(*) as lignes from @SCHEMA@.baikal_dossiers group by 1 order by 2 desc",
+      "sql": "select statut, count(*)::int as lignes from @SCHEMA@.baikal_dossiers group by 1 order by 2 desc",
       "si_echec": "Ces statuts ne sont pas des étapes du funnel : la liste les affiche en badge brut et le filtre de statut ne les propose pas.",
       "correction": "Soit ramener la valeur à une étape du funnel, soit ajouter l'étape au funnel déclaré."
     },
@@ -250,7 +250,7 @@
       "vue": "baikal_dossiers",
       "titre": "La catégorie est celle de la personne, identique sur toutes ses lignes",
       "requiert": ["email", "categorie"],
-      "sql": "select email, count(distinct categorie) as categories from @SCHEMA@.baikal_dossiers where email is not null group by email having count(distinct categorie) > 1",
+      "sql": "select email, count(distinct categorie)::int as categories from @SCHEMA@.baikal_dossiers where email is not null group by email having count(distinct categorie) > 1",
       "si_echec": "La même personne apparaît dans deux catégories : la répartition par catégorie la compte deux fois, et le filtre la montre sous l'une ou l'autre selon la ligne.",
       "correction": "Calculer la catégorie une fois par adresse (sous-requête ou vue intermédiaire par email) et la joindre à chaque ligne."
     },

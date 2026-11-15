@@ -32,7 +32,7 @@
       "vue": "baikal_mesures",
       "titre": "Aucun doublon par jour, clé et fenêtre",
       "requiert": ["jour", "cle", "fenetre_jours"],
-      "sql": "select jour, cle, fenetre_jours, count(*) as lignes from @SCHEMA@.baikal_mesures group by 1, 2, 3 having count(*) > 1",
+      "sql": "select jour, cle, fenetre_jours, count(*)::int as lignes from @SCHEMA@.baikal_mesures group by 1, 2, 3 having count(*) > 1",
       "si_echec": "Un doublon sur une somme double le nombre affiché sans un bruit : la tuile annonce 40 ventes pour 20.",
       "correction": "Vérifier que chaque branche de l'union produit une seule ligne par (jour, cle, fenetre_jours), et que deux branches ne publient pas la même clé."
     },
@@ -52,7 +52,7 @@
       "ref": "§3 (3)",
       "niveau": 1,
       "vue": "baikal_mesures",
-      "titre": "Agrégation, format, chapitre et rendu sont dans le vocabulaire",
+      "titre": "Agrégation, format et chapitre sont dans le vocabulaire",
       "requiert": ["cle", "agregation", "format", "chapitre"],
       "sql": "select distinct cle, agregation, format, chapitre from @SCHEMA@.baikal_mesures where agregation not in ('somme', 'dernier') or format not in ('nombre', 'eur', 'pourcent') or chapitre not in ('clients', 'finances', 'comptes_pro')",
       "si_echec": "Baikal écarte ces lignes sans erreur : la tuile n'apparaît nulle part et rien ne dit pourquoi.",
@@ -76,7 +76,7 @@
       "vue": "baikal_mesures",
       "titre": "Toutes les mesures d'un groupe déclarent le même rendu",
       "requiert": ["chapitre", "groupe", "rendu"],
-      "sql": "select chapitre, groupe, count(distinct coalesce(rendu, 'tuiles')) as rendus from @SCHEMA@.baikal_mesures group by 1, 2 having count(distinct coalesce(rendu, 'tuiles')) > 1",
+      "sql": "select chapitre, groupe, count(distinct coalesce(rendu, 'tuiles'))::int as rendus from @SCHEMA@.baikal_mesures group by 1, 2 having count(distinct coalesce(rendu, 'tuiles')) > 1",
       "si_echec": "Un groupe panaché retombe sur des tuiles : l'entonnoir disparaît dès qu'une étape oublie son rendu.",
       "correction": "Écrire rendu une seule fois en sortie de l'union, par un case sur la clé."
     },
@@ -98,7 +98,7 @@
       "vue": "baikal_mesures",
       "titre": "Un stock publie une ligne par jour, zéros compris",
       "requiert": ["jour", "cle", "agregation", "fenetre_jours", "valeur"],
-      "sql": "with s as (select cle, fenetre_jours, jour, valeur, lag(valeur) over (partition by cle, fenetre_jours order by jour) as precedente from @SCHEMA@.baikal_mesures where agregation = 'dernier') select cle, fenetre_jours, count(distinct jour) as jours_publies, (max(jour) - min(jour) + 1) as jours_attendus from s group by 1, 2 having count(distinct jour) <> (max(jour) - min(jour) + 1) and (fenetre_jours is not null or bool_or(valeur < precedente))",
+      "sql": "with s as (select cle, fenetre_jours, jour, valeur, lag(valeur) over (partition by cle, fenetre_jours order by jour) as precedente from @SCHEMA@.baikal_mesures where agregation = 'dernier') select cle, fenetre_jours, count(distinct jour)::int as jours_publies, (max(jour) - min(jour) + 1) as jours_attendus from s group by 1, 2 having count(distinct jour) <> (max(jour) - min(jour) + 1) and (fenetre_jours is not null or bool_or(valeur < precedente))",
       "si_echec": "Un jour sans ligne se lit « pas mesuré » : la tuile garde la dernière valeur non nulle, une fenêtre glissante qui ne redescend jamais, un abonné résilié qui reste compté.",
       "correction": "Joindre le calendrier (generate_series) en jointure EXTERNE et publier coalesce(..., 0) chaque jour depuis la première mesure. Seul un cumul qui ne décroît jamais, sans fenêtre, est dispensé de ses zéros."
     }
