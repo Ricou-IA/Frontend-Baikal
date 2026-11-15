@@ -265,6 +265,11 @@ puis `npx supabase migration repair --linked --status applied <version>`, jamais
 - Public schema functions are SECURITY DEFINER wrappers calling schema-specific functions
 - Config is DB-driven via `config.agent_prompts.parameters` (JSONB)
 - French language throughout UI, prompts, and documentation
+- **Ce dépôt GitHub est public** (`Ricou-IA/Frontend-Baikal`) : aucune donnée ni structure d'une
+  base de production n'y entre, même masquée. Les relevés de structure des sites
+  (`_shared/recette/essai/structures/`) et les comptes rendus d'essai citant des lignes réelles
+  (`docs/onboarding/prive/`) sont ignorés par git et restent sur le poste ; les tests qui s'en
+  servent sont ignorés quand ils manquent. Relire `git diff origin/main..<branche>` avant tout push.
 
 ## Modules admin multi-sites (2026-08-20, consolidé le 2026-09-17)
 

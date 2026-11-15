@@ -142,14 +142,27 @@ Deno.test("la requête de catalogue se restreint à des schémas, et refuse un n
 });
 
 // ---------------------------------------------------------------------------
-// Les structures réelles, relevées une fois (essai/relever-structure.ts) et
-// versionnées : ce que les règles disent de deux sites qu'on connaît.
+// Les structures réelles, relevées une fois (essai/relever-structure.ts) : ce
+// que les règles disent de deux sites qu'on connaît.
+//
+// Ces relevés ne sont PAS versionnés : ce dépôt est public, et la structure
+// complète d'une base de production n'a rien à y faire. Ils vivent sur le
+// poste, dans essai/structures/ (ignoré par git). Sans eux, ces tests sont
+// ignorés, comme le test sur Postgres sans RECETTE_PG_DSN.
 // ---------------------------------------------------------------------------
 
-const reelle = async (site: string) =>
-  JSON.parse(await Deno.readTextFile(new URL(`./essai/structures/${site}.json`, import.meta.url))) as Table[];
+const cheminReelle = (site: string) => new URL(`./essai/structures/${site}.json`, import.meta.url);
+const releve = (site: string) => {
+  try {
+    Deno.statSync(cheminReelle(site));
+    return true;
+  } catch {
+    return false;
+  }
+};
+const reelle = async (site: string) => JSON.parse(await Deno.readTextFile(cheminReelle(site))) as Table[];
 
-Deno.test("Pack vendeur : la table des dossiers, son funnel, ses vues publiées", async () => {
+Deno.test({ name: "Pack vendeur : la table des dossiers, son funnel, ses vues publiées", ignore: !releve("pack-vendeur") }, async () => {
   const tables = await reelle("pack-vendeur");
   const d = diagnostiquer(tables);
   assertEquals(d.table_principale, { schema: "pack_vendeur", nom: "dossiers" });
@@ -174,7 +187,7 @@ Deno.test("Pack vendeur : la table des dossiers, son funnel, ses vues publiées"
 // Structure relevée de nouveau le 15/11/2026, après la bascule de Pack vendeur
 // sur le contrat des mesures : l'étalon ne manque plus de rien au niveau 1.
 // Le cas « les mesures manquent » reste couvert par Voirie, plus bas.
-Deno.test("Pack vendeur : seize vues Baikal dans public, rien ne manque", async () => {
+Deno.test({ name: "Pack vendeur : seize vues Baikal dans public, rien ne manque", ignore: !releve("pack-vendeur") }, async () => {
   const d = diagnostiquer(await reelle("pack-vendeur"));
   assertEquals(d.schema_contrat, "public");
   assertEquals(d.vues_baikal.length, 16);
@@ -185,7 +198,7 @@ Deno.test("Pack vendeur : seize vues Baikal dans public, rien ne manque", async 
   assertEquals(d.affichable.map((a) => a.cle), ["clients", "paiements", "funnel", "stripe", "origine", "tuiles"]);
 });
 
-Deno.test("Voirie : la table des demandes, pas de date de paiement en colonne", async () => {
+Deno.test({ name: "Voirie : la table des demandes, pas de date de paiement en colonne", ignore: !releve("voirie") }, async () => {
   const tables = await reelle("voirie");
   const d = diagnostiquer(tables);
   assertEquals(d.table_principale, { schema: "voirie", nom: "demandes" });

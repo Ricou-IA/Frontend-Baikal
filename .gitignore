@@ -21,6 +21,12 @@ build/
 # Eval : contient des identifiants/contextes reels — seul l'exemple est versionne
 eval/config.json
 
+# Ce depot est PUBLIC : ni structure ni donnee d'une base de production n'y entre.
+# Les releves de structure des sites (essai/relever-structure.ts) et les comptes
+# rendus d'essai qui citent des lignes reelles restent sur le poste.
+supabase/functions/_shared/recette/essai/structures/
+docs/onboarding/prive/
+
 # Logs
 npm-debug.log*
 yarn-debug.log*

@@ -2,6 +2,9 @@
 // d'enum et de check — aucune donnée) pour en faire un jeu d'essai versionné
 // du diagnostic de structure (structures/<site>.json).
 //
+// La sortie n'est PAS versionnée : structures/ est ignoré par git, ce dépôt est
+// public. Le relevé reste sur le poste et sert aux tests de structure.test.ts.
+//
 //   deno run --allow-net --allow-env --allow-write \
 //     supabase/functions/_shared/recette/essai/relever-structure.ts <ref> <sortie.json> [schema,schema]
 //
