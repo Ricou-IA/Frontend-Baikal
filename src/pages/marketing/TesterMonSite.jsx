@@ -170,7 +170,12 @@ function Liste({ lignes, puce = '▸', couleur = 'text-baikal-cyan' }) {
 // Écran 3 : ce que Baikal voit dans la base
 // ---------------------------------------------------------------------------
 function Diagnostic({ d, tronque }) {
-  const p = d.table_principale;
+  // Le diagnostic lit toute la base. Sur une base partagée entre deux
+  // produits, sa table principale peut être celle de l'AUTRE produit : dès que
+  // le site publie ses vues, c'est leur schéma qui fait foi, et une table
+  // repérée ailleurs n'est pas montrée.
+  const horsSujet = Boolean(d.schema_contrat && d.table_principale && d.table_principale.schema !== d.schema_contrat);
+  const p = horsSujet ? null : d.table_principale;
   const reperes = p ? d.reperes.filter((r) => r.schema === p.schema && r.table === p.nom) : [];
   return (
     <div className="space-y-8">
@@ -209,6 +214,11 @@ function Diagnostic({ d, tronque }) {
               </div>
             )}
           </>
+        ) : d.schema_contrat ? (
+          <p className="text-white">
+            Vos vues sont publiées dans le schéma <span className="font-mono text-baikal-cyan">{d.schema_contrat}</span> :
+            c'est là que Baikal lit vos clients.
+          </p>
         ) : (
           <p className="text-white">
             Aucune table ne porte un email ou une date de paiement : Baikal ne sait pas où vivent vos clients.
@@ -293,6 +303,20 @@ function Niveau({ n, decompte, pret, controles }) {
   const nonMesures = duNiveau.filter((c) => c.statut === 'non_mesure');
   const conformes = duNiveau.filter((c) => c.statut === 'conforme');
   const optionnels = duNiveau.filter((c) => c.statut === 'absent' && !c.bloquant);
+  // Rien de conforme et rien à corriger : ce niveau n'est pas publié. Le dire
+  // « prêt » ferait croire qu'il est fait.
+  if (decompte.conformes + decompte.bloquants === 0) {
+    return (
+      <div className="rounded-md border border-baikal-border bg-baikal-surface/30 p-5">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <div className={`${ETIQUETTE} text-baikal-text`}>NIVEAU {n}</div>
+          <div className="font-mono text-sm text-baikal-text">PAS ENCORE PUBLIÉ</div>
+        </div>
+        <p className="text-white text-lg mt-2">Rien n'est publié pour ce niveau.</p>
+        <p className="text-sm mt-1">{NIVEAUX[n]} C'est la suite, quand vous la voudrez.</p>
+      </div>
+    );
+  }
   return (
     <div>
       <div className={`rounded-md border p-5 mb-6 ${pret ? 'border-baikal-cyan/60 bg-baikal-cyan/5' : 'border-amber-400/40 bg-amber-400/5'}`}>
@@ -528,6 +552,9 @@ export default function TesterMonSite() {
   const occupe = etat === 'diagnostic' || etat === 'test';
   const aCorriger = rapport ? rapport.resume.niveau1.bloquants : 0;
   const demandeLeSite = !jeton || (lienInconnu && !site && !resultat);
+  // Un lien ouvert ailleurs sur un résultat déjà prêt : le fondateur vient
+  // voir son résultat, pas reprendre un prompt.
+  const resultatSeul = !site && Boolean(rapport?.resume.niveau1_pret);
 
   const champ =
     'w-full bg-baikal-bg border border-baikal-border rounded-md px-4 py-3 text-white font-mono text-sm ' +
@@ -647,7 +674,18 @@ export default function TesterMonSite() {
           ) : null}
 
           {/* ----------------------------------------------- 2. Le prompt */}
-          {jeton && prompt && (
+          {resultatSeul && (
+            <div className="rounded-md border border-baikal-cyan/60 bg-baikal-cyan/5 p-5 mb-10">
+              <div className={`${ETIQUETTE} text-baikal-cyan`}>NIVEAU 1 PRÊT</div>
+              <p className="text-white text-lg mt-2">Votre site peut être branché à Baikal.</p>
+              <p className="text-sm mt-1">
+                Ses vues sont publiées et conformes au contrat. Le détail est ci-dessous
+                {resultat?.expire_le ? ` ; ce lien reste valable jusqu'au ${jour(resultat.expire_le)}.` : '.'}
+              </p>
+            </div>
+          )}
+
+          {jeton && prompt && !resultatSeul && (
             <Etape n={site ? '02' : '01'} titre={site ? 'Collez ce prompt dans votre agent' : 'Reprenez avec votre agent'}>
               <div className="space-y-6">
                 <div className="flex flex-col sm:flex-row sm:items-center gap-4">
@@ -738,7 +776,7 @@ export default function TesterMonSite() {
 
           {/* ------------------------------------------- 3. Le diagnostic */}
           {resultat?.diagnostic && (
-            <Etape n={site ? '03' : '02'} titre="Ce que Baikal voit dans votre base">
+            <Etape n={site ? '03' : resultatSeul ? '01' : '02'} titre="Ce que Baikal voit dans votre base">
               <Diagnostic d={resultat.diagnostic} tronque={resultat.tronque} />
             </Etape>
           )}
@@ -746,7 +784,7 @@ export default function TesterMonSite() {
           {/* --------------------------------------------- 4. Le résultat */}
           {rapport && (
             <div ref={vueResultat} className="scroll-mt-24">
-              <Etape n={site ? '04' : '03'} titre="Le résultat du test">
+              <Etape n={site ? '04' : resultatSeul ? '02' : '03'} titre="Le résultat du test">
                 <div className="space-y-10">
                   <p className="text-sm">
                     {resultat.teste_le && <>Joué le {jour(resultat.teste_le)} · </>}
