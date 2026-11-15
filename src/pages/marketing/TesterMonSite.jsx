@@ -9,10 +9,16 @@
  * Liée depuis la landing depuis le 15/11/2026 (décision d'Eric, qui la teste
  * en production). Elle reste en `noindex` tant qu'il ne l'a pas annoncée.
  *
- * Ce que la page garde : rien. La connexion vit dans la mémoire de l'onglet,
- * le mot de passe du rôle est tiré au hasard ICI et ne part jamais seul vers
- * Baikal. Il n'entre PAS dans le prompt : le prompt interdit à l'agent
- * d'écrire ce mot de passe dans le dépôt, il ne doit donc pas le recevoir.
+ * Le prospect n'assemble rien. Il exécute le script du rôle, puis colle
+ * l'adresse de sa base telle que son hébergeur la donne : la page y met le
+ * rôle baikal_reader et son mot de passe (_shared/recette/adresse.ts). Un mot
+ * de passe administrateur collé par mégarde ne quitte pas le navigateur.
+ *
+ * Ce que la page garde : l'adresse, jamais (mémoire de l'onglet seulement).
+ * Le mot de passe du rôle est tiré au hasard ICI et gardé le temps de
+ * l'onglet (sessionStorage), pour qu'un rechargement n'en affiche pas un
+ * autre que celui déjà exécuté. Il n'entre PAS dans le prompt : le prompt
+ * interdit à l'agent d'écrire ce mot de passe dans le dépôt.
  * Le script du rôle vient du même fichier que celui du prompt
  * (_shared/recette/prompt.ts) : une seule source, pas de recopie.
  *
@@ -24,6 +30,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { testSiteService } from '../../services/testSite.service';
 import { scriptRole } from '../../../supabase/functions/_shared/recette/prompt.ts';
+import { preparerAdresse } from '../../../supabase/functions/_shared/recette/adresse.ts';
 
 // ---------------------------------------------------------------------------
 // Outils
@@ -37,6 +44,22 @@ function motDePasseAuHasard() {
   const octets = new Uint8Array(24);
   crypto.getRandomValues(octets);
   return Array.from(octets, (o) => ALPHABET[o & 31]).join('');
+}
+
+// Le mot de passe du rôle vit le temps de l'onglet : un rechargement doit
+// montrer celui que le prospect a déjà exécuté, pas un nouveau.
+const CLE_MOT_DE_PASSE = 'baikal-tester-role';
+function motDePasseDeLOnglet() {
+  try {
+    const garde = sessionStorage.getItem(CLE_MOT_DE_PASSE);
+    if (garde && /^[a-z2-9]{24}$/.test(garde)) return garde;
+    const neuf = motDePasseAuHasard();
+    sessionStorage.setItem(CLE_MOT_DE_PASSE, neuf);
+    return neuf;
+  } catch {
+    // Stockage refusé (navigation privée stricte) : il vivra en mémoire.
+    return motDePasseAuHasard();
+  }
 }
 
 async function copier(texte) {
@@ -327,9 +350,11 @@ function Niveau({ n, decompte, pret, controles }) {
 // ---------------------------------------------------------------------------
 export default function TesterMonSite() {
   const { jeton: jetonDuLien } = useParams();
-  const [porte, setPorte] = useState(null); // null | 'postgres'
-  const [motDePasse, setMotDePasse] = useState(null); // tiré à l'ouverture de la porte
-  const [connexion, setConnexion] = useState('');
+  // Une seule porte fonctionne pour l'instant : elle est ouverte d'emblée.
+  const [porte, setPorte] = useState('postgres'); // null | 'postgres'
+  const [motDePasse] = useState(motDePasseDeLOnglet);
+  // L'adresse telle que le prospect l'a collée ; ce qui part est `prete.connexion`.
+  const [adresse, setAdresse] = useState('');
   const [siteWeb, setSiteWeb] = useState(''); // piège à robots
   const [etat, setEtat] = useState(jetonDuLien ? 'lien' : 'idle'); // idle | lien | diagnostic | test
   const [erreur, setErreur] = useState(null);
@@ -368,17 +393,21 @@ export default function TesterMonSite() {
     return () => { actif = false; };
   }, [jetonDuLien]);
 
-  const ouvrirPorte = () => {
-    setPorte('postgres');
-    setMotDePasse((m) => m ?? motDePasseAuHasard());
-  };
+  const ouvrirPorte = () => setPorte('postgres');
+
+  // L'adresse collée devient celle du rôle baikal_reader, ici, avant tout envoi.
+  const prete = adresse.trim() ? preparerAdresse(adresse, motDePasse) : null;
 
   const lancer = async (action) => {
-    if (etat !== 'idle' || !connexion.trim()) return;
+    if (etat !== 'idle' || !prete) return;
+    if (!prete.ok) {
+      setErreur(prete.erreur);
+      return;
+    }
     setEtat(action === 'tester' ? 'test' : 'diagnostic');
     setErreur(null);
     const { data, error } = await testSiteService[action]({
-      connexion: connexion.trim(),
+      connexion: prete.connexion,
       jeton: resultat?.jeton,
       site_web: siteWeb,
     });
@@ -389,8 +418,8 @@ export default function TesterMonSite() {
     }
     if (!data?.jeton) return; // réponse du piège à robots : rien à montrer
     setResultat(data);
-    // L'adresse devient le lien privé, sans recharger la page : la connexion
-    // saisie reste en mémoire pour relancer le test.
+    // L'adresse de la page devient le lien privé, sans la recharger :
+    // l'adresse de la base reste en mémoire pour relancer le test.
     window.history.replaceState(null, '', `/tester/r/${data.jeton}`);
     requestAnimationFrame(() => {
       (action === 'tester' ? vueResultat : vueDiagnostic).current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -400,7 +429,8 @@ export default function TesterMonSite() {
   const schema = resultat?.diagnostic?.schema_contrat ?? resultat?.diagnostic?.table_principale?.schema ?? 'public';
   // Seule la première partie du script s'exécute telle quelle : les droits sur
   // les vues et les tables viennent avec les vues, dans le prompt.
-  const role = motDePasse ? scriptRole(schema, motDePasse).split('\n\n-- 2.')[0] : '';
+  const role = scriptRole(schema, motDePasse).split('\n\n-- 2.')[0];
+  const roleExistant = `alter role baikal_reader password '${motDePasse}';`;
   const prompt = resultat?.prompt;
   const lienPrive = resultat?.jeton ? `${window.location.origin}/tester/r/${resultat.jeton}` : null;
   const occupe = etat === 'diagnostic' || etat === 'test';
@@ -476,7 +506,7 @@ export default function TesterMonSite() {
                   <span className="font-mono text-baikal-cyan">{porte === 'postgres' ? '▾' : '▸'}</span>
                 </div>
                 <p className="text-sm leading-relaxed">
-                  Neon, un serveur à vous, Supabase aussi : une adresse de connexion suffit.
+                  Supabase, Neon, un serveur à vous : un script à exécuter, une adresse à coller.
                 </p>
               </button>
             </div>
@@ -484,10 +514,10 @@ export default function TesterMonSite() {
             {porte === 'postgres' && (
               <div className="space-y-4">
                 <p className="leading-relaxed">
-                  Baikal ne crée jamais de rôle chez vous. Exécutez ce script vous-même, dans l'éditeur SQL
-                  de votre base : il crée <span className="font-mono text-white">baikal_reader</span>, un
-                  rôle qui ne peut que lire. Le mot de passe vient d'être tiré au hasard dans votre
-                  navigateur : Baikal ne le connaît pas, et votre agent n'a pas à le connaître.
+                  Copiez ce script et exécutez-le dans l'éditeur SQL de votre base. Il crée{' '}
+                  <span className="font-mono text-white">baikal_reader</span>, un rôle qui ne peut que lire.
+                  Vous n'avez rien à retenir : le mot de passe est tiré au hasard dans votre navigateur, et
+                  la page le remettra toute seule dans votre adresse à l'étape suivante.
                 </p>
                 <BlocCode
                   titre="LE RÔLE EN LECTURE SEULE · sql"
@@ -495,29 +525,38 @@ export default function TesterMonSite() {
                   hauteur="max-h-64"
                   pied={
                     <>
-                      Les droits sur vos vues et vos tables viendront avec les vues : ils sont dans le prompt
-                      de l'étape 4.
+                      Baikal ne crée jamais ce rôle à votre place. Les droits sur vos vues et vos tables
+                      viendront avec les vues : ils sont dans le prompt de l'étape 4.
                     </>
                   }
                 />
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 text-sm">
+                  <span className="shrink-0">Le rôle existe déjà ? Exécutez seulement :</span>
+                  <code className="flex-1 min-w-0 break-all bg-[#070A10] border border-baikal-border rounded px-3 py-2 font-mono text-xs text-baikal-text">
+                    {roleExistant}
+                  </code>
+                  <BoutonCopier texte={roleExistant} />
+                </div>
               </div>
             )}
           </Etape>
 
           {/* -------------------------------------------- 2. La connexion */}
-          <Etape n="02" titre="Votre adresse de connexion" ancre="connexion">
+          <Etape n="02" titre="Collez l'adresse de votre base" ancre="connexion">
             <form
               onSubmit={(e) => { e.preventDefault(); lancer('diagnostiquer'); }}
               className="space-y-4 relative"
               noValidate
             >
               <label className="block">
-                <span className={`block ${ETIQUETTE} text-baikal-text mb-2`}>CONNEXION POSTGRES</span>
+                <span className={`block ${ETIQUETTE} text-baikal-text mb-2`}>
+                  L'ADRESSE DE CONNEXION, TELLE QUE VOTRE HÉBERGEUR LA DONNE
+                </span>
                 <input
                   type="text"
-                  value={connexion}
-                  onChange={(e) => setConnexion(e.target.value)}
-                  placeholder="postgresql://baikal_reader:motdepasse@hôte:5432/base"
+                  value={adresse}
+                  onChange={(e) => { setAdresse(e.target.value); setErreur(null); }}
+                  placeholder="postgresql://postgres.xxxx:[YOUR-PASSWORD]@aws-0-eu-west-3.pooler.supabase.com:5432/postgres"
                   autoComplete="off"
                   autoCapitalize="off"
                   autoCorrect="off"
@@ -532,13 +571,29 @@ export default function TesterMonSite() {
                   <input type="text" tabIndex={-1} autoComplete="off" value={siteWeb} onChange={(e) => setSiteWeb(e.target.value)} />
                 </label>
               </div>
+              {prete?.ok && (
+                <div className="border border-baikal-cyan/30 bg-baikal-cyan/5 rounded-md px-4 py-3 text-sm leading-relaxed">
+                  <div className={`${ETIQUETTE} text-baikal-cyan mb-1.5`}>BAIKAL SE CONNECTERA AVEC</div>
+                  <div className="font-mono text-xs text-white break-all">{prete.apercu}</div>
+                  {prete.remplace.motDePasse && (
+                    <p className="mt-2">
+                      {prete.remplace.utilisateur
+                        ? 'La page a mis le rôle baikal_reader et le mot de passe du script.'
+                        : 'La page a mis le mot de passe du script.'}{' '}
+                      Rien d'autre de votre adresse n'est envoyé : ni votre utilisateur, ni son mot de passe.
+                    </p>
+                  )}
+                  {prete.conseil && <p className="mt-2 text-amber-300">{prete.conseil}</p>}
+                </div>
+              )}
               <ul className="text-sm leading-relaxed space-y-1.5">
+                <li>
+                  Sur Supabase : bouton <span className="text-white">Connect</span> en haut du projet, puis{' '}
+                  <span className="text-white">Session pooler</span>. Copiez l'adresse sans y toucher.
+                </li>
+                <li>Inutile d'y écrire un mot de passe : la page s'en charge.</li>
                 <li>Postgres uniquement, en connexion chiffrée. Le test ne fait que lire.</li>
                 <li>Baikal ne garde pas cette adresse : ni en base, ni dans ses journaux.</li>
-                <li>
-                  Sur Supabase, prenez l'adresse « Session pooler » : l'utilisateur s'y écrit{' '}
-                  <span className="font-mono text-white">baikal_reader.référence-du-projet</span>.
-                </li>
               </ul>
               {erreur && (
                 <p role="alert" className="border border-red-500/50 bg-red-900/20 rounded-md px-4 py-3 text-red-300 text-sm">
@@ -546,10 +601,10 @@ export default function TesterMonSite() {
                 </p>
               )}
               <div className="flex flex-col sm:flex-row sm:items-center gap-4 pt-1">
-                <button type="submit" disabled={occupe || !connexion.trim()} className={BOUTON_PLEIN}>
+                <button type="submit" disabled={occupe || !prete} className={BOUTON_PLEIN}>
                   {etat === 'diagnostic' ? 'LECTURE DE LA STRUCTURE…' : resultat ? 'REFAIRE LE DIAGNOSTIC' : 'LANCER LE DIAGNOSTIC'}
                 </button>
-                {resultat && !connexion.trim() && (
+                {resultat && !prete && (
                   <p className="text-sm">Recollez votre adresse pour relancer : Baikal ne l'a pas gardée.</p>
                 )}
               </div>
@@ -585,7 +640,7 @@ export default function TesterMonSite() {
                   <button
                     type="button"
                     onClick={() => lancer('tester')}
-                    disabled={occupe || !connexion.trim()}
+                    disabled={occupe || !prete}
                     className={BOUTON_PLEIN}
                   >
                     {etat === 'test' ? 'TEST EN COURS…' : rapport ? 'RELANCER LE TEST' : 'LANCER LE TEST'}
@@ -593,7 +648,7 @@ export default function TesterMonSite() {
                   <p className="text-sm leading-relaxed">
                     {etat === 'test'
                       ? 'Jusqu\'à une minute : chaque contrôle est une lecture dans votre base.'
-                      : !connexion.trim()
+                      : !prete
                         ? <>Recollez votre adresse à l'<a href="#connexion" className="text-baikal-cyan underline">étape 2</a> pour lancer le test.</>
                         : 'Le test lit vos vues, contrôle par contrôle.'}
                   </p>

@@ -4,7 +4,9 @@
 //
 // La connexion du prospect ne vit que dans la mémoire de la page et dans le
 // corps de la requête : elle n'est écrite ni dans l'URL, ni dans le stockage du
-// navigateur, ni côté Baikal (l'EF n'en garde qu'une empreinte).
+// navigateur, ni côté Baikal (l'EF n'en garde qu'une empreinte). Ce qui part
+// est l'adresse du rôle baikal_reader, préparée par la page (adresse.ts) :
+// jamais les identifiants d'administration que le prospect aurait collés.
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 

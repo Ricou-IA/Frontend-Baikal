@@ -38,7 +38,10 @@ sur un téléphone (usage « compagnon »).
   dans `admin.tests_site` (lien privé 30 jours, jamais la connexion), moteur pur dans
   `supabase/functions/_shared/recette/` (manifestes `docs/contrats/manifestes/*.json`). La page
   importe `scriptRole` de `_shared/recette/prompt.ts` : une seule source pour le script du rôle.
-  Le mot de passe du rôle est tiré dans le navigateur et n'entre jamais dans le prompt. Essai
+  Le mot de passe du rôle est tiré dans le navigateur (gardé le temps de l'onglet) et n'entre
+  jamais dans le prompt. Le prospect colle l'adresse de sa base telle que son hébergeur la donne :
+  `_shared/recette/adresse.ts` (pur, testé, importé par la page) y met `baikal_reader` — avec la
+  référence du projet sur le pooler Supabase — et ce mot de passe ; rien d'autre ne part. Essai
   local : `VITE_BAIKAL_TEST_URL` fait parler la page à un service joué sur un Postgres jetable.
   Pack vendeur est l'étalon (décision d'Eric du 15/11/2026) : niveau 1 = dossiers ET mesures.
 
