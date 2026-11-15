@@ -386,7 +386,7 @@ export default function Baikal() {
                 </a>
               </div>
               <p className="mt-4 text-sm animate-fadeInUp" style={apparition(300)}>
-                Sans compte ni email : Baikal lit la structure de votre base et vous dit ce qu'il peut suivre.{' '}
+                Sans compte ni email : tapez l'adresse de votre site, collez le prompt dans votre agent, il vous rend un lien.{' '}
                 <a href="#branchement" className="text-baikal-cyan hover:text-white transition-colors whitespace-nowrap">
                   Comment ça se branche →
                 </a>
@@ -520,7 +520,7 @@ export default function Baikal() {
                   TESTER MON SITE →
                 </Link>
                 <p className="text-sm leading-relaxed">
-                  Voyez ce que Baikal lirait dans votre base, et repartez avec le prompt écrit pour elle.
+                  Tapez l'adresse de votre site : vous repartez avec le prompt écrit pour lui, à coller dans votre agent.
                 </p>
               </div>
             </div>

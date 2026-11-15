@@ -36,14 +36,14 @@ interface Monde {
   requetes: string[];
 }
 
-function monde(p: { catalogue?: Ligne[]; panne?: Error; ips?: string[] | Error; horloge?: () => number } = {}): Monde {
+function monde(p: { catalogue?: Ligne[]; structure?: Ligne[]; panne?: Error; ips?: string[] | Error; horloge?: () => number } = {}): Monde {
   const m: Monde = { deps: null as unknown as Deps, lignes: new Map(), ouvertures: 0, fermetures: 0, requetes: [] };
   const lecteur: Lecteur = (sql) => {
     const etiquette = /\/\* recette:(\S+) \*\//.exec(sql)?.[1] ?? "?";
     m.requetes.push(etiquette);
     if (p.panne) return Promise.reject(p.panne);
     if (etiquette === "catalogue") return Promise.resolve(p.catalogue ?? CATALOGUE);
-    if (etiquette === "structure") return Promise.resolve(STRUCTURE);
+    if (etiquette === "structure") return Promise.resolve(p.structure ?? STRUCTURE);
     if (etiquette === "role") return Promise.resolve([{ existe: true, utilisateur: "baikal_reader" }]);
     return Promise.resolve(etiquette.startsWith("lecture:") ? [{ n: 3 }] : []);
   };
@@ -155,13 +155,62 @@ Deno.test("le même jeton sert d'un passage à l'autre ; un diagnostic ne perd p
   assertEquals(m.lignes.size, 1);
 });
 
-Deno.test("un jeton inconnu ou mal formé ne s'impose pas : un nouveau est tiré", async () => {
+Deno.test("le jeton tiré par la page est adopté : le test de l'agent s'y range ; mal formé, un nouveau est tiré", async () => {
   const m = monde();
-  const invente = "0123456789abcdef0123456789abcdef";
-  const r = await appel(m, { action: "diagnostiquer", connexion: CONNEXION, jeton: invente });
-  assert(r.data.jeton !== invente && jetonValide(r.data.jeton));
+  const deLaPage = "0123456789abcdef0123456789abcdef";
+  // Rien n'existe encore sous ce jeton : le lien privé ne rend rien.
+  assertEquals((await appel(m, { action: "resultat", jeton: deLaPage })).statut, 404);
+  const r = await appel(m, { action: "tester", connexion: CONNEXION, jeton: deLaPage });
+  assertEquals(r.data.jeton, deLaPage);
+  // La page, qui attendait, retrouve le résultat sous SON jeton.
+  const relu = await appel(m, { action: "resultat", jeton: deLaPage });
+  assertEquals([relu.statut, relu.data.rapport.resume.niveau1_pret], [200, true]);
   const r2 = await appel(m, { action: "diagnostiquer", connexion: CONNEXION, jeton: "../../etc" });
-  assertEquals(jetonValide(r2.data.jeton), true);
+  assert(r2.data.jeton !== "../../etc" && jetonValide(r2.data.jeton));
+});
+
+Deno.test("réponse courte, pour un agent : le lien, le verdict, ce qu'il reste à corriger — pas le prompt", async () => {
+  const m = monde();
+  const r = await appel(m, { action: "tester", connexion: CONNEXION, reponse: "courte" });
+  assertEquals(r.statut, 200);
+  assertEquals(r.data.lien, `https://withbaikal.io/tester/r/${r.data.jeton}`);
+  assertEquals([r.data.niveau1_pret, r.data.niveau2_pret], [true, r.data.resume.niveau2_pret]);
+  assertEquals(r.data.a_corriger, []);
+  assertEquals(r.data.diagnostic.vues_baikal, ["public.baikal_dossiers", "public.baikal_mesures"]);
+  assertEquals("prompt" in r.data, false);
+  assertEquals("rapport" in r.data, false);
+  assert(JSON.stringify(r.data).length < 4000, "la réponse courte reste courte");
+  // La ligne gardée, elle, est entière : la page affichera tout le rapport.
+  assertEquals(m.lignes.get(r.data.jeton)!.resultat?.controles.length! > 5, true);
+
+  // Un site auquel il manque une vue : l'agent lit quoi corriger, avec la correction.
+  const incomplet = monde({
+    catalogue: CATALOGUE.filter((l) => l.nom !== "baikal_mesures"),
+    structure: STRUCTURE.filter((l) => l.vue !== "baikal_mesures"),
+  });
+  const k = await appel(incomplet, { action: "tester", connexion: CONNEXION, reponse: "courte" });
+  assertEquals(k.data.niveau1_pret, false);
+  assert(k.data.a_corriger.length > 0);
+  assert(k.data.a_corriger.every((c: { id: string; titre: string }) => c.id && c.titre));
+  for (const fuite of ["s3cret", "db.exemple.com", "6543/app"]) assertEquals(JSON.stringify(k.data).includes(fuite), false, fuite);
+});
+
+Deno.test("le passage dit où il en est, étape par étape, sans rien qui identifie la base", async () => {
+  const m = monde();
+  const etapes: string[] = [];
+  m.deps.trace = (e) => etapes.push(e);
+  await appel(m, { action: "tester", connexion: CONNEXION });
+  assertEquals(etapes, [
+    "résolution du nom", "connexion à la base", "lecture de la structure", "diagnostic", "contrôles",
+    "fermeture de la connexion", "enregistrement du résultat", "réponse",
+  ]);
+  for (const fuite of ["s3cret", "db.exemple.com", "baikal_reader"]) assertEquals(etapes.join(" ").includes(fuite), false, fuite);
+  // Une base qui lâche pendant la lecture : la dernière étape dite est la bonne.
+  const panne = monde({ panne: Object.assign(new Error("boom"), { code: "ECONNREFUSED" }) });
+  const vues: string[] = [];
+  panne.deps.trace = (e) => vues.push(e);
+  await appel(panne, { action: "diagnostiquer", connexion: CONNEXION });
+  assertEquals(vues.at(-2), "lecture de la structure");
 });
 
 Deno.test("une base qui ne répond pas : erreur sobre, connexion refermée, rien de gardé", async () => {

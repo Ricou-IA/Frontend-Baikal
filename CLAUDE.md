@@ -30,20 +30,29 @@ sur un téléphone (usage « compagnon »).
   IP), lues comme prospects du site Baikal (vue `admin.baikal_prospects`, page `/prospect` ; `/baikal?tab=demandes` y redirige). L'ancienne route marketing
   `/baikal` a été retirée : elle masquait l'étage console du même chemin.
 
-- « Tester mon site » (plan `docs/superpowers/plans/2026-11-15-tester-mon-site.md`) : page
-  publique `src/pages/marketing/TesterMonSite.jsx` (routes `/tester` et `/tester/r/:jeton`,
-  liée depuis la landing depuis le 15/11/2026 — navigation, hero, section branchement —, en
-  `noindex` tant qu'Eric ne l'a pas annoncée), EF `baikal-test`
-  (verify_jwt off ; diagnostiquer / tester / resultat ; garde-fous dans `garde.ts`), résultats
-  dans `admin.tests_site` (lien privé 30 jours, jamais la connexion), moteur pur dans
-  `supabase/functions/_shared/recette/` (manifestes `docs/contrats/manifestes/*.json`). La page
-  importe `scriptRole` de `_shared/recette/prompt.ts` : une seule source pour le script du rôle.
-  Le mot de passe du rôle est tiré dans le navigateur (gardé le temps de l'onglet) et n'entre
-  jamais dans le prompt. Le prospect colle l'adresse de sa base telle que son hébergeur la donne :
-  `_shared/recette/adresse.ts` (pur, testé, importé par la page) y met `baikal_reader` — avec la
-  référence du projet sur le pooler Supabase — et ce mot de passe ; rien d'autre ne part. Essai
-  local : `VITE_BAIKAL_TEST_URL` fait parler la page à un service joué sur un Postgres jetable.
-  Pack vendeur est l'étalon (décision d'Eric du 15/11/2026) : niveau 1 = dossiers ET mesures.
+- « Tester mon site » (plan `docs/superpowers/plans/2026-11-15-tester-mon-site.md`) : parcours
+  d'onboarding public, **par l'agent du prospect** (décision d'Eric du 15/11/2026 : la cible
+  travaille toute la journée avec un agent et des MCP ; un formulaire technique « c'est la naza »).
+  Page `src/pages/marketing/TesterMonSite.jsx` (routes `/tester` et `/tester/r/:jeton`, liée depuis
+  la landing, en `noindex` tant qu'Eric ne l'a pas annoncée) : le fondateur tape l'adresse de son
+  site, la page tire un jeton et sert un prompt écrit pour ce site (`fabriquerPromptAgent`) ;
+  l'agent identifie le bon projet, crée le rôle, écrit les vues, appelle lui-même l'EF et rend le
+  lien privé ; la page, restée ouverte, relit ce lien et affiche le résultat dès qu'il arrive.
+  Le chemin à la main (script du rôle + adresse de l'hébergeur, transformée par `adresse.ts`)
+  reste replié en bas de page.
+  - EF `baikal-test` (verify_jwt off ; diagnostiquer / tester / resultat ; garde-fous dans
+    `garde.ts`) : adopte un jeton bien formé encore inconnu, rend `reponse: "courte"` à un agent
+    (lien, verdict, contrôles à corriger avec leur correction, sans le prompt), répond toujours
+    avant 58 s et nomme l'étape où un passage s'arrête. Résultats dans `admin.tests_site` (lien
+    privé 30 jours, jamais la connexion).
+  - Tout ce qui décide de quelque chose est pur et testé dans
+    `supabase/functions/_shared/recette/` (`controles.ts`, `structure.ts`, `prompt.ts`, `site.ts`,
+    `adresse.ts` ; manifestes `docs/contrats/manifestes/*.json`) ; la page importe ces modules tels
+    quels, sans recopie. Aucun mot de passe n'entre dans un prompt.
+  - Essai local : `VITE_BAIKAL_TEST_URL` fait parler la page à un service joué sur un Postgres
+    jetable. Pack vendeur est l'étalon (15/11/2026) : niveau 1 = dossiers ET mesures.
+  - La fonction atteint l'adresse directe de Supabase (`db.<référence>.supabase.co:5432`) : un
+    agent déduit l'adresse de `SUPABASE_URL`, sans passer par le tableau de bord.
 
 - **Frontend:** React 18 + Vite + TailwindCSS (JSX, no TypeScript)
 - **Backend:** Supabase (Postgres, Edge Functions in Deno/TypeScript, Storage, Auth)

@@ -119,3 +119,136 @@ Le test rend un statut par contrôle. Reprends chaque échec, corrige, et fais r
 
   return parties.join("\n\n") + "\n";
 }
+
+// ---------------------------------------------------------------------------
+// Le prompt d'ENTRÉE : celui que la page sert dès que le prospect a tapé
+// l'adresse de son site, avant tout diagnostic.
+//
+// Vision d'Eric (15/11/2026) : ceux à qui Baikal s'adresse travaillent toute
+// la journée avec un agent et des connecteurs. Ils ne veulent ni éditeur SQL,
+// ni adresse de connexion à assembler. Ils collent un prompt ; l'agent
+// identifie le bon projet, fait le travail, lance lui-même le test, et rend
+// UN lien. Ce prompt-là ne peut pas s'appuyer sur un diagnostic : il nomme le
+// site, et laisse à l'agent le soin de trouver le dépôt et la base.
+// ---------------------------------------------------------------------------
+
+export interface OptionsPromptAgent {
+  // Le site à brancher, tel que lireSite l'a rendu.
+  site: { url: string; domaine: string };
+  // Le jeton tiré par la page : le test de l'agent s'y range, la page l'attend.
+  jeton: string;
+  // L'adresse de la fonction de test (POST, JSON, sans authentification).
+  urlApi: string;
+  // Le lien privé du résultat, celui que l'agent rend au fondateur.
+  urlResultat: string;
+  manifestes: Manifeste[];
+  contrats: Record<string, string>;
+}
+
+export function fabriquerPromptAgent(options: OptionsPromptAgent): string {
+  const { site, jeton, urlApi, urlResultat, manifestes, contrats } = options;
+  const vues = manifestes.flatMap((m) => m.vues.filter((v) => v.obligatoire).map((v) => `\`${v.nom}\``));
+  const controles = manifestes.flatMap((m) =>
+    m.controles.filter((k) => k.niveau === 1 && !k.type).map((k) => `-- ${k.titre} (${m.contrat} ${k.ref}). Doit rendre zéro ligne.\n${k.sql};`)
+  );
+  const manuelles = manifestes.flatMap((m) => m.verifications_manuelles.map((v) => `- ${v.texte} (${m.contrat} ${v.ref})`));
+  const [role, droits] = scriptRole("@SCHEMA@").split("\n\n-- 2.");
+  const appel = (connexion: string) =>
+    `curl -s -X POST '${urlApi}' \\\n  -H 'content-type: application/json' \\\n  -d '{"action":"tester","reponse":"courte","jeton":"${jeton}","connexion":"${connexion}"}'`;
+  const n = manifestes.length;
+
+  const parties = [
+    `# Brancher ${site.domaine} à Baikal
+
+Tu vas brancher le site ${site.url} à Baikal, la console d'administration de son fondateur. Baikal ne lit que des VUES que le site publie, sous un rôle Postgres en lecture seule. Tu fais tout le travail : identifier le projet, créer le rôle, écrire les vues, lancer le test en ligne, corriger jusqu'à zéro échec. À la fin, tu rends UN lien au fondateur.
+
+Le niveau 1 tient en deux vues : ${vues.join(" et ")}. Le niveau 2 (les onglets de la fiche client, l'origine des clients) vient après, et il est optionnel.`,
+
+    `## Étape 0 — Identifie le bon projet
+
+Le site à brancher est ${site.url}. Tu as peut-être plusieurs dépôts et plusieurs bases sous la main : ne te trompe pas de projet.
+
+- Trouve le dépôt de CE site : cherche « ${site.domaine} » dans le code, la configuration de déploiement et les variables d'environnement.
+- Trouve SA base de données : \`DATABASE_URL\`, \`SUPABASE_URL\` ou équivalent dans ce dépôt. Si tu as un connecteur (MCP) vers l'hébergeur, c'est le projet dont l'adresse correspond à ces variables, pas un autre.
+- Baikal ne lit que Postgres (Supabase, Neon, un serveur à soi : peu importe). Si la base n'en est pas une, dis-le et arrête-toi là.
+- Dis au fondateur, en trois lignes, ce que tu as trouvé : le dépôt, l'hébergeur de la base, l'identifiant du projet. Attends son accord avant de créer quoi que ce soit. Si deux projets peuvent correspondre, demande-lui lequel au lieu de deviner.`,
+
+    `## Les règles
+
+- Ne modifie aucune table, aucune colonne, aucune donnée existante. Tu ne crées qu'un rôle, des vues, des grants et des policies de lecture.
+- Le mot de passe du rôle n'apparaît dans AUCUN fichier : ni dépôt, ni migration, ni journal, ni message de commit. Tu le tires au hasard, tu le gardes en mémoire le temps de ce travail, et tu le donnes au fondateur à la fin s'il le demande.
+- Montre la migration au fondateur et attends son accord avant de l'appliquer à sa base.
+- Le contrat fige la FORME (noms des vues, colonnes, types). Le corps de chaque vue t'appartient : toi seul sais ce qu'est un dossier, un achat ou un abonné dans ce code. Lis le code du site avant d'écrire.
+- Une colonne que tu ne sais pas remplir est ABSENTE, jamais présente et nulle : Baikal lit la capacité à la présence de la colonne.
+- Les tests et les supprimés se définissent dans la vue (\`est_test\`, \`supprime_le\`), pas ailleurs.
+- Une donnée présente dans deux vues se dérive de celle qui fait autorité : \`baikal_mesures\` lit \`baikal_dossiers\`, elle ne recompte pas les tables.
+- Si une information manque pour décider (où vit la date de paiement, ce qu'est un compte de test), pose la question au fondateur plutôt que de deviner.`,
+
+    `## Étape 1 — Le rôle en lecture seule
+
+Crée-le directement en base (ton connecteur, \`psql\`, l'éditeur SQL), JAMAIS dans une migration. Tire un mot de passe de 24 lettres minuscules et chiffres, et mets-le à la place de ${MOT_DE_PASSE}. Dans tout ce prompt, \`@SCHEMA@\` est le schéma où tu publies les vues : \`public\` le plus souvent.
+
+\`\`\`sql
+${role}
+\`\`\`
+
+Si le rôle existe déjà, ne le recrée pas : \`alter role baikal_reader password '…';\` suffit.`,
+
+    ...manifestes.map((m, i) =>
+      `## Étape ${i + 2} — Le contrat ${m.contrat}\n\n${m.titre}. Écris la vue dans une migration nouvelle de ce dépôt, en remplaçant \`@SCHEMA@\`.\n\n` +
+      "```sql\n" + (contrats[m.contrat] ?? `-- Texte du contrat ${m.contrat} indisponible.`).trimEnd() + "\n```"
+    ),
+
+    `## Étape ${n + 2} — Les droits
+
+Dans la même migration, après les vues, pour CHAQUE table que tes vues lisent :
+
+\`\`\`sql
+-- 2.${droits}
+\`\`\`
+
+Puis vérifie-toi avant de lancer le test. Ces requêtes sont celles qu'il jouera ; chacune doit rendre zéro ligne.
+
+\`\`\`sql
+${controles.join("\n\n")}
+\`\`\`
+
+Et ce que le SQL ne vérifie pas à ta place :
+
+${manuelles.join("\n")}`,
+
+    `## Étape ${n + 3} — Lance le test toi-même
+
+Le test se lance par un appel HTTP, sans compte ni clé. Il ne fait que lire, sous le rôle \`baikal_reader\`.
+
+L'adresse de la base est celle du rôle, sur l'hôte PUBLIC de la base :
+
+- Supabase : \`postgresql://baikal_reader:MOT_DE_PASSE@db.REFERENCE.supabase.co:5432/postgres\`, où REFERENCE est le début de \`SUPABASE_URL\` (\`https://REFERENCE.supabase.co\`).
+- Ailleurs : l'hôte, le port et la base de \`DATABASE_URL\`, avec \`baikal_reader\` et son mot de passe.
+
+\`\`\`bash
+${appel("postgresql://baikal_reader:MOT_DE_PASSE@HOTE:5432/BASE")}
+\`\`\`
+
+Ne mets cette adresse dans aucun fichier. La réponse est un JSON :
+
+- \`error\` non nul : la connexion ou l'adresse est en cause. Le message dit quoi ; corrige et relance.
+- \`data.a_corriger\` : un élément par contrôle en échec, avec ce qui est faux (\`si_echec\`), la correction attendue (\`correction\`) et jusqu'à trois exemples. Corrige la vue ou les droits, réapplique, relance le MÊME appel.
+- \`data.non_mesures\` : un contrôle non mesuré n'est pas un succès. Si c'est une requête trop lente, allège la vue ou indexe la colonne de jointure.
+- \`data.niveau1_pret\` : ton objectif est \`true\`.
+
+Dix tests par heure : corrige tout ce que le rapport montre avant de relancer.`,
+
+    `## Étape ${n + 4} — Rends le lien
+
+Quand \`niveau1_pret\` vaut \`true\`, réponds au fondateur avec :
+
+1. Le lien de son résultat : ${urlResultat}
+2. Ce que tu as créé, en cinq lignes au plus : le rôle, les vues, la migration.
+3. Ce qui reste pour le niveau 2, si le rapport en parle.
+
+Ce lien est privé et reste valable trente jours. C'est la seule chose qu'il a besoin d'ouvrir.`,
+  ];
+
+  return parties.join("\n\n") + "\n";
+}

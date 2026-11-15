@@ -12,22 +12,33 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 // Surcharge de développement : faire parler la page à un service local joué
 // sur un Postgres jetable. Jamais définie en production.
-const ADRESSE = import.meta.env.VITE_BAIKAL_TEST_URL || `${supabaseUrl}/functions/v1/baikal-test`;
+// Exportée : elle entre dans le prompt, c'est l'agent du prospect qui l'appelle.
+export const ADRESSE_TEST = import.meta.env.VITE_BAIKAL_TEST_URL || `${supabaseUrl}/functions/v1/baikal-test`;
 
 async function appeler(corps) {
   try {
-    const reponse = await fetch(ADRESSE, {
+    const reponse = await fetch(ADRESSE_TEST, {
       method: 'POST',
       headers: { apikey: supabaseAnonKey, 'Content-Type': 'application/json' },
       body: JSON.stringify(corps),
     });
     const json = await reponse.json().catch(() => ({}));
     if (!reponse.ok || json.error) {
-      return { data: null, error: new Error(json.error || `Le test n'a pas répondu (HTTP ${reponse.status}).`) };
+      return {
+        data: null,
+        statut: reponse.status,
+        error: new Error(json.error || `Le test n'a pas répondu (HTTP ${reponse.status}).`),
+      };
     }
-    return { data: json.data, error: null };
+    return { data: json.data, statut: reponse.status, error: null };
   } catch {
-    return { data: null, error: new Error("Le test n'a pas répondu : vérifiez votre connexion à Internet.") };
+    // Pas de réponse lisible : coupure de réseau, ou fonction interrompue
+    // avant d'avoir répondu. On ne sait pas lequel, et on le dit.
+    return {
+      data: null,
+      statut: 0,
+      error: new Error("Le test n'a pas répondu. Réessayez dans un instant ; si cela se répète, le problème est de notre côté."),
+    };
   }
 }
 
@@ -40,7 +51,8 @@ export const testSiteService = {
   tester({ connexion, jeton, site_web }) {
     return appeler({ action: 'tester', connexion, jeton, site_web });
   },
-  // Rouvre le dernier résultat par son lien privé.
+  // Relit le dernier résultat par son lien privé. `statut` 404 : rien n'a
+  // encore été rangé sous ce jeton (l'agent n'a pas lancé le test).
   resultat(jeton) {
     return appeler({ action: 'resultat', jeton });
   },
