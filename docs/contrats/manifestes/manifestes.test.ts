@@ -72,3 +72,11 @@ for (const nom of ["dossiers-v1.json", "mesures-v1.json"]) {
     assert(m.vues.some((v) => v.obligatoire), "au moins une vue obligatoire");
   });
 }
+
+// La fonction en ligne n'embarque que supabase/functions : elle lit une COPIE
+// générée des manifestes et des contrats. Ce test interdit qu'elle diverge.
+Deno.test("la copie embarquée (contrats.gen.ts) est à jour — sinon : deno run -A docs/contrats/manifestes/generer.ts", async () => {
+  const { contenuGenere, SORTIE } = await import("./generer.ts");
+  const surDisque = (await Deno.readTextFile(SORTIE)).replaceAll("\r\n", "\n");
+  assertEquals(surDisque, await contenuGenere());
+});

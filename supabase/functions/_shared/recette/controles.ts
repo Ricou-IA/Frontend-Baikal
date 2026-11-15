@@ -64,7 +64,7 @@ where n.nspname = '${schema}' and c.relkind in ('v', 'm', 'r', 'p', 'f') and c.r
 order by c.relname, a.attnum`;
 }
 
-const SQL_ROLE = `/* recette:role */
+export const SQL_ROLE = `/* recette:role */
 select exists (select 1 from pg_roles where rolname = '${ROLE}') as existe, current_user as utilisateur`;
 
 // Les sources d'une vue se lisent dans le catalogue (mesures-v1 §3 (5)), en
