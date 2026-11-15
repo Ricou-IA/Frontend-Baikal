@@ -31,6 +31,7 @@ import Prompts from './pages/Prompts';
 import PromptForm from './pages/PromptForm';
 import Baikal from './pages/marketing/Baikal';
 import Confer from './pages/marketing/Confer';
+import TesterMonSite from './pages/marketing/TesterMonSite';
 
 // Pages Admin - Gestion Users/Orgs/Projets
 import Organizations from './pages/admin/Organizations';
@@ -348,6 +349,11 @@ function App() {
           
           {/* Redirection racine → Landing Page Baïkal */}
           <Route path="/" element={<Baikal />} />
+
+          {/* « Tester mon site » : parcours public, sans session. Volontairement
+              liée d'aucune autre page tant qu'Eric n'a pas décidé de l'annoncer. */}
+          <Route path="/tester" element={<TesterMonSite />} />
+          <Route path="/tester/r/:jeton" element={<TesterMonSite />} />
 
           {/* 404 - Route non trouvée → Landing Page Baïkal */}
           <Route path="*" element={<Navigate to="/" replace />} />

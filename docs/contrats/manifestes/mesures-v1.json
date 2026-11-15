@@ -1,0 +1,112 @@
+{
+  "contrat": "mesures-v1",
+  "source": "docs/contrats/mesures-v1.sql",
+  "titre": "Mesures : les tuiles en tête de Clients, Finances et Comptes",
+  "types": "Types attendus : text, int (smallint, integer, bigint), numeric (et entiers, réels), date.",
+  "vues": [
+    {
+      "nom": "baikal_mesures",
+      "obligatoire": true,
+      "niveau": 1,
+      "role": "Les séries quotidiennes que Baikal affiche en tuiles : une ligne par jour, par clé et par fenêtre.",
+      "colonnes": [
+        { "nom": "jour", "type": "date", "obligatoire": true },
+        { "nom": "cle", "type": "text", "obligatoire": true },
+        { "nom": "libelle", "type": "text", "obligatoire": true },
+        { "nom": "valeur", "type": "numeric", "obligatoire": true },
+        { "nom": "agregation", "type": "text", "obligatoire": true },
+        { "nom": "format", "type": "text", "obligatoire": true },
+        { "nom": "chapitre", "type": "text", "obligatoire": true },
+        { "nom": "fenetre_jours", "type": "int", "obligatoire": true },
+        { "nom": "groupe", "type": "text", "obligatoire": true },
+        { "nom": "rendu", "type": "text", "obligatoire": false },
+        { "nom": "ordre", "type": "int", "obligatoire": true }
+      ]
+    }
+  ],
+  "controles": [
+    {
+      "id": "mesures.sans_doublon",
+      "ref": "§3 (1)",
+      "niveau": 1,
+      "vue": "baikal_mesures",
+      "titre": "Aucun doublon par jour, clé et fenêtre",
+      "requiert": ["jour", "cle", "fenetre_jours"],
+      "sql": "select jour, cle, fenetre_jours, count(*)::int as lignes from @SCHEMA@.baikal_mesures group by 1, 2, 3 having count(*) > 1",
+      "si_echec": "Un doublon sur une somme double le nombre affiché sans un bruit : la tuile annonce 40 ventes pour 20.",
+      "correction": "Vérifier que chaque branche de l'union produit une seule ligne par (jour, cle, fenetre_jours), et que deux branches ne publient pas la même clé."
+    },
+    {
+      "id": "mesures.fenetre_sur_stock",
+      "ref": "§3 (2)",
+      "niveau": 1,
+      "vue": "baikal_mesures",
+      "titre": "Seul un stock porte une fenêtre",
+      "requiert": ["cle", "agregation", "fenetre_jours"],
+      "sql": "select distinct cle, agregation, fenetre_jours from @SCHEMA@.baikal_mesures where fenetre_jours is not null and agregation <> 'dernier'",
+      "si_echec": "Un flux à fenêtre est sommé sur la période choisie à l'écran alors qu'il compte déjà une fenêtre : la tuile multiplie le nombre par la durée.",
+      "correction": "Un flux a fenetre_jours NULL ; un compte de valeurs distinctes sur une fenêtre est un stock, agregation 'dernier'."
+    },
+    {
+      "id": "mesures.vocabulaire",
+      "ref": "§3 (3)",
+      "niveau": 1,
+      "vue": "baikal_mesures",
+      "titre": "Agrégation, format et chapitre sont dans le vocabulaire",
+      "requiert": ["cle", "agregation", "format", "chapitre"],
+      "sql": "select distinct cle, agregation, format, chapitre from @SCHEMA@.baikal_mesures where agregation not in ('somme', 'dernier') or format not in ('nombre', 'eur', 'pourcent') or chapitre not in ('clients', 'finances', 'comptes_pro')",
+      "si_echec": "Baikal écarte ces lignes sans erreur : la tuile n'apparaît nulle part et rien ne dit pourquoi.",
+      "correction": "agregation ∈ somme|dernier, format ∈ nombre|eur|pourcent, chapitre ∈ clients|finances|comptes_pro."
+    },
+    {
+      "id": "mesures.rendu_vocabulaire",
+      "ref": "§3 (3)",
+      "niveau": 2,
+      "vue": "baikal_mesures",
+      "titre": "Le rendu vaut tuiles ou entonnoir",
+      "requiert": ["cle", "rendu"],
+      "sql": "select distinct cle, rendu from @SCHEMA@.baikal_mesures where coalesce(rendu, 'tuiles') not in ('tuiles', 'entonnoir')",
+      "si_echec": "Un rendu inconnu retombe en tuiles : l'entonnoir prévu ne s'affiche pas.",
+      "correction": "rendu ∈ tuiles|entonnoir, ou NULL pour des tuiles."
+    },
+    {
+      "id": "mesures.rendu_uniforme",
+      "ref": "§3 (3)",
+      "niveau": 2,
+      "vue": "baikal_mesures",
+      "titre": "Toutes les mesures d'un groupe déclarent le même rendu",
+      "requiert": ["chapitre", "groupe", "rendu"],
+      "sql": "select chapitre, groupe, count(distinct coalesce(rendu, 'tuiles'))::int as rendus from @SCHEMA@.baikal_mesures group by 1, 2 having count(distinct coalesce(rendu, 'tuiles')) > 1",
+      "si_echec": "Un groupe panaché retombe sur des tuiles : l'entonnoir disparaît dès qu'une étape oublie son rendu.",
+      "correction": "Écrire rendu une seule fois en sortie de l'union, par un case sur la clé."
+    },
+    {
+      "id": "mesures.complete",
+      "ref": "§3 (4)",
+      "niveau": 1,
+      "vue": "baikal_mesures",
+      "titre": "Aucune ligne incomplète",
+      "requiert": ["jour", "cle", "libelle", "valeur", "agregation", "format", "chapitre"],
+      "sql": "select jour, cle, libelle, valeur, agregation, format, chapitre from @SCHEMA@.baikal_mesures where jour is null or cle is null or libelle is null or valeur is null or agregation is null or format is null or chapitre is null",
+      "si_echec": "Baikal écarte ces lignes en silence : un jour manque à la courbe, ou la tuile n'apparaît pas.",
+      "correction": "coalesce(count, 0)::numeric pour la valeur ; un libellé et un chapitre écrits en dur dans chaque branche."
+    },
+    {
+      "id": "mesures.stock_continu",
+      "ref": "§3 (6) et §1 (b bis)",
+      "niveau": 1,
+      "vue": "baikal_mesures",
+      "titre": "Un stock publie une ligne par jour, zéros compris",
+      "requiert": ["jour", "cle", "agregation", "fenetre_jours", "valeur"],
+      "sql": "with s as (select cle, fenetre_jours, jour, valeur, lag(valeur) over (partition by cle, fenetre_jours order by jour) as precedente from @SCHEMA@.baikal_mesures where agregation = 'dernier') select cle, fenetre_jours, count(distinct jour)::int as jours_publies, (max(jour) - min(jour) + 1) as jours_attendus from s group by 1, 2 having count(distinct jour) <> (max(jour) - min(jour) + 1) and (fenetre_jours is not null or bool_or(valeur < precedente))",
+      "si_echec": "Un jour sans ligne se lit « pas mesuré » : la tuile garde la dernière valeur non nulle, une fenêtre glissante qui ne redescend jamais, un abonné résilié qui reste compté.",
+      "correction": "Joindre le calendrier (generate_series) en jointure EXTERNE et publier coalesce(..., 0) chaque jour depuis la première mesure. Seul un cumul qui ne décroît jamais, sans fenêtre, est dispensé de ses zéros."
+    }
+  ],
+  "concordances": [],
+  "verifications_manuelles": [
+    { "ref": "§1 (d)", "texte": "Une mesure qui coiffe une liste se dérive de cette liste : la tuile des dossiers payés lit baikal_dossiers, jamais les tables sources." },
+    { "ref": "§1 (e)", "texte": "Des tuiles posées à côté d'un total en sont une répartition complète : leur somme est le total." },
+    { "ref": "§2", "texte": "Le jour est le jour LOCAL du site : (horodatage at time zone 'Europe/Paris')::date, jamais un ::date nu." }
+  ]
+}

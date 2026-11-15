@@ -11,6 +11,11 @@
 // meme nombre. Redefinir le filtre en local est exactement ce qui faisait
 // compter 4 demandes payees a voirie la ou il n'y en avait que 2.
 // Consequence assumee : un site liste ici doit publier sa vue contractuelle.
+//
+// Ce fichier se vide a mesure que les sites passent au contrat des mesures
+// (docs/contrats/mesures-v1.sql) : monsieurdpe n'y a jamais figure,
+// pack-vendeur en est sorti le 15/11/2026 (ses quatre nombres verifies au
+// centime contre public.baikal_mesures). Restent voirie et majordhome.
 
 // deno-lint-ignore-file no-explicit-any
 type Sql = any;
@@ -21,43 +26,6 @@ export interface StatsSite {
     titre: string;
     colonnes: Array<{ cle: string; libelle: string }>;
     lignes: Array<Record<string, unknown>>;
-  };
-}
-
-async function statsPackVendeur(sql: Sql, jours: number): Promise<StatsSite> {
-  const [k] = await sql`
-    SELECT
-      count(*) FILTER (WHERE created_at >= now() - make_interval(days => ${jours}))::int AS crees,
-      count(*) FILTER (WHERE paid_at >= now() - make_interval(days => ${jours}))::int AS payes,
-      coalesce(sum(amount_paid) FILTER (WHERE paid_at >= now() - make_interval(days => ${jours})), 0)::float AS ca_periode,
-      coalesce(sum(amount_paid) FILTER (WHERE paid_at IS NOT NULL), 0)::float AS ca_total
-    FROM pack_vendeur.dossiers d
-    JOIN public.baikal_dossiers v ON v.dossier_id = d.id::text
-    WHERE v.est_test IS NOT TRUE AND v.supprime_le IS NULL`;
-  const lignes = await sql`
-    SELECT d.paid_at::date AS date, d.property_city AS ville, d.amount_paid::float AS montant,
-           coalesce(d.acquisition_channel, d.utm_source, 'direct') AS canal
-    FROM pack_vendeur.dossiers d
-    JOIN public.baikal_dossiers v ON v.dossier_id = d.id::text
-    WHERE d.paid_at IS NOT NULL AND v.est_test IS NOT TRUE AND v.supprime_le IS NULL
-    ORDER BY d.paid_at DESC LIMIT 10`;
-  return {
-    kpis: [
-      { cle: "crees", libelle: `Dossiers crees (${jours} j)`, valeur: k.crees },
-      { cle: "payes", libelle: `Dossiers payes (${jours} j)`, valeur: k.payes },
-      { cle: "ca_periode", libelle: `CA (${jours} j)`, valeur: k.ca_periode, format: "eur" },
-      { cle: "ca_total", libelle: "CA total", valeur: k.ca_total, format: "eur" },
-    ],
-    dernieres: {
-      titre: "Derniers dossiers payes",
-      colonnes: [
-        { cle: "date", libelle: "Date" },
-        { cle: "ville", libelle: "Ville" },
-        { cle: "montant", libelle: "Montant" },
-        { cle: "canal", libelle: "Canal" },
-      ],
-      lignes,
-    },
   };
 }
 
@@ -132,7 +100,6 @@ export const statsParSite: Record<
   string,
   (sql: Sql, jours: number) => Promise<StatsSite>
 > = {
-  "pack-vendeur": statsPackVendeur,
   "voirie": statsVoirie,
   "majordhome": statsMajordhome,
 };

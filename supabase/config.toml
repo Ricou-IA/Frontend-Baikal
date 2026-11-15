@@ -84,6 +84,16 @@ verify_jwt = false
 import_map = "./functions/import_map.json"
 entrypoint = "./functions/baikal-demande/index.ts"
 
+# « Tester mon site » (page publique /tester) : pas de JWT, un inconnu teste sa
+# base sans compte. Garde-fous dans le code (Postgres seul, SSL, refus des
+# adresses privees, lecture seule, 10 tests par IP et par heure, piege a
+# robots). verify_jwt ancre ici pour qu un redeploiement ne le remette pas a true.
+[functions.baikal-test]
+enabled = true
+verify_jwt = false
+import_map = "./functions/import_map.json"
+entrypoint = "./functions/baikal-test/index.ts"
+
 # Mailing (spec 2026-10-13) : la console appelle admin-mailing avec la session ;
 # le worker est appele par pg_cron (X-Cron-Secret) ; le webhook par Resend
 # (signature Svix) ; la desinscription par la page publique et par

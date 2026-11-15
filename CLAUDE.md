@@ -30,6 +30,17 @@ sur un téléphone (usage « compagnon »).
   IP), lues comme prospects du site Baikal (vue `admin.baikal_prospects`, page `/prospect` ; `/baikal?tab=demandes` y redirige). L'ancienne route marketing
   `/baikal` a été retirée : elle masquait l'étage console du même chemin.
 
+- « Tester mon site » (plan `docs/superpowers/plans/2026-11-15-tester-mon-site.md`) : page
+  publique `src/pages/marketing/TesterMonSite.jsx` (routes `/tester` et `/tester/r/:jeton`,
+  liée d'aucune autre page et en `noindex` tant qu'Eric ne l'annonce pas), EF `baikal-test`
+  (verify_jwt off ; diagnostiquer / tester / resultat ; garde-fous dans `garde.ts`), résultats
+  dans `admin.tests_site` (lien privé 30 jours, jamais la connexion), moteur pur dans
+  `supabase/functions/_shared/recette/` (manifestes `docs/contrats/manifestes/*.json`). La page
+  importe `scriptRole` de `_shared/recette/prompt.ts` : une seule source pour le script du rôle.
+  Le mot de passe du rôle est tiré dans le navigateur et n'entre jamais dans le prompt. Essai
+  local : `VITE_BAIKAL_TEST_URL` fait parler la page à un service joué sur un Postgres jetable.
+  Pack vendeur est l'étalon (décision d'Eric du 15/11/2026) : niveau 1 = dossiers ET mesures.
+
 - **Frontend:** React 18 + Vite + TailwindCSS (JSX, no TypeScript)
 - **Backend:** Supabase (Postgres, Edge Functions in Deno/TypeScript, Storage, Auth)
 - **Ingestion pipeline:** n8n workflows (FLUX 1-6) calling Supabase Edge Functions
@@ -254,6 +265,11 @@ puis `npx supabase migration repair --linked --status applied <version>`, jamais
 - Public schema functions are SECURITY DEFINER wrappers calling schema-specific functions
 - Config is DB-driven via `config.agent_prompts.parameters` (JSONB)
 - French language throughout UI, prompts, and documentation
+- **Ce dépôt GitHub est public** (`Ricou-IA/Frontend-Baikal`) : aucune donnée ni structure d'une
+  base de production n'y entre, même masquée. Les relevés de structure des sites
+  (`_shared/recette/essai/structures/`) et les comptes rendus d'essai citant des lignes réelles
+  (`docs/onboarding/prive/`) sont ignorés par git et restent sur le poste ; les tests qui s'en
+  servent sont ignorés quand ils manquent. Relire `git diff origin/main..<branche>` avant tout push.
 
 ## Modules admin multi-sites (2026-08-20, consolidé le 2026-09-17)
 
@@ -300,9 +316,10 @@ sites-design.md).
   décide d'un nombre affiché est dans `admin-site-stats/mesures.ts`, pur et testé. Bornes de
   fenêtre calculées en TypeScript, jamais en SQL (postgres.js envoie ses paramètres sans
   type : `$1::date - $2` a été résolu en soustraction de deux dates). L'action `overview`
-  et `stats-sites.ts` survivent pour pack-vendeur, voirie et majordhome jusqu'à leur
+  et `stats-sites.ts` survivent pour voirie et majordhome jusqu'à leur
   bascule, ce qui garde `VueSite` dans `Admin.jsx`. Brancher un site = publier sa vue et
-  passer la recette du contrat, aucun code Baikal. Branché : monsieurdpe. Spec :
+  passer la recette du contrat, aucun code Baikal. Branché : monsieurdpe, pack-vendeur
+  (15/11/2026, quinze séries, parité vérifiée avec le funnel de son `/admin`). Spec :
   `docs/superpowers/specs/2026-09-23-contrat-mesures-design.md`.
 - Les règles communes à tous les contrats (grant ET policy `baikal_read` sur toute table
   source — invisible sur la base partagée lue en `postgres` BYPASSRLS ; colonne qu'on ne
