@@ -30,6 +30,17 @@ sur un téléphone (usage « compagnon »).
   IP), lues comme prospects du site Baikal (vue `admin.baikal_prospects`, page `/prospect` ; `/baikal?tab=demandes` y redirige). L'ancienne route marketing
   `/baikal` a été retirée : elle masquait l'étage console du même chemin.
 
+- « Tester mon site » (plan `docs/superpowers/plans/2026-11-15-tester-mon-site.md`) : page
+  publique `src/pages/marketing/TesterMonSite.jsx` (routes `/tester` et `/tester/r/:jeton`,
+  liée d'aucune autre page et en `noindex` tant qu'Eric ne l'annonce pas), EF `baikal-test`
+  (verify_jwt off ; diagnostiquer / tester / resultat ; garde-fous dans `garde.ts`), résultats
+  dans `admin.tests_site` (lien privé 30 jours, jamais la connexion), moteur pur dans
+  `supabase/functions/_shared/recette/` (manifestes `docs/contrats/manifestes/*.json`). La page
+  importe `scriptRole` de `_shared/recette/prompt.ts` : une seule source pour le script du rôle.
+  Le mot de passe du rôle est tiré dans le navigateur et n'entre jamais dans le prompt. Essai
+  local : `VITE_BAIKAL_TEST_URL` fait parler la page à un service joué sur un Postgres jetable.
+  Pack vendeur est l'étalon (décision d'Eric du 15/11/2026) : niveau 1 = dossiers ET mesures.
+
 - **Frontend:** React 18 + Vite + TailwindCSS (JSX, no TypeScript)
 - **Backend:** Supabase (Postgres, Edge Functions in Deno/TypeScript, Storage, Auth)
 - **Ingestion pipeline:** n8n workflows (FLUX 1-6) calling Supabase Edge Functions
