@@ -8,7 +8,9 @@
  * l'agent du client. Aucun prix affiché : Eric n'en a pas fixé.
  *
  * Route : "/" (App.jsx). Le formulaire dépose dans admin.demandes via l'EF
- * baikal-demande (sans session, honeypot `site_web`).
+ * baikal-demande (sans session, honeypot `site_web`). « Tester mon site »
+ * (/tester) est lié depuis la navigation, le hero et la section branchement
+ * depuis le 15/11/2026, sur décision d'Eric.
  * ============================================================================
  */
 
@@ -330,7 +332,10 @@ export default function Baikal() {
               <span className="font-mono font-semibold text-white tracking-[0.18em] text-sm">BAIKAL</span>
             </a>
             <div className="flex items-center gap-6">
-              <a href="#branchement" className="hidden sm:inline font-mono text-xs tracking-wider text-baikal-text hover:text-white transition-colors">
+              <Link to="/tester" className="hidden md:inline font-mono text-xs tracking-wider text-baikal-cyan hover:text-white transition-colors">
+                TESTER MON SITE
+              </Link>
+              <a href="#branchement" className="hidden lg:inline font-mono text-xs tracking-wider text-baikal-text hover:text-white transition-colors">
                 COMMENT ÇA SE BRANCHE
               </a>
               <a href="#demande" className="hidden sm:inline font-mono text-xs tracking-wider text-baikal-text hover:text-white transition-colors">
@@ -367,19 +372,25 @@ export default function Baikal() {
                 sites. Sans une ligne d'admin à écrire.
               </p>
               <div className="flex flex-col sm:flex-row gap-3 animate-fadeInUp" style={apparition(240)}>
+                <Link
+                  to="/tester"
+                  className="inline-flex items-center justify-center px-6 py-3.5 rounded-md bg-baikal-cyan text-black font-mono text-sm font-semibold tracking-wide hover:bg-white transition-colors"
+                >
+                  TESTER MON SITE
+                </Link>
                 <a
                   href="#demande"
-                  className="inline-flex items-center justify-center px-6 py-3.5 rounded-md bg-baikal-cyan text-black font-mono text-sm font-semibold tracking-wide hover:bg-white transition-colors"
+                  className="inline-flex items-center justify-center px-6 py-3.5 rounded-md border border-baikal-border text-white font-mono text-sm tracking-wide hover:border-baikal-cyan hover:text-baikal-cyan transition-colors"
                 >
                   DEMANDER UN ACCÈS
                 </a>
-                <a
-                  href="#branchement"
-                  className="inline-flex items-center justify-center px-6 py-3.5 rounded-md border border-baikal-border text-white font-mono text-sm tracking-wide hover:border-baikal-cyan hover:text-baikal-cyan transition-colors"
-                >
-                  COMMENT ÇA SE BRANCHE →
-                </a>
               </div>
+              <p className="mt-4 text-sm animate-fadeInUp" style={apparition(300)}>
+                Sans compte ni email : Baikal lit la structure de votre base et vous dit ce qu'il peut suivre.{' '}
+                <a href="#branchement" className="text-baikal-cyan hover:text-white transition-colors whitespace-nowrap">
+                  Comment ça se branche →
+                </a>
+              </p>
             </div>
             <div className="lg:col-span-5">
               <ApercuConsole />
@@ -499,6 +510,17 @@ export default function Baikal() {
                   « Publie une vue <span className="font-mono">baikal_dossiers</span> selon le contrat Baikal,
                   crée le rôle <span className="font-mono">baikal_reader</span> en lecture seule avec ses policies,
                   et donne-moi le DSN à transmettre. » Le contrat complet vous est remis avec l'accès.
+                </p>
+              </div>
+              <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-4">
+                <Link
+                  to="/tester"
+                  className="inline-flex items-center justify-center px-5 py-3 rounded-md border border-baikal-cyan text-baikal-cyan font-mono text-sm tracking-wide hover:bg-baikal-cyan hover:text-black transition-colors"
+                >
+                  TESTER MON SITE →
+                </Link>
+                <p className="text-sm leading-relaxed">
+                  Voyez ce que Baikal lirait dans votre base, et repartez avec le prompt écrit pour elle.
                 </p>
               </div>
             </div>

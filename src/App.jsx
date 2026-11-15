@@ -350,8 +350,8 @@ function App() {
           {/* Redirection racine → Landing Page Baïkal */}
           <Route path="/" element={<Baikal />} />
 
-          {/* « Tester mon site » : parcours public, sans session. Volontairement
-              liée d'aucune autre page tant qu'Eric n'a pas décidé de l'annoncer. */}
+          {/* « Tester mon site » : parcours public, sans session, lié depuis la
+              landing. */}
           <Route path="/tester" element={<TesterMonSite />} />
           <Route path="/tester/r/:jeton" element={<TesterMonSite />} />
 

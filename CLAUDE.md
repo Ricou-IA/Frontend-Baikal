@@ -32,7 +32,8 @@ sur un téléphone (usage « compagnon »).
 
 - « Tester mon site » (plan `docs/superpowers/plans/2026-11-15-tester-mon-site.md`) : page
   publique `src/pages/marketing/TesterMonSite.jsx` (routes `/tester` et `/tester/r/:jeton`,
-  liée d'aucune autre page et en `noindex` tant qu'Eric ne l'annonce pas), EF `baikal-test`
+  liée depuis la landing depuis le 15/11/2026 — navigation, hero, section branchement —, en
+  `noindex` tant qu'Eric ne l'a pas annoncée), EF `baikal-test`
   (verify_jwt off ; diagnostiquer / tester / resultat ; garde-fous dans `garde.ts`), résultats
   dans `admin.tests_site` (lien privé 30 jours, jamais la connexion), moteur pur dans
   `supabase/functions/_shared/recette/` (manifestes `docs/contrats/manifestes/*.json`). La page

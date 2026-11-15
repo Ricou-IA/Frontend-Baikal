@@ -6,8 +6,8 @@
  * corriger avec son agent de code. Il relance le test jusqu'à zéro échec.
  *
  * Routes : "/tester" et "/tester/r/:jeton" (lien privé gardé 30 jours).
- * La page n'est liée d'aucune autre page du site : le bouton n'apparaîtra sur
- * la landing que sur décision d'Eric.
+ * Liée depuis la landing depuis le 15/11/2026 (décision d'Eric, qui la teste
+ * en production). Elle reste en `noindex` tant qu'il ne l'a pas annoncée.
  *
  * Ce que la page garde : rien. La connexion vit dans la mémoire de l'onglet,
  * le mot de passe du rôle est tiré au hasard ICI et ne part jamais seul vers
@@ -340,8 +340,11 @@ export default function TesterMonSite() {
   useEffect(() => {
     const precedent = document.title;
     document.title = 'Tester mon site · Baikal';
-    // La page n'est pas annoncée : on la tient hors des moteurs tant qu'elle
-    // n'est pas liée depuis la landing.
+    // On arrive ici par un lien de la landing, parfois cliqué en bas de page :
+    // sans cela, la page s'ouvrirait à la même hauteur de défilement.
+    window.scrollTo(0, 0);
+    // La page est liée depuis la landing mais pas encore annoncée : on la
+    // tient hors des moteurs le temps qu'Eric la teste en production.
     const meta = document.createElement('meta');
     meta.name = 'robots';
     meta.content = 'noindex';
