@@ -300,9 +300,10 @@ sites-design.md).
   décide d'un nombre affiché est dans `admin-site-stats/mesures.ts`, pur et testé. Bornes de
   fenêtre calculées en TypeScript, jamais en SQL (postgres.js envoie ses paramètres sans
   type : `$1::date - $2` a été résolu en soustraction de deux dates). L'action `overview`
-  et `stats-sites.ts` survivent pour pack-vendeur, voirie et majordhome jusqu'à leur
+  et `stats-sites.ts` survivent pour voirie et majordhome jusqu'à leur
   bascule, ce qui garde `VueSite` dans `Admin.jsx`. Brancher un site = publier sa vue et
-  passer la recette du contrat, aucun code Baikal. Branché : monsieurdpe. Spec :
+  passer la recette du contrat, aucun code Baikal. Branché : monsieurdpe, pack-vendeur
+  (15/11/2026, quinze séries, parité vérifiée avec le funnel de son `/admin`). Spec :
   `docs/superpowers/specs/2026-09-23-contrat-mesures-design.md`.
 - Les règles communes à tous les contrats (grant ET policy `baikal_read` sur toute table
   source — invisible sur la base partagée lue en `postgres` BYPASSRLS ; colonne qu'on ne

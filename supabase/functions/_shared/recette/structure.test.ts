@@ -171,13 +171,17 @@ Deno.test("Pack vendeur : la table des dossiers, son funnel, ses vues publiées"
   assertEquals(d.reperes.some((r) => r.table.startsWith("pv_")), false);
 });
 
-Deno.test("Pack vendeur : quinze vues Baikal dans public, les mesures manquent", async () => {
+// Structure relevée de nouveau le 15/11/2026, après la bascule de Pack vendeur
+// sur le contrat des mesures : l'étalon ne manque plus de rien au niveau 1.
+// Le cas « les mesures manquent » reste couvert par Voirie, plus bas.
+Deno.test("Pack vendeur : seize vues Baikal dans public, rien ne manque", async () => {
   const d = diagnostiquer(await reelle("pack-vendeur"));
   assertEquals(d.schema_contrat, "public");
-  assertEquals(d.vues_baikal.length, 15);
+  assertEquals(d.vues_baikal.length, 16);
   assertEquals(d.vues_baikal.filter((v) => v.contrat === "dossiers-v1").length, 9);
+  assertEquals(d.vues_baikal.filter((v) => v.contrat === "mesures-v1").map((v) => v.nom), ["baikal_mesures"]);
   assertEquals(d.vues_baikal.filter((v) => v.contrat === null).map((v) => v.nom), []);
-  assertEquals(d.manques.map((m) => m.cle), ["baikal_mesures"]);
+  assertEquals(d.manques.map((m) => m.cle), []);
   assertEquals(d.affichable.map((a) => a.cle), ["clients", "paiements", "funnel", "stripe", "origine", "tuiles"]);
 });
 
