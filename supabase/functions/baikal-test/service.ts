@@ -5,12 +5,17 @@
 // réseau, et index.ts ne fait que brancher les vraies dépendances.
 //
 // Ce qui est gardé d'un passage : le diagnostic, le dernier rapport, une
-// empreinte de l'hôte. Ce qui ne l'est jamais : la connexion.
+// empreinte de l'hôte, et le site que l'agent déclare brancher. La connexion
+// n'est JAMAIS dans cette ligne. Elle n'est gardée que sur demande expresse
+// (`garder: true`), quand le niveau 1 passe, et alors dans le coffre chiffré
+// de la base, sous le jeton : c'est ce qui permettra d'ouvrir le site dans la
+// console sans qu'un humain recopie un secret.
 import { type Lecteur, recetter, SQL_ROLE } from "../_shared/recette/controles.ts";
 import { CONTRATS, MANIFESTES } from "../_shared/recette/contrats.gen.ts";
 import { fabriquerPrompt } from "../_shared/recette/prompt.ts";
 import type { Rapport } from "../_shared/recette/resultat.ts";
 import { type Diagnostic, diagnostiquer, LIMITE_CATALOGUE, lireCatalogue, sqlCatalogue } from "../_shared/recette/structure.ts";
+import { lireSite } from "../_shared/recette/site.ts";
 import { type Connexion, empreinte, ipInterdite, jetonValide, lireConnexion, messageConnexion, nouveauJeton } from "./garde.ts";
 
 export interface LigneTest {
@@ -23,6 +28,13 @@ export interface LigneTest {
   resultat: Rapport | null;
   niveau1_pret: boolean | null;
   tests: number;
+  // Le domaine du site que l'agent dit brancher (« monsaas.fr »).
+  site: string | null;
+  // Vrai quand la connexion du rôle est rangée dans le coffre, sous ce jeton.
+  connexion_gardee: boolean;
+  // Renseignés quand le site a été ouvert dans la console depuis ce lien.
+  ouvert_le: string | null;
+  app_id: string | null;
 }
 
 export interface Deps {
@@ -32,9 +44,24 @@ export interface Deps {
   depot: {
     lire(jeton: string): Promise<LigneTest | null>;
     ecrire(ligne: LigneTest): Promise<void>;
+    // Range la connexion dans le coffre chiffré, sous le jeton.
+    garder(jeton: string, connexion: string): Promise<void>;
   };
   trop(ip: string, maintenant: number): boolean;
   maintenant(): number;
+  // Les comptes de la console. `identifier` rend le compte d'une session déjà
+  // ouverte ; `creer` en ouvre un nouveau, confirmé d'office, et dit « existe »
+  // quand l'email a déjà un compte.
+  comptes: {
+    identifier(jetonSession: string): Promise<{ id: string; email: string } | null>;
+    creer(email: string, motDePasse: string, nom: string | null): Promise<{ id: string } | "existe">;
+    // Défait un compte tout juste créé, quand le site n'a pas pu être ouvert.
+    supprimer(id: string): Promise<void>;
+  };
+  // Inscrit le site au registre, lui attache la connexion gardée et en ouvre
+  // l'accès au compte. Tout ou rien, côté base. `refus` porte une phrase que
+  // le fondateur peut lire (site déjà au registre, lien déjà ouvert…).
+  ouvrirSite(jeton: string, compteId: string): Promise<{ app_id: string } | { refus: string }>;
   // Sel de l'empreinte de l'hôte : un secret du projet.
   sel: string;
   // Origine de la page publique, pour le lien privé.
@@ -58,6 +85,22 @@ const BUDGET_RECETTE_MS = 45_000;
 const refus = (statut: number, error: string): Reponse => ({ statut, data: null, error });
 const iso = (ms: number) => new Date(ms).toISOString();
 
+// Ce que la page lit pour proposer « Ouvrir mon site dans Baikal ».
+function etatOuverture(ligne: LigneTest) {
+  return {
+    site: ligne.site,
+    connexion_gardee: ligne.connexion_gardee,
+    ouvert: ligne.ouvert_le !== null,
+    ouvrable: ligne.niveau1_pret === true && ligne.connexion_gardee && ligne.ouvert_le === null,
+  };
+}
+
+// L'adresse du rôle, refaite à partir de ce que garde.ts a LU et accepté —
+// jamais la chaîne reçue telle quelle.
+function adresseDe(c: Connexion): string {
+  return `postgresql://${encodeURIComponent(c.utilisateur)}:${encodeURIComponent(c.motDePasse)}@${c.hote.includes(":") ? `[${c.hote}]` : c.hote}:${c.port}/${encodeURIComponent(c.base)}`;
+}
+
 function sortie(ligne: LigneTest, site: string, tronque?: boolean) {
   return {
     jeton: ligne.jeton,
@@ -74,6 +117,7 @@ function sortie(ligne: LigneTest, site: string, tronque?: boolean) {
       : null,
     teste_le: ligne.teste_le,
     expire_le: ligne.expire_le,
+    ...etatOuverture(ligne),
     ...(tronque === undefined ? {} : { tronque }),
   };
 }
@@ -118,6 +162,7 @@ function sortieCourte(ligne: LigneTest, site: string, tronque?: boolean) {
       : null,
     teste_le: ligne.teste_le,
     expire_le: ligne.expire_le,
+    ...etatOuverture(ligne),
     ...(tronque === undefined ? {} : { tronque }),
   };
 }
@@ -128,10 +173,88 @@ async function ligneValide(jeton: unknown, deps: Deps): Promise<LigneTest | null
   return ligne && Date.parse(ligne.expire_le) > deps.maintenant() ? ligne : null;
 }
 
+// Le site que l'agent déclare : un domaine public, ou rien.
+function siteDeclare(valeur: unknown): string | null {
+  if (typeof valeur !== "string") return null;
+  const lu = lireSite(valeur);
+  return lu.ok ? lu.domaine : null;
+}
+
+// ---------------------------------------------------------------------------
+// Ouvrir le site dans la console : la dernière marche de l'onboarding.
+//
+// Celui qui tient le lien privé d'un test passé, dont la connexion est gardée,
+// peut ouvrir le site : il a prouvé qu'il a la main sur la base. Il le fait
+// avec son compte s'il est connecté, sinon il en crée un. Le site est inscrit
+// au registre, la connexion lui est attachée, et le compte reçoit l'accès à ce
+// site et à lui seul. Un lien ne s'ouvre qu'une fois.
+// ---------------------------------------------------------------------------
+
+const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@.]{2,}$/;
+
+async function ouvrir(corps: Record<string, unknown>, ip: string, deps: Deps): Promise<Reponse> {
+  const trace = (etape: string) => deps.trace?.(etape);
+  if (!jetonValide(corps.jeton)) return refus(400, "Lien invalide.");
+  if (typeof corps.site_web === "string" && corps.site_web.trim()) return { statut: 200, data: { ok: true }, error: null };
+  if (deps.trop(ip, deps.maintenant())) return refus(429, "Trop d'essais depuis cette adresse : réessayez dans une heure.");
+
+  const ligne = await ligneValide(corps.jeton, deps);
+  if (!ligne) return refus(404, "Ce lien a expiré ou n'existe pas. Relancez un test.");
+  if (ligne.ouvert_le !== null) return refus(409, "Ce site est déjà ouvert dans Baikal : connectez-vous à la console.");
+  if (ligne.niveau1_pret !== true) return refus(409, "Le niveau 1 n'est pas encore passé : le site ne peut pas être ouvert.");
+  if (!ligne.connexion_gardee) {
+    return refus(409, "Baikal n'a pas gardé la connexion de ce site : relancez le test depuis le prompt, il la lui confiera.");
+  }
+
+  // Le compte : celui de la session ouverte, sinon un nouveau.
+  let compteId: string;
+  let email: string;
+  let nouveau = false;
+  if (typeof corps.session === "string" && corps.session) {
+    trace("lecture de la session");
+    const connu = await deps.comptes.identifier(corps.session);
+    if (!connu) return refus(401, "Votre session a expiré : reconnectez-vous, puis rouvrez ce lien.");
+    compteId = connu.id;
+    email = connu.email;
+  } else {
+    const saisi = typeof corps.email === "string" ? corps.email.trim().toLowerCase() : "";
+    const motDePasse = typeof corps.mot_de_passe === "string" ? corps.mot_de_passe : "";
+    if (!EMAIL.test(saisi)) return refus(400, "Cet email n'a pas la forme d'une adresse.");
+    if (motDePasse.length < 8 || motDePasse.length > 72) return refus(400, "Le mot de passe doit faire de 8 à 72 caractères.");
+    const nom = typeof corps.nom === "string" && corps.nom.trim() ? corps.nom.trim().slice(0, 120) : null;
+    trace("création du compte");
+    const cree = await deps.comptes.creer(saisi, motDePasse, nom);
+    if (cree === "existe") {
+      return refus(409, "Un compte existe déjà avec cet email : connectez-vous à la console, puis rouvrez ce lien.");
+    }
+    compteId = cree.id;
+    email = saisi;
+    nouveau = true;
+  }
+
+  trace("ouverture du site");
+  let issue: { app_id: string } | { refus: string };
+  try {
+    issue = await deps.ouvrirSite(ligne.jeton, compteId);
+  } catch (e) {
+    // Rien ne doit rester d'une ouverture ratée : pas de compte sans site.
+    if (nouveau) await deps.comptes.supprimer(compteId).catch(() => {});
+    throw e;
+  }
+  if ("refus" in issue) {
+    if (nouveau) await deps.comptes.supprimer(compteId).catch(() => {});
+    return refus(409, issue.refus);
+  }
+  trace("réponse");
+  return { statut: 200, data: { app_id: issue.app_id, email, nouveau, site: ligne.site }, error: null };
+}
+
 export async function traiter(corps: Record<string, unknown>, ip: string, deps: Deps): Promise<Reponse> {
   const action = String(corps.action ?? "");
   const trace = (etape: string) => deps.trace?.(etape);
   const rendre = corps.reponse === "courte" ? sortieCourte : sortie;
+
+  if (action === "ouvrir") return await ouvrir(corps, ip, deps);
 
   if (action === "resultat") {
     if (!jetonValide(corps.jeton)) return refus(400, "Lien invalide.");
@@ -226,7 +349,19 @@ export async function traiter(corps: Record<string, unknown>, ip: string, deps: 
     resultat: rapport ?? precedente?.resultat ?? null,
     niveau1_pret: rapport ? rapport.resume.niveau1_pret : precedente?.niveau1_pret ?? null,
     tests: (precedente?.tests ?? 0) + (rapport ? 1 : 0),
+    site: siteDeclare(corps.site) ?? precedente?.site ?? null,
+    connexion_gardee: precedente?.connexion_gardee ?? false,
+    ouvert_le: precedente?.ouvert_le ?? null,
+    app_id: precedente?.app_id ?? null,
   };
+  // La connexion n'est gardée que sur demande, quand le niveau 1 passe, et
+  // tant que le site n'est pas ouvert : un site ouvert a déjà la sienne, et un
+  // inconnu qui tiendrait le lien ne doit pas pouvoir la remplacer.
+  if (corps.garder === true && rapport?.resume.niveau1_pret === true && ligne.ouvert_le === null) {
+    trace("garde de la connexion");
+    await deps.depot.garder(ligne.jeton, adresseDe(connexion));
+    ligne.connexion_gardee = true;
+  }
   await deps.depot.ecrire(ligne);
   trace("réponse");
   return { statut: 200, data: rendre(ligne, deps.site, tronque), error: null };

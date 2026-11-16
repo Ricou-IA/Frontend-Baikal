@@ -119,6 +119,61 @@ serve(async (req) => {
         const { error } = await table().upsert(ligne, { onConflict: "jeton" });
         if (error) throw new Error(`écriture de tests_site : ${error.code ?? "?"}`);
       },
+      // La connexion va au coffre chiffré de la base (Vault), sous le jeton.
+      // Elle n'est écrite nulle part ailleurs, et jamais journalisée.
+      async garder(jeton, connexion) {
+        const { error } = await admin.schema("admin").rpc("garder_connexion_test", { p_jeton: jeton, p_dsn: connexion });
+        if (error) throw new Error(`garde de la connexion (tests_site) : ${error.code ?? "?"}`);
+      },
+    },
+    comptes: {
+      async identifier(jetonSession) {
+        const { data, error } = await admin.auth.getUser(jetonSession);
+        if (error || !data?.user?.id || !data.user.email) return null;
+        return { id: data.user.id, email: data.user.email };
+      },
+      // Même création que admin-comptes (périmètre baikal) : confirmé d'office,
+      // AUCUN marqueur de site dans les métadonnées (le trigger handle_new_user
+      // ne créerait pas de profil pour un site en modèle « clients »), puis le
+      // profil rattaché à l'étage Baikal. Sans profil, la console refuse.
+      async creer(email, motDePasse, nom) {
+        const { data, error } = await admin.auth.admin.createUser({
+          email,
+          password: motDePasse,
+          email_confirm: true,
+          user_metadata: { full_name: nom ?? email.split("@")[0] },
+        });
+        if (error || !data?.user?.id) {
+          const message = error?.message ?? "";
+          if (error?.status === 422 || /already|exists|registered/i.test(message)) return "existe";
+          throw new Error(`création du compte (tests_site) : ${error?.status ?? "?"}`);
+        }
+        const id = data.user.id;
+        const { error: erreurProfil } = await admin.schema("core").from("profiles").upsert(
+          { id, email, full_name: nom ?? email.split("@")[0], app_role: "user", app_id: "baikal" },
+          { onConflict: "id" },
+        );
+        if (erreurProfil) {
+          await admin.auth.admin.deleteUser(id).catch(() => {});
+          throw new Error(`profil du compte (tests_site) : ${erreurProfil.code ?? "?"}`);
+        }
+        return { id };
+      },
+      async supprimer(id) {
+        await admin.auth.admin.deleteUser(id);
+      },
+    },
+    // Tout ou rien, dans une seule fonction SQL : registre, connexion, accès.
+    // Ses refus lisibles commencent par « OUVERTURE: ».
+    async ouvrirSite(jeton, compteId) {
+      const { data, error } = await admin.schema("admin").rpc("ouvrir_site", { p_jeton: jeton, p_user_id: compteId });
+      if (error) {
+        const lisible = /OUVERTURE:\s*(.+)$/.exec(error.message ?? "");
+        if (lisible) return { refus: lisible[1].trim() };
+        throw new Error(`ouverture du site (tests_site) : ${error.code ?? "?"}`);
+      }
+      if (typeof data !== "string" || !data) throw new Error("ouverture du site (tests_site) : réponse vide");
+      return { app_id: data };
     },
     trop,
     maintenant: Date.now,

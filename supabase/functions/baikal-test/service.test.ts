@@ -31,13 +31,19 @@ const JOUR = 86_400_000;
 interface Monde {
   deps: Deps;
   lignes: Map<string, LigneTest>;
+  // Le coffre : ce qui a été rangé, par jeton.
+  coffre: Map<string, string>;
+  // Les comptes de la console : email -> identifiant.
+  comptes: Map<string, string>;
+  // Les sites ouverts : jeton -> compte.
+  ouverts: Map<string, string>;
   ouvertures: number;
   fermetures: number;
   requetes: string[];
 }
 
-function monde(p: { catalogue?: Ligne[]; structure?: Ligne[]; panne?: Error; ips?: string[] | Error; horloge?: () => number } = {}): Monde {
-  const m: Monde = { deps: null as unknown as Deps, lignes: new Map(), ouvertures: 0, fermetures: 0, requetes: [] };
+function monde(p: { catalogue?: Ligne[]; structure?: Ligne[]; panne?: Error; ips?: string[] | Error; horloge?: () => number; ouverture?: { refus: string } | Error } = {}): Monde {
+  const m: Monde = { deps: null as unknown as Deps, lignes: new Map(), coffre: new Map(), comptes: new Map([["deja@inscrit.fr", "compte-ancien"]]), ouverts: new Map(), ouvertures: 0, fermetures: 0, requetes: [] };
   const lecteur: Lecteur = (sql) => {
     const etiquette = /\/\* recette:(\S+) \*\//.exec(sql)?.[1] ?? "?";
     m.requetes.push(etiquette);
@@ -56,6 +62,29 @@ function monde(p: { catalogue?: Ligne[]; structure?: Ligne[]; panne?: Error; ips
     depot: {
       lire: (jeton) => Promise.resolve(m.lignes.get(jeton) ?? null),
       ecrire: (ligne) => { m.lignes.set(ligne.jeton, structuredClone(ligne)); return Promise.resolve(); },
+      garder: (jeton, connexion) => { m.coffre.set(jeton, connexion); return Promise.resolve(); },
+    },
+    comptes: {
+      identifier: (session) => Promise.resolve(session === "session-valide" ? { id: "compte-ancien", email: "deja@inscrit.fr" } : null),
+      creer: (email) => {
+        if (m.comptes.has(email)) return Promise.resolve("existe" as const);
+        const id = `compte-${m.comptes.size + 1}`;
+        m.comptes.set(email, id);
+        return Promise.resolve({ id });
+      },
+      supprimer: (id) => {
+        for (const [email, autre] of m.comptes) if (autre === id) m.comptes.delete(email);
+        return Promise.resolve();
+      },
+    },
+    ouvrirSite: (jeton, compteId) => {
+      if (p.ouverture instanceof Error) return Promise.reject(p.ouverture);
+      if (p.ouverture) return Promise.resolve(p.ouverture);
+      const ligne = m.lignes.get(jeton)!;
+      const app_id = (ligne.site ?? "site").replaceAll(".", "-");
+      m.lignes.set(jeton, { ...ligne, ouvert_le: new Date(T0).toISOString(), app_id });
+      m.ouverts.set(jeton, compteId);
+      return Promise.resolve({ app_id });
     },
     trop: limiteur(10, 3_600_000),
     maintenant: p.horloge ?? (() => T0),
@@ -254,4 +283,184 @@ Deno.test("resultat : jeton mal formé 400, inconnu 404, expiré 404", async () 
   // Un jeton expiré ne se réutilise pas non plus pour un nouveau test.
   const neuf = await appel(m, { action: "tester", connexion: CONNEXION, jeton: data.jeton });
   assert(neuf.data.jeton !== data.jeton);
+});
+
+// ---------------------------------------------------------------------------
+// La garde de la connexion : ce qui permet d'ouvrir le site dans la console
+// sans qu'un humain recopie un secret.
+// ---------------------------------------------------------------------------
+
+Deno.test("sans demande expresse, la connexion n'est gardée nulle part", async () => {
+  const m = monde();
+  const r = await appel(m, { action: "tester", connexion: CONNEXION });
+  assertEquals(r.data.connexion_gardee, false);
+  assertEquals(r.data.ouvrable, false);
+  assertEquals(m.coffre.size, 0);
+});
+
+Deno.test("garder : quand le niveau 1 passe, la connexion va au coffre, sous le jeton — et jamais dans la ligne", async () => {
+  const m = monde();
+  const r = await appel(m, { action: "tester", connexion: CONNEXION, garder: true, site: "https://www.MonSaaS.fr/tarifs", reponse: "courte" });
+  assertEquals([r.statut, r.data.niveau1_pret], [200, true]);
+  assertEquals([r.data.connexion_gardee, r.data.ouvrable, r.data.ouvert, r.data.site], [true, true, false, "monsaas.fr"]);
+  // Ce qui est au coffre est l'adresse relue et acceptée, pas autre chose.
+  assertEquals(m.coffre.get(r.data.jeton), "postgresql://baikal_reader:s3cret@db.exemple.com:6543/app");
+  const ligne = m.lignes.get(r.data.jeton)!;
+  assertEquals([ligne.connexion_gardee, ligne.site, ligne.ouvert_le, ligne.app_id], [true, "monsaas.fr", null, null]);
+  for (const fuite of ["s3cret", "db.exemple.com", "6543/app"]) {
+    assertEquals(JSON.stringify(ligne).includes(fuite), false, fuite);
+    assertEquals(JSON.stringify(r.data).includes(fuite), false, fuite);
+  }
+  // La page, qui relit le lien, voit que le site peut être ouvert.
+  const relu = await appel(m, { action: "resultat", jeton: r.data.jeton });
+  assertEquals([relu.data.ouvrable, relu.data.site], [true, "monsaas.fr"]);
+});
+
+Deno.test("garder : un test qui ne passe pas le niveau 1 ne range rien", async () => {
+  const m = monde({
+    catalogue: CATALOGUE.filter((l) => l.nom !== "baikal_mesures"),
+    structure: STRUCTURE.filter((l) => l.vue !== "baikal_mesures"),
+  });
+  const r = await appel(m, { action: "tester", connexion: CONNEXION, garder: true, site: "monsaas.fr" });
+  assertEquals([r.data.rapport.resume.niveau1_pret, r.data.connexion_gardee, r.data.ouvrable], [false, false, false]);
+  assertEquals(m.coffre.size, 0);
+  // Un diagnostic seul non plus : il ne prouve rien.
+  const d = await appel(monde(), { action: "diagnostiquer", connexion: CONNEXION, garder: true });
+  assertEquals(d.data.connexion_gardee, false);
+});
+
+Deno.test("garder : un mot de passe à caractères spéciaux est rangé encodé, l'adresse reste lisible", async () => {
+  const m = monde();
+  const r = await appel(m, { action: "tester", garder: true, connexion: "postgresql://baikal_reader.abcd:p%40ss%2Fw%3Ard@aws-1-eu-west-3.pooler.supabase.com:5432/postgres" });
+  const rangee = m.coffre.get(r.data.jeton)!;
+  assertEquals(rangee, "postgresql://baikal_reader.abcd:p%40ss%2Fw%3Ard@aws-1-eu-west-3.pooler.supabase.com:5432/postgres");
+  assertEquals(new URL(rangee).hostname, "aws-1-eu-west-3.pooler.supabase.com");
+  assertEquals(decodeURIComponent(new URL(rangee).password), "p@ss/w:rd");
+});
+
+Deno.test("un site déjà ouvert garde sa connexion : celui qui tient le lien ne peut pas la remplacer", async () => {
+  const m = monde();
+  const r = await appel(m, { action: "tester", connexion: CONNEXION, garder: true, site: "monsaas.fr" });
+  const jeton = r.data.jeton;
+  m.lignes.set(jeton, { ...m.lignes.get(jeton)!, ouvert_le: new Date(T0).toISOString(), app_id: "monsaas-fr" });
+  m.coffre.clear();
+  const autre = await appel(m, { action: "tester", jeton, garder: true, connexion: "postgresql://baikal_reader:autre@db.pirate.com:5432/app" });
+  assertEquals(autre.statut, 200);
+  assertEquals(m.coffre.size, 0);
+  assertEquals([autre.data.ouvert, autre.data.ouvrable], [true, false]);
+  assertEquals(m.lignes.get(jeton)!.app_id, "monsaas-fr");
+});
+
+Deno.test("le site déclaré est un domaine public ou rien ; un passage sans site ne l'efface pas", async () => {
+  const m = monde();
+  const r = await appel(m, { action: "tester", connexion: CONNEXION, site: "localhost:3000" });
+  assertEquals(r.data.site, null);
+  const jeton = r.data.jeton;
+  assertEquals((await appel(m, { action: "tester", connexion: CONNEXION, jeton, site: "app-devis.io" })).data.site, "app-devis.io");
+  assertEquals((await appel(m, { action: "tester", connexion: CONNEXION, jeton })).data.site, "app-devis.io");
+});
+
+// ---------------------------------------------------------------------------
+// Ouvrir le site dans la console.
+// ---------------------------------------------------------------------------
+
+async function pret(m: Monde, site = "monsaas.fr"): Promise<string> {
+  const r = await appel(m, { action: "tester", connexion: CONNEXION, garder: true, site });
+  return r.data.jeton;
+}
+
+Deno.test("ouvrir : un nouveau compte, le site inscrit, l'accès donné — et le lien ne s'ouvre qu'une fois", async () => {
+  const m = monde();
+  const jeton = await pret(m);
+  const r = await appel(m, { action: "ouvrir", jeton, email: " Fondateur@MonSaaS.fr ", mot_de_passe: "un-mot-de-passe", nom: "Marie" });
+  assertEquals([r.statut, r.error], [200, null]);
+  assertEquals(r.data, { app_id: "monsaas-fr", email: "fondateur@monsaas.fr", nouveau: true, site: "monsaas.fr" });
+  assertEquals(m.ouverts.get(jeton), m.comptes.get("fondateur@monsaas.fr"));
+  // La réponse ne porte ni mot de passe ni connexion.
+  for (const fuite of ["un-mot-de-passe", "s3cret", "db.exemple.com"]) assertEquals(JSON.stringify(r.data).includes(fuite), false, fuite);
+  // Un second passage est refusé, et la page le sait.
+  const encore = await appel(m, { action: "ouvrir", jeton, email: "autre@pirate.com", mot_de_passe: "un-mot-de-passe" });
+  assertEquals(encore.statut, 409);
+  assertEquals(m.comptes.has("autre@pirate.com"), false);
+  const relu = await appel(m, { action: "resultat", jeton });
+  assertEquals([relu.data.ouvert, relu.data.ouvrable], [true, false]);
+});
+
+Deno.test("ouvrir : avec une session ouverte, aucun compte n'est créé", async () => {
+  const m = monde();
+  const jeton = await pret(m);
+  const avant = m.comptes.size;
+  const r = await appel(m, { action: "ouvrir", jeton, session: "session-valide" });
+  assertEquals([r.statut, r.data.nouveau, r.data.email], [200, false, "deja@inscrit.fr"]);
+  assertEquals([m.comptes.size, m.ouverts.get(jeton)], [avant, "compte-ancien"]);
+  const expiree = await appel(m, { action: "ouvrir", jeton: await pret(monde()), session: "session-perimee" });
+  assertEquals(expiree.statut, 404); // le jeton vient d'un autre monde : le lien d'abord
+  const m2 = monde();
+  assertEquals((await appel(m2, { action: "ouvrir", jeton: await pret(m2), session: "session-perimee" })).statut, 401);
+});
+
+Deno.test("ouvrir : un email déjà inscrit n'est ni recréé ni contourné", async () => {
+  const m = monde();
+  const jeton = await pret(m);
+  const r = await appel(m, { action: "ouvrir", jeton, email: "deja@inscrit.fr", mot_de_passe: "un-mot-de-passe" });
+  assertEquals(r.statut, 409);
+  assert(r.error!.includes("connectez-vous"));
+  assertEquals(m.ouverts.size, 0);
+  // Le lien reste ouvrable : rien n'a été consommé.
+  assertEquals((await appel(m, { action: "resultat", jeton })).data.ouvrable, true);
+});
+
+Deno.test("ouvrir : refusé tant que le test n'est pas passé, ou que la connexion n'est pas gardée", async () => {
+  const m = monde();
+  // Test passé, mais sans garde de la connexion.
+  const sansGarde = (await appel(m, { action: "tester", connexion: CONNEXION })).data.jeton;
+  const r1 = await appel(m, { action: "ouvrir", jeton: sansGarde, email: "a@b.fr", mot_de_passe: "un-mot-de-passe" });
+  assertEquals(r1.statut, 409);
+  assert(r1.error!.includes("gardé la connexion"));
+  // Diagnostic seul : aucun test.
+  const diag = (await appel(m, { action: "diagnostiquer", connexion: CONNEXION })).data.jeton;
+  assertEquals((await appel(m, { action: "ouvrir", jeton: diag, email: "a@b.fr", mot_de_passe: "un-mot-de-passe" })).statut, 409);
+  // Lien inconnu ou mal formé.
+  assertEquals((await appel(m, { action: "ouvrir", jeton: "0123456789abcdef0123456789abcdef", email: "a@b.fr", mot_de_passe: "un-mot-de-passe" })).statut, 404);
+  assertEquals((await appel(m, { action: "ouvrir", jeton: "abc", email: "a@b.fr", mot_de_passe: "un-mot-de-passe" })).statut, 400);
+  // Aucun de ces refus n'a créé de compte.
+  assertEquals(m.comptes.has("a@b.fr"), false);
+});
+
+Deno.test("ouvrir : email et mot de passe sont contrôlés avant toute création", async () => {
+  const m = monde();
+  const jeton = await pret(m);
+  for (const [email, mot_de_passe] of [["pas-un-email", "un-mot-de-passe"], ["a@b", "un-mot-de-passe"], ["a@b.fr", "court"], ["a@b.fr", "x".repeat(73)], ["", ""]]) {
+    const r = await appel(m, { action: "ouvrir", jeton, email, mot_de_passe });
+    assertEquals(r.statut, 400, `${email} / ${mot_de_passe.length} caractères`);
+  }
+  assertEquals(m.comptes.size, 1);
+  assertEquals(m.ouverts.size, 0);
+  // Le piège à robots ne crée rien non plus.
+  const robot = await appel(m, { action: "ouvrir", jeton, email: "a@b.fr", mot_de_passe: "un-mot-de-passe", site_web: "x" });
+  assertEquals([robot.statut, m.comptes.has("a@b.fr")], [200, false]);
+});
+
+Deno.test("ouvrir : un refus de la base est redit tel quel, et le compte tout juste créé est défait", async () => {
+  const m = monde({ ouverture: { refus: "Ce site est déjà dans Baikal. Écrivez-nous pour y avoir accès." } });
+  const jeton = await pret(m, "pre-etat-date.ai");
+  const r = await appel(m, { action: "ouvrir", jeton, email: "nouveau@venu.fr", mot_de_passe: "un-mot-de-passe" });
+  assertEquals([r.statut, r.error], [409, "Ce site est déjà dans Baikal. Écrivez-nous pour y avoir accès."]);
+  assertEquals(m.comptes.has("nouveau@venu.fr"), false);
+  // Un compte déjà existant, lui, n'est jamais supprimé.
+  const r2 = await appel(m, { action: "ouvrir", jeton, session: "session-valide" });
+  assertEquals(r2.statut, 409);
+  assertEquals(m.comptes.has("deja@inscrit.fr"), true);
+});
+
+Deno.test("ouvrir : une panne pendant l'ouverture ne laisse pas de compte sans site", async () => {
+  const m = monde({ ouverture: new Error("base indisponible") });
+  const jeton = await pret(m);
+  let leve = false;
+  try {
+    await appel(m, { action: "ouvrir", jeton, email: "nouveau@venu.fr", mot_de_passe: "un-mot-de-passe" });
+  } catch {
+    leve = true;
+  }
+  assertEquals([leve, m.comptes.has("nouveau@venu.fr")], [true, false]);
 });

@@ -154,7 +154,7 @@ export function fabriquerPromptAgent(options: OptionsPromptAgent): string {
   const manuelles = manifestes.flatMap((m) => m.verifications_manuelles.map((v) => `- ${v.texte} (${m.contrat} ${v.ref})`));
   const [role, droits] = scriptRole("@SCHEMA@").split("\n\n-- 2.");
   const appel = (connexion: string) =>
-    `curl -s -X POST '${urlApi}' \\\n  -H 'content-type: application/json' \\\n  -d '{"action":"tester","reponse":"courte","jeton":"${jeton}","connexion":"${connexion}"}'`;
+    `curl -s -X POST '${urlApi}' \\\n  -H 'content-type: application/json' \\\n  -d '{"action":"tester","reponse":"courte","garder":true,"site":"${site.domaine}","jeton":"${jeton}","connexion":"${connexion}"}'`;
   const n = manifestes.length;
 
   const parties = [
@@ -233,12 +233,15 @@ L'adresse de la base est celle du rôle, sur l'hôte PUBLIC de la base :
 ${appel("postgresql://baikal_reader:MOT_DE_PASSE@HOTE:5432/BASE")}
 \`\`\`
 
-Ne mets cette adresse dans aucun fichier. La réponse est un JSON :
+Ne mets cette adresse dans aucun fichier. Avec \`"garder":true\`, Baikal la range chiffrée dès que le niveau 1 passe : c'est ce qui lui permettra d'afficher le site dans sa console, sans que le fondateur recopie quoi que ce soit. Elle ne donne que le droit de lire, et il la coupe quand il veut en changeant le mot de passe du rôle.
+
+La réponse est un JSON :
 
 - \`error\` non nul : la connexion ou l'adresse est en cause. Le message dit quoi ; corrige et relance.
 - \`data.a_corriger\` : un élément par contrôle en échec, avec ce qui est faux (\`si_echec\`), la correction attendue (\`correction\`) et jusqu'à trois exemples. Corrige la vue ou les droits, réapplique, relance le MÊME appel.
 - \`data.non_mesures\` : un contrôle non mesuré n'est pas un succès. Si c'est une requête trop lente, allège la vue ou indexe la colonne de jointure.
 - \`data.niveau1_pret\` : ton objectif est \`true\`.
+- \`data.ouvrable\` : \`true\` quand le fondateur peut ouvrir son site dans Baikal depuis le lien.
 
 Dix tests par heure : corrige tout ce que le rapport montre avant de relancer.`,
 
@@ -254,7 +257,7 @@ Puis, en dix lignes au plus :
 2. Ce que tu as créé : le rôle, les vues, la migration.
 3. Les choix que tu as faits à sa place : ce que tu as pris pour un dossier, pour un paiement, pour un compte de test.
 
-Ce lien est privé et reste valable trente jours. C'est la seule chose qu'il a besoin d'ouvrir : dis-le-lui.
+Ce lien est privé et reste valable trente jours. C'est la seule chose qu'il a besoin d'ouvrir : dis-le-lui, et dis-lui d'y cliquer sur « Ouvrir mon site dans Baikal ».
 
 Si tu n'arrives pas à \`niveau1_pret\` après trois corrections, arrête-toi : donne le même lien, et dis en trois lignes ce qui bloque.`,
   ];

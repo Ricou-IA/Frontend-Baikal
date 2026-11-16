@@ -25,6 +25,7 @@ const siteLocal: Site = {
   is_active: true,
   domaine: null,
   db_schema: "dpe",
+  fuseau: "Europe/Paris",
   db_ro_secret_ref: null,
   env_url: null,
   env_secret_ref: null,
@@ -103,4 +104,66 @@ Deno.test("lecteurSite: local sans SUPABASE_DB_URL -> ErreurSite", () => {
   Deno.env.delete("SUPABASE_DB_URL");
   assertThrows(() => lecteurSite(siteLocal), ErreurSite, "SUPABASE_DB_URL");
   if (sauvegarde) Deno.env.set("SUPABASE_DB_URL", sauvegarde);
+});
+
+// ---------------------------------------------------------------------------
+// Un site ouvert par « Tester mon site » : sa connexion vit dans le coffre de
+// la base, pas dans les secrets des Edge Functions.
+// ---------------------------------------------------------------------------
+
+function fauxAdminCoffre(
+  ligne: Site,
+  coffre: { data: unknown; error: { message: string } | null },
+  appels: Array<{ fn: string; args: unknown }> = [],
+) {
+  return {
+    schema: (nom: string) =>
+      nom === "admin"
+        ? {
+          rpc: (fn: string, args: unknown) => {
+            appels.push({ fn, args });
+            return Promise.resolve(coffre);
+          },
+        }
+        : {
+          from: () => ({
+            select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: { ...ligne }, error: null }) }) }),
+          }),
+        },
+  } as never;
+}
+
+const siteCoffre: Site = { ...siteLocal, id: "monsaas", db_schema: "public", db_ro_secret_ref: "coffre:monsaas" };
+
+Deno.test("chargerSite: un site du coffre recoit sa connexion, lue par la fonction reservee au service_role", async () => {
+  const appels: Array<{ fn: string; args: unknown }> = [];
+  const site = await chargerSite(
+    fauxAdminCoffre(siteCoffre, { data: "postgresql://baikal_reader:x@db.exemple.com:5432/app", error: null }, appels),
+    "monsaas",
+  );
+  assertEquals(site.dsn, "postgresql://baikal_reader:x@db.exemple.com:5432/app");
+  assertEquals(appels, [{ fn: "connexion_site", args: { p_app_id: "monsaas" } }]);
+});
+
+Deno.test("chargerSite: un site hors coffre n'interroge jamais le coffre", async () => {
+  const appels: Array<{ fn: string; args: unknown }> = [];
+  const site = await chargerSite(fauxAdminCoffre(siteDedie, { data: "ne-doit-pas-servir", error: null }, appels), "majordhome");
+  assertEquals([site.dsn, appels.length], [undefined, 0]);
+});
+
+Deno.test("chargerSite: coffre vide ou en erreur -> ErreurSite, sans rien dire de la connexion", async () => {
+  for (const coffre of [{ data: null, error: null }, { data: "", error: null }, { data: null, error: { message: "boom postgresql://secret" } }]) {
+    const erreur = await assertRejects(() => chargerSite(fauxAdminCoffre(siteCoffre, coffre), "monsaas"), ErreurSite, "introuvable dans le coffre");
+    assertEquals((erreur as Error).message.includes("secret"), false);
+  }
+});
+
+Deno.test("lecteurSite: la connexion du coffre sert telle quelle, sans secret d'Edge Function", async () => {
+  const sql = lecteurSite({ ...siteCoffre, dsn: "postgresql://baikal_reader:x@127.0.0.1:1/app" });
+  assertEquals(typeof sql, "function");
+  await sql.end();
+});
+
+Deno.test("lecteurSite: un site du coffre non charge est refuse, jamais lu dans l'environnement", () => {
+  assertThrows(() => lecteurSite(siteCoffre), ErreurSite, "non chargee depuis le coffre");
 });

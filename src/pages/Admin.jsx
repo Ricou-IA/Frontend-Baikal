@@ -178,7 +178,7 @@ function VueSite({ appId }) {
 
 function AdminContenu({ tab, effectiveOrgId }) {
     const navigate = useNavigate();
-    const { isOrgAdmin, isSuperAdmin } = useAuth();
+    const { isOrgAdmin, isSuperAdmin, niveauModule } = useAuth();
     const { currentApp } = useApp();
 
     // Hook pour la gestion de l'organisation
@@ -186,6 +186,12 @@ function AdminContenu({ tab, effectiveOrgId }) {
 
     // Site sans module dedie : vue d'ensemble (super_admin) + carte du site.
     if (currentApp !== 'arpet') {
+        // Un compte qui n'a que ce site (un fondateur qui vient d'ouvrir le
+        // sien) arrive sur son chapitre Clients, pas sur une carte qui lui dit
+        // qu'il n'y a rien ici.
+        if (!isSuperAdmin && niveauModule(currentApp, 'clients')) {
+            return <Navigate to={routeAccueilSite(currentApp)} replace />;
+        }
         return (
             <div className="space-y-8">
                 {isSuperAdmin && <VueSite appId={currentApp} />}

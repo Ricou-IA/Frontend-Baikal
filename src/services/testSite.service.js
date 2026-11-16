@@ -51,6 +51,11 @@ export const testSiteService = {
   tester({ connexion, jeton, site_web }) {
     return appeler({ action: 'tester', connexion, jeton, site_web });
   },
+  // Ouvre le site dans la console : avec la session en cours si l'on est
+  // connecté (`session`), sinon en créant un compte (`email`, `mot_de_passe`).
+  ouvrir({ jeton, session, email, mot_de_passe, site_web }) {
+    return appeler({ action: 'ouvrir', jeton, session, email, mot_de_passe, site_web });
+  },
   // Relit le dernier résultat par son lien privé. `statut` 404 : rien n'a
   // encore été rangé sous ce jeton (l'agent n'a pas lancé le test).
   resultat(jeton) {

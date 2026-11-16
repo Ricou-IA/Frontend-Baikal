@@ -35,6 +35,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ADRESSE_TEST, testSiteService } from '../../services/testSite.service';
+import supabase from '../../lib/supabaseClient';
 import { fabriquerPromptAgent, scriptRole } from '../../../supabase/functions/_shared/recette/prompt.ts';
 import { CONTRATS, MANIFESTES } from '../../../supabase/functions/_shared/recette/contrats.gen.ts';
 import { lireSite } from '../../../supabase/functions/_shared/recette/site.ts';
@@ -380,6 +381,158 @@ function Niveau({ n, decompte, pret, controles }) {
 }
 
 // ---------------------------------------------------------------------------
+// La dernière marche : ouvrir le site dans la console
+// ---------------------------------------------------------------------------
+// Celui qui tient le lien d'un test passé, dont l'agent a confié la connexion à
+// Baikal, ouvre son site : avec son compte s'il est connecté, sinon en en
+// créant un. Baikal inscrit le site, lui attache la connexion gardée, et donne
+// à ce compte l'accès à ce site-là. Personne ne recopie de secret.
+const CLE_SITE_COURANT = 'baikal-app'; // la clé du sélecteur de site de la console
+
+function OuvrirMonSite({ jeton, site }) {
+  const [session, setSession] = useState(undefined); // undefined : lecture en cours
+  const [email, setEmail] = useState('');
+  const [motDePasse, setMotDePasse] = useState('');
+  const [piege, setPiege] = useState(''); // piège à robots
+  const [etat, setEtat] = useState('idle'); // idle | envoi | ouvert
+  const [erreur, setErreur] = useState(null);
+
+  useEffect(() => {
+    let actif = true;
+    supabase.auth.getSession()
+      .then(({ data }) => { if (actif) setSession(data?.session ?? null); })
+      .catch(() => { if (actif) setSession(null); });
+    return () => { actif = false; };
+  }, []);
+
+  const ouvrir = async (e) => {
+    e.preventDefault();
+    if (etat === 'envoi') return;
+    setEtat('envoi');
+    setErreur(null);
+    const { data, error } = await testSiteService.ouvrir(
+      session
+        ? { jeton, session: session.access_token }
+        : { jeton, email, mot_de_passe: motDePasse, site_web: piege },
+    );
+    if (error) {
+      setErreur(error.message);
+      setEtat('idle');
+      return;
+    }
+    if (!data?.app_id) { // réponse du piège à robots
+      setEtat('idle');
+      return;
+    }
+    // La console s'ouvrira sur ce site.
+    try {
+      localStorage.setItem(CLE_SITE_COURANT, data.app_id);
+    } catch {
+      // Stockage refusé : la console choisira le seul site visible.
+    }
+    if (data.nouveau) {
+      const { error: erreurConnexion } = await supabase.auth.signInWithPassword({ email: data.email, password: motDePasse });
+      if (erreurConnexion) {
+        // Le site est ouvert, le compte existe : il reste à se connecter.
+        setEtat('ouvert');
+        return;
+      }
+    }
+    // Rechargement complet : la console relit la session et les droits.
+    window.location.assign('/clients');
+  };
+
+  const champ =
+    'w-full bg-baikal-bg border border-baikal-border rounded-md px-4 py-3 text-white text-sm ' +
+    'placeholder:text-baikal-text/50 focus:border-baikal-cyan focus:outline-none focus:ring-1 focus:ring-baikal-cyan/40 transition-colors';
+
+  if (etat === 'ouvert') return <SiteOuvert />;
+
+  return (
+    <div className="rounded-md border border-baikal-cyan bg-baikal-cyan/5 p-6 mb-10">
+      <div className={`${ETIQUETTE} text-baikal-cyan mb-2`}>DERNIÈRE ÉTAPE</div>
+      <h2 className="font-serif text-white text-2xl sm:text-3xl leading-tight mb-2">
+        Ouvrez {site ? <span className="text-baikal-cyan">{site}</span> : 'votre site'} dans Baikal
+      </h2>
+      <p className="leading-relaxed mb-5">
+        Vos vues sont conformes, et votre agent a confié à Baikal la connexion en lecture seule. Il ne
+        reste qu'à ouvrir votre console.
+      </p>
+
+      {session === undefined ? (
+        <p className="font-mono text-sm text-baikal-cyan">UN INSTANT…</p>
+      ) : (
+        <form onSubmit={ouvrir} className="space-y-4 relative" noValidate>
+          {session ? (
+            <p className="text-sm">
+              Vous êtes connecté en tant que <span className="font-mono text-white">{session.user?.email}</span> :
+              le site sera ajouté à ce compte.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <label className="block">
+                <span className={`block ${ETIQUETTE} text-baikal-text mb-2`}>VOTRE EMAIL</span>
+                <input type="email" autoComplete="email" value={email} onChange={(e) => { setEmail(e.target.value); setErreur(null); }}
+                  placeholder="vous@monsaas.fr" className={champ} />
+              </label>
+              <label className="block">
+                <span className={`block ${ETIQUETTE} text-baikal-text mb-2`}>UN MOT DE PASSE</span>
+                <input type="password" autoComplete="new-password" value={motDePasse} onChange={(e) => { setMotDePasse(e.target.value); setErreur(null); }}
+                  placeholder="8 caractères au moins" className={champ} />
+              </label>
+            </div>
+          )}
+          {/* Piège à robots : invisible pour un humain. */}
+          <div className="absolute -left-[9999px] top-0" aria-hidden="true">
+            <label>
+              Site web
+              <input type="text" tabIndex={-1} autoComplete="off" value={piege} onChange={(e) => setPiege(e.target.value)} />
+            </label>
+          </div>
+          {erreur && (
+            <p role="alert" className="border border-red-500/50 bg-red-900/20 rounded-md px-4 py-3 text-red-300 text-sm">
+              {erreur}
+            </p>
+          )}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <button
+              type="submit"
+              disabled={etat === 'envoi' || (!session && (!email.includes('@') || motDePasse.length < 8))}
+              className={BOUTON_PLEIN}
+            >
+              {etat === 'envoi' ? 'OUVERTURE…' : 'OUVRIR MON SITE DANS BAIKAL'}
+            </button>
+            {!session && (
+              <p className="text-sm">
+                Déjà un compte ? <Link to="/login" className="text-baikal-cyan underline">Connectez-vous</Link>, puis rouvrez ce lien.
+              </p>
+            )}
+          </div>
+          <ul className="text-sm leading-relaxed space-y-1.5 pt-1">
+            <li>Votre compte ne voit que ce site, et pour commencer son chapitre Clients.</li>
+            <li>
+              Baikal garde la connexion que votre agent lui a confiée, chiffrée. Elle ne donne que le droit de
+              lire, et vous la coupez quand vous voulez en changeant le mot de passe du rôle{' '}
+              <span className="font-mono text-white">baikal_reader</span>.
+            </li>
+          </ul>
+        </form>
+      )}
+    </div>
+  );
+}
+
+function SiteOuvert() {
+  return (
+    <div className="rounded-md border border-baikal-cyan/60 bg-baikal-cyan/5 p-6 mb-10">
+      <div className={`${ETIQUETTE} text-baikal-cyan mb-2`}>SITE OUVERT</div>
+      <p className="text-white text-lg mb-4">Ce site est ouvert dans Baikal.</p>
+      <Link to="/login" className={BOUTON_PLEIN}>ALLER À LA CONSOLE</Link>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -564,7 +717,15 @@ export default function TesterMonSite() {
   let suivi = null;
   if (jeton && (site || resultat)) {
     if (rapport?.resume.niveau1_pret) {
-      suivi = { ton: 'pret', titre: 'NIVEAU 1 PRÊT', texte: 'Votre site peut être branché à Baikal. Le détail est plus bas.' };
+      suivi = {
+        ton: 'pret',
+        titre: 'NIVEAU 1 PRÊT',
+        texte: resultat.ouvert
+          ? 'Ce site est ouvert dans Baikal.'
+          : resultat.ouvrable
+            ? 'Votre site est prêt : ouvrez-le dans Baikal, juste en dessous.'
+            : 'Vos vues sont conformes. Le détail est plus bas.',
+      };
     } else if (rapport) {
       suivi = {
         ton: 'cours',
@@ -677,9 +838,9 @@ export default function TesterMonSite() {
           {resultatSeul && (
             <div className="rounded-md border border-baikal-cyan/60 bg-baikal-cyan/5 p-5 mb-10">
               <div className={`${ETIQUETTE} text-baikal-cyan`}>NIVEAU 1 PRÊT</div>
-              <p className="text-white text-lg mt-2">Votre site peut être branché à Baikal.</p>
+              <p className="text-white text-lg mt-2">Les vues de votre site sont conformes au contrat.</p>
               <p className="text-sm mt-1">
-                Ses vues sont publiées et conformes au contrat. Le détail est ci-dessous
+                Le détail est ci-dessous
                 {resultat?.expire_le ? ` ; ce lien reste valable jusqu'au ${jour(resultat.expire_le)}.` : '.'}
               </p>
             </div>
@@ -773,6 +934,10 @@ export default function TesterMonSite() {
               </div>
             </Etape>
           )}
+
+          {/* ------------------------------------- Ouvrir dans la console */}
+          {resultat?.ouvrable && <OuvrirMonSite jeton={jeton} site={resultat.site ?? site?.domaine ?? null} />}
+          {resultat?.ouvert && <SiteOuvert />}
 
           {/* ------------------------------------------- 3. Le diagnostic */}
           {resultat?.diagnostic && (

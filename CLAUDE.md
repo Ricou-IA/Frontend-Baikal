@@ -53,6 +53,19 @@ sur un téléphone (usage « compagnon »).
     jetable. Pack vendeur est l'étalon (15/11/2026) : niveau 1 = dossiers ET mesures.
   - La fonction atteint l'adresse directe de Supabase (`db.<référence>.supabase.co:5432`) : un
     agent déduit l'adresse de `SUPABASE_URL`, sans passer par le tableau de bord.
+  - **Ouvrir le site dans la console, sans secret posé à la main** (16/11/2026, « le vrai
+    chemin ») : le test de l'agent porte `garder: true` ; quand le niveau 1 passe, la connexion du
+    rôle est rangée CHIFFRÉE dans le coffre de la base (Vault, `test_ro_dsn_<jeton>`), jamais dans
+    `admin.tests_site`. Sur la page de résultat, « Ouvrir mon site dans Baikal » (action `ouvrir`
+    de `baikal-test`) crée le compte — ou prend la session en cours — puis `admin.ouvrir_site`
+    fait tout d'un bloc : ligne du registre (`db_ro_secret_ref = 'coffre:<id>'`, modèle clients,
+    schéma des vues), connexion renommée `site_ro_dsn_<id>`, droit `{"clients":"lecture"}` dans
+    `admin.droits_sites`. Un lien ne s'ouvre qu'une fois ; un domaine déjà au registre est refusé.
+    `_shared/sites.ts` lit la connexion d'un site `coffre:` par `admin.connexion_site` dans
+    `chargerSite` (les EF qui lisent un site doivent être redéployées pour le savoir). Compte créé
+    comme par `admin-comptes` : confirmé d'office, AUCUN marqueur de site dans les métadonnées,
+    profil `app_id = 'baikal'`. L'accès est gratuit tant qu'aucun prix n'est fixé : le paiement se
+    branchera sur ce bouton. Essais SQL exécutables : `baikal-test/essai-ouvrir/`.
 
 - **Frontend:** React 18 + Vite + TailwindCSS (JSX, no TypeScript)
 - **Backend:** Supabase (Postgres, Edge Functions in Deno/TypeScript, Storage, Auth)

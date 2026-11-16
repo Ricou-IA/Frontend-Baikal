@@ -29,7 +29,17 @@ export interface Site {
   // Canal d'administration du site (baikal-admin chez Majord'home) : meme
   // env_url / env_anon_key / env_secret_ref que les autres canaux.
   env_admin_fn: string | null;
+  // Connexion lue dans le coffre de la base par chargerSite, pour un site
+  // ouvert par « Tester mon site » (db_ro_secret_ref = 'coffre:<id>'). Jamais
+  // lue dans le registre, jamais rendue a un appelant.
+  dsn?: string;
 }
+
+// Un site ouvert par son fondateur n'a pas de secret d'Edge Function pose a
+// la main : sa connexion vit chiffree dans le coffre de la base (Vault), et
+// le registre le dit par ce prefixe. Le champ reste non nul : il signifie
+// toujours « base dediee » pour ceux qui ne lisent que sa presence.
+export const PREFIXE_COFFRE = "coffre:";
 
 export class ErreurSite extends Error {}
 
@@ -44,7 +54,16 @@ export async function chargerSite(
     .eq("id", appId).maybeSingle();
   if (error) throw new ErreurSite(`Lecture du registre impossible: ${error.message}`);
   if (!data) throw new ErreurSite(`Site inconnu: ${appId}`);
-  return data as Site;
+  const site = data as Site;
+  if (site.db_ro_secret_ref?.startsWith(PREFIXE_COFFRE)) {
+    // admin.connexion_site est reservee au service_role : `admin` en est un.
+    const { data: dsn, error: erreurCoffre } = await admin.schema("admin").rpc("connexion_site", { p_app_id: site.id });
+    if (erreurCoffre || typeof dsn !== "string" || !dsn) {
+      throw new ErreurSite(`Connexion du site ${site.id} introuvable dans le coffre`);
+    }
+    site.dsn = dsn;
+  }
+  return site;
 }
 
 // delaiRequeteMs borne l'EXECUTION de chaque requete, la ou connect_timeout ne
@@ -57,7 +76,12 @@ export async function chargerSite(
 // par ouverture de fiche) de le resserrer.
 export function lecteurSite(site: Site, delaiRequeteMs = 30000) {
   let dsn: string;
-  if (site.db_ro_secret_ref) {
+  if (site.dsn) {
+    dsn = site.dsn;
+  } else if (site.db_ro_secret_ref?.startsWith(PREFIXE_COFFRE)) {
+    // Le site vient du coffre mais n'est pas passe par chargerSite.
+    throw new ErreurSite(`Connexion du site ${site.id} non chargee depuis le coffre`);
+  } else if (site.db_ro_secret_ref) {
     const valeur = Deno.env.get(site.db_ro_secret_ref);
     if (!valeur) {
       throw new ErreurSite(

@@ -33,7 +33,11 @@ Deno.test("il nomme le site et fait identifier le bon projet avant tout", () => 
 Deno.test("l'agent lance le test lui-même, sur le jeton de la page, et rend un lien", () => {
   const p = prompt();
   assert(p.includes("curl -s -X POST 'https://api.exemple.test/functions/v1/baikal-test'"));
-  assert(p.includes(`"action":"tester","reponse":"courte","jeton":"${JETON}"`));
+  assert(p.includes(`"action":"tester","reponse":"courte","garder":true,"site":"monsaas.fr","jeton":"${JETON}"`));
+  // L'agent sait pourquoi la connexion est gardée, et le dit au fondateur.
+  assert(p.includes("Baikal la range chiffrée dès que le niveau 1 passe"));
+  assert(p.includes("Ouvrir mon site dans Baikal"));
+  assert(p.includes("data.ouvrable"));
   assert(p.includes(`https://withbaikal.io/tester/r/${JETON}`));
   assert(p.includes("niveau1_pret"));
   assert(p.includes("db.REFERENCE.supabase.co"), "sur Supabase, l'adresse se déduit de SUPABASE_URL");
