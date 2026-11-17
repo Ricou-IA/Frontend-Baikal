@@ -36,6 +36,14 @@ verify_jwt = true
 import_map = "./functions/import_map.json"
 entrypoint = "./functions/admin-site-stats/index.ts"
 
+# Ancré le 17/11/2026 : la fonction était déployée avec verify_jwt = true sans
+# être déclarée ici ; le réglage ne doit pas dépendre du défaut du CLI.
+[functions.admin-dossiers]
+enabled = true
+verify_jwt = true
+import_map = "./functions/import_map.json"
+entrypoint = "./functions/admin-dossiers/index.ts"
+
 [functions.admin-comptes-pro]
 enabled = true
 verify_jwt = true
