@@ -155,24 +155,40 @@ est pure et testée.
 
 ## 5. Côté Baikal
 
-- **EF `admin-membres`** (`{action, appId, ...}`), deux transports derrière les
-  mêmes actions, comme `admin-prospects` : local pour un site en base partagée
-  (elle reprend ce que font aujourd'hui les RPC et `create-user`), relais pour
-  un site sur base dédiée. Validation commune dans `admin-membres/actions.ts`,
-  pure et testée. Droit `users` par `exigerModule` : lecture pour `membres`,
-  écriture pour le reste. Erreurs du site remontées en 502 avec
-  `canal: {statut_site, code, detail}`.
-- **Page Utilisateurs** : ne parle plus qu'à `admin-membres`. Les rôles
-  proposés viennent du site. Le mot de passe généré s'affiche une fois, comme
-  aujourd'hui. Site sur base dédiée sans contrat : page fermée avec la phrase
-  « Ce site gère ses comptes chez lui et n'a pas encore publié le contrat
-  Membres ».
+- **Canal Membres de l'EF `admin-comptes`** (`{ canal: "membres", action, appId, ... }`,
+  `admin-comptes/membres.ts`). Ce devait être une EF `admin-membres` : le projet a
+  atteint son nombre maximal d'Edge Functions le 20/11/2026, le relais loge donc dans
+  une fonction existante. Règles pures et testées dans `admin-comptes/membres-regles.ts`.
+  Actions : `etat` (lit le bloc `membres` du manifeste du site), `membres`, `creer`,
+  `mot-de-passe`, `bloquer`, et `role`, `renommer`, `email`, `lien`, `retirer` relayées
+  si le site les publie. Erreurs du site remontées en 502 : `error` porte la phrase à
+  afficher, `canal` le refus tel que le site l'a rendu.
+- **Droits** : super admin, ou droit délégué `users` du site dans `admin.droits_sites`
+  (lecture pour consulter, écriture pour agir). L'appartenance à une organisation du
+  site ne suffit pas.
+- **Page Utilisateurs** : le transport se choisit dans la page, sur
+  `apps.heberge_dedie`. Site en base partagée : la page d'origine, inchangée (RPC et
+  `create-user`). Site sur base dédiée : `components/console/membres/MembresSite.jsx`,
+  qui ne parle qu'au canal Membres. Les rôles proposés viennent du site. Le mot de
+  passe généré s'affiche une fois. Sans canal ou sans contrat, l'écran se ferme avec
+  la phrase « Ce site gère ses comptes chez lui et n'a pas encore publié le contrat
+  Membres ». C'est un écart avec la première rédaction, qui mettait les deux
+  transports derrière une seule EF : réécrire le chemin local n'apportait rien et
+  exposait ARPET à une régression.
 - **Garde-fou** : `core.app_sur_base_dediee(app_id)`, appelée par `create-user`,
-  `delete-user`, `admin-comptes` en périmètre site et les trois RPC d'écriture.
-  Réponse 409 nommée. Le garde-fou reste après la bascule : c'est lui qui tient
-  l'anti-objectif.
-- **Mot de passe** : il traverse Baikal dans le corps du relais, en HTTPS, sans
-  être écrit nulle part.
+  `delete-user`, `admin-comptes` en périmètre site et, dans leur enveloppe publique,
+  les trois RPC d'écriture. Réponse 409 nommée. Le garde-fou reste après la bascule :
+  c'est lui qui tient l'anti-objectif.
+- **Mot de passe** : il traverse Baikal dans le corps du relais, en HTTPS, sans être
+  écrit nulle part. Générateur partagé avec les comptes de Baikal
+  (`_shared/mot-de-passe.ts`).
+
+### Installation chez Majord'home (20/11/2026)
+
+Publié : lister, créer, changer le mot de passe, bloquer. Le changement de rôle ne
+l'est pas : il passe chez lui par les profils maison et la resynchronisation du rôle
+planning, sans voie serveur à ce jour. Une adresse déjà inscrite n'est reprise que si
+elle n'a aucun profil ; sinon `deja_membre`, et son mot de passe n'est pas touché.
 
 ## 6. Lots
 

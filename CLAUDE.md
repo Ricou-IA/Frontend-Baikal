@@ -422,6 +422,20 @@ sites-design.md).
   baikal seulement). Suppression : EF `delete-user`. Jamais soi-même pour bloquer, jamais
   mot de passe/lien/email d'un autre super admin. Journal `core.role_changes_log`
   (`change_type = account_*`).
+- **Les comptes d'un site sur base dédiée vivent chez le site** (20/11/2026, spec
+  `docs/superpowers/specs/2026-11-20-contrat-membres-design.md`). Baikal n'en crée ni n'en
+  stocke aucun : `core.app_sur_base_dediee` / `core.compte_sur_base_dediee` font refuser
+  (409 `site_base_dediee`) `create-user`, `delete-user`, `admin-comptes` en périmètre site
+  et les RPC `assign_user_to_org`, `update_user_role`, `remove_user_from_org`. La page
+  Utilisateurs d'un tel site affiche `MembresSite.jsx`, qui passe par le canal Membres
+  d'`admin-comptes` (`{ canal: "membres" }`, `admin-comptes/membres.ts`, règles
+  `membres-regles.ts`) : relais vers `env_admin_fn`, contrat `docs/contrats/membres-relais-v1.ts`,
+  capacité lue dans le bloc `membres` du manifeste du site. Droit : super admin ou `users`
+  délégué. Branché : majordhome (lister, créer, mot de passe, bloquer ; recette de bout en
+  bout NON jouée au 20/11). Le projet a atteint son nombre maximal d'Edge Functions : un
+  nouveau canal se loge dans une fonction existante. Les profils et organisations
+  « majordhome » encore présents dans la base de Baikal sont une copie figée, à retirer
+  (lot 3) une fois établi qui s'y connecte encore.
 - Gotcha `auth.users` : des comptes insérés en SQL avec `confirmation_token` /
   `recovery_token` / `email_change*` NULL font échouer `auth.admin.listUsers` (« Database
   error finding users ») ; corrigé le 08/09 en mettant `''` sur les 5 comptes `@test.com`.

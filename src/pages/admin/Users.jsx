@@ -36,6 +36,7 @@ import AdminsSite from '../../components/console/AdminsSite';
 import { usersService, organizationService } from '@services';
 import { comptesService } from '../../services/comptes.service';
 import ModalesCompte from '../../components/console/comptes/ModalesCompte';
+import MembresSite from '../../components/console/membres/MembresSite';
 import {
     Users,
     UserPlus,
@@ -82,12 +83,18 @@ function UsersContent() {
     // ses clients, page Clients. Ici ne reste que l'acces console.
     const siteCourant = (availableApps || []).find((a) => a.id === currentApp);
     const siteClients = siteCourant?.modele_comptes === 'clients';
+    // Site à organisations qui a sa propre base : ses membres vivent chez lui.
+    // Baikal les lit et les administre par le canal du site (MembresSite),
+    // jamais dans sa propre base (spec 2026-11-20-contrat-membres-design.md).
+    const siteDedie = !siteClients && !!siteCourant?.heberge_dedie;
 
     // Onglets : pending | all (sites a organisations) ; acces (super_admin).
     const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'pending');
     useEffect(() => {
         if (siteClients && activeTab !== 'acces') setActiveTab('acces');
-    }, [siteClients, activeTab]);
+        else if (siteDedie && (activeTab === 'pending' || activeTab === 'all')) setActiveTab('membres');
+        else if (!siteDedie && activeTab === 'membres') setActiveTab('pending');
+    }, [siteClients, siteDedie, activeTab]);
 
     // États - Pending users
     const [pendingUsers, setPendingUsers] = useState([]);
@@ -142,7 +149,7 @@ function UsersContent() {
 
     // Charger les utilisateurs en attente
     const loadPendingUsers = useCallback(async () => {
-        if (!peutVoirAttente) return;
+        if (!peutVoirAttente || siteDedie) return;
 
         setLoadingPending(true);
         try {
@@ -159,10 +166,15 @@ function UsersContent() {
         } finally {
             setLoadingPending(false);
         }
-    }, [peutVoirAttente, currentApp]);
+    }, [peutVoirAttente, siteDedie, currentApp]);
 
     // Charger tous les utilisateurs
     const loadUsers = useCallback(async () => {
+        if (siteDedie) {
+            setUsers([]);
+            setLoadingUsers(false);
+            return;
+        }
         setLoadingUsers(true);
         try {
             const params = {
@@ -184,14 +196,14 @@ function UsersContent() {
         } finally {
             setLoadingUsers(false);
         }
-    }, [isSuperAdmin, orgFilter, search, profile?.org_id, currentApp]);
+    }, [isSuperAdmin, orgFilter, search, profile?.org_id, currentApp, siteDedie]);
 
     // État auth (bloqué) des comptes du site, pour les lignes et les modales
     const loadEtats = useCallback(async () => {
-        if (!peutAgir || siteClients) return;
+        if (!peutAgir || siteClients || siteDedie) return;
         const { data } = await comptesService.lister(currentApp);
         if (data) setEtatsComptes(Object.fromEntries(data.map((c) => [c.userId, c])));
-    }, [peutAgir, siteClients, currentApp]);
+    }, [peutAgir, siteClients, siteDedie, currentApp]);
 
     // Charger les données initiales
     useEffect(() => {
@@ -296,6 +308,16 @@ function UsersContent() {
     // =========================================================================
     // RENDER - Vue org_admin (membres de son org uniquement)
     // =========================================================================
+
+    if (!isSuperAdmin && isOrgAdmin && siteDedie) {
+        return (
+            <div className="bg-baikal-surface border border-baikal-border rounded-md p-8 text-center text-baikal-text">
+                <Users className="w-10 h-10 mx-auto mb-3" />
+                <p className="text-white font-medium">Votre équipe se gère dans {siteCourant?.name || 'le site'}.</p>
+                <p className="mt-1 text-sm">Membres, rôles et mots de passe : écran Équipe des paramètres du site.</p>
+            </div>
+        );
+    }
 
     if (!isSuperAdmin && isOrgAdmin) {
         return (
@@ -444,7 +466,7 @@ function UsersContent() {
                         </p>
                     </div>
                 </div>
-                {isSuperAdmin && (
+                {isSuperAdmin && (!siteDedie || activeTab === 'acces') && (
                     <button
                         onClick={() => setCreatingUser(true)}
                         className="flex items-center gap-2 px-4 py-2 bg-baikal-cyan text-black font-medium rounded-md hover:bg-baikal-cyan/90 transition-colors font-mono"
@@ -459,7 +481,22 @@ function UsersContent() {
             <div className="bg-baikal-surface border-b border-baikal-border">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <nav className="flex gap-1 -mb-px overflow-x-auto">
-                        {!siteClients && (
+                        {siteDedie && (
+                        <button
+                            onClick={() => setActiveTab('membres')}
+                            className={`
+                                relative flex items-center gap-2 px-4 py-4 text-sm font-medium border-b-2 transition-colors
+                                ${activeTab === 'membres'
+                                    ? 'border-baikal-cyan text-baikal-cyan'
+                                    : 'border-transparent text-baikal-text hover:text-white hover:border-baikal-border'
+                                }
+                            `}
+                        >
+                            <Users className="w-4 h-4" />
+                            Membres
+                        </button>
+                        )}
+                        {!siteClients && !siteDedie && (
                         <button
                             onClick={() => setActiveTab('pending')}
                             className={`
@@ -479,7 +516,7 @@ function UsersContent() {
                             )}
                         </button>
                         )}
-                        {!siteClients && (
+                        {!siteClients && !siteDedie && (
                         <button
                             onClick={() => setActiveTab('all')}
                             className={`
@@ -573,8 +610,15 @@ function UsersContent() {
                     </div>
                 )}
 
+                {/* =============== MEMBRES D'UN SITE SUR BASE DEDIEE =============== */}
+                {siteDedie && activeTab === 'membres' && (
+                    <div className="mt-4">
+                        <MembresSite appId={currentApp} nomSite={siteCourant?.name || currentApp} />
+                    </div>
+                )}
+
                 {/* =============== ONGLET EN ATTENTE =============== */}
-                {!siteClients && activeTab === 'pending' && (
+                {!siteClients && !siteDedie && activeTab === 'pending' && (
                     <>
                         {loadingPending && (
                             <div className="flex items-center justify-center py-12">
@@ -626,7 +670,7 @@ function UsersContent() {
                 )}
 
                 {/* =============== ONGLET TOUS =============== */}
-                {!siteClients && activeTab === 'all' && (
+                {!siteClients && !siteDedie && activeTab === 'all' && (
                     <>
                         {/* Filtres */}
                         <div className="flex flex-col sm:flex-row gap-4 mb-6">

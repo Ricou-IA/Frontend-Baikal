@@ -39,6 +39,8 @@ import {
   CODE_BASE_DEDIEE,
   MESSAGE_BASE_DEDIEE,
 } from "../_shared/base-dediee.ts";
+import { genererMotDePasse, validerMotDePasse } from "../_shared/mot-de-passe.ts";
+import { traiterCanalMembres } from "./membres.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -55,35 +57,6 @@ function json(payload: unknown, status = 200): Response {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
-}
-
-// 14 caractères, sans les glyphes ambigus (0/O, 1/l/I), avec au moins une
-// minuscule, une majuscule et un chiffre : lisible à l'oral et au téléphone.
-function genererMotDePasse(): string {
-  const minuscules = "abcdefghjkmnpqrstuvwxyz";
-  const majuscules = "ABCDEFGHJKMNPQRSTUVWXYZ";
-  const chiffres = "23456789";
-  const tout = minuscules + majuscules + chiffres;
-  const tirer = (alphabet: string) => {
-    const b = new Uint32Array(1);
-    crypto.getRandomValues(b);
-    return alphabet[b[0] % alphabet.length];
-  };
-  const chars = [tirer(minuscules), tirer(majuscules), tirer(chiffres)];
-  while (chars.length < 14) chars.push(tirer(tout));
-  for (let i = chars.length - 1; i > 0; i--) {
-    const b = new Uint32Array(1);
-    crypto.getRandomValues(b);
-    const j = b[0] % (i + 1);
-    [chars[i], chars[j]] = [chars[j], chars[i]];
-  }
-  return chars.join("");
-}
-
-function validerMotDePasse(mdp: unknown): string | null {
-  if (typeof mdp !== "string") return null;
-  if (mdp.length < 8 || mdp.length > 72) return null;
-  return mdp;
 }
 
 type Profil = {
@@ -156,6 +129,18 @@ serve(async (req) => {
     if (!appelant) return json({ data: null, error: "Acces refuse" }, 403);
 
     const body = await req.json();
+    // Canal Membres : les membres d'un site sur base dédiée, relayés au site
+    // (./membres.ts). Ses droits et ses actions lui sont propres.
+    if (body?.canal === "membres") {
+      return await traiterCanalMembres({
+        admin,
+        userId: user.id,
+        email: user.email ?? null,
+        appRole: appelant.app_role,
+        body,
+        json,
+      });
+    }
     const action = String(body.action ?? "");
     const scope = String(body.scope ?? "baikal");
 
