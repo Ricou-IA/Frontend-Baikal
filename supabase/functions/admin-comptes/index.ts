@@ -33,6 +33,12 @@
 // account_*).
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  ACTIONS_ECRITURE_COMPTE,
+  appSurBaseDediee,
+  CODE_BASE_DEDIEE,
+  MESSAGE_BASE_DEDIEE,
+} from "../_shared/base-dediee.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -177,6 +183,16 @@ serve(async (req) => {
         proprietaire,
         orgId: proprietaire ? null : appelant.org_id,
       };
+    }
+
+    // Garde-fou base dédiée : en périmètre site, mot de passe, lien, email et
+    // blocage s'écriraient dans l'authentification de Baikal, pas dans celle
+    // où le membre se connecte. La lecture reste ouverte.
+    if (
+      scope !== "baikal" && ACTIONS_ECRITURE_COMPTE.has(action) &&
+      await appSurBaseDediee(admin, scope)
+    ) {
+      return json({ data: null, error: MESSAGE_BASE_DEDIEE, code: CODE_BASE_DEDIEE }, 409);
     }
 
     const journaliser = async (

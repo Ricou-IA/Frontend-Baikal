@@ -1,5 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import {
+  CODE_BASE_DEDIEE,
+  compteSurBaseDediee,
+  MESSAGE_BASE_DEDIEE,
+} from "../_shared/base-dediee.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -100,6 +105,15 @@ serve(async (req) => {
     // Interdire la suppression d'un autre super_admin
     if (targetProfile.app_role === "super_admin") {
       return errorResponse("Impossible de supprimer un super_admin", 403)
+    }
+
+    // Garde-fou base dédiée : supprimer ici ne supprimerait que la copie de
+    // Baikal, le vrai compte du membre resterait actif chez le site.
+    if (await compteSurBaseDediee(supabaseAdmin, userId)) {
+      return new Response(
+        JSON.stringify({ error: MESSAGE_BASE_DEDIEE, code: CODE_BASE_DEDIEE }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      )
     }
 
     // Logger le changement AVANT la suppression

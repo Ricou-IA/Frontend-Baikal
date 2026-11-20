@@ -1,5 +1,11 @@
 ﻿import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import {
+  appSurBaseDediee,
+  CODE_BASE_DEDIEE,
+  compteSurBaseDediee,
+  MESSAGE_BASE_DEDIEE,
+} from "../_shared/base-dediee.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -93,6 +99,25 @@ serve(async (req) => {
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { autoRefreshToken: false, persistSession: false }
     })
+
+    // Garde-fou base dédiée, AVANT toute écriture : un compte créé ici pour un
+    // site qui s'authentifie sur sa propre base ne s'y connecterait pas.
+    let appCible: string | null = null
+    if (orgId) {
+      const { data: orgCible, error: orgCibleError } = await supabaseAdmin
+        .schema("core").from("organizations").select("app_id").eq("id", orgId).maybeSingle()
+      if (orgCibleError) return errorResponse("Organisation illisible", 500)
+      if (!orgCible) return errorResponse("Organisation introuvable", 400)
+      appCible = orgCible.app_id ?? null
+    }
+    const refuse = await appSurBaseDediee(supabaseAdmin, appCible) ||
+      (!isSuperAdmin && await compteSurBaseDediee(supabaseAdmin, caller.id))
+    if (refuse) {
+      return new Response(
+        JSON.stringify({ error: MESSAGE_BASE_DEDIEE, code: CODE_BASE_DEDIEE }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      )
+    }
 
     const { data: authData, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email: email.trim(),
