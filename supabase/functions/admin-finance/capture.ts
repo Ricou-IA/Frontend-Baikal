@@ -8,6 +8,13 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { listerSessions, listerTransactions, type SessionStripe, type TxStripe } from "../_shared/stripe.ts";
 import { type LigneMapping, resoudreSite } from "../_shared/finance-mapping.ts";
+import {
+  type CompteStripe,
+  comptesALire,
+  rangerVente,
+  refStripeValide,
+  type SiteRegistre,
+} from "../_shared/finance-comptes.ts";
 import { chargerSite, lecteurSite } from "../_shared/sites.ts";
 
 const TVA_DEFAUT = 0.20;
@@ -56,12 +63,20 @@ function trierParSiteConnu(ventes: VenteArchivee[]) {
   return { connues, nonResolues };
 }
 
+/** D'ou viennent les mouvements : le compte Stripe lu et le registre des sites.
+ *  Sans lui, la resolution du mapping est gardee telle quelle. */
+export interface Rangement {
+  compte: CompteStripe;
+  sites: SiteRegistre[];
+}
+
 /** Une ligne par payment_intent encaisse sur la periode. */
 export function construireVentes(
   transactions: TxStripe[],
   sessions: SessionStripe[],
   mapping: LigneMapping[],
   tvaParSite: Record<string, number>,
+  rangement?: Rangement,
 ): VenteArchivee[] {
   const parPi = new Map<string, SessionStripe>();
   for (const s of sessions) {
@@ -74,7 +89,10 @@ export function construireVentes(
     if (!t.payment_intent || !TYPES_ENCAISSEMENT.has(t.type)) continue;
     const session = parPi.get(t.payment_intent) ??
       { payment_intent: t.payment_intent, metadata: {}, produits: [] };
-    const { app_id, offre, perimetre } = resoudreSite(session, mapping);
+    const resolue = resoudreSite(session, mapping);
+    const { app_id, offre, perimetre } = rangement
+      ? rangerVente(resolue, rangement.compte, rangement.sites)
+      : resolue;
     const tva = tvaParSite[app_id] ?? TVA_DEFAUT;
 
     ventes.set(t.payment_intent, {
@@ -126,33 +144,80 @@ export function remboursementsOrphelins(
   return orphelins;
 }
 
-/** Capture d'une journee UTC complete. Idempotente : rejouable sans doublon. */
-export async function captureJour(
+/** Reunit les ventes lues compte par compte. Un payment_intent n'existe que
+ *  dans un compte : s'il revient deux fois, la premiere lecture est gardee
+ *  (ordre des comptes stable) et le doublon se signale, pour qu'une vente ne
+ *  change jamais de site d'un passage a l'autre. */
+export function reunirVentes(
+  lots: VenteArchivee[][],
+): { ventes: VenteArchivee[]; doublons: string[] } {
+  const parPi = new Map<string, VenteArchivee>();
+  const doublons: string[] = [];
+  for (const lot of lots) {
+    for (const v of lot) {
+      if (parPi.has(v.stripe_payment_intent_id)) doublons.push(v.stripe_payment_intent_id);
+      else parPi.set(v.stripe_payment_intent_id, v);
+    }
+  }
+  return { ventes: [...parPi.values()], doublons };
+}
+
+/** Lit tous les comptes Stripe de la periode et archive leurs ventes.
+ *  Un compte en echec (secret absent, cle refusee) n'empeche pas d'archiver les
+ *  autres, mais il est rendu dans `echecs` : l'appelant leve a la fin de son
+ *  travail, pour qu'un compte manquant ne passe jamais pour un mois sans vente. */
+async function archiverVentes(
   admin: SupabaseClient,
-  jour: Date,
-): Promise<{ ventes: number; sites: string[]; manques: string[] }> {
+  debut: Date,
+  fin: Date,
+): Promise<{ ventes: VenteArchivee[]; manques: string[]; echecs: string[] }> {
+  const manques: string[] = [];
+  const echecs: string[] = [];
+
+  const { data: mapping, error: errMapping } = await admin.schema("admin").from("stripe_mapping")
+    .select("cle_type, cle, app_id, offre, perimetre");
+  if (errMapping) throw new Error(`lecture stripe_mapping: ${errMapping.message}`);
+  const { data: apps, error: errApps } = await admin.schema("config").from("apps")
+    .select("id, db_schema, tva_taux, stripe_key_ref, is_active");
+  if (errApps) throw new Error(`lecture config.apps: ${errApps.message}`);
+
+  const sites = (apps ?? []) as Array<SiteRegistre & { tva_taux: number | null }>;
+  const tvaParSite: Record<string, number> = {};
+  for (const a of sites) tvaParSite[a.id] = Number(a.tva_taux ?? TVA_DEFAUT);
+
   // ADMIN_STRIPE_KEY d'abord (cle restreinte en LECTURE, a preferer), sinon la
-  // cle secrete deja posee dans le projet. Le module ne fait que lire : le jour
-  // ou une cle restreinte est posee, elle prend le dessus sans toucher au code.
-  const cle = Deno.env.get("ADMIN_STRIPE_KEY") ?? Deno.env.get("STRIPE_SECRET_KEY");
-  if (!cle) {
+  // cle secrete deja posee dans le projet : c'est le compte commun.
+  const cleCommune = Deno.env.get("ADMIN_STRIPE_KEY") ?? Deno.env.get("STRIPE_SECRET_KEY");
+  const comptes = comptesALire(sites, Boolean(cleCommune));
+  if (comptes.length === 0) {
     throw new Error("Aucune cle Stripe : posez ADMIN_STRIPE_KEY ou STRIPE_SECRET_KEY");
   }
 
-  const debut = new Date(Date.UTC(jour.getUTCFullYear(), jour.getUTCMonth(), jour.getUTCDate()));
-  const fin = new Date(debut.getTime() + 86_400_000 - 1000);
-  const jourIso = debut.toISOString().slice(0, 10);
-  const manques: string[] = [];
+  const lots: VenteArchivee[][] = [];
+  const transactions: TxStripe[] = [];
+  for (const compte of comptes) {
+    const nom = compte.ref ?? "commun";
+    try {
+      let cle = cleCommune;
+      if (compte.ref) {
+        if (!refStripeValide(compte.ref)) throw new Error("nom de secret refuse");
+        cle = Deno.env.get(compte.ref);
+        if (!cle) throw new Error("secret absent des Edge Functions");
+      }
+      const tx = await listerTransactions(cle!, debut, fin);
+      const sessions = await listerSessions(cle!, debut, fin);
+      transactions.push(...tx);
+      lots.push(
+        construireVentes(tx, sessions, (mapping ?? []) as LigneMapping[], tvaParSite, { compte, sites }),
+      );
+    } catch (e) {
+      echecs.push(`stripe_compte:${nom}`);
+      console.error(`[admin-finance] compte Stripe ${nom}: ${(e as Error).message}`);
+    }
+  }
 
-  const { data: mapping } = await admin.schema("admin").from("stripe_mapping")
-    .select("cle_type, cle, app_id, offre, perimetre");
-  const { data: apps } = await admin.schema("config").from("apps").select("id, tva_taux");
-  const tvaParSite: Record<string, number> = {};
-  for (const a of apps ?? []) tvaParSite[a.id] = Number(a.tva_taux ?? TVA_DEFAUT);
-
-  const transactions = await listerTransactions(cle, debut, fin);
-  const sessions = await listerSessions(cle, debut, fin);
-  const ventes = construireVentes(transactions, sessions, (mapping ?? []) as LigneMapping[], tvaParSite);
+  const { ventes, doublons } = reunirVentes(lots);
+  for (const pi of doublons) manques.push(`doublon_comptes:${pi}`);
 
   const { connues, nonResolues } = trierParSiteConnu(ventes);
   if (connues.length > 0) {
@@ -172,6 +237,25 @@ export async function captureJour(
       .eq("stripe_payment_intent_id", o.payment_intent);
     if (error) manques.push(`remboursement:${o.payment_intent}`);
   }
+
+  return { ventes, manques: [...manques, ...echecs], echecs };
+}
+
+function leverSiEchec(echecs: string[]): void {
+  if (echecs.length > 0) {
+    throw new Error(`Comptes Stripe non lus : ${echecs.join(", ")}. Les autres comptes sont archives.`);
+  }
+}
+
+/** Capture d'une journee UTC complete. Idempotente : rejouable sans doublon. */
+export async function captureJour(
+  admin: SupabaseClient,
+  jour: Date,
+): Promise<{ ventes: number; sites: string[]; manques: string[] }> {
+  const debut = new Date(Date.UTC(jour.getUTCFullYear(), jour.getUTCMonth(), jour.getUTCDate()));
+  const fin = new Date(debut.getTime() + 86_400_000 - 1000);
+  const jourIso = debut.toISOString().slice(0, 10);
+  const { ventes, manques, echecs } = await archiverVentes(admin, debut, fin);
 
   // Couts IA, site par site. Une source en echec n'interrompt pas la capture :
   // elle rend la journee incomplete et se signale dans `manques`.
@@ -214,6 +298,7 @@ export async function captureJour(
     if (error) manques.push(`finance_jours:${appId}`);
   }
 
+  leverSiEchec(echecs);
   return { ventes: ventes.length, sites, manques };
 }
 
@@ -226,38 +311,7 @@ export async function capturePeriode(
   debut: Date,
   fin: Date,
 ): Promise<{ ventes: number; sites: string[]; jours_couts: number; manques: string[] }> {
-  const cle = Deno.env.get("ADMIN_STRIPE_KEY") ?? Deno.env.get("STRIPE_SECRET_KEY");
-  if (!cle) throw new Error("Aucune cle Stripe : posez ADMIN_STRIPE_KEY ou STRIPE_SECRET_KEY");
-
-  const manques: string[] = [];
-  const { data: mapping } = await admin.schema("admin").from("stripe_mapping")
-    .select("cle_type, cle, app_id, offre, perimetre");
-  const { data: apps } = await admin.schema("config").from("apps").select("id, tva_taux");
-  const tvaParSite: Record<string, number> = {};
-  for (const a of apps ?? []) tvaParSite[a.id] = Number(a.tva_taux ?? TVA_DEFAUT);
-
-  const transactions = await listerTransactions(cle, debut, fin);
-  const sessions = await listerSessions(cle, debut, fin);
-  const ventes = construireVentes(transactions, sessions, (mapping ?? []) as LigneMapping[], tvaParSite);
-
-  const { connues, nonResolues } = trierParSiteConnu(ventes);
-  if (connues.length > 0) {
-    const { error } = await admin.schema("admin").from("ventes")
-      .upsert(connues.map((v) => ({ ...v, maj_le: new Date().toISOString() })), {
-        onConflict: "stripe_payment_intent_id",
-      });
-    if (error) throw new Error(`upsert ventes: ${error.message}`);
-  }
-  for (const v of nonResolues) {
-    manques.push(`site_inconnu:${v.stripe_payment_intent_id}`);
-  }
-
-  for (const o of remboursementsOrphelins(transactions, ventes)) {
-    const { error } = await admin.schema("admin").from("ventes")
-      .update({ montant_rembourse: o.montant, rembourse_le: o.date, maj_le: new Date().toISOString() })
-      .eq("stripe_payment_intent_id", o.payment_intent);
-    if (error) manques.push(`remboursement:${o.payment_intent}`);
-  }
+  const { ventes, manques, echecs } = await archiverVentes(admin, debut, fin);
 
   const taux = Number(Deno.env.get("ADMIN_TAUX_USD_EUR") ?? "0.92");
   let joursCouts = 0;
@@ -300,6 +354,7 @@ export async function capturePeriode(
     }
   }
 
+  leverSiEchec(echecs);
   return {
     ventes: ventes.length,
     sites: [...new Set(ventes.map((v) => v.app_id))],

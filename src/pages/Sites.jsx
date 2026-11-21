@@ -31,6 +31,8 @@ const CHAMPS = [
   ['mailing_plafond_jour', 'Mailing : envois maximum par jour (vide = 200)'],
   ['env_mailing_fn', 'Mailing : fonction relais (site sur base dédiée)'],
   ['repo_github', 'Dépôt GitHub (owner/repo)'],
+  ['stripe_key_ref', 'Finances : secret de la clé Stripe du site (vide = compte commun)'],
+  ['compte_produit', 'Finances : compte de produits dans Pennylane (706…)'],
   ['seo_panier', 'Requêtes SEO suivies (une par ligne)', 'liste'],
   ['seo_pages_cles', 'Pages clés SEO (chemins, une par ligne)', 'liste'],
 ];
@@ -111,6 +113,11 @@ function FicheSite({ site, onSaved }) {
                 onChange={(e) => setValeurs((v) => ({ ...v, [champ]: e.target.value }))}
                 className="mt-1 w-full px-2 py-1.5 rounded border border-baikal-border bg-baikal-bg text-baikal-text focus:border-baikal-cyan outline-none font-mono text-sm"
               />
+            )}
+            {champ === 'compte_produit' && (
+              <span className="block mt-1 text-xs opacity-60">
+                Vide = facturation fermée pour ce site. Le compte doit exister dans Pennylane.
+              </span>
             )}
             {champ === 'env_secret_ref' && (
               <span className="block mt-1 text-xs opacity-60">

@@ -6,6 +6,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ErreurAcces, exigerSite, sitesAutorises } from "../_shared/droits.ts";
+import { refStripeValide } from "../_shared/finance-comptes.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -39,6 +40,8 @@ const CHAMPS_SITE = [
   "repo_github",
   "seo_panier",
   "seo_pages_cles",
+  "stripe_key_ref",
+  "compte_produit",
 ] as const;
 
 // Champs listes (une valeur par ligne cote saisie, tableau JSON en base).
@@ -93,7 +96,8 @@ serve(async (req) => {
           const { data, error } = await admin.schema("config").from("apps")
             .select("id, name, domaine, gsc_propriete, env_url, env_secret_ref, " +
               "nom_public, expediteur_nom, expediteur_email, reply_to, resend_key_ref, resend_webhook_secret_ref, " +
-              "mailing_plafond_jour, env_mailing_fn, modele_comptes, repo_github, seo_panier, seo_pages_cles, is_active")
+              "mailing_plafond_jour, env_mailing_fn, modele_comptes, repo_github, seo_panier, seo_pages_cles, " +
+              "stripe_key_ref, compte_produit, is_active")
             .order("sort_order");
           if (error) throw error;
           return json({ data, error: null });
@@ -129,6 +133,24 @@ serve(async (req) => {
             return json({ data: null, error: "Plafond mailing : un entier positif" }, 400);
           }
           maj.mailing_plafond_jour = n;
+        }
+        // Finances : le registre ne porte que le NOM du secret Stripe, et ce nom
+        // est borne (sa valeur part vers Stripe : il ne doit pas pouvoir designer
+        // une autre cle du projet). Le compte de produits est un numero de classe 7.
+        for (const champ of ["stripe_key_ref", "compte_produit"]) {
+          if (typeof maj[champ] === "string") maj[champ] = (maj[champ] as string).trim() || null;
+        }
+        if (maj.stripe_key_ref != null && !refStripeValide(String(maj.stripe_key_ref))) {
+          return json({
+            data: null,
+            error: "Secret Stripe : le nom du secret (majuscules, chiffres, tirets bas, avec le mot STRIPE), jamais la clé",
+          }, 400);
+        }
+        if (maj.compte_produit != null && !/^7[0-9]{2,11}$/.test(String(maj.compte_produit))) {
+          return json({
+            data: null,
+            error: "Compte de produits : un numéro de compte de classe 7, en chiffres (706…)",
+          }, 400);
         }
         if (Object.keys(maj).length === 0) {
           return json({ data: null, error: "Aucun champ a enregistrer" }, 400);
