@@ -129,3 +129,19 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/import_map.json"
 entrypoint = "./functions/mailing-desinscription/index.ts"
+
+# Finances : admin-finance est appelee par pg_cron (X-Cron-Secret, sans JWT) et
+# par la console (session verifiee dans le code, droits par site). Valeur relevee
+# en production le 21/11/2026 : la remettre a true couperait la capture.
+[functions.admin-finance]
+enabled = true
+verify_jwt = false
+import_map = "./functions/import_map.json"
+entrypoint = "./functions/admin-finance/index.ts"
+
+# Parametrage des sites : appelee par la console avec la session.
+[functions.admin-sites]
+enabled = true
+verify_jwt = true
+import_map = "./functions/import_map.json"
+entrypoint = "./functions/admin-sites/index.ts"
