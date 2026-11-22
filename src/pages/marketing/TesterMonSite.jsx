@@ -394,6 +394,7 @@ function OuvrirMonSite({ jeton, site }) {
   const [email, setEmail] = useState('');
   const [motDePasse, setMotDePasse] = useState('');
   const [piege, setPiege] = useState(''); // piège à robots
+  const [mode, setMode] = useState('nouveau'); // nouveau | existant
   const [etat, setEtat] = useState('idle'); // idle | envoi | ouvert
   const [erreur, setErreur] = useState(null);
 
@@ -405,22 +406,58 @@ function OuvrirMonSite({ jeton, site }) {
     return () => { actif = false; };
   }, []);
 
+  // Rattacher à un compte existant : on se connecte d'abord, avec l'email et le
+  // mot de passe de ce compte, puis le site est ouvert sous cette session.
+  const seConnecter = async () => {
+    const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: motDePasse });
+    if (error || !data?.session) return null;
+    setSession(data.session);
+    return data.session;
+  };
+
   const ouvrir = async (e) => {
     e.preventDefault();
     if (etat === 'envoi') return;
+    if (piege) return; // piège à robots
     setEtat('envoi');
     setErreur(null);
-    const { data, error } = await testSiteService.ouvrir(
-      session
-        ? { jeton, session: session.access_token }
+
+    let compte = session;
+    if (!compte && mode === 'existant') {
+      compte = await seConnecter();
+      if (!compte) {
+        setErreur('Email ou mot de passe incorrect.');
+        setEtat('idle');
+        return;
+      }
+    }
+
+    let { data, error, statut } = await testSiteService.ouvrir(
+      compte
+        ? { jeton, session: compte.access_token }
         : { jeton, email, mot_de_passe: motDePasse, site_web: piege },
     );
+    // L'email a déjà un compte : avec le bon mot de passe, le site lui est
+    // rattaché sans rien demander de plus ; sinon on bascule sur « J'ai déjà
+    // un compte ».
+    if (error && !compte && statut === 409 && /existe déjà avec cet email/.test(error.message)) {
+      compte = await seConnecter();
+      if (compte) {
+        ({ data, error } = await testSiteService.ouvrir({ jeton, session: compte.access_token }));
+      } else {
+        setMode('existant');
+        setMotDePasse('');
+        setErreur('Un compte existe déjà avec cet email : saisissez son mot de passe pour y rattacher ce site.');
+        setEtat('idle');
+        return;
+      }
+    }
     if (error) {
       setErreur(error.message);
       setEtat('idle');
       return;
     }
-    if (!data?.app_id) { // réponse du piège à robots
+    if (!data?.app_id) {
       setEtat('idle');
       return;
     }
@@ -469,18 +506,35 @@ function OuvrirMonSite({ jeton, site }) {
               le site sera ajouté à ce compte.
             </p>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <label className="block">
-                <span className={`block ${ETIQUETTE} text-baikal-text mb-2`}>VOTRE EMAIL</span>
-                <input type="email" autoComplete="email" value={email} onChange={(e) => { setEmail(e.target.value); setErreur(null); }}
-                  placeholder="vous@monsaas.fr" className={champ} />
-              </label>
-              <label className="block">
-                <span className={`block ${ETIQUETTE} text-baikal-text mb-2`}>UN MOT DE PASSE</span>
-                <input type="password" autoComplete="new-password" value={motDePasse} onChange={(e) => { setMotDePasse(e.target.value); setErreur(null); }}
-                  placeholder="8 caractères au moins" className={champ} />
-              </label>
-            </div>
+            <>
+              <div role="tablist" className="inline-flex rounded-md border border-baikal-border p-1 text-sm">
+                {[
+                  ['nouveau', 'Je crée mon compte'],
+                  ['existant', "J'ai déjà un compte"],
+                ].map(([valeur, libelle]) => (
+                  <button key={valeur} type="button" role="tab" aria-selected={mode === valeur}
+                    onClick={() => { setMode(valeur); setErreur(null); }}
+                    className={`px-3 py-1.5 rounded transition-colors ${mode === valeur ? 'bg-baikal-cyan text-baikal-bg' : 'text-baikal-text hover:text-white'}`}>
+                    {libelle}
+                  </button>
+                ))}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <label className="block">
+                  <span className={`block ${ETIQUETTE} text-baikal-text mb-2`}>VOTRE EMAIL</span>
+                  <input type="email" autoComplete="email" value={email} onChange={(e) => { setEmail(e.target.value); setErreur(null); }}
+                    placeholder="vous@monsaas.fr" className={champ} />
+                </label>
+                <label className="block">
+                  <span className={`block ${ETIQUETTE} text-baikal-text mb-2`}>
+                    {mode === 'existant' ? 'VOTRE MOT DE PASSE' : 'UN MOT DE PASSE'}
+                  </span>
+                  <input type="password" autoComplete={mode === 'existant' ? 'current-password' : 'new-password'}
+                    value={motDePasse} onChange={(e) => { setMotDePasse(e.target.value); setErreur(null); }}
+                    placeholder={mode === 'existant' ? 'Celui de votre compte Baikal' : '8 caractères au moins'} className={champ} />
+                </label>
+              </div>
+            </>
           )}
           {/* Piège à robots : invisible pour un humain. */}
           <div className="absolute -left-[9999px] top-0" aria-hidden="true">
@@ -497,19 +551,25 @@ function OuvrirMonSite({ jeton, site }) {
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
             <button
               type="submit"
-              disabled={etat === 'envoi' || (!session && (!email.includes('@') || motDePasse.length < 8))}
+              disabled={etat === 'envoi' || (!session && (!email.includes('@') || motDePasse.length < (mode === 'existant' ? 1 : 8)))}
               className={BOUTON_PLEIN}
             >
-              {etat === 'envoi' ? 'OUVERTURE…' : 'OUVRIR MON SITE DANS BAIKAL'}
+              {etat === 'envoi'
+                ? 'OUVERTURE…'
+                : !session && mode === 'existant' ? 'RATTACHER À MON COMPTE' : 'OUVRIR MON SITE DANS BAIKAL'}
             </button>
-            {!session && (
+            {!session && mode === 'existant' && (
               <p className="text-sm">
-                Déjà un compte ? <Link to="/login" className="text-baikal-cyan underline">Connectez-vous</Link>, puis rouvrez ce lien.
+                Mot de passe oublié ? <Link to="/login" className="text-baikal-cyan underline">Réinitialisez-le</Link>, puis rouvrez ce lien.
               </p>
             )}
           </div>
           <ul className="text-sm leading-relaxed space-y-1.5 pt-1">
-            <li>Votre compte ne voit que ce site, et pour commencer son chapitre Clients.</li>
+            <li>
+              {session || mode === 'existant'
+                ? "Le site s'ajoute à ceux de votre compte, et pour commencer son chapitre Clients."
+                : 'Votre compte ne voit que ce site, et pour commencer son chapitre Clients.'}
+            </li>
             <li>
               Baikal garde la connexion que votre agent lui a confiée, chiffrée. Elle ne donne que le droit de
               lire, et vous la coupez quand vous voulez en changeant le mot de passe du rôle{' '}
