@@ -52,6 +52,28 @@ Majord'home (`Ricou-IA/majordhome`, `docs/MODULE_PENNYLANE.md` et section « Mod
 | Stripe Climate | Conservé sur MonsieurDPE, comptabilisé à part des frais. |
 | Contrôle | Un écart ou un mouvement non classé arrête la routine et alerte. Aucune écriture approximative. |
 
+### Décisions comptables d'Eric (21 et 22/11/2026)
+
+Eric est expert-comptable : ces réponses closent les questions 2, 3 et 4 du § 14 et priment sur
+toute formulation contraire plus bas dans ce document.
+
+| Sujet | Décision |
+|---|---|
+| Lot 5 | Abandonné. Stripe continue de facturer les achats de crédits des pros. |
+| Conseil Solaire | Hors plan tant que le site ne vend pas. |
+| Comptes de produits | Un compte par site, créé dans Pennylane et saisi au registre. Le numéro ne s'écrit jamais dans ce dépôt. |
+| TVA collectée | 20 % sur tous les sites. |
+| Compte client | Un compte « Clients particuliers » par site : il reçoit les encaissements du compte Stripe du site. Le compte de virements internes Stripe ne sert qu'aux versements vers la banque. |
+| Facture à la demande | Datée du jour de l'émission, avec la mention de la date et de la référence du paiement. |
+| Arrondi | HT = arrondi(TTC / 1,2) ; TVA = TTC − HT. La facture sort exactement au TTC encaissé. |
+| Vente gratuite par coupon | Une vente au prix public, remisée à 100 %. Jamais une vente à zéro sans prix. |
+| Facture après la clôture du mois | Ligne négative « ventes facturées individuellement » dans la pièce du mois suivant. |
+| Pièce du mois | Une **facture** par site au client « Clients particuliers » du site, datée du dernier jour du mois. Pas une écriture au journal. |
+| Remboursements | En négatif sur le compte de produits du site. |
+| Frais Stripe | Compte de frais bancaires (627), écriture passée par Baikal, autoliquidation intracommunautaire à 20 %. |
+| Stripe Climate | Compte 6238, même régime de TVA que les frais. |
+| Ventes passées | De mars à octobre 2026 : rattrapées sur novembre 2026, dans ce plan (lot 4), et non plus dans un chantier séparé. |
+
 ### Options écartées
 
 - Facture émise par Stripe à chaque paiement (coût par facture, deux séries de numéros, modification des quatre sites).
