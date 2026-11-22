@@ -336,3 +336,47 @@ Deno.test("le schéma est substitué dans chaque requête, et un nom douteux est
     "Schéma invalide",
   );
 });
+
+// ---------------------------------------------------------------------------
+// Contrats optionnels (Comptes) : absents, ils ne disent rien ; publiés, ils
+// sont contrôlés au niveau 2 sans jamais bloquer le niveau 1.
+// ---------------------------------------------------------------------------
+
+const OPTIONNELS = [await lire("comptes-pro-v1.json"), await lire("comptes-historique-v1.json")];
+
+function noyau(m: Manifeste): Ligne[] {
+  return m.vues.flatMap((v) => v.colonnes.filter((c) => c.obligatoire).map((c) => ({ vue: v.nom, colonne: c.nom, type: PG[c.type] })));
+}
+
+function passerAvecOptionnels(scene: Scene): Promise<Rapport> {
+  return recetter({ lecteur: faux(scene), manifestes: [...MANIFESTES, ...OPTIONNELS], schema: "public", funnel: FUNNEL });
+}
+
+Deno.test("contrat optionnel absent : aucun contrôle, niveau 1 inchangé", async () => {
+  const sans = await passer({});
+  const avec = await passerAvecOptionnels({});
+  assertEquals(avec.controles.filter((c) => c.vue?.startsWith("baikal_compte")), []);
+  assertEquals(avec.resume, sans.resume);
+});
+
+Deno.test("contrat optionnel publié et faux : échec de niveau 2, niveau1_pret vrai", async () => {
+  const r = await passerAvecOptionnels({
+    structure: [...structure(), ...noyau(OPTIONNELS[0])],
+    reponses: { "controle:comptes.identifiant_unique": [{ compte_id: "42", lignes: 2 }] },
+  });
+  const k = un(r, "comptes.identifiant_unique");
+  assertEquals([k.statut, k.bloquant, k.niveau], ["echec", true, 2]);
+  assertEquals(un(r, "forme.baikal_comptes_pro").statut, "conforme");
+  assertEquals(r.resume.niveau1_pret, true);
+  assertEquals(r.resume.niveau2_pret, false);
+});
+
+Deno.test("historique publié sans la liste des comptes : contrôlé, sans exception", async () => {
+  const r = await passerAvecOptionnels({
+    structure: [...structure(), ...noyau(OPTIONNELS[1])],
+    reponses: { "controle:historique.compte_connu": new Error('relation "public.baikal_comptes_pro" does not exist') },
+  });
+  assertEquals(r.controles.some((c) => c.vue === "baikal_comptes_pro"), false);
+  assert(["echec", "non_mesure"].includes(un(r, "historique.compte_connu").statut));
+  assertEquals(r.resume.niveau1_pret, true);
+});
