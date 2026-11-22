@@ -23,6 +23,8 @@
 //   piece-supprimer  { appId, id }            → brouillon de piece efface
 //   pieces-planifiees { appId?, du?, au?, date? } → cron uniquement : brouillon de la piece du mois
 //                                               precedent de chaque site (ou de la periode demandee)
+//   ecriture { date, libelle, journal, lignes, essai? } → cron uniquement : ecriture au journal
+//                                               dans Pennylane (essai par defaut : rien n'est ecrit)
 //   facture-diagnostic                        → cron uniquement : jeton et comptes, lecture seule
 //
 // La page ne lit QUE l'archive : aucun appel Stripe en lecture d'ecran.
@@ -46,6 +48,7 @@ import {
 import {
   calculerPieceVentes,
   creerPieceVentes,
+  passerEcriture,
   piecesPlanifiees,
   supprimerPieceVentes,
 } from "./piece-ventes.ts";
@@ -56,6 +59,7 @@ import {
 // l'apporteur : portail_pro n'est donc pas detectable ici.
 import { canalVente, domaineVente } from "../admin-dossiers/canal.ts";
 import { venteFacturable } from "../_shared/facturation.ts";
+import { corrigerLibelleEcriture } from "../_shared/pennylane.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -286,6 +290,31 @@ serve(async (req) => {
         au: texte(body.au),
         date: texte(body.date),
         remplacer: body.remplacer === true,
+      });
+      return json({ data: r, error: null });
+    }
+
+    // Ecriture au journal demandee par le comptable : meme porte que le cron,
+    // jamais depuis l'ecran. `essai` (par defaut) verifie tout sans rien ecrire.
+    if (action === "ecriture") {
+      const attendu = Deno.env.get("ADMIN_FINANCE_CRON_SECRET") ??
+        Deno.env.get("ADMIN_SEO_CRON_SECRET");
+      if (!attendu || req.headers.get("x-cron-secret") !== attendu) {
+        return json({ data: null, error: "Secret de cron invalide" }, 401);
+      }
+      // Correction du seul libelle d'une ecriture deja passee.
+      if (body.corriger && typeof body.corriger === "object") {
+        const libelle = String(body.corriger.libelle ?? "").trim();
+        const id = Number(body.corriger.id);
+        if (!libelle || !Number.isFinite(id)) return json({ data: null, error: "Correction mal formée" }, 400);
+        return json({ data: await corrigerLibelleEcriture(id, libelle), error: null });
+      }
+      const r = await passerEcriture({
+        date: String(body.date ?? ""),
+        libelle: String(body.libelle ?? ""),
+        journal: typeof body.journal === "string" ? body.journal : undefined,
+        lignes: Array.isArray(body.lignes) ? body.lignes : [],
+        essai: body.essai !== false,
       });
       return json({ data: r, error: null });
     }

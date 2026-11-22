@@ -18,10 +18,13 @@ import {
   seRecouvrent,
   type VenteMois,
 } from "../_shared/piece-ventes.ts";
+import { corpsEcriture, declinaison, type LigneDemandee, validerEcriture } from "../_shared/ecriture.ts";
 import {
   compteDuClient,
   comptesDuNumero,
   creerBrouillon,
+  creerEcriture,
+  journaux,
   creerClient,
   lireFacture,
   supprimerBrouillon,
@@ -298,6 +301,47 @@ export async function piecesPlanifiees(
     }
   }
   return { du, au, resultats };
+}
+
+/** Ecriture au journal demandee par le comptable (regularisation, Climate).
+ *  `essai` : tout est verifie et resolu (journal, comptes, equilibre), rien
+ *  n'est ecrit. Sans `essai`, l'ecriture est passee, une fois, definitivement. */
+export async function passerEcriture(d: {
+  date: string;
+  libelle: string;
+  journal?: string;
+  lignes: LigneDemandee[];
+  essai: boolean;
+}) {
+  const valide = validerEcriture(d.lignes);
+  if (!valide.ok) throw new RefusFacture(valide.erreur, 400);
+
+  const tous = await journaux();
+  const journal = tous.find((j) => j.code === d.journal) ?? null;
+  const resolues = [];
+  for (const l of d.lignes) {
+    const id = declinaison(await comptesDuNumero(l.compte), l.compte, l.tva);
+    if (id === null) {
+      throw new RefusFacture(`Le compte ${l.compte} (${l.tva ?? "générique"}) n'existe pas dans Pennylane.`, 400);
+    }
+    resolues.push({ ...l, ledgerAccountId: id });
+  }
+  if (d.essai || !journal) {
+    return {
+      ecrite: false,
+      total: valide.total,
+      journal,
+      journaux: tous.map((j) => ({ code: j.code, label: j.label, type: j.type })),
+      comptes: resolues.map((l) => ({ compte: l.compte, tva: l.tva ?? "any", id: l.ledgerAccountId })),
+    };
+  }
+  const ecriture = await creerEcriture(corpsEcriture({
+    date: d.date,
+    libelle: d.libelle,
+    journalId: journal.id,
+    lignes: resolues,
+  }));
+  return { ecrite: true, id: ecriture.id, total: valide.total, journal: journal.code };
 }
 
 export type { Piece };

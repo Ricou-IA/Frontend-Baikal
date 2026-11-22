@@ -257,3 +257,58 @@ export async function finaliser(id: number): Promise<FactureLue> {
 export async function supprimerBrouillon(id: number): Promise<void> {
   await appel("suppression du brouillon", "DELETE", `/customer_invoices/${id}`, undefined, [204, 404]);
 }
+
+// --- Ecritures au journal ---------------------------------------------------------
+
+export interface JournalLu {
+  id: number;
+  code: string;
+  label: string;
+  type: string | null;
+}
+
+export async function journaux(): Promise<JournalLu[]> {
+  const lus: JournalLu[] = [];
+  let curseur: string | null = null;
+  for (let page = 0; page < 10; page++) {
+    let chemin = "/journals?limit=100";
+    if (curseur) chemin += `&cursor=${encodeURIComponent(curseur)}`;
+    const { data } = await appel("journaux", "GET", chemin);
+    for (const j of (Array.isArray(data?.items) ? data.items : [])) {
+      lus.push({ id: Number(j.id), code: String(j.code ?? ""), label: String(j.label ?? ""), type: j.type ?? null });
+    }
+    curseur = data?.has_more && data?.next_cursor ? String(data.next_cursor) : null;
+    if (!curseur) break;
+  }
+  return lus;
+}
+
+/** Passe une ecriture. Elle est definitive : pas de brouillon, pas de
+ *  suppression par l'API, et Pennylane n'empeche pas les doublons. */
+export async function creerEcriture(corps: Record<string, unknown>): Promise<{ id: number; brut: any }> {
+  const { data } = await appel("écriture au journal", "POST", "/ledger_entries", corps, [200, 201]);
+  const id = Number(data?.id);
+  if (!Number.isFinite(id)) {
+    throw new ErreurPennylane("Pennylane n'a pas rendu l'identifiant de l'écriture", 502, "écriture au journal");
+  }
+  return { id, brut: data };
+}
+
+/** Corrige le libelle d'une ecriture, et celui de ses lignes qui le
+ *  reprenaient. Ni les comptes ni les montants ne sont touches. */
+export async function corrigerLibelleEcriture(id: number, libelle: string): Promise<{ ancien: string; lignes: number }> {
+  const { data } = await appel("lecture de l'écriture", "GET", `/ledger_entries/${id}`);
+  const ancien = String(data?.label ?? "");
+  // Les lignes ne sont pas toujours rendues avec l'ecriture : on les lit a part.
+  let lignes: any[] = Array.isArray(data?.ledger_entry_lines) ? data.ledger_entry_lines : [];
+  if (lignes.length === 0) {
+    const r = await appel("lecture des lignes", "GET", `/ledger_entries/${id}/ledger_entry_lines?limit=100`);
+    lignes = Array.isArray(r.data?.items) ? r.data.items : [];
+  }
+  const aCorriger = lignes.filter((l) => String(l?.label ?? "") === ancien).map((l) => ({ id: Number(l.id), label: libelle }));
+  await appel("correction du libellé", "PUT", `/ledger_entries/${id}`, {
+    label: libelle,
+    ...(aCorriger.length > 0 ? { ledger_entry_lines: { update: aCorriger } } : {}),
+  }, [200]);
+  return { ancien, lignes: aCorriger.length };
+}
