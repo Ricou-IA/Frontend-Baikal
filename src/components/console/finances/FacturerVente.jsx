@@ -1,8 +1,11 @@
 /**
  * FacturerVente.jsx - Baikal Console
  * ============================================================================
- * Fenetre « Facturer » d'une vente de la page Finances : le nom et l'adresse du
- * client, puis la facture definitive emise dans Pennylane et envoyee par e-mail.
+ * Fenetre « Facturer » d'une vente de la page Finances, en deux gestes :
+ *   1. le nom et l'adresse du client, puis « Creer le brouillon » : il est cree
+ *      dans Pennylane et y reste, le temps de le relire ;
+ *   2. « Finaliser et envoyer » : le brouillon devient la facture definitive et
+ *      son PDF part par e-mail. Un brouillon peut aussi etre supprime.
  *
  * Ce composant ne calcule rien : les montants viennent de l'action
  * `facture-preparer` (module pur _shared/facturation.ts cote fonction). Le nom
@@ -11,7 +14,7 @@
  * ============================================================================
  */
 import { useEffect, useState } from 'react';
-import { X, Send, FlaskConical, Check, AlertTriangle } from 'lucide-react';
+import { X, Send, FilePlus, Trash2, Check, AlertTriangle } from 'lucide-react';
 import { financeService } from '../../../services/finance.service';
 import { Chargement, Erreur } from '../etats';
 
@@ -51,9 +54,9 @@ export default function FacturerVente({ appId, vente, onClose, onFacturee }) {
     type: 'particulier', prenom: '', nom: '', raison_sociale: '',
     adresse: '', code_postal: '', ville: '', pays: 'FR', email: '', designation: '',
   });
-  const [enCours, setEnCours] = useState(null); // 'essai' | 'emission' | null
+  const [enCours, setEnCours] = useState(null); // 'brouillon' | 'envoi' | 'suppression' | null
   const [erreur, setErreur] = useState(null);
-  const [essai, setEssai] = useState(null);
+  // Derniere reponse de la fonction : elle prime sur l'etat lu a l'ouverture.
   const [resultat, setResultat] = useState(null);
 
   useEffect(() => {
@@ -79,21 +82,43 @@ export default function FacturerVente({ appId, vente, onClose, onFacturee }) {
 
   const maj = (champ) => (e) => setForm((f) => ({ ...f, [champ]: e.target.value }));
 
-  const lancer = async (mode) => {
-    setEnCours(mode);
+  const jouer = async (geste, appel) => {
+    setEnCours(geste);
     setErreur(null);
-    if (mode === 'essai') setEssai(null);
-    const { designation, ...client } = form;
-    const { data, error } = await financeService.emettreFacture(appId, vente.id, client, designation, mode === 'essai');
+    const { data, error } = await appel();
     setEnCours(null);
-    if (error) { setErreur(error.message); return; }
-    if (mode === 'essai') { setEssai(data); return; }
+    if (error) { setErreur(error.message); return null; }
+    return data;
+  };
+
+  const creerBrouillon = async () => {
+    const { designation, ...client } = form;
+    const data = await jouer('brouillon', () => financeService.creerBrouillonFacture(appId, vente.id, client, designation));
+    if (!data) return;
     setResultat(data);
     if (data.facture) onFacturee(vente.id, data.facture);
   };
 
+  const envoyer = async () => {
+    const data = await jouer('envoi', () => financeService.envoyerFacture(appId, vente.id));
+    if (!data) return;
+    setResultat(data);
+    if (data.facture) onFacturee(vente.id, data.facture);
+  };
+
+  const supprimer = async () => {
+    const data = await jouer('suppression', () => financeService.supprimerBrouillonFacture(appId, vente.id));
+    if (!data) return;
+    setResultat({ facture: { etat: 'aucune' } });
+    onFacturee(vente.id, { etat: 'aucune' });
+  };
+
   const m = prepa?.montants;
-  const facture = resultat?.facture;
+  const facture = resultat?.facture ?? prepa?.facture ?? null;
+  const etat = facture?.etat ?? 'aucune';
+  const emise = etat === 'emise_envoyee' || etat === 'emise_envoi_en_attente';
+  const enBrouillon = etat === 'brouillon';
+  const aSaisir = prepa?.facturable && !emise && !enBrouillon;
 
   return (
     <div
@@ -136,28 +161,53 @@ export default function FacturerVente({ appId, vente, onClose, onFacturee }) {
             </p>
           )}
 
-          {prepa?.facturable && facture && (
+          {prepa && emise && (
             <div className="space-y-2">
               <p className="text-sm text-emerald-300 flex items-center gap-2">
                 <Check className="w-4 h-4" />
-                {resultat.deja_emise ? 'Cette vente était déjà facturée : ' : 'Facture émise : '}
-                <span className="font-mono text-white">{facture.numero}</span>
+                Facture émise : <span className="font-mono text-white">{facture.numero}</span>
               </p>
               <p className="text-sm text-baikal-text">
-                {facture.etat === 'emise_envoyee'
-                  ? 'Elle est partie par e-mail au client.'
-                  : 'L’envoi par e-mail est en attente : Pennylane prépare encore le PDF. Le bouton « Renvoyer » de la liste le rejoue dans quelques minutes.'}
+                {etat === 'emise_envoyee'
+                  ? 'Elle est partie par e-mail au client, PDF en pièce jointe.'
+                  : 'L’envoi par e-mail est en attente : Pennylane prépare encore le PDF. « Renvoyer » le rejoue dans un instant.'}
               </p>
-              {resultat.client_existant && (
+              {resultat?.envoi_erreur && <Erreur message={`Envoi : ${resultat.envoi_erreur}`} />}
+              {erreur && <Erreur message={erreur} />}
+            </div>
+          )}
+
+          {prepa && enBrouillon && (
+            <div className="space-y-3">
+              <p className="text-sm text-emerald-300 flex items-center gap-2">
+                <Check className="w-4 h-4" />
+                Le brouillon est créé dans Pennylane.
+              </p>
+              <p className="text-sm text-baikal-text">
+                Il vous attend dans Pennylane, parmi les brouillons de factures clients : vous pouvez l’y relire.
+                Rien n’est émis tant que vous n’avez pas cliqué sur « Finaliser et envoyer ».
+              </p>
+              {resultat?.rendus && (
+                <p className="text-sm text-baikal-text tabular-nums">
+                  Pennylane calcule HT <span className="text-white">{fmtEur(resultat.rendus.ht)}</span>,
+                  TVA <span className="text-white">{fmtEur(resultat.rendus.tva)}</span>,
+                  TTC <span className="text-white">{fmtEur(resultat.rendus.ttc)}</span>.
+                </p>
+              )}
+              {resultat?.client_existant === true && (
                 <p className="text-xs text-baikal-text opacity-70">
                   Ce client existait déjà dans Pennylane : sa fiche a été reprise telle quelle, l’adresse saisie ici n’a pas été appliquée.
                 </p>
               )}
-              {resultat.envoi_erreur && <Erreur message={`Envoi : ${resultat.envoi_erreur}`} />}
+              {facture.erreur && !erreur && <p className="text-xs text-amber-300">Dernier refus : {facture.erreur}</p>}
+              {erreur && <Erreur message={erreur} />}
+              <p className="text-xs text-baikal-text opacity-70">
+                À l’envoi, la facture devient définitive, datée du jour. Elle prend un numéro et ne se supprime plus : une erreur se corrige par un avoir, dans Pennylane. Le PDF part à l’adresse e-mail de la fiche du client.
+              </p>
             </div>
           )}
 
-          {prepa?.facturable && !facture && (
+          {aSaisir && (
             <>
               {prepa.payeur_erreur && (
                 <p className="text-xs text-amber-300">
@@ -216,19 +266,10 @@ export default function FacturerVente({ appId, vente, onClose, onFacturee }) {
                 </p>
               )}
 
-              {essai && (
-                <div className={`text-sm rounded border px-3 py-2 ${essai.conforme ? 'border-emerald-700 text-emerald-300' : 'border-red-700 text-red-300'}`}>
-                  {essai.conforme
-                    ? `Essai concluant : Pennylane calcule HT ${fmtEur(essai.rendus.ht)}, TVA ${fmtEur(essai.rendus.tva)}, TTC ${fmtEur(essai.rendus.ttc)}. Le brouillon d’essai est supprimé.`
-                    : `Essai non conforme : ${essai.raison} Le brouillon d’essai est supprimé, rien n’est émis.`}
-                  {essai.client_existant === false && ' Le client a été créé dans Pennylane.'}
-                </div>
-              )}
-
               {erreur && <Erreur message={erreur} />}
 
               <p className="text-xs text-baikal-text opacity-70">
-                La facture sera définitive et envoyée au client. Elle prend un numéro et ne se supprime plus : une erreur se corrige par un avoir, dans Pennylane.
+                Le brouillon sera créé dans Pennylane, sans numéro. Rien ne part chez le client à cette étape.
               </p>
             </>
           )}
@@ -241,30 +282,51 @@ export default function FacturerVente({ appId, vente, onClose, onFacturee }) {
             disabled={Boolean(enCours)}
             className="px-3 py-1.5 rounded border border-baikal-border text-sm text-baikal-text hover:text-white disabled:opacity-40"
           >
-            {facture ? 'Fermer' : 'Annuler'}
+            {emise || enBrouillon ? 'Fermer' : 'Annuler'}
           </button>
-          {prepa?.facturable && !facture && (
+          {aSaisir && (
+            <button
+              type="button"
+              onClick={creerBrouillon}
+              disabled={Boolean(enCours)}
+              className="px-3 py-1.5 rounded bg-baikal-cyan text-black text-sm font-medium hover:opacity-90 disabled:opacity-40 inline-flex items-center gap-2"
+            >
+              <FilePlus className="w-4 h-4" />
+              {enCours === 'brouillon' ? 'Création en cours…' : 'Créer le brouillon'}
+            </button>
+          )}
+          {prepa && enBrouillon && (
             <>
               <button
                 type="button"
-                onClick={() => lancer('essai')}
+                onClick={supprimer}
                 disabled={Boolean(enCours)}
-                title="Crée le client et un brouillon dans Pennylane, vérifie les montants, puis supprime le brouillon"
                 className="px-3 py-1.5 rounded border border-baikal-border text-sm text-baikal-text hover:text-white disabled:opacity-40 inline-flex items-center gap-2"
               >
-                <FlaskConical className="w-4 h-4" />
-                {enCours === 'essai' ? 'Essai en cours…' : 'Essai sans émettre'}
+                <Trash2 className="w-4 h-4" />
+                {enCours === 'suppression' ? 'Suppression…' : 'Supprimer le brouillon'}
               </button>
               <button
                 type="button"
-                onClick={() => lancer('emission')}
+                onClick={envoyer}
                 disabled={Boolean(enCours)}
                 className="px-3 py-1.5 rounded bg-baikal-cyan text-black text-sm font-medium hover:opacity-90 disabled:opacity-40 inline-flex items-center gap-2"
               >
                 <Send className="w-4 h-4" />
-                {enCours === 'emission' ? 'Émission en cours…' : 'Émettre et envoyer'}
+                {enCours === 'envoi' ? 'Envoi en cours…' : 'Finaliser et envoyer'}
               </button>
             </>
+          )}
+          {prepa && etat === 'emise_envoi_en_attente' && (
+            <button
+              type="button"
+              onClick={envoyer}
+              disabled={Boolean(enCours)}
+              className="px-3 py-1.5 rounded bg-baikal-cyan text-black text-sm font-medium hover:opacity-90 disabled:opacity-40 inline-flex items-center gap-2"
+            >
+              <Send className="w-4 h-4" />
+              {enCours === 'envoi' ? 'Envoi en cours…' : 'Renvoyer'}
+            </button>
           )}
         </div>
       </div>

@@ -70,6 +70,8 @@ export interface MessageResend {
   // Resend dedoublonne 24 h sur cette cle : un lot rejoue apres un crash ne
   // renvoie pas le mail deja parti.
   idempotencyKey?: string;
+  // Pieces jointes, contenu en base64 (facture PDF d'un mail transactionnel).
+  attachments?: { filename: string; content: string }[];
 }
 
 export interface ResultatEnvoi {
@@ -89,6 +91,7 @@ export async function envoyerResend(cle: string, m: MessageResend): Promise<Resu
     ...(m.replyTo ? { reply_to: m.replyTo } : {}),
     ...(m.headers ? { headers: m.headers } : {}),
     ...(m.tags ? { tags: m.tags } : {}),
+    ...(m.attachments ? { attachments: m.attachments } : {}),
   });
   for (let essai = 0; essai < 3; essai++) {
     let res: Response;

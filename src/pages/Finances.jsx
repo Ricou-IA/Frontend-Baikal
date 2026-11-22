@@ -752,6 +752,20 @@ function CelluleFacture({ vente, facture, lectureSeule, onFacturer, onRenvoyer, 
       </span>
     );
   }
+  if (facture?.etat === 'brouillon') {
+    if (lectureSeule) return <span className="text-xs text-sky-300">brouillon</span>;
+    return (
+      <button
+        type="button"
+        onClick={() => onFacturer(vente)}
+        title={facture.erreur || 'Le brouillon attend dans Pennylane : l’envoyer ou le supprimer'}
+        className="px-2 py-0.5 rounded border border-sky-700 text-xs text-sky-300 inline-flex items-center gap-1 hover:text-white"
+      >
+        <FileText className="w-3 h-3" />
+        Brouillon
+      </button>
+    );
+  }
   if (lectureSeule) return <span className="opacity-40">—</span>;
   if (!vente.facturable?.ok) {
     return <span className="opacity-40 text-xs" title={vente.facturable?.raison}>non facturable</span>;
@@ -761,7 +775,7 @@ function CelluleFacture({ vente, facture, lectureSeule, onFacturer, onRenvoyer, 
     <button
       type="button"
       onClick={() => onFacturer(vente)}
-      title={facture?.erreur || 'Émettre la facture définitive dans Pennylane et l\u2019envoyer au client'}
+      title={facture?.erreur || 'Créer le brouillon de la facture dans Pennylane, puis l\u2019envoyer au client'}
       className={`px-2 py-0.5 rounded border text-xs inline-flex items-center gap-1 hover:text-white ${reprise ? 'border-amber-700 text-amber-300' : 'border-baikal-border text-baikal-text'}`}
     >
       <FileText className="w-3 h-3" />
@@ -796,11 +810,12 @@ function Ventes({ appId, lectureSeule = false }) {
   const renvoyer = async (vente) => {
     setRenvoi(vente.id);
     setErreurRenvoi(null);
-    const { data, error } = await financeService.renvoyerFacture(appId, vente.id);
+    const { data, error } = await financeService.envoyerFacture(appId, vente.id);
     setRenvoi(null);
     if (error) { setErreurRenvoi(error.message); return; }
     if (data.facture) noterFacture(vente.id, data.facture);
-    if (!data.envoyee) setErreurRenvoi('Pennylane prépare encore le PDF de la facture : réessayez dans quelques minutes.');
+    if (data.envoi_erreur) setErreurRenvoi(`Envoi : ${data.envoi_erreur}`);
+    else if (!data.envoyee) setErreurRenvoi('Pennylane prépare encore le PDF de la facture : réessayez dans quelques minutes.');
   };
 
   const parCanal = useMemo(() => {

@@ -13,9 +13,11 @@
 //   ponctuelle-creer     { appId, libelle, montant, jour }
 //   ponctuelle-supprimer { id }
 //   facture-preparer { appId, venteId }       → montants + payeur lu dans Stripe
-//   facture-emettre  { appId, venteId, client, designation?, essai? }
-//                                             → facture definitive dans Pennylane, envoyee
-//   facture-renvoyer { appId, venteId }       → rejoue le seul envoi
+//   facture-brouillon { appId, venteId, client, designation? }
+//                                             → brouillon cree dans Pennylane, il y reste
+//   facture-envoyer  { appId, venteId }       → le brouillon devient definitif, PDF envoye par Resend
+//                                               (sur une facture deja emise : rejoue le seul envoi)
+//   facture-supprimer-brouillon { appId, venteId } → brouillon efface, vente a nouveau facturable
 //   facture-diagnostic                        → cron uniquement : jeton et comptes, lecture seule
 //
 // La page ne lit QUE l'archive : aucun appel Stripe en lecture d'ecran.
@@ -27,13 +29,14 @@ import { ErreurAcces, droitsModules, exigerModule, exigerSite, sitesAutorises } 
 import { captureJour, capturePeriode } from "./capture.ts";
 import { enrichirSite, sitesAvecVue } from "./enrichissement.ts";
 import {
+  creerBrouillonFacture,
   diagnosticFacturation,
-  emettreFacture,
+  envoyerFacture,
   ErreurPennylane,
   facturesDesVentes,
   preparerFacture,
   RefusFacture,
-  renvoyerFacture,
+  supprimerBrouillonFacture,
 } from "./factures.ts";
 // Meme cascade que la page Clients (admin-dossiers/canal.ts) : l'origine
 // affichee dans /finances doit se lire comme celle de la fiche client. Le
@@ -282,11 +285,11 @@ serve(async (req) => {
     // en ecriture. Les actions par identifiant verifient le module apres
     // avoir resolu le site de la ligne.
     const droits = await droitsModules(caller);
-    // Les trois actions de facturation sont des ecritures : meme la preparation,
+    // Les actions de facturation sont des ecritures : meme la preparation,
     // qui lit le nom et l'e-mail du payeur dans Stripe.
     const ecritures = [
       "rafraichir", "charge-creer", "ponctuelle-creer",
-      "facture-preparer", "facture-emettre", "facture-renvoyer",
+      "facture-preparer", "facture-brouillon", "facture-envoyer", "facture-supprimer-brouillon",
     ];
     if (!parId.includes(action)) {
       exigerModule(droits, appId, "finances", ecritures.includes(action) ? "ecriture" : "lecture");
@@ -399,21 +402,27 @@ serve(async (req) => {
       return json({ data: await preparerFacture(admin, appId, String(body.venteId ?? "")), error: null });
     }
 
-    if (action === "facture-emettre") {
+    if (action === "facture-brouillon") {
       const { data: qui } = await caller.auth.getUser();
-      const r = await emettreFacture(admin, {
+      const r = await creerBrouillonFacture(admin, {
         appId,
         venteId: String(body.venteId ?? ""),
         client: body.client,
         designation: typeof body.designation === "string" ? body.designation : undefined,
-        essai: body.essai === true,
         userId: qui?.user?.id ?? null,
       });
       return json({ data: r, error: null });
     }
 
-    if (action === "facture-renvoyer") {
-      return json({ data: await renvoyerFacture(admin, appId, String(body.venteId ?? "")), error: null });
+    if (action === "facture-envoyer") {
+      return json({ data: await envoyerFacture(admin, appId, String(body.venteId ?? "")), error: null });
+    }
+
+    if (action === "facture-supprimer-brouillon") {
+      return json({
+        data: await supprimerBrouillonFacture(admin, appId, String(body.venteId ?? "")),
+        error: null,
+      });
     }
 
     if (action === "partenariat") {

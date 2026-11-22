@@ -1,4 +1,4 @@
-import { assertEquals, assertThrows } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assert, assertEquals, assertThrows } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   choisirCompte,
   codeTva,
@@ -9,6 +9,9 @@ import {
   designationFacture,
   ECART_MAX,
   etatAffiche,
+  expediteurFacture,
+  mailFacture,
+  referenceFacture,
   type LigneFacture,
   mentionPaiement,
   montantsFacture,
@@ -279,4 +282,41 @@ Deno.test("affichage : creee mais non envoyee est un etat a part entiere", () =>
     etatAffiche(ligne({ statut: "emise", numero: "F-1", envoyee_le: "2026-11-22T10:00:00Z" })),
     "emise_envoyee",
   );
+});
+
+Deno.test("reprise : un brouillon en attente ne se recree pas par-dessus", () => {
+  const b = ligne({ statut: "brouillon", etape: "brouillon", pennylane_invoice_id: 9, maj_le: "2026-11-20T09:00:00Z" });
+  assertEquals(decisionReprise(b, maintenant), "brouillon");
+  assertEquals(etatAffiche(b), "brouillon");
+});
+
+Deno.test("reference : le payment_intent suivi d'un suffixe, different a chaque brouillon", () => {
+  const a = referenceFacture("pi_fictif", new Date("2026-11-22T10:00:00Z"));
+  const b = referenceFacture("pi_fictif", new Date("2026-11-22T10:00:01Z"));
+  assert(a.startsWith("pi_fictif-"));
+  assert(a !== b);
+});
+
+Deno.test("expediteur : nom et adresse du site, ou rien si l'adresse manque", () => {
+  assertEquals(expediteurFacture("Produit Exemple", "bonjour@exemple.test"), "Produit Exemple <bonjour@exemple.test>");
+  assertEquals(expediteurFacture(null, "bonjour@exemple.test"), "bonjour@exemple.test");
+  assertEquals(expediteurFacture('Nom "piege" <x>', "bonjour@exemple.test"), "Nom piege x <bonjour@exemple.test>");
+  assertEquals(expediteurFacture("Produit Exemple", null), null);
+  assertEquals(expediteurFacture("Produit Exemple", "pas-une-adresse"), null);
+});
+
+Deno.test("mail : la facture en piece jointe, numero et date, sans montant ni lien", () => {
+  const m = mailFacture({ numero: "F-2026-0042", dateFacture: "2026-11-22", site: "Exemple.test" });
+  assertEquals(m.objet, "Votre facture F-2026-0042");
+  assert(m.texte.includes("la facture n° F-2026-0042 du 22/11/2026"));
+  assert(m.texte.includes("Elle est déjà réglée"));
+  assert(!m.texte.includes("€"));
+  assert(!/https?:/.test(m.texte + m.html));
+  assertEquals(m.nomFichier, "facture-F-2026-0042.pdf");
+});
+
+Deno.test("mail : le nom du site est echappe dans le HTML, le nom de fichier est sur", () => {
+  const m = mailFacture({ numero: "F/2026 7", dateFacture: "2026-11-22", site: "A <b> & C" });
+  assert(m.html.includes("A &lt;b&gt; &amp; C"));
+  assertEquals(m.nomFichier, "facture-F-2026-7.pdf");
 });

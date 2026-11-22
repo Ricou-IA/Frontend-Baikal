@@ -10,7 +10,9 @@
 //   - `filter` est un tableau JSON encode ; un filtre peut etre IGNORE par l'API :
 //     tout resultat se revalide localement ;
 //   - 25 requetes par 5 secondes : sur un 429 on attend `retry-after` ;
-//   - envoi par e-mail : 409 tant que le PDF n'est pas genere.
+//   - le PDF d'une facture tout juste finalisee n'est pas toujours pret :
+//     `public_file_url` reste vide quelques instants. Le mail part de Resend,
+//     pas de Pennylane.
 // deno-lint-ignore-file no-explicit-any
 import type { CompteLu } from "./facturation.ts";
 
@@ -154,6 +156,10 @@ export interface FactureLue {
   numero: string | null;
   date: string | null;
   reference: string | null;
+  /** Le client de la facture : c'est a sa fiche que le mail est adresse. */
+  clientId: number | null;
+  /** Adresse du PDF, a duree limitee ; null tant que Pennylane ne l'a pas genere. */
+  pdfUrl: string | null;
   brut: any;
 }
 
@@ -168,6 +174,10 @@ function lire(data: any): FactureLue {
     numero: data?.invoice_number ? String(data.invoice_number) : null,
     date: data?.date ? String(data.date) : null,
     reference: data?.external_reference ? String(data.external_reference) : null,
+    clientId: Number.isFinite(Number(data?.customer?.id)) && data?.customer?.id != null
+      ? Number(data.customer.id)
+      : null,
+    pdfUrl: typeof data?.public_file_url === "string" && data.public_file_url ? data.public_file_url : null,
     brut: data,
   };
 }
@@ -177,24 +187,53 @@ export async function creerBrouillon(corps: Record<string, unknown>): Promise<Fa
   return lire(data);
 }
 
-export async function lireFacture(id: number): Promise<FactureLue> {
-  const { data } = await appel("lecture de la facture", "GET", `/customer_invoices/${id}`);
+/** La facture, ou null si elle n'existe plus (brouillon supprime dans Pennylane). */
+export async function lireFacture(id: number): Promise<FactureLue | null> {
+  const { statut, data } = await appel(
+    "lecture de la facture",
+    "GET",
+    `/customer_invoices/${id}`,
+    undefined,
+    [200, 404],
+  );
+  return statut === 404 ? null : lire(data);
+}
+
+/** Change la date d'un brouillon (et son echeance) : une facture est datee du
+ *  jour ou elle devient definitive, pas du jour ou le brouillon a ete cree. */
+export async function daterBrouillon(id: number, jour: string): Promise<FactureLue> {
+  const { data } = await appel(
+    "date du brouillon",
+    "PUT",
+    `/customer_invoices/${id}`,
+    { date: jour, deadline: jour },
+    [200],
+  );
   return lire(data);
 }
 
-/** Facture deja creee sous cette reference externe, ou null. Sert a retrouver
- *  une facture dont l'identifiant n'a pas pu etre enregistre. */
-export async function factureParReference(reference: string): Promise<FactureLue | null> {
-  const { data } = await appel(
-    "recherche de la facture",
-    "GET",
-    `/customer_invoices?limit=20&filter=${
-      filtre([{ field: "external_reference", operator: "eq", value: reference }])
-    }`,
-  );
-  const items: any[] = Array.isArray(data?.items) ? data.items : [];
-  const trouvee = items.find((f) => String(f?.external_reference ?? "") === reference);
-  return trouvee ? lire(trouvee) : null;
+/** Les adresses e-mail de la fiche d'un client. */
+export async function emailsDuClient(id: number): Promise<string[]> {
+  const { data } = await appel("lecture du client", "GET", `/customers/${id}`);
+  const emails: unknown[] = Array.isArray(data?.emails) ? data.emails : [];
+  return emails.map((e) => String(e).trim()).filter((e) => e.includes("@"));
+}
+
+/** Le PDF d'une facture definitive, en octets. null = Pennylane ne l'a pas
+ *  encore genere : ce n'est pas une erreur, l'envoi se rejoue plus tard. */
+export async function pdfFacture(id: number): Promise<Uint8Array | null> {
+  const facture = await lireFacture(id);
+  if (!facture?.pdfUrl) return null;
+  const res = await fetch(facture.pdfUrl, { signal: AbortSignal.timeout(20000) });
+  if (!res.ok) {
+    throw new ErreurPennylane(`Le PDF de la facture a répondu ${res.status}`, 502, "lecture du PDF");
+  }
+  const octets = new Uint8Array(await res.arrayBuffer());
+  // « %PDF » : on n'envoie jamais au client autre chose qu'un PDF.
+  if (octets.length < 5 || octets[0] !== 0x25 || octets[1] !== 0x50 || octets[2] !== 0x44 || octets[3] !== 0x46) {
+    throw new ErreurPennylane("Le fichier rendu par Pennylane n'est pas un PDF", 502, "lecture du PDF");
+  }
+  return octets;
 }
 
 /** Rend la facture definitive : elle prend son numero et ne se modifie plus. */
@@ -203,20 +242,8 @@ export async function finaliser(id: number): Promise<FactureLue> {
   return lire(data);
 }
 
-/** Supprime un brouillon (jamais une facture definitive : Pennylane le refuse). */
+/** Supprime un brouillon (jamais une facture definitive : Pennylane le refuse).
+ *  Un brouillon deja disparu (404) est un brouillon supprime. */
 export async function supprimerBrouillon(id: number): Promise<void> {
-  await appel("suppression du brouillon", "DELETE", `/customer_invoices/${id}`, undefined, [204]);
-}
-
-/** Envoi au client, aux adresses de sa fiche. false = le PDF n'est pas encore
- *  pret (409) : ce n'est pas une erreur, l'envoi se rejoue plus tard. */
-export async function envoyerParEmail(id: number): Promise<boolean> {
-  const { statut } = await appel(
-    "envoi par e-mail",
-    "POST",
-    `/customer_invoices/${id}/send_by_email`,
-    undefined,
-    [204, 409],
-  );
-  return statut === 204;
+  await appel("suppression du brouillon", "DELETE", `/customer_invoices/${id}`, undefined, [204, 404]);
 }

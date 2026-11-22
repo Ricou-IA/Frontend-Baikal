@@ -336,7 +336,7 @@ export function controlerTotaux(facture: any, attendus: Montants): Controle {
 // --- Reprise : que faire d'une emission deja commencee ? ------------------------
 
 export interface LigneFacture {
-  statut: "en_cours" | "emise" | "erreur";
+  statut: "en_cours" | "brouillon" | "emise" | "erreur";
   etape: "client" | "brouillon" | "finalisee" | null;
   pennylane_invoice_id: number | null;
   numero: string | null;
@@ -348,11 +348,14 @@ export interface LigneFacture {
  *  la fonction qui la portait est morte (limite d'execution depassee). */
 export const VERROU_MS = 2 * 60 * 1000;
 
-export type Reprise = "nouvelle" | "deja_emise" | "occupee" | "reprendre";
+export type Reprise = "nouvelle" | "deja_emise" | "brouillon" | "occupee" | "reprendre";
 
 export function decisionReprise(ligne: LigneFacture | null, maintenant: Date): Reprise {
   if (!ligne) return "nouvelle";
   if (ligne.statut === "emise") return "deja_emise";
+  // Le brouillon attend dans Pennylane : il s'envoie ou se supprime, il ne se
+  // recree pas par-dessus.
+  if (ligne.statut === "brouillon") return "brouillon";
   if (ligne.statut === "en_cours") {
     const age = maintenant.getTime() - new Date(ligne.maj_le).getTime();
     if (age < VERROU_MS) return "occupee";
@@ -361,10 +364,65 @@ export function decisionReprise(ligne: LigneFacture | null, maintenant: Date): R
 }
 
 /** Ce que la liste des ventes affiche pour une vente. */
-export type EtatAffiche = "aucune" | "en_cours" | "erreur" | "emise_envoi_en_attente" | "emise_envoyee";
+export type EtatAffiche =
+  | "aucune"
+  | "en_cours"
+  | "brouillon"
+  | "erreur"
+  | "emise_envoi_en_attente"
+  | "emise_envoyee";
 
 export function etatAffiche(ligne: LigneFacture | null): EtatAffiche {
   if (!ligne) return "aucune";
   if (ligne.statut === "emise") return ligne.envoyee_le ? "emise_envoyee" : "emise_envoi_en_attente";
+  if (ligne.statut === "brouillon") return "brouillon";
   return ligne.statut === "erreur" ? "erreur" : "en_cours";
+}
+
+// --- Le mail qui porte la facture ----------------------------------------------
+
+/** Reference externe du brouillon : le payment_intent, suivi d'un suffixe.
+ *  Pennylane garde une reference « deja prise » meme apres la suppression du
+ *  brouillon : sans suffixe, un brouillon supprime ne pourrait plus etre refait. */
+export function referenceFacture(paymentIntent: string, maintenant: Date): string {
+  return `${paymentIntent}-${maintenant.getTime().toString(36)}`;
+}
+
+/** L'expediteur du mail, ou null si le site n'en a pas d'enregistre. */
+export function expediteurFacture(nom: string | null | undefined, email: string | null | undefined): string | null {
+  const e = (email ?? "").trim();
+  if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(e)) return null;
+  const n = (nom ?? "").replace(/[<>"\r\n]/g, "").trim();
+  return n ? `${n} <${e}>` : e;
+}
+
+function echapper(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+export interface MailFacture {
+  objet: string;
+  texte: string;
+  html: string;
+  nomFichier: string;
+}
+
+/** Mail transactionnel : la facture en piece jointe, rien d'autre. Pas de lien
+ *  de desinscription, ce n'est pas un envoi commercial. Le montant n'y figure
+ *  pas : il est sur la facture. */
+export function mailFacture(d: { numero: string; dateFacture: string; site: string }): MailFacture {
+  const numero = d.numero.trim();
+  const site = d.site.trim();
+  const lignes = [
+    "Bonjour,",
+    `Vous trouverez en pièce jointe la facture n° ${numero} du ${jourFr(d.dateFacture)}, pour votre commande sur ${site}.`,
+    "Elle est déjà réglée : vous n'avez rien à payer.",
+    `Cordialement,\n${site}`,
+  ];
+  return {
+    objet: `Votre facture ${numero}`,
+    texte: lignes.join("\n\n"),
+    html: lignes.map((l) => `<p>${echapper(l).replace(/\n/g, "<br>")}</p>`).join(""),
+    nomFichier: `facture-${numero.replace(/[^A-Za-z0-9._-]+/g, "-")}.pdf`,
+  };
 }

@@ -75,13 +75,19 @@ export const financeService = {
   preparerFacture(appId, venteId) {
     return appelerEdge('admin-finance', { action: 'facture-preparer', appId, venteId });
   },
-  emettreFacture(appId, venteId, client, designation, essai = false) {
+  // Deux gestes : le brouillon (il reste dans Pennylane), puis l'envoi, qui le
+  // rend definitif et fait partir le PDF. Sur une facture deja emise,
+  // envoyerFacture rejoue le seul envoi.
+  creerBrouillonFacture(appId, venteId, client, designation) {
     return appelerEdge('admin-finance', {
-      action: 'facture-emettre', appId, venteId, client, designation, essai,
+      action: 'facture-brouillon', appId, venteId, client, designation,
     });
   },
-  renvoyerFacture(appId, venteId) {
-    return appelerEdge('admin-finance', { action: 'facture-renvoyer', appId, venteId });
+  envoyerFacture(appId, venteId) {
+    return appelerEdge('admin-finance', { action: 'facture-envoyer', appId, venteId });
+  },
+  supprimerBrouillonFacture(appId, venteId) {
+    return appelerEdge('admin-finance', { action: 'facture-supprimer-brouillon', appId, venteId });
   },
 };
 
