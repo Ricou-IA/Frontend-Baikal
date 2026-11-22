@@ -248,7 +248,7 @@ export async function supprimerPieceVentes(admin: SupabaseClient, appId: string,
  *  existe deja, n'est pas une erreur : il est rendu avec sa raison. */
 export async function piecesPlanifiees(
   admin: SupabaseClient,
-  d: { appId?: string; du?: string; au?: string; date?: string },
+  d: { appId?: string; du?: string; au?: string; date?: string; remplacer?: boolean },
 ) {
   const aujourdhui = new Intl.DateTimeFormat("fr-CA", { timeZone: "Europe/Paris" }).format(new Date());
   const mois = moisPrecedent(aujourdhui);
@@ -263,6 +263,15 @@ export async function piecesPlanifiees(
   const resultats = [];
   for (const s of sites ?? []) {
     try {
+      // Refaire une piece : son brouillon est d'abord supprime (refuse si la
+      // piece est deja finalisee dans Pennylane), puis elle est recalculee.
+      if (d.remplacer) {
+        const p = periode(du, au);
+        const { data: ancienne, error: errAncienne } = await admin.schema("admin").from("pieces_ventes")
+          .select("id").eq("app_id", s.id).eq("du", p.premierJour).eq("au", p.dernierJour).maybeSingle();
+        if (errAncienne) throw new Error(`lecture de la pièce: ${errAncienne.message}`);
+        if (ancienne) await supprimerPieceVentes(admin, s.id, ancienne.id);
+      }
       const r = await creerPieceVentes(admin, { appId: s.id, du, au, userId: null, date: d.date });
       resultats.push({
         app_id: s.id,

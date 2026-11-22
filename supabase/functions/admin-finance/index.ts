@@ -285,6 +285,7 @@ serve(async (req) => {
         du: texte(body.du),
         au: texte(body.au),
         date: texte(body.date),
+        remplacer: body.remplacer === true,
       });
       return json({ data: r, error: null });
     }
