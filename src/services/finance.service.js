@@ -89,6 +89,17 @@ export const financeService = {
   supprimerBrouillonFacture(appId, venteId) {
     return appelerEdge('admin-finance', { action: 'facture-supprimer-brouillon', appId, venteId });
   },
+  // Piece de ventes d'une periode de mois entiers (AAAA-MM) : brouillon dans
+  // Pennylane, finalise par le comptable.
+  calculerPiece(appId, du, au) {
+    return appelerEdge('admin-finance', { action: 'piece-calculer', appId, du, au });
+  },
+  creerPiece(appId, du, au) {
+    return appelerEdge('admin-finance', { action: 'piece-creer', appId, du, au });
+  },
+  supprimerPiece(appId, id) {
+    return appelerEdge('admin-finance', { action: 'piece-supprimer', appId, id });
+  },
 };
 
 export { appelerEdge };

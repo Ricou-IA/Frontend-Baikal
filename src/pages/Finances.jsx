@@ -31,6 +31,7 @@ import {
 } from '../components/console/etats';
 import { financeService } from '../services/finance.service';
 import FacturerVente from '../components/console/finances/FacturerVente';
+import PieceVentes from '../components/console/finances/PieceVentes';
 // Origine des ventes : memes buckets et memes libelles que la page Clients
 // (BadgeCanal), calcules par l'EF avec la cascade de admin-dossiers/canal.ts.
 import { BadgeCanal, CANAUX } from '../components/console/badges-clients';
@@ -1052,6 +1053,7 @@ function FinancesContent() {
       <Tendance appId={currentApp} />
       <CoutsParMois appId={currentApp} />
       <Ventes appId={currentApp} lectureSeule={!ecriture} />
+      <PieceVentes appId={currentApp} lectureSeule={!ecriture} />
       <Partenariat appId={currentApp} />
       <ChargesRecurrentes appId={currentApp} lectureSeule={!ecriture} />
       <ChargesPonctuelles appId={currentApp} lectureSeule={!ecriture} />

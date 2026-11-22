@@ -18,6 +18,9 @@
 //   facture-envoyer  { appId, venteId }       → le brouillon devient definitif, PDF envoye par Resend
 //                                               (sur une facture deja emise : rejoue le seul envoi)
 //   facture-supprimer-brouillon { appId, venteId } → brouillon efface, vente a nouveau facturable
+//   piece-calculer   { appId, du, au }        → la piece de ventes de la periode (lecture seule)
+//   piece-creer      { appId, du, au }        → brouillon de la piece dans Pennylane (jamais finalise ici)
+//   piece-supprimer  { appId, id }            → brouillon de piece efface
 //   facture-diagnostic                        → cron uniquement : jeton et comptes, lecture seule
 //
 // La page ne lit QUE l'archive : aucun appel Stripe en lecture d'ecran.
@@ -38,6 +41,7 @@ import {
   RefusFacture,
   supprimerBrouillonFacture,
 } from "./factures.ts";
+import { calculerPieceVentes, creerPieceVentes, supprimerPieceVentes } from "./piece-ventes.ts";
 // Meme cascade que la page Clients (admin-dossiers/canal.ts) : l'origine
 // affichee dans /finances doit se lire comme celle de la fiche client. Le
 // canal SQL de l'archive (admin.canal_vente) reste stocke mais n'est plus
@@ -290,6 +294,7 @@ serve(async (req) => {
     const ecritures = [
       "rafraichir", "charge-creer", "ponctuelle-creer",
       "facture-preparer", "facture-brouillon", "facture-envoyer", "facture-supprimer-brouillon",
+      "piece-creer", "piece-supprimer",
     ];
     if (!parId.includes(action)) {
       exigerModule(droits, appId, "finances", ecritures.includes(action) ? "ecriture" : "lecture");
@@ -423,6 +428,29 @@ serve(async (req) => {
         data: await supprimerBrouillonFacture(admin, appId, String(body.venteId ?? "")),
         error: null,
       });
+    }
+
+    // Piece de ventes de la periode : calcul en lecture, brouillon en ecriture.
+    if (action === "piece-calculer") {
+      return json({
+        data: await calculerPieceVentes(admin, appId, String(body.du ?? ""), String(body.au ?? "")),
+        error: null,
+      });
+    }
+
+    if (action === "piece-creer") {
+      const { data: qui } = await caller.auth.getUser();
+      const r = await creerPieceVentes(admin, {
+        appId,
+        du: String(body.du ?? ""),
+        au: String(body.au ?? ""),
+        userId: qui?.user?.id ?? null,
+      });
+      return json({ data: r, error: null });
+    }
+
+    if (action === "piece-supprimer") {
+      return json({ data: await supprimerPieceVentes(admin, appId, String(body.id ?? "")), error: null });
     }
 
     if (action === "partenariat") {
