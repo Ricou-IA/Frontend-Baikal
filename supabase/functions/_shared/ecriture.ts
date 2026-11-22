@@ -14,6 +14,9 @@ export interface LigneDemandee {
   debit?: number;
   credit?: number;
   libelle?: string;
+  /** Accepter un compte desactive au plan comptable. Jamais par defaut : c'est
+   *  le comptable qui le demande, compte par compte. */
+  desactive?: boolean;
 }
 
 export type Validation =
@@ -60,10 +63,15 @@ export interface CompteDeclinaison {
 
 /** L'identifiant du compte pour la declinaison de TVA demandee. Aucun repli :
  *  une declinaison absente est une erreur, pas un compte voisin. */
-export function declinaison(comptes: CompteDeclinaison[], numero: string, tva?: string): number | null {
+export function declinaison(
+  comptes: CompteDeclinaison[],
+  numero: string,
+  tva?: string,
+  accepterDesactive = false,
+): number | null {
   const voulue = tva ?? "any";
   const trouve = comptes.find((c) =>
-    String(c.number) === numero && c.enabled !== false && (c.vat_rate ?? "any") === voulue
+    String(c.number) === numero && (accepterDesactive || c.enabled !== false) && (c.vat_rate ?? "any") === voulue
   );
   return trouve ? trouve.id : null;
 }

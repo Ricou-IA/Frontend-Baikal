@@ -51,6 +51,7 @@ import {
   passerEcriture,
   piecesPlanifiees,
   supprimerPieceVentes,
+  validerPieces,
 } from "./piece-ventes.ts";
 // Meme cascade que la page Clients (admin-dossiers/canal.ts) : l'origine
 // affichee dans /finances doit se lire comme celle de la fiche client. Le
@@ -292,6 +293,20 @@ serve(async (req) => {
         remplacer: body.remplacer === true,
       });
       return json({ data: r, error: null });
+    }
+
+    // Validation des pieces en brouillon, sur demande explicite du comptable :
+    // meme porte que le cron, jamais planifiee.
+    if (action === "pieces-valider") {
+      const attendu = Deno.env.get("ADMIN_FINANCE_CRON_SECRET") ??
+        Deno.env.get("ADMIN_SEO_CRON_SECRET");
+      if (!attendu || req.headers.get("x-cron-secret") !== attendu) {
+        return json({ data: null, error: "Secret de cron invalide" }, 401);
+      }
+      return json({
+        data: await validerPieces(admin, typeof body.appId === "string" && body.appId ? body.appId : undefined),
+        error: null,
+      });
     }
 
     // Ecriture au journal demandee par le comptable : meme porte que le cron,

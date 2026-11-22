@@ -24,6 +24,7 @@ import {
   comptesDuNumero,
   creerBrouillon,
   creerEcriture,
+  finaliser,
   journaux,
   creerClient,
   lireFacture,
@@ -303,6 +304,38 @@ export async function piecesPlanifiees(
   return { du, au, resultats };
 }
 
+/** Validation des pieces encore en brouillon, sur demande explicite du
+ *  comptable : chaque brouillon devient une facture definitive et prend son
+ *  numero. Une piece deja validee est rendue telle quelle. */
+export async function validerPieces(admin: SupabaseClient, appId?: string) {
+  let requete = admin.schema("admin").from("pieces_ventes")
+    .select("id, app_id, du, au, pennylane_invoice_id").order("app_id");
+  if (appId) requete = requete.eq("app_id", appId);
+  const { data, error } = await requete;
+  if (error) throw new Error(`lecture des pièces: ${error.message}`);
+  const resultats = [];
+  for (const p of data ?? []) {
+    try {
+      let facture = await lireFacture(Number(p.pennylane_invoice_id));
+      if (!facture) throw new Error("brouillon introuvable dans Pennylane");
+      const dejaValidee = !facture.brouillon;
+      if (facture.brouillon) facture = await finaliser(facture.id);
+      resultats.push({
+        app_id: p.app_id,
+        du: p.du,
+        au: p.au,
+        validee: true,
+        deja_validee: dejaValidee,
+        numero: facture.numero,
+        ttc: montant(facture.brut?.currency_amount ?? facture.brut?.amount),
+      });
+    } catch (e) {
+      resultats.push({ app_id: p.app_id, du: p.du, au: p.au, validee: false, raison: String((e as Error).message).slice(0, 300) });
+    }
+  }
+  return { resultats };
+}
+
 /** Ecriture au journal demandee par le comptable (regularisation, Climate).
  *  `essai` : tout est verifie et resolu (journal, comptes, equilibre), rien
  *  n'est ecrit. Sans `essai`, l'ecriture est passee, une fois, definitivement. */
@@ -320,9 +353,14 @@ export async function passerEcriture(d: {
   const journal = tous.find((j) => j.code === d.journal) ?? null;
   const resolues = [];
   for (const l of d.lignes) {
-    const id = declinaison(await comptesDuNumero(l.compte), l.compte, l.tva);
+    const lus = await comptesDuNumero(l.compte);
+    const id = declinaison(lus, l.compte, l.tva, l.desactive === true);
     if (id === null) {
-      throw new RefusFacture(`Le compte ${l.compte} (${l.tva ?? "générique"}) n'existe pas dans Pennylane.`, 400);
+      const vus = lus.map((c) => `${c.vat_rate ?? "any"}${c.enabled === false ? " désactivé" : ""}`).join(", ") || "aucun";
+      throw new RefusFacture(
+        `Le compte ${l.compte} (${l.tva ?? "générique"}) n'est pas utilisable dans Pennylane. Déclinaisons lues : ${vus}.`,
+        400,
+      );
     }
     resolues.push({ ...l, ledgerAccountId: id });
   }

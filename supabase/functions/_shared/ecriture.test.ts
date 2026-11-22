@@ -57,3 +57,9 @@ Deno.test("corps : montants en chaines a deux decimales, libelle repris sur les 
   assertEquals(corps.ledger_entry_lines[1].label, "Contrepartie");
   assertThrows(() => corpsEcriture({ date: "22/11/2026", libelle: "x", journalId: 1, lignes: [] }));
 });
+
+Deno.test("compte : un compte desactive n'est pris que sur demande explicite", () => {
+  const comptes = [{ id: 9, number: "623800", vat_rate: "any", enabled: false }];
+  assertEquals(declinaison(comptes, "623800"), null);
+  assertEquals(declinaison(comptes, "623800", undefined, true), 9);
+});
