@@ -44,7 +44,7 @@
       "vue": "baikal_comptes_pro",
       "titre": "Chaque compte a un identifiant, un nom, un état actif et un drapeau de test",
       "requiert": ["compte_id", "raison_sociale", "actif", "est_test"],
-      "sql": "select compte_id, raison_sociale from @SCHEMA@.baikal_comptes_pro where compte_id is null or raison_sociale is null or actif is null or est_test is null",
+      "sql": "select compte_id, raison_sociale is null as sans_nom, actif is null as sans_etat, est_test is null as sans_drapeau_test from @SCHEMA@.baikal_comptes_pro where compte_id is null or raison_sociale is null or actif is null or est_test is null",
       "si_echec": "Une ligne sans nom ou sans état s'affiche vide dans la liste, et un est_test nul fait disparaître le compte des deux positions de la bascule « Exclure tests ».",
       "correction": "raison_sociale = coalesce(société, nom, email) ; actif et est_test passés par coalesce(…, true/false)."
     },

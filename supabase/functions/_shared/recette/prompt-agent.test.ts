@@ -117,3 +117,9 @@ Deno.test("Comptes : l'agent le publie si l'app a des comptes, sans toucher au n
   // La réponse finale dit quels modules sont publiés ou écartés.
   assert(p.slice(p.lastIndexOf("## Étape")).includes("modules optionnels"));
 });
+
+Deno.test("Comptes : le contrat recopié ne contredit pas la consigne (pro ou particulier)", () => {
+  const texte = CONTRATS["comptes-pro-v1"];
+  assert(texte.includes("pro ou particulier"), "l'en-tête du contrat dit qui a une ligne");
+  assert(!/liste les entreprises qui achètent/.test(texte), "plus de restriction aux seules entreprises");
+});
