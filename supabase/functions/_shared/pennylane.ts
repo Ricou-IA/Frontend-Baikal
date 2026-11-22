@@ -219,6 +219,16 @@ export async function emailsDuClient(id: number): Promise<string[]> {
   return emails.map((e) => String(e).trim()).filter((e) => e.includes("@"));
 }
 
+/** Le numero du compte auxiliaire d'un client (411...), ou null s'il n'est pas
+ *  lisible : c'est sur ce compte que ses factures se debitent. */
+export async function compteDuClient(id: number): Promise<string | null> {
+  const { data } = await appel("lecture du client", "GET", `/customers/${id}`);
+  const compte = data?.ledger_account?.id;
+  if (compte === null || compte === undefined) return null;
+  const { data: lu } = await appel("lecture du compte du client", "GET", `/ledger_accounts/${compte}`);
+  return lu?.number ? String(lu.number) : null;
+}
+
 /** Le PDF d'une facture definitive, en octets. null = Pennylane ne l'a pas
  *  encore genere : ce n'est pas une erreur, l'envoi se rejoue plus tard. */
 export async function pdfFacture(id: number): Promise<Uint8Array | null> {

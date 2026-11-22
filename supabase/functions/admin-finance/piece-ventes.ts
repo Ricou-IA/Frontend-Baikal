@@ -19,6 +19,7 @@ import {
   type VenteMois,
 } from "../_shared/piece-ventes.ts";
 import {
+  compteDuClient,
   comptesDuNumero,
   creerBrouillon,
   creerClient,
@@ -181,9 +182,10 @@ export async function creerPieceVentes(
   const compte = choisirCompte(await comptesDuNumero(numero), numero, codeTva(site.tva_taux));
   if (compte === null) throw new RefusFacture(`Le compte de produits ${numero} n'existe pas dans Pennylane.`);
 
+  const clientId = await clientParticuliers(admin, site);
   const brouillon = await creerBrouillon(corpsPiece({
     piece,
-    customerId: await clientParticuliers(admin, site),
+    customerId: clientId,
     ledgerAccountId: compte,
     taux: site.tva_taux,
     reference: referenceFacture(`ventes-${site.id}-${piece.periode.au}`, new Date()),
@@ -218,7 +220,7 @@ export async function creerPieceVentes(
       ht: montant(brouillon.brut?.currency_amount_before_tax),
       tva: montant(brouillon.brut?.currency_tax ?? brouillon.brut?.tax),
     };
-    return { piece, rendus, pieces: await lirePieces(admin, site.id) };
+    return { piece, rendus, client_id: clientId, pieces: await lirePieces(admin, site.id) };
   } catch (e) {
     await supprimerBrouillon(brouillon.id);
     throw e;
@@ -280,6 +282,9 @@ export async function piecesPlanifiees(
         lignes: r.piece.lignes.length,
         attendu: r.piece.ttc,
         rendus: r.rendus,
+        // Le compte que la piece debitera : il doit etre celui que les
+        // encaissements creditent, sinon rien ne se lettre.
+        compte_client: await compteDuClient(r.client_id).catch(() => null),
       });
     } catch (e) {
       // Un echec technique (Pennylane, base) reste visible dans la reponse du
