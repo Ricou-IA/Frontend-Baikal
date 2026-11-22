@@ -21,6 +21,8 @@
 //   piece-calculer   { appId, du, au }        → la piece de ventes de la periode (lecture seule)
 //   piece-creer      { appId, du, au }        → brouillon de la piece dans Pennylane (jamais finalise ici)
 //   piece-supprimer  { appId, id }            → brouillon de piece efface
+//   pieces-planifiees { appId?, du?, au?, date? } → cron uniquement : brouillon de la piece du mois
+//                                               precedent de chaque site (ou de la periode demandee)
 //   facture-diagnostic                        → cron uniquement : jeton et comptes, lecture seule
 //
 // La page ne lit QUE l'archive : aucun appel Stripe en lecture d'ecran.
@@ -41,7 +43,12 @@ import {
   RefusFacture,
   supprimerBrouillonFacture,
 } from "./factures.ts";
-import { calculerPieceVentes, creerPieceVentes, supprimerPieceVentes } from "./piece-ventes.ts";
+import {
+  calculerPieceVentes,
+  creerPieceVentes,
+  piecesPlanifiees,
+  supprimerPieceVentes,
+} from "./piece-ventes.ts";
 // Meme cascade que la page Clients (admin-dossiers/canal.ts) : l'origine
 // affichee dans /finances doit se lire comme celle de la fiche client. Le
 // canal SQL de l'archive (admin.canal_vente) reste stocke mais n'est plus
@@ -261,6 +268,24 @@ serve(async (req) => {
         new Date(`${body.debut ?? "2026-01-01"}T00:00:00Z`),
         new Date(`${body.fin ?? "2030-01-01"}T23:59:59Z`),
       );
+      return json({ data: r, error: null });
+    }
+
+    // Pieces de ventes du mois precedent (cron du 1er), ou rattrapage d'une
+    // periode : meme porte que la capture. Ne cree que des brouillons.
+    if (action === "pieces-planifiees") {
+      const attendu = Deno.env.get("ADMIN_FINANCE_CRON_SECRET") ??
+        Deno.env.get("ADMIN_SEO_CRON_SECRET");
+      if (!attendu || req.headers.get("x-cron-secret") !== attendu) {
+        return json({ data: null, error: "Secret de cron invalide" }, 401);
+      }
+      const texte = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+      const r = await piecesPlanifiees(admin, {
+        appId: texte(body.appId),
+        du: texte(body.du),
+        au: texte(body.au),
+        date: texte(body.date),
+      });
       return json({ data: r, error: null });
     }
 

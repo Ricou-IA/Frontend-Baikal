@@ -4,6 +4,7 @@ import {
   calculerPiece,
   corpsPiece,
   ecartAdmis,
+  moisPrecedent,
   periode,
   seRecouvrent,
   type VenteMois,
@@ -143,4 +144,16 @@ Deno.test("corps : brouillon date du dernier jour, une ligne par groupe, prix HT
 Deno.test("corps : une piece vide ne part pas", () => {
   const piece = calculerPiece([], [], periode("2026-10", "2026-10"), null);
   assertThrows(() => corpsPiece({ piece, customerId: 1, ledgerAccountId: 2, taux: 0.2, reference: "r" }));
+});
+
+Deno.test("corps : un rattrapage se date du jour ou il est passe", () => {
+  const piece = calculerPiece([v({})], [], periode("2026-03", "2026-10"), null);
+  const corps = corpsPiece({ piece, customerId: 1, ledgerAccountId: 2, taux: 0.2, reference: "r", date: "2026-11-22" }) as any;
+  assertEquals(corps.date, "2026-11-22");
+  assertThrows(() => corpsPiece({ piece, customerId: 1, ledgerAccountId: 2, taux: 0.2, reference: "r", date: "22/11" }));
+});
+
+Deno.test("cron : le mois precedent, y compris en janvier", () => {
+  assertEquals(moisPrecedent("2026-12-01"), "2026-11");
+  assertEquals(moisPrecedent("2027-01-01"), "2026-12");
 });

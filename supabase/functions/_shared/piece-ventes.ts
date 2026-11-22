@@ -217,13 +217,18 @@ export function corpsPiece(d: {
   ledgerAccountId: number;
   taux: number;
   reference: string;
+  /** Date de la piece, AAAA-MM-JJ. Par defaut le dernier jour de la periode ;
+   *  un rattrapage de mois deja declares se date du jour ou il est passe. */
+  date?: string;
 }): Record<string, unknown> {
   if (d.piece.lignes.length === 0) throw new Error("Aucune ligne : la pièce est vide.");
+  if (d.date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(d.date)) throw new Error("Date de pièce mal formée.");
   const vat = codeTva(d.taux);
+  const jour = d.date ?? d.piece.periode.dernierJour;
   return {
     customer_id: d.customerId,
-    date: d.piece.periode.dernierJour,
-    deadline: d.piece.periode.dernierJour,
+    date: jour,
+    deadline: jour,
     draft: true,
     currency: "EUR",
     language: "fr_FR",
@@ -247,4 +252,10 @@ export function corpsPiece(d: {
  *  centime par ligne (l'arrondi du HT, ligne par ligne). */
 export function ecartAdmis(piece: Piece): number {
   return arrondi2(piece.lignes.length * 0.01);
+}
+
+/** Le mois civil qui precede `jour` (AAAA-MM-JJ), au format AAAA-MM. */
+export function moisPrecedent(jour: string): string {
+  const [an, mois] = jour.split("-").map(Number);
+  return mois === 1 ? `${an - 1}-12` : `${an}-${String(mois - 1).padStart(2, "0")}`;
 }

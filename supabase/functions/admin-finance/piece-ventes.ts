@@ -11,6 +11,7 @@ import {
   calculerPiece,
   corpsPiece,
   ecartAdmis,
+  moisPrecedent,
   type FactureIndividuelle,
   periode,
   type Piece,
@@ -164,7 +165,7 @@ function totalRendu(brut: any): number | null {
 
 export async function creerPieceVentes(
   admin: SupabaseClient,
-  d: { appId: string; du: string; au: string; userId: string | null },
+  d: { appId: string; du: string; au: string; userId: string | null; date?: string },
 ) {
   const { site, piece, recouvre } = await preparer(admin, d.appId, d.du, d.au);
   if (!site.compte_produit) throw new RefusFacture("Ce site n'a pas de compte de produits.");
@@ -186,6 +187,7 @@ export async function creerPieceVentes(
     ledgerAccountId: compte,
     taux: site.tva_taux,
     reference: referenceFacture(`ventes-${site.id}-${piece.periode.au}`, new Date()),
+    date: d.date,
   }));
 
   // Tout echec apres la creation du brouillon le supprime : un brouillon que
@@ -238,6 +240,50 @@ export async function supprimerPieceVentes(admin: SupabaseClient, appId: string,
   const { error: errSup } = await admin.schema("admin").from("pieces_ventes").delete().eq("id", ligne.id);
   if (errSup) throw new Error(`suppression de la pièce: ${errSup.message}`);
   return { supprime: true, pieces: await lirePieces(admin, appId) };
+}
+
+/** Passage planifie (ou rattrapage declenche a la main par la meme porte) :
+ *  la piece du mois precedent de chaque site ouvert a la facturation, ou celle
+ *  de la periode et du site demandes. Un site sans vente, ou dont la piece
+ *  existe deja, n'est pas une erreur : il est rendu avec sa raison. */
+export async function piecesPlanifiees(
+  admin: SupabaseClient,
+  d: { appId?: string; du?: string; au?: string; date?: string },
+) {
+  const aujourdhui = new Intl.DateTimeFormat("fr-CA", { timeZone: "Europe/Paris" }).format(new Date());
+  const mois = moisPrecedent(aujourdhui);
+  const du = d.du || d.au || mois;
+  const au = d.au || d.du || mois;
+  let requete = admin.schema("config").from("apps").select("id")
+    .not("compte_produit", "is", null).eq("is_active", true).order("id");
+  if (d.appId) requete = requete.eq("id", d.appId);
+  const { data: sites, error } = await requete;
+  if (error) throw new Error(`lecture du registre: ${error.message}`);
+
+  const resultats = [];
+  for (const s of sites ?? []) {
+    try {
+      const r = await creerPieceVentes(admin, { appId: s.id, du, au, userId: null, date: d.date });
+      resultats.push({
+        app_id: s.id,
+        creee: true,
+        nb_ventes: r.piece.nb_ventes,
+        lignes: r.piece.lignes.length,
+        attendu: r.piece.ttc,
+        rendus: r.rendus,
+      });
+    } catch (e) {
+      // Un echec technique (Pennylane, base) reste visible dans la reponse du
+      // passage : il ne doit pas empecher les autres sites.
+      resultats.push({
+        app_id: s.id,
+        creee: false,
+        refus: e instanceof RefusFacture,
+        raison: String((e as Error).message).slice(0, 300),
+      });
+    }
+  }
+  return { du, au, resultats };
 }
 
 export type { Piece };
