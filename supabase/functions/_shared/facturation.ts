@@ -39,6 +39,40 @@ export function prixUnitaireHt(ttc: number, taux: number): string {
   return brut.includes(".") ? brut.replace(/0+$/, "").replace(/\.$/, "") : brut;
 }
 
+/** Pennylane arrondit le HT de chaque ligne, puis calcule la TVA sur ce HT
+ *  arrondi (constate le 22/11/2026 : 20,825 EUR HT donne 20,83 + 4,17 = 25,00).
+ *  Une seule ligne ne peut donc pas toujours retomber sur le TTC encaisse. */
+export function uneLigneSuffit(ttc: number, taux: number): boolean {
+  const m = montantsFacture(ttc, taux);
+  return Math.round(m.ht * 100) + Math.round(m.ht * 100 * taux + 1e-9) === Math.round(m.ttc * 100);
+}
+
+export interface Decoupage {
+  principale: number;
+  complement: number;
+}
+
+/** Deux lignes dont les HT font le HT voulu et dont les TVA, arrondies ligne
+ *  par ligne, font la TVA voulue. Le complement est le plus petit possible.
+ *  Les decoupages qui tombent pile sur un demi-centime sont ecartes : leur
+ *  arrondi dependrait de la regle de Pennylane. null = aucun decoupage. */
+export function decoupageDeuxLignes(ttc: number, taux: number): Decoupage | null {
+  const m = montantsFacture(ttc, taux);
+  const ht = Math.round(m.ht * 100);
+  const tva = Math.round(m.tva * 100);
+  const demi = (x: number) => Math.abs((x % 1) - 0.5) < 1e-6;
+  for (let b = 1; b < ht && b <= 99; b++) {
+    const a = ht - b;
+    const ta = a * taux;
+    const tb = b * taux;
+    if (demi(ta) || demi(tb)) continue;
+    if (Math.round(ta) + Math.round(tb) === tva) {
+      return { principale: a / 100, complement: b / 100 };
+    }
+  }
+  return null;
+}
+
 const CODES_TVA: Array<[number, string]> = [
   [0.2, "FR_200"],
   [0.1, "FR_100"],
@@ -226,6 +260,8 @@ export interface DemandeFacture {
   /** Reference externe : le payment_intent pour une vraie facture (Pennylane
    *  refuse alors un doublon), une reference jetable pour un essai. */
   reference: string;
+  /** Facture en deux lignes (voir decoupageDeuxLignes). Absent : une ligne. */
+  decoupage?: Decoupage & { libelleComplement: string };
 }
 
 /** Toujours un brouillon : la facture n'est finalisee qu'apres controle des
@@ -233,6 +269,20 @@ export interface DemandeFacture {
 export function corpsFacture(d: DemandeFacture): Record<string, unknown> {
   const designation = d.designation.trim();
   if (!designation) throw new Error("Désignation de la ligne manquante.");
+  const ligne = (label: string, prix: string) => ({
+    label,
+    quantity: 1,
+    unit: "piece",
+    raw_currency_unit_price: prix,
+    vat_rate: codeTva(d.taux),
+    ledger_account_id: d.ledgerAccountId,
+  });
+  const lignes = d.decoupage
+    ? [
+      ligne(designation, d.decoupage.principale.toFixed(2)),
+      ligne(d.decoupage.libelleComplement, d.decoupage.complement.toFixed(2)),
+    ]
+    : [ligne(designation, prixUnitaireHt(Number(d.vente.montant_ttc), d.taux))];
   return {
     customer_id: d.customerId,
     date: d.date,
@@ -242,14 +292,7 @@ export function corpsFacture(d: DemandeFacture): Record<string, unknown> {
     language: "fr_FR",
     external_reference: d.reference,
     pdf_invoice_free_text: mentionPaiement(String(d.vente.paid_at), d.vente.stripe_payment_intent_id),
-    invoice_lines: [{
-      label: designation,
-      quantity: 1,
-      unit: "piece",
-      raw_currency_unit_price: prixUnitaireHt(Number(d.vente.montant_ttc), d.taux),
-      vat_rate: codeTva(d.taux),
-      ledger_account_id: d.ledgerAccountId,
-    }],
+    invoice_lines: lignes,
   };
 }
 

@@ -6,12 +6,14 @@ import {
   corpsClient,
   corpsFacture,
   decisionReprise,
+  decoupageDeuxLignes,
   etatAffiche,
   type LigneFacture,
   mentionPaiement,
   montantsFacture,
   prixUnitaireHt,
   validerClient,
+  uneLigneSuffit,
   type VenteAFacturer,
   venteFacturable,
 } from "./facturation.ts";
@@ -46,6 +48,46 @@ Deno.test("prix unitaire HT : six decimales au plus, sans zeros de fin", () => {
   assertEquals(prixUnitaireHt(9.9, 0.2), "8.25");
   assertEquals(prixUnitaireHt(19, 0.2), "15.833333");
   assertEquals(prixUnitaireHt(120, 0.2), "100");
+});
+
+Deno.test("une ligne : Pennylane retombe juste sur certains prix, pas sur d'autres", () => {
+  assertEquals(uneLigneSuffit(24.99, 0.2), false); // 20,83 + 4,17 = 25,00
+  assertEquals(uneLigneSuffit(9.9, 0.2), true); // 8,25 + 1,65
+  assertEquals(uneLigneSuffit(99, 0.2), true);
+  assertEquals(uneLigneSuffit(19, 0.2), true); // 15,83 + 3,17
+});
+
+Deno.test("deux lignes : les HT font le HT voulu, les TVA par ligne font la TVA voulue", () => {
+  assertEquals(decoupageDeuxLignes(24.99, 0.2), { principale: 20.82, complement: 0.01 });
+});
+
+Deno.test("deux lignes : tout prix au centime jusqu'a 300 euros a une ecriture juste", () => {
+  for (let c = 50; c <= 30000; c++) {
+    const ttc = c / 100;
+    if (uneLigneSuffit(ttc, 0.2)) continue;
+    const d = decoupageDeuxLignes(ttc, 0.2);
+    if (!d) throw new Error(`aucun decoupage pour ${ttc}`);
+    const a = Math.round(d.principale * 100);
+    const b = Math.round(d.complement * 100);
+    assertEquals(a + b + Math.round(a * 0.2) + Math.round(b * 0.2), c);
+  }
+});
+
+Deno.test("corps facture : en deux lignes, chacune sur le meme compte et le meme taux", () => {
+  const corps = corpsFacture({
+    customerId: 42,
+    date: "2026-11-22",
+    vente,
+    designation: "Offre d'essai",
+    ledgerAccountId: 3,
+    taux: 0.2,
+    reference: "pi_fictif_1",
+    decoupage: { principale: 20.82, complement: 0.01, libelleComplement: "Complément" },
+  }) as { invoice_lines: Array<Record<string, unknown>> };
+  assertEquals(corps.invoice_lines.map((l) => [l.label, l.raw_currency_unit_price, l.vat_rate, l.ledger_account_id]), [
+    ["Offre d'essai", "20.82", "FR_200", 3],
+    ["Complément", "0.01", "FR_200", 3],
+  ]);
 });
 
 Deno.test("code de TVA : un taux inconnu ne retombe jamais sur 20 %", () => {

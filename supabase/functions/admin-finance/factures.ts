@@ -21,6 +21,7 @@ import {
   corpsClient,
   corpsFacture,
   decisionReprise,
+  decoupageDeuxLignes,
   etatAffiche,
   type LigneFacture,
   montantsFacture,
@@ -256,12 +257,39 @@ export async function emettreFacture(admin: SupabaseClient, d: DemandeEmission) 
     }));
     const controle = controlerTotaux(brouillon.brut, attendus);
     await supprimerBrouillon(brouillon.id);
+
+    // Une ligne ne retombe pas juste : on essaie la meme facture en deux
+    // lignes, sur un second brouillon, supprime lui aussi. L'emission reelle
+    // reste en une ligne tant qu'Eric n'a pas valide cette forme.
+    let deuxLignes: Record<string, unknown> | null = null;
+    const decoupage = controle.ok ? null : decoupageDeuxLignes(ctx.vente.montant_ttc, ctx.site.tva_taux);
+    if (decoupage) {
+      const second = await creerBrouillon(corpsFacture({
+        customerId: client.id,
+        date: jour,
+        vente: ctx.vente,
+        designation,
+        ledgerAccountId: await compteDuSite(ctx),
+        taux: ctx.site.tva_taux,
+        reference: `essai-${Date.now().toString(36)}-2`,
+        decoupage: { ...decoupage, libelleComplement: "Complément" },
+      }));
+      const c2 = controlerTotaux(second.brut, attendus);
+      await supprimerBrouillon(second.id);
+      deuxLignes = {
+        lignes_ht: [decoupage.principale, decoupage.complement],
+        rendus: c2.rendus,
+        conforme: c2.ok,
+        raison: c2.ok ? null : c2.raison,
+      };
+    }
     return {
       essai: true,
       attendus,
       rendus: controle.rendus,
       conforme: controle.ok,
       raison: controle.ok ? null : controle.raison,
+      deux_lignes: deuxLignes,
       client_existant: client.existant,
     };
   }

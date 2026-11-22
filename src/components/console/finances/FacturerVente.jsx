@@ -217,6 +217,14 @@ export default function FacturerVente({ appId, vente, onClose, onFacturee }) {
                   {essai.client_existant === false && ' Le client a été créé dans Pennylane.'}
                 </div>
               )}
+              {essai?.deux_lignes && (
+                <div className={`text-sm rounded border px-3 py-2 ${essai.deux_lignes.conforme ? 'border-emerald-700 text-emerald-300' : 'border-red-700 text-red-300'}`}>
+                  Même facture en deux lignes ({essai.deux_lignes.lignes_ht.map(fmtEur).join(' + ')} HT) : Pennylane calcule
+                  {' '}HT {fmtEur(essai.deux_lignes.rendus.ht)}, TVA {fmtEur(essai.deux_lignes.rendus.tva)}, TTC {fmtEur(essai.deux_lignes.rendus.ttc)}.
+                  {essai.deux_lignes.conforme ? ' Conforme.' : ` Non conforme : ${essai.deux_lignes.raison}`}
+                  {' '}Ce second brouillon est supprimé lui aussi. L’émission en deux lignes n’est pas encore activée.
+                </div>
+              )}
 
               {erreur && <Erreur message={erreur} />}
 
