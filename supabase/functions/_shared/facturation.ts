@@ -3,8 +3,11 @@
 // d'une requete est ici, pur et teste ; admin-finance fait les entrees-sorties.
 //
 // Regles d'Eric (expert-comptable, 21 et 22/11/2026) :
-//   - HT = arrondi(TTC / (1 + taux)), TVA = TTC - HT : la facture sort
-//     EXACTEMENT au TTC encaisse ;
+//   - la facture se calcule comme Pennylane la calcule, en une ligne :
+//     HT = arrondi(encaisse / (1 + taux)), TVA = arrondi(HT x taux),
+//     TTC = HT + TVA. Pour certains prix, ce TTC differe d'un centime de
+//     l'encaisse (24,99 encaisses -> 20,83 + 4,17 = 25,00 factures) : l'ecart
+//     est accepte, affiche avant l'emission, et borne a un centime ;
 //   - facture datee du jour de l'emission, avec la mention du paiement ;
 //   - une vente = une facture ; une vente remboursee ne se facture pas ici.
 //
@@ -20,57 +23,37 @@ function arrondi2(n: number): number {
 }
 
 export interface Montants {
+  /** TTC FACTURE (HT + TVA), qui peut differer d'un centime de l'encaisse. */
   ttc: number;
   ht: number;
   tva: number;
 }
 
-/** HT arrondi, TVA par difference : HT + TVA = TTC, toujours. */
-export function montantsFacture(ttc: number, taux: number): Montants {
-  const ht = arrondi2(ttc / (1 + taux));
-  return { ttc: arrondi2(ttc), ht, tva: arrondi2(ttc - ht) };
+export interface MontantsFacture extends Montants {
+  /** Ce que Stripe a encaisse. */
+  encaisse: number;
+  /** TTC facture - encaisse : 0, +0,01 ou -0,01. */
+  ecart: number;
 }
+
+/** Les montants de la facture, calcules comme Pennylane : le HT s'arrondit,
+ *  la TVA se calcule sur ce HT arrondi. */
+export function montantsFacture(encaisse: number, taux: number): MontantsFacture {
+  const ht = arrondi2(encaisse / (1 + taux));
+  const tva = arrondi2(ht * taux);
+  const ttc = arrondi2(ht + tva);
+  return { encaisse: arrondi2(encaisse), ht, tva, ttc, ecart: arrondi2(ttc - encaisse) };
+}
+
+/** Au-dela d'un centime, ce n'est plus un arrondi : la facture ne part pas. */
+export const ECART_MAX = 0.01;
 
 /** Prix unitaire HT envoye a Pennylane : 6 decimales au plus (au-dela, l'API
  *  refuse la ligne), sans zeros de fin. C'est Pennylane qui recalcule les
- *  totaux : `controlerTotaux` verifie ensuite qu'il retombe sur le TTC. */
+ *  totaux : `controlerTotaux` verifie ensuite qu'ils sont ceux annonces. */
 export function prixUnitaireHt(ttc: number, taux: number): string {
   const brut = (ttc / (1 + taux)).toFixed(6);
   return brut.includes(".") ? brut.replace(/0+$/, "").replace(/\.$/, "") : brut;
-}
-
-/** Pennylane arrondit le HT de chaque ligne, puis calcule la TVA sur ce HT
- *  arrondi (constate le 22/11/2026 : 20,825 EUR HT donne 20,83 + 4,17 = 25,00).
- *  Une seule ligne ne peut donc pas toujours retomber sur le TTC encaisse. */
-export function uneLigneSuffit(ttc: number, taux: number): boolean {
-  const m = montantsFacture(ttc, taux);
-  return Math.round(m.ht * 100) + Math.round(m.ht * 100 * taux + 1e-9) === Math.round(m.ttc * 100);
-}
-
-export interface Decoupage {
-  principale: number;
-  complement: number;
-}
-
-/** Deux lignes dont les HT font le HT voulu et dont les TVA, arrondies ligne
- *  par ligne, font la TVA voulue. Le complement est le plus petit possible.
- *  Les decoupages qui tombent pile sur un demi-centime sont ecartes : leur
- *  arrondi dependrait de la regle de Pennylane. null = aucun decoupage. */
-export function decoupageDeuxLignes(ttc: number, taux: number): Decoupage | null {
-  const m = montantsFacture(ttc, taux);
-  const ht = Math.round(m.ht * 100);
-  const tva = Math.round(m.tva * 100);
-  const demi = (x: number) => Math.abs((x % 1) - 0.5) < 1e-6;
-  for (let b = 1; b < ht && b <= 99; b++) {
-    const a = ht - b;
-    const ta = a * taux;
-    const tb = b * taux;
-    if (demi(ta) || demi(tb)) continue;
-    if (Math.round(ta) + Math.round(tb) === tva) {
-      return { principale: a / 100, complement: b / 100 };
-    }
-  }
-  return null;
 }
 
 const CODES_TVA: Array<[number, string]> = [
@@ -237,6 +220,23 @@ export function choisirCompte(comptes: CompteLu[], numero: string, vat: string):
   return (exact ?? generique ?? duNumero[0]).id;
 }
 
+// --- La designation de la ligne -------------------------------------------------
+
+/** Ce que la fenetre propose (et que l'utilisateur peut corriger) : le libelle
+ *  de facturation du site, suivi du libelle du dossier quand le site en publie
+ *  un (« Pre-etat date : <adresse du bien> »). A defaut de libelle au registre,
+ *  le nom interne de l'offre : il se voit et se corrige. */
+export function designationFacture(
+  libelleSite: string | null | undefined,
+  libelleDossier: string | null | undefined,
+  offre: string,
+): string {
+  const site = (libelleSite ?? "").trim();
+  const dossier = (libelleDossier ?? "").trim();
+  if (!site) return offre.trim();
+  return dossier ? `${site} : ${dossier}` : site;
+}
+
 // --- Le corps de la facture -----------------------------------------------------
 
 function jourFr(iso: string): string {
@@ -260,8 +260,6 @@ export interface DemandeFacture {
   /** Reference externe : le payment_intent pour une vraie facture (Pennylane
    *  refuse alors un doublon), une reference jetable pour un essai. */
   reference: string;
-  /** Facture en deux lignes (voir decoupageDeuxLignes). Absent : une ligne. */
-  decoupage?: Decoupage & { libelleComplement: string };
 }
 
 /** Toujours un brouillon : la facture n'est finalisee qu'apres controle des
@@ -269,20 +267,6 @@ export interface DemandeFacture {
 export function corpsFacture(d: DemandeFacture): Record<string, unknown> {
   const designation = d.designation.trim();
   if (!designation) throw new Error("Désignation de la ligne manquante.");
-  const ligne = (label: string, prix: string) => ({
-    label,
-    quantity: 1,
-    unit: "piece",
-    raw_currency_unit_price: prix,
-    vat_rate: codeTva(d.taux),
-    ledger_account_id: d.ledgerAccountId,
-  });
-  const lignes = d.decoupage
-    ? [
-      ligne(designation, d.decoupage.principale.toFixed(2)),
-      ligne(d.decoupage.libelleComplement, d.decoupage.complement.toFixed(2)),
-    ]
-    : [ligne(designation, prixUnitaireHt(Number(d.vente.montant_ttc), d.taux))];
   return {
     customer_id: d.customerId,
     date: d.date,
@@ -292,7 +276,14 @@ export function corpsFacture(d: DemandeFacture): Record<string, unknown> {
     language: "fr_FR",
     external_reference: d.reference,
     pdf_invoice_free_text: mentionPaiement(String(d.vente.paid_at), d.vente.stripe_payment_intent_id),
-    invoice_lines: lignes,
+    invoice_lines: [{
+      label: designation,
+      quantity: 1,
+      unit: "piece",
+      raw_currency_unit_price: prixUnitaireHt(Number(d.vente.montant_ttc), d.taux),
+      vat_rate: codeTva(d.taux),
+      ledger_account_id: d.ledgerAccountId,
+    }],
   };
 }
 
@@ -309,8 +300,8 @@ function nombre(v: any): number | null {
   return Number.isFinite(n) ? arrondi2(n) : null;
 }
 
-/** La facture ne se finalise que si Pennylane retombe au centime sur le TTC
- *  encaisse ET sur le decoupage HT / TVA decide. Un champ absent est un echec. */
+/** La facture ne se finalise que si Pennylane rend EXACTEMENT les montants
+ *  annonces a l'ecran (HT, TVA, TTC facture). Un champ absent est un echec. */
 // deno-lint-ignore no-explicit-any
 export function controlerTotaux(facture: any, attendus: Montants): Controle {
   const ttc = nombre(facture?.currency_amount ?? facture?.amount);
@@ -328,7 +319,7 @@ export function controlerTotaux(facture: any, attendus: Montants): Controle {
     return {
       ok: false,
       rendus,
-      raison: `Pennylane calcule ${ttc.toFixed(2)} € TTC pour ${attendus.ttc.toFixed(2)} € encaissés.`,
+      raison: `Pennylane calcule ${ttc.toFixed(2)} € TTC au lieu des ${attendus.ttc.toFixed(2)} € annoncés.`,
     };
   }
   if (ht !== attendus.ht || tva !== attendus.tva) {

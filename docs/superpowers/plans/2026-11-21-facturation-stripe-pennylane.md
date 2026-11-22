@@ -65,7 +65,8 @@ toute formulation contraire plus bas dans ce document.
 | TVA collectée | 20 % sur tous les sites. |
 | Compte client | Un compte « Clients particuliers » par site : il reçoit les encaissements du compte Stripe du site. Le compte de virements internes Stripe ne sert qu'aux versements vers la banque. |
 | Facture à la demande | Datée du jour de l'émission, avec la mention de la date et de la référence du paiement. |
-| Arrondi | HT = arrondi(TTC / 1,2) ; TVA = TTC − HT. La facture sort exactement au TTC encaissé. |
+| Arrondi | Décision révisée le 22/11/2026 après essai : la facture se calcule comme Pennylane, en une ligne. HT = arrondi(encaissé / 1,2) ; TVA = arrondi(HT × 20 %) ; TTC = HT + TVA. Pour certains prix le TTC facturé dépasse l'encaissé d'un centime : l'écart est accepté, affiché avant l'émission, et reste sur le compte du client. Une facture en deux lignes retombait juste (essai concluant) mais n'a pas été retenue. |
+| Désignation | Le nom du produit saisi au registre du site, suivi du libellé du dossier quand le site en publie un (l'adresse du bien). Modifiable dans la fenêtre. |
 | Vente gratuite par coupon | Une vente au prix public, remisée à 100 %. Jamais une vente à zéro sans prix. |
 | Facture après la clôture du mois | Ligne négative « ventes facturées individuellement » dans la pièce du mois suivant. |
 | Pièce du mois | Une **facture** par site au client « Clients particuliers » du site, datée du dernier jour du mois. Pas une écriture au journal. |

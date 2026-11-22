@@ -42,6 +42,7 @@ const CHAMPS_SITE = [
   "seo_pages_cles",
   "stripe_key_ref",
   "compte_produit",
+  "facture_libelle",
 ] as const;
 
 // Champs listes (une valeur par ligne cote saisie, tableau JSON en base).
@@ -97,7 +98,7 @@ serve(async (req) => {
             .select("id, name, domaine, gsc_propriete, env_url, env_secret_ref, " +
               "nom_public, expediteur_nom, expediteur_email, reply_to, resend_key_ref, resend_webhook_secret_ref, " +
               "mailing_plafond_jour, env_mailing_fn, modele_comptes, repo_github, seo_panier, seo_pages_cles, " +
-              "stripe_key_ref, compte_produit, is_active")
+              "stripe_key_ref, compte_produit, facture_libelle, is_active")
             .order("sort_order");
           if (error) throw error;
           return json({ data, error: null });
@@ -137,7 +138,7 @@ serve(async (req) => {
         // Finances : le registre ne porte que le NOM du secret Stripe, et ce nom
         // est borne (sa valeur part vers Stripe : il ne doit pas pouvoir designer
         // une autre cle du projet). Le compte de produits est un numero de classe 7.
-        for (const champ of ["stripe_key_ref", "compte_produit"]) {
+        for (const champ of ["stripe_key_ref", "compte_produit", "facture_libelle"]) {
           if (typeof maj[champ] === "string") maj[champ] = (maj[champ] as string).trim() || null;
         }
         if (maj.stripe_key_ref != null && !refStripeValide(String(maj.stripe_key_ref))) {
@@ -145,6 +146,9 @@ serve(async (req) => {
             data: null,
             error: "Secret Stripe : le nom du secret (majuscules, chiffres, tirets bas, avec le mot STRIPE), jamais la clé",
           }, 400);
+        }
+        if (maj.facture_libelle != null && String(maj.facture_libelle).length > 120) {
+          return json({ data: null, error: "Désignation sur les factures : 120 caractères au plus" }, 400);
         }
         if (maj.compte_produit != null && !/^7[0-9]{2,11}$/.test(String(maj.compte_produit))) {
           return json({

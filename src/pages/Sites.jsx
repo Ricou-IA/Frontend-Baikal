@@ -33,6 +33,7 @@ const CHAMPS = [
   ['repo_github', 'Dépôt GitHub (owner/repo)'],
   ['stripe_key_ref', 'Finances : secret de la clé Stripe du site (vide = compte commun)'],
   ['compte_produit', 'Finances : compte de produits dans Pennylane (706…)'],
+  ['facture_libelle', 'Finances : désignation sur les factures (nom du produit)'],
   ['seo_panier', 'Requêtes SEO suivies (une par ligne)', 'liste'],
   ['seo_pages_cles', 'Pages clés SEO (chemins, une par ligne)', 'liste'],
 ];

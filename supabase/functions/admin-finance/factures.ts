@@ -14,6 +14,7 @@
 // Pennylane.
 // deno-lint-ignore-file no-explicit-any
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { chargerSite, lecteurSite } from "../_shared/sites.ts";
 import {
   choisirCompte,
   codeTva,
@@ -21,7 +22,8 @@ import {
   corpsClient,
   corpsFacture,
   decisionReprise,
-  decoupageDeuxLignes,
+  designationFacture,
+  ECART_MAX,
   etatAffiche,
   type LigneFacture,
   montantsFacture,
@@ -56,7 +58,13 @@ export class RefusFacture extends Error {
 
 interface Contexte {
   vente: VenteAFacturer & { id: string; app_id: string };
-  site: { id: string; compte_produit: string | null; tva_taux: number; stripe_key_ref: string | null };
+  site: {
+    id: string;
+    compte_produit: string | null;
+    tva_taux: number;
+    stripe_key_ref: string | null;
+    facture_libelle: string | null;
+  };
 }
 
 async function charger(admin: SupabaseClient, appId: string, venteId: string): Promise<Contexte> {
@@ -67,7 +75,7 @@ async function charger(admin: SupabaseClient, appId: string, venteId: string): P
   if (!v) throw new RefusFacture("Vente introuvable pour ce site", 404);
 
   const { data: s, error: errSite } = await admin.schema("config").from("apps")
-    .select("id, compte_produit, tva_taux, stripe_key_ref").eq("id", appId).maybeSingle();
+    .select("id, compte_produit, tva_taux, stripe_key_ref, facture_libelle").eq("id", appId).maybeSingle();
   if (errSite) throw new Error(`lecture du site: ${errSite.message}`);
   if (!s) throw new RefusFacture("Site introuvable", 404);
 
@@ -165,6 +173,28 @@ async function lirePayeur(ctx: Contexte): Promise<Record<string, string>> {
   throw new Error(`Paiement introuvable dans Stripe (dernier statut ${dernier})`);
 }
 
+/** Le libelle du dossier chez le site (l'adresse du bien pour un pre-etat
+ *  date), lu dans sa vue baikal_dossiers par le payment_intent. null si le site
+ *  ne publie ni la vue ni la colonne : la designation s'en passe. */
+async function libelleDossier(admin: SupabaseClient, ctx: Contexte): Promise<string | null> {
+  const site = await chargerSite(admin, ctx.site.id);
+  const sql = lecteurSite(site, 5000);
+  try {
+    for (const schema of [site.db_schema, "public"].filter((s): s is string => Boolean(s))) {
+      const [r] = await sql`SELECT to_regclass(${schema + ".baikal_dossiers"}) IS NOT NULL AS ok`;
+      if (!r.ok) continue;
+      const lignes = await sql`
+        SELECT * FROM ${sql(schema)}.baikal_dossiers
+        WHERE stripe_payment_intent_id = ${ctx.vente.stripe_payment_intent_id} LIMIT 1`;
+      const libelle = lignes[0]?.libelle;
+      return typeof libelle === "string" && libelle.trim() ? libelle.trim() : null;
+    }
+    return null;
+  } finally {
+    await sql.end();
+  }
+}
+
 /** Ouverture de la fenetre : la vente, ses montants, le payeur lu dans Stripe. */
 export async function preparerFacture(admin: SupabaseClient, appId: string, venteId: string) {
   const ctx = await charger(admin, appId, venteId);
@@ -172,6 +202,7 @@ export async function preparerFacture(admin: SupabaseClient, appId: string, vent
   const existante = await ligneDe(admin, ctx.vente.stripe_payment_intent_id);
   let payeur: Record<string, string> | null = null;
   let payeurErreur: string | null = null;
+  let dossier: string | null = null;
   if (facturable.ok) {
     try {
       payeur = await lirePayeur(ctx);
@@ -179,12 +210,18 @@ export async function preparerFacture(admin: SupabaseClient, appId: string, vent
       // La fenetre reste utilisable : tout se saisit a la main.
       payeurErreur = (e as Error).message;
     }
+    try {
+      dossier = await libelleDossier(admin, ctx);
+    } catch (e) {
+      // Sans le libelle du dossier, la designation se complete a la main.
+      console.error("[admin-finance] libelle du dossier illisible:", (e as Error).message);
+    }
   }
   return {
     facturable: facturable.ok,
     raison: facturable.ok ? null : facturable.raison,
     montants: montantsFacture(ctx.vente.montant_ttc, ctx.site.tva_taux),
-    designation: ctx.vente.offre,
+    designation: designationFacture(ctx.site.facture_libelle, dossier, ctx.vente.offre),
     paye_le: ctx.vente.paid_at,
     compte_produit: ctx.site.compte_produit,
     payeur,
@@ -240,7 +277,11 @@ export async function emettreFacture(admin: SupabaseClient, d: DemandeEmission) 
   if (!saisie.ok) throw new RefusFacture(saisie.erreurs.join(" "), 400);
 
   const attendus = montantsFacture(ctx.vente.montant_ttc, ctx.site.tva_taux);
-  const designation = (d.designation ?? "").trim() || ctx.vente.offre;
+  if (Math.abs(attendus.ecart) > ECART_MAX + 1e-9) {
+    throw new RefusFacture("L'écart entre le montant facturé et le montant encaissé dépasse un centime.");
+  }
+  const designation = (d.designation ?? "").trim() ||
+    designationFacture(ctx.site.facture_libelle, null, ctx.vente.offre);
   const jour = new Date().toISOString().slice(0, 10);
   const pi = ctx.vente.stripe_payment_intent_id;
 
@@ -257,39 +298,12 @@ export async function emettreFacture(admin: SupabaseClient, d: DemandeEmission) 
     }));
     const controle = controlerTotaux(brouillon.brut, attendus);
     await supprimerBrouillon(brouillon.id);
-
-    // Une ligne ne retombe pas juste : on essaie la meme facture en deux
-    // lignes, sur un second brouillon, supprime lui aussi. L'emission reelle
-    // reste en une ligne tant qu'Eric n'a pas valide cette forme.
-    let deuxLignes: Record<string, unknown> | null = null;
-    const decoupage = controle.ok ? null : decoupageDeuxLignes(ctx.vente.montant_ttc, ctx.site.tva_taux);
-    if (decoupage) {
-      const second = await creerBrouillon(corpsFacture({
-        customerId: client.id,
-        date: jour,
-        vente: ctx.vente,
-        designation,
-        ledgerAccountId: await compteDuSite(ctx),
-        taux: ctx.site.tva_taux,
-        reference: `essai-${Date.now().toString(36)}-2`,
-        decoupage: { ...decoupage, libelleComplement: "Complément" },
-      }));
-      const c2 = controlerTotaux(second.brut, attendus);
-      await supprimerBrouillon(second.id);
-      deuxLignes = {
-        lignes_ht: [decoupage.principale, decoupage.complement],
-        rendus: c2.rendus,
-        conforme: c2.ok,
-        raison: c2.ok ? null : c2.raison,
-      };
-    }
     return {
       essai: true,
       attendus,
       rendus: controle.rendus,
       conforme: controle.ok,
       raison: controle.ok ? null : controle.raison,
-      deux_lignes: deuxLignes,
       client_existant: client.existant,
     };
   }

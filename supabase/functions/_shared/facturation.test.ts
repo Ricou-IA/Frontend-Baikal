@@ -6,14 +6,14 @@ import {
   corpsClient,
   corpsFacture,
   decisionReprise,
-  decoupageDeuxLignes,
+  designationFacture,
+  ECART_MAX,
   etatAffiche,
   type LigneFacture,
   mentionPaiement,
   montantsFacture,
   prixUnitaireHt,
   validerClient,
-  uneLigneSuffit,
   type VenteAFacturer,
   venteFacturable,
 } from "./facturation.ts";
@@ -28,18 +28,19 @@ const vente: VenteAFacturer = {
 };
 const site = { compte_produit: "70699", tva_taux: 0.2 };
 
-Deno.test("montants : HT arrondi, TVA par difference, le total retombe sur le TTC", () => {
-  assertEquals(montantsFacture(24.99, 0.2), { ttc: 24.99, ht: 20.83, tva: 4.16 });
-  assertEquals(montantsFacture(9.9, 0.2), { ttc: 9.9, ht: 8.25, tva: 1.65 });
-  assertEquals(montantsFacture(19, 0.2), { ttc: 19, ht: 15.83, tva: 3.17 });
-  assertEquals(montantsFacture(99, 0.2), { ttc: 99, ht: 82.5, tva: 16.5 });
+Deno.test("montants : calcules comme Pennylane, HT arrondi puis TVA sur ce HT", () => {
+  // Le cas constate le 22/11/2026 : 24,99 encaisses, 25,00 factures.
+  assertEquals(montantsFacture(24.99, 0.2), { encaisse: 24.99, ht: 20.83, tva: 4.17, ttc: 25, ecart: 0.01 });
+  assertEquals(montantsFacture(9.9, 0.2), { encaisse: 9.9, ht: 8.25, tva: 1.65, ttc: 9.9, ecart: 0 });
+  assertEquals(montantsFacture(19, 0.2), { encaisse: 19, ht: 15.83, tva: 3.17, ttc: 19, ecart: 0 });
+  assertEquals(montantsFacture(99, 0.2), { encaisse: 99, ht: 82.5, tva: 16.5, ttc: 99, ecart: 0 });
 });
 
-Deno.test("montants : HT + TVA = TTC pour tous les prix au centime jusqu'a 300 euros", () => {
+Deno.test("montants : l'ecart avec l'encaisse ne depasse jamais un centime", () => {
   for (let c = 1; c <= 30000; c++) {
-    const ttc = c / 100;
-    const m = montantsFacture(ttc, 0.2);
-    assertEquals(Math.round((m.ht + m.tva) * 100), c);
+    const m = montantsFacture(c / 100, 0.2);
+    assertEquals(Math.round((m.ht + m.tva) * 100), Math.round(m.ttc * 100));
+    assertEquals(Math.abs(m.ecart) <= ECART_MAX, true);
   }
 });
 
@@ -48,46 +49,6 @@ Deno.test("prix unitaire HT : six decimales au plus, sans zeros de fin", () => {
   assertEquals(prixUnitaireHt(9.9, 0.2), "8.25");
   assertEquals(prixUnitaireHt(19, 0.2), "15.833333");
   assertEquals(prixUnitaireHt(120, 0.2), "100");
-});
-
-Deno.test("une ligne : Pennylane retombe juste sur certains prix, pas sur d'autres", () => {
-  assertEquals(uneLigneSuffit(24.99, 0.2), false); // 20,83 + 4,17 = 25,00
-  assertEquals(uneLigneSuffit(9.9, 0.2), true); // 8,25 + 1,65
-  assertEquals(uneLigneSuffit(99, 0.2), true);
-  assertEquals(uneLigneSuffit(19, 0.2), true); // 15,83 + 3,17
-});
-
-Deno.test("deux lignes : les HT font le HT voulu, les TVA par ligne font la TVA voulue", () => {
-  assertEquals(decoupageDeuxLignes(24.99, 0.2), { principale: 20.82, complement: 0.01 });
-});
-
-Deno.test("deux lignes : tout prix au centime jusqu'a 300 euros a une ecriture juste", () => {
-  for (let c = 50; c <= 30000; c++) {
-    const ttc = c / 100;
-    if (uneLigneSuffit(ttc, 0.2)) continue;
-    const d = decoupageDeuxLignes(ttc, 0.2);
-    if (!d) throw new Error(`aucun decoupage pour ${ttc}`);
-    const a = Math.round(d.principale * 100);
-    const b = Math.round(d.complement * 100);
-    assertEquals(a + b + Math.round(a * 0.2) + Math.round(b * 0.2), c);
-  }
-});
-
-Deno.test("corps facture : en deux lignes, chacune sur le meme compte et le meme taux", () => {
-  const corps = corpsFacture({
-    customerId: 42,
-    date: "2026-11-22",
-    vente,
-    designation: "Offre d'essai",
-    ledgerAccountId: 3,
-    taux: 0.2,
-    reference: "pi_fictif_1",
-    decoupage: { principale: 20.82, complement: 0.01, libelleComplement: "Complément" },
-  }) as { invoice_lines: Array<Record<string, unknown>> };
-  assertEquals(corps.invoice_lines.map((l) => [l.label, l.raw_currency_unit_price, l.vat_rate, l.ledger_account_id]), [
-    ["Offre d'essai", "20.82", "FR_200", 3],
-    ["Complément", "0.01", "FR_200", 3],
-  ]);
 });
 
 Deno.test("code de TVA : un taux inconnu ne retombe jamais sur 20 %", () => {
@@ -188,6 +149,17 @@ Deno.test("compte : un compte desactive n'est pas retenu", () => {
   assertEquals(choisirCompte([{ id: 1, number: "70699", vat_rate: "any", enabled: false }], "70699", "FR_200"), null);
 });
 
+Deno.test("designation : le libelle du site, puis celui du dossier quand il existe", () => {
+  assertEquals(designationFacture("Produit d'essai", "1 rue de l'Essai, Testville", "offre-interne"), "Produit d'essai : 1 rue de l'Essai, Testville");
+  assertEquals(designationFacture("Produit d'essai", null, "offre-interne"), "Produit d'essai");
+  assertEquals(designationFacture(" Produit d'essai ", "  ", "offre-interne"), "Produit d'essai");
+});
+
+Deno.test("designation : sans libelle au registre, le nom interne de l'offre", () => {
+  assertEquals(designationFacture(null, "1 rue de l'Essai", "offre-interne"), "offre-interne");
+  assertEquals(designationFacture("", null, " offre-interne "), "offre-interne");
+});
+
 Deno.test("mention : la date du paiement et sa reference", () => {
   assertEquals(
     mentionPaiement("2026-11-12T09:30:00Z", "pi_fictif_1"),
@@ -241,17 +213,17 @@ Deno.test("corps facture : pas de ligne sans designation", () => {
 
 const attendus = montantsFacture(24.99, 0.2);
 
-Deno.test("controle : Pennylane retombe au centime, la facture peut etre finalisee", () => {
-  const r = controlerTotaux(
-    { currency_amount: "24.99", currency_amount_before_tax: "20.83", currency_tax: "4.16" },
-    attendus,
-  );
-  assertEquals(r, { ok: true, rendus: { ttc: 24.99, ht: 20.83, tva: 4.16 } });
-});
-
-Deno.test("controle : un centime d'ecart sur le TTC arrete tout", () => {
+Deno.test("controle : Pennylane rend les montants annonces, la facture peut etre finalisee", () => {
   const r = controlerTotaux(
     { currency_amount: "25.00", currency_amount_before_tax: "20.83", currency_tax: "4.17" },
+    attendus,
+  );
+  assertEquals(r, { ok: true, rendus: { ttc: 25, ht: 20.83, tva: 4.17 } });
+});
+
+Deno.test("controle : un autre TTC que celui annonce arrete tout", () => {
+  const r = controlerTotaux(
+    { currency_amount: "24.99", currency_amount_before_tax: "20.83", currency_tax: "4.16" },
     attendus,
   );
   assertEquals(r.ok, false);
@@ -259,14 +231,14 @@ Deno.test("controle : un centime d'ecart sur le TTC arrete tout", () => {
 
 Deno.test("controle : bon TTC mais autre decoupage HT / TVA : refuse aussi", () => {
   const r = controlerTotaux(
-    { currency_amount: "24.99", currency_amount_before_tax: "20.82", currency_tax: "4.17" },
+    { currency_amount: "25.00", currency_amount_before_tax: "20.84", currency_tax: "4.16" },
     attendus,
   );
   assertEquals(r.ok, false);
 });
 
 Deno.test("controle : des totaux absents ne valent jamais accord", () => {
-  assertEquals(controlerTotaux({ currency_amount: "24.99" }, attendus).ok, false);
+  assertEquals(controlerTotaux({ currency_amount: "25.00" }, attendus).ok, false);
   assertEquals(controlerTotaux(null, attendus).ok, false);
 });
 
