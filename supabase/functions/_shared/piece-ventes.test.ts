@@ -61,7 +61,7 @@ Deno.test("piece : les ventes se regroupent par offre et par prix", () => {
   assertEquals(piece.ttc, 27.5);
 });
 
-Deno.test("piece : gratuites, pros, exclues et facturees une a une restent dehors, et se comptent", () => {
+Deno.test("piece : gratuites, exclues et facturees une a une restent dehors ; les pros ont leur ligne", () => {
   const p = periode("2026-10", "2026-10");
   const facturee = v({ stripe_payment_intent_id: "pi_facturee" });
   const piece = calculerPiece(
@@ -70,14 +70,14 @@ Deno.test("piece : gratuites, pros, exclues et facturees une a une restent dehor
     p,
     null,
   );
-  assertEquals(piece.nb_ventes, 1);
-  assertEquals(piece.ttc, 10);
+  assertEquals(piece.nb_ventes, 2);
+  assertEquals(piece.ttc, 60);
   assertEquals(piece.hors_piece, {
     gratuites: 1,
-    pros: { nombre: 1, ttc: 50 },
     facturees_individuellement: { nombre: 1, ttc: 10 },
     exclues: 1,
   });
+  assertEquals(piece.lignes[1].libelle, "Ventes aux professionnels octobre 2026 : offre-a à 50,00 € TTC (factures Stripe)");
   // Sans nom de produit, le nom interne de l'offre.
   assert(piece.lignes[0].libelle.includes("offre-a"));
 });

@@ -8,7 +8,9 @@
 //   - les ventes facturees une a une n'y figurent pas ; une vente facturee
 //     individuellement APRES son mois en sort par une ligne negative ;
 //   - les remboursements viennent en negatif, au mois du remboursement ;
-//   - les ventes aux pros restent facturees par Stripe : hors piece ;
+//   - les ventes aux pros, facturees une a une par Stripe, y entrent sur des
+//     lignes a part (decision du 22/11/2026) : la piece porte tout le chiffre
+//     d'affaires encaisse par le compte Stripe du site ;
 //   - Baikal prepare un brouillon, le comptable le finalise dans Pennylane.
 import { codeTva, prixUnitaireHt } from "./facturation.ts";
 
@@ -96,7 +98,6 @@ export interface Piece {
   /** Ce qui n'entre pas dans la piece, pour que rien ne disparaisse sans le dire. */
   hors_piece: {
     gratuites: number;
-    pros: { nombre: number; ttc: number };
     facturees_individuellement: { nombre: number; ttc: number };
     exclues: number;
   };
@@ -121,11 +122,10 @@ export function calculerPiece(
   const facturees = new Map(factures.map((f) => [f.stripe_payment_intent_id, f]));
   const hors = {
     gratuites: 0,
-    pros: { nombre: 0, ttc: 0 },
     facturees_individuellement: { nombre: 0, ttc: 0 },
     exclues: 0,
   };
-  const groupes = new Map<string, { offre: string; ttc: number; n: number }>();
+  const groupes = new Map<string, { offre: string; ttc: number; n: number; pro: boolean }>();
   let rembourse = 0;
   let nbRemboursements = 0;
   let retire = 0;
@@ -138,16 +138,13 @@ export function calculerPiece(
 
     if (dans(v.jour_paiement, p)) {
       if (v.exclue) hors.exclues++;
-      else if (pro) {
-        hors.pros.nombre++;
-        hors.pros.ttc = arrondi2(hors.pros.ttc + v.montant_ttc);
-      } else if (v.montant_ttc <= 0) hors.gratuites++;
+      else if (v.montant_ttc <= 0) hors.gratuites++;
       else if (facture) {
         hors.facturees_individuellement.nombre++;
         hors.facturees_individuellement.ttc = arrondi2(hors.facturees_individuellement.ttc + v.montant_ttc);
       } else {
-        const cle = `${v.offre}|${v.montant_ttc.toFixed(2)}`;
-        const g = groupes.get(cle) ?? { offre: v.offre, ttc: v.montant_ttc, n: 0 };
+        const cle = `${pro ? "pro" : "part"}|${v.offre}|${v.montant_ttc.toFixed(2)}`;
+        const g = groupes.get(cle) ?? { offre: v.offre, ttc: v.montant_ttc, n: 0, pro };
         g.n++;
         groupes.set(cle, g);
         nbVentes++;
@@ -156,7 +153,7 @@ export function calculerPiece(
 
     // Une vente facturee individuellement se rembourse par un avoir, dans
     // Pennylane : son remboursement n'entre pas ici.
-    if (!v.exclue && !pro && !facture && v.montant_rembourse > 0 && dans(v.jour_remboursement, p)) {
+    if (!v.exclue && !facture && v.montant_rembourse > 0 && dans(v.jour_remboursement, p)) {
       rembourse = arrondi2(rembourse + v.montant_rembourse);
       nbRemboursements++;
     }
@@ -164,7 +161,7 @@ export function calculerPiece(
     // Facturee individuellement pendant la periode, mais vendue AVANT : la
     // piece de son mois l'avait comptee, celle-ci la retire.
     if (
-      facture && !v.exclue && !pro && v.montant_ttc > 0 && dans(facture.date_facture, p) &&
+      facture && !v.exclue && v.montant_ttc > 0 && dans(facture.date_facture, p) &&
       v.jour_paiement !== null && v.jour_paiement < p.premierJour
     ) {
       retire = arrondi2(retire + v.montant_ttc);
@@ -173,10 +170,14 @@ export function calculerPiece(
   }
 
   const lignes: LignePiece[] = [...groupes.values()]
-    .sort((a, b) => a.offre.localeCompare(b.offre) || b.ttc - a.ttc)
+    .sort((a, b) => Number(a.pro) - Number(b.pro) || a.offre.localeCompare(b.offre) || b.ttc - a.ttc)
     .map((g) => ({
       nature: "ventes" as const,
-      libelle: `Ventes en ligne ${p.libelle} : ${(produit ?? "").trim() || g.offre} à ${eur(g.ttc)} € TTC`,
+      // Les pros achetent autre chose que le produit grand public : leur ligne
+      // porte le nom de l'offre, et rappelle que Stripe a deja facture.
+      libelle: g.pro
+        ? `Ventes aux professionnels ${p.libelle} : ${g.offre} à ${eur(g.ttc)} € TTC (factures Stripe)`
+        : `Ventes en ligne ${p.libelle} : ${(produit ?? "").trim() || g.offre} à ${eur(g.ttc)} € TTC`,
       quantite: g.n,
       ttc_unitaire: g.ttc,
       ttc: arrondi2(g.n * g.ttc),
@@ -234,7 +235,7 @@ export function corpsPiece(d: {
     language: "fr_FR",
     external_reference: d.reference,
     pdf_invoice_free_text:
-      `Pièce récapitulative des ventes en ligne aux particuliers, ${d.piece.periode.libelle}. Ventes encaissées par carte bancaire.`,
+      `Pièce récapitulative des ventes en ligne, ${d.piece.periode.libelle}. Ventes encaissées par carte bancaire.`,
     invoice_lines: d.piece.lignes.map((l) => ({
       label: l.libelle,
       quantity: l.quantite,

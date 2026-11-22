@@ -94,7 +94,7 @@ export default function PieceVentes({ appId, lectureSeule = false }) {
             <input type="month" className={`${CHAMP} block mt-1`} value={au} min={du} onChange={(e) => setAu(e.target.value)} />
           </label>
           <p className="opacity-70 max-w-md">
-            Une facture au client « Clients particuliers » du site, datée du dernier jour de la période,
+            Une facture au client « Clients - Stripe », datée du dernier jour de la période,
             sur le compte <span className="font-mono text-white">{donnees?.compte_produit ?? '…'}</span>.
           </p>
         </div>
@@ -135,8 +135,7 @@ export default function PieceVentes({ appId, lectureSeule = false }) {
 
             <p className="text-xs text-baikal-text opacity-70">
               Hors pièce sur la période : {hors.facturees_individuellement.nombre} vente(s) facturée(s) une à une
-              ({fmtEur(hors.facturees_individuellement.ttc)}), {hors.pros.nombre} vente(s) aux pros facturée(s) par
-              Stripe ({fmtEur(hors.pros.ttc)}), {hors.gratuites} vente(s) gratuite(s), {hors.exclues} exclue(s).
+              ({fmtEur(hors.facturees_individuellement.ttc)}), {hors.gratuites} vente(s) gratuite(s), {hors.exclues} exclue(s).
             </p>
 
             {donnees.deja_faite && !cree && (
