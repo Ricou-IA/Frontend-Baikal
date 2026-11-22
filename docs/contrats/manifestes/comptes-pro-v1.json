@@ -1,0 +1,67 @@
+{
+  "contrat": "comptes-pro-v1",
+  "source": "docs/contrats/comptes-pro-v1.sql",
+  "titre": "Comptes : la liste de ceux qui ont un compte sur l'app",
+  "optionnel": true,
+  "quand": "si l'app a des comptes utilisateur (inscription, espace client, comptes pro). Un compte est tout compte ouvert sur l'app, pro ou particulier : raison_sociale vaut la société, à défaut le nom, à défaut l'email.",
+  "types": "Types attendus : text, int (smallint, integer, bigint), numeric (et entiers, réels), boolean, timestamptz.",
+  "vues": [
+    {
+      "nom": "baikal_comptes_pro",
+      "obligatoire": true,
+      "niveau": 2,
+      "role": "La liste du chapitre Comptes : une ligne par compte ouvert sur l'app.",
+      "colonnes": [
+        { "nom": "compte_id", "type": "text", "obligatoire": true },
+        { "nom": "raison_sociale", "type": "text", "obligatoire": true },
+        { "nom": "email", "type": "text", "obligatoire": true },
+        { "nom": "cree_le", "type": "timestamptz", "obligatoire": true },
+        { "nom": "actif", "type": "boolean", "obligatoire": true },
+        { "nom": "est_test", "type": "boolean", "obligatoire": true },
+        { "nom": "supprime_le", "type": "timestamptz", "obligatoire": true },
+        { "nom": "credits_stock", "type": "int", "obligatoire": false, "bloc": "credits" },
+        { "nom": "credits_achetes", "type": "int", "obligatoire": false, "bloc": "credits" },
+        { "nom": "credits_consommes", "type": "int", "obligatoire": false, "bloc": "credits" },
+        { "nom": "ca_ttc", "type": "numeric", "obligatoire": false, "bloc": "argent" },
+        { "nom": "devise", "type": "text", "obligatoire": false, "bloc": "argent" },
+        { "nom": "abo_statut", "type": "text", "obligatoire": false, "bloc": "abonnement" },
+        { "nom": "abo_plan", "type": "text", "obligatoire": false, "bloc": "abonnement" },
+        { "nom": "abo_montant_mensuel", "type": "numeric", "obligatoire": false, "bloc": "abonnement" },
+        { "nom": "abo_prochaine_echeance", "type": "timestamptz", "obligatoire": false, "bloc": "abonnement" },
+        { "nom": "abo_resilie_le", "type": "timestamptz", "obligatoire": false, "bloc": "abonnement" },
+        { "nom": "contact_nom", "type": "text", "obligatoire": false },
+        { "nom": "telephone", "type": "text", "obligatoire": false },
+        { "nom": "categorie", "type": "text", "obligatoire": false },
+        { "nom": "derniere_activite_le", "type": "timestamptz", "obligatoire": false }
+      ]
+    }
+  ],
+  "controles": [
+    {
+      "id": "comptes.noyau_complet",
+      "ref": "§3 (1)",
+      "niveau": 2,
+      "vue": "baikal_comptes_pro",
+      "titre": "Chaque compte a un identifiant, un nom, un état actif et un drapeau de test",
+      "requiert": ["compte_id", "raison_sociale", "actif", "est_test"],
+      "sql": "select compte_id, raison_sociale from @SCHEMA@.baikal_comptes_pro where compte_id is null or raison_sociale is null or actif is null or est_test is null",
+      "si_echec": "Une ligne sans nom ou sans état s'affiche vide dans la liste, et un est_test nul fait disparaître le compte des deux positions de la bascule « Exclure tests ».",
+      "correction": "raison_sociale = coalesce(société, nom, email) ; actif et est_test passés par coalesce(…, true/false)."
+    },
+    {
+      "id": "comptes.identifiant_unique",
+      "ref": "§3 (2)",
+      "niveau": 2,
+      "vue": "baikal_comptes_pro",
+      "titre": "Un compte n'apparaît qu'une fois",
+      "requiert": ["compte_id"],
+      "sql": "select compte_id, count(*)::int as lignes from @SCHEMA@.baikal_comptes_pro group by 1 having count(*) > 1",
+      "si_echec": "Une jointure démultiplie les comptes : la liste les montre deux fois et la fiche ouvre le mauvais.",
+      "correction": "Une ligne par compte : agréger ce qui vient d'une table fille (sous-requête ou lateral), jamais une jointure brute."
+    }
+  ],
+  "concordances": [],
+  "verifications_manuelles": [
+    { "ref": "§3 (4 bis)", "texte": "Pour chaque valeur de categorie, se demander si elle est CHOISIE ou SUBIE : un rôle posé à l'inscription et jamais confirmé mérite son propre slug." }
+  ]
+}

@@ -53,6 +53,12 @@ export interface Manifeste {
   contrat: string;
   source: string;
   titre: string;
+  // Contrat qu'un site publie s'il a de quoi le remplir (Comptes) : absent, il
+  // ne produit aucun contrôle ; publié, ses contrôles (niveau 2) ne bloquent
+  // jamais l'ouverture du site.
+  optionnel?: boolean;
+  // Pour un contrat optionnel : quand le publier, dit à l'agent.
+  quand?: string;
   types: string;
   vues: VueContrat[];
   controles: ControleContrat[];

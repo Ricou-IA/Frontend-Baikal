@@ -65,7 +65,7 @@ Deno.test("le contrôle de parité voit une colonne inventée", async () => {
   ]);
 });
 
-for (const nom of ["dossiers-v1.json", "mesures-v1.json"]) {
+for (const nom of ["dossiers-v1.json", "mesures-v1.json", "comptes-pro-v1.json", "comptes-historique-v1.json"]) {
   Deno.test(`${nom} : chaque vue et chaque colonne figurent dans le contrat`, async () => {
     const { m, sql } = await charger(nom);
     assertEquals(ecarts(m, sql), []);

@@ -12,7 +12,8 @@ const PG: Record<string, string> = {
   text: "text", int: "integer", numeric: "numeric", boolean: "boolean",
   timestamptz: "timestamp with time zone", date: "date", jsonb: "jsonb",
 };
-const OBLIGATOIRES = MANIFESTES.flatMap((m) => m.vues.filter((v) => v.obligatoire));
+// Le monde de ces tests : un site qui publie le niveau 1, sans contrat optionnel.
+const OBLIGATOIRES = MANIFESTES.filter((m) => !m.optionnel).flatMap((m) => m.vues.filter((v) => v.obligatoire));
 
 // Un site conforme : ses deux vues obligatoires dans `public`, vues par le
 // catalogue (diagnostic) et par la structure (recette).
