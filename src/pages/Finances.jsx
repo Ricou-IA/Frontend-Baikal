@@ -19,7 +19,7 @@ import { useMemo, useState } from 'react';
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from 'recharts';
-import { Plus, Trash2, AlertTriangle, RefreshCw, Pencil, Check, X, Ban } from 'lucide-react';
+import { Plus, Trash2, AlertTriangle, RefreshCw, Pencil, Check, X, Ban, FileText } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import ConsoleLayout from '../components/console/ConsoleLayout';
 import { useDroitModule } from '../hooks/useDroitModule';
@@ -30,6 +30,7 @@ import {
   Chargement, ContenuEstompe, Erreur, LigneVide, Section, Vide,
 } from '../components/console/etats';
 import { financeService } from '../services/finance.service';
+import FacturerVente from '../components/console/finances/FacturerVente';
 // Origine des ventes : memes buckets et memes libelles que la page Clients
 // (BadgeCanal), calcules par l'EF avec la cascade de admin-dossiers/canal.ts.
 import { BadgeCanal, CANAUX } from '../components/console/badges-clients';
@@ -723,7 +724,53 @@ function ChargesPonctuelles({ appId, lectureSeule = false }) {
   );
 }
 
-function Ventes({ appId }) {
+// Cellule « Facture » d'une vente. L'etat et le droit de facturer viennent de
+// la fonction (admin.factures et _shared/facturation.ts) : rien n'est decide ici.
+function CelluleFacture({ vente, facture, lectureSeule, onFacturer, onRenvoyer, renvoiEnCours }) {
+  if (facture?.etat === 'emise_envoyee') {
+    return (
+      <span className="font-mono text-xs text-white" title={`Facture du ${facture.date_facture}, envoyée au client`}>
+        {facture.numero} <span className="text-emerald-300 font-sans">· envoyée</span>
+      </span>
+    );
+  }
+  if (facture?.etat === 'emise_envoi_en_attente') {
+    return (
+      <span className="inline-flex items-center gap-2 justify-end">
+        <span className="font-mono text-xs text-white">{facture.numero}</span>
+        {!lectureSeule && (
+          <button
+            type="button"
+            onClick={() => onRenvoyer(vente)}
+            disabled={renvoiEnCours}
+            title="La facture est émise ; l'envoi par e-mail n'est pas encore parti"
+            className="px-2 py-0.5 rounded border border-amber-700 text-xs text-amber-300 hover:text-white disabled:opacity-40"
+          >
+            {renvoiEnCours ? 'Envoi…' : 'Renvoyer'}
+          </button>
+        )}
+      </span>
+    );
+  }
+  if (lectureSeule) return <span className="opacity-40">—</span>;
+  if (!vente.facturable?.ok) {
+    return <span className="opacity-40 text-xs" title={vente.facturable?.raison}>non facturable</span>;
+  }
+  const reprise = facture?.etat === 'erreur' || facture?.etat === 'en_cours';
+  return (
+    <button
+      type="button"
+      onClick={() => onFacturer(vente)}
+      title={facture?.erreur || 'Émettre la facture définitive dans Pennylane et l\u2019envoyer au client'}
+      className={`px-2 py-0.5 rounded border text-xs inline-flex items-center gap-1 hover:text-white ${reprise ? 'border-amber-700 text-amber-300' : 'border-baikal-border text-baikal-text'}`}
+    >
+      <FileText className="w-3 h-3" />
+      {reprise ? 'Reprendre' : 'Facturer'}
+    </button>
+  );
+}
+
+function Ventes({ appId, lectureSeule = false }) {
   const debut = useMemo(() => {
     const d = new Date();
     return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 2, 1)).toISOString();
@@ -737,6 +784,24 @@ function Ventes({ appId }) {
   );
 
   const lignes = donnees?.lignes ?? [];
+  const facturationOuverte = Boolean(donnees?.facturation_ouverte);
+
+  // Factures emises depuis cet ecran : elles s'affichent sans recharger la liste.
+  const [facturesLocales, setFacturesLocales] = useState({});
+  const [aFacturer, setAFacturer] = useState(null);
+  const [renvoi, setRenvoi] = useState(null);
+  const [erreurRenvoi, setErreurRenvoi] = useState(null);
+  const noterFacture = (venteId, facture) => setFacturesLocales((f) => ({ ...f, [venteId]: facture }));
+
+  const renvoyer = async (vente) => {
+    setRenvoi(vente.id);
+    setErreurRenvoi(null);
+    const { data, error } = await financeService.renvoyerFacture(appId, vente.id);
+    setRenvoi(null);
+    if (error) { setErreurRenvoi(error.message); return; }
+    if (data.facture) noterFacture(vente.id, data.facture);
+    if (!data.envoyee) setErreurRenvoi('Pennylane prépare encore le PDF de la facture : réessayez dans quelques minutes.');
+  };
 
   const parCanal = useMemo(() => {
     const m = new Map();
@@ -794,6 +859,7 @@ function Ventes({ appId }) {
               </div>
             </>
           )}
+          {erreurRenvoi && <Erreur message={erreurRenvoi} />}
           <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
             <div className="max-h-[420px] overflow-auto">
               <table data-mobile="1,3,4" className="w-full min-w-[560px] text-sm text-baikal-text">
@@ -805,12 +871,13 @@ function Ventes({ appId }) {
                     <th className="text-right px-2 py-2">TTC</th>
                     <th className="text-right px-2 py-2">HT</th>
                     <th className="text-right px-2 py-2">Frais</th>
-                    <th className="text-right px-4 py-2">Remboursé</th>
+                    <th className={`text-right py-2 ${facturationOuverte ? 'px-2' : 'px-4'}`}>Remboursé</th>
+                    {facturationOuverte && <th className="text-right px-4 py-2">Facture</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {lignes.length === 0 && (
-                    <LigneVide colonnes={7} message="Aucune vente archivée sur les trois derniers mois." />
+                    <LigneVide colonnes={facturationOuverte ? 8 : 7} message="Aucune vente archivée sur les trois derniers mois." />
                   )}
                   {lignes.map((v) => (
                     <tr key={v.id} className="border-t border-baikal-border/50">
@@ -824,9 +891,21 @@ function Ventes({ appId }) {
                       <td className="text-right px-2 py-1.5 tabular-nums">{fmtEur(Number(v.montant_ttc))}</td>
                       <td className="text-right px-2 py-1.5 tabular-nums opacity-70">{fmtEur(Number(v.montant_ht))}</td>
                       <td className="text-right px-2 py-1.5 tabular-nums opacity-70">{fmtEur(Number(v.frais_stripe_eur))}</td>
-                      <td className={`text-right px-4 py-1.5 tabular-nums ${Number(v.montant_rembourse) > 0 ? 'text-red-400' : 'opacity-40'}`}>
+                      <td className={`text-right py-1.5 tabular-nums ${facturationOuverte ? 'px-2' : 'px-4'} ${Number(v.montant_rembourse) > 0 ? 'text-red-400' : 'opacity-40'}`}>
                         {Number(v.montant_rembourse) > 0 ? fmtEur(Number(v.montant_rembourse)) : '—'}
                       </td>
+                      {facturationOuverte && (
+                        <td className="text-right px-4 py-1.5 whitespace-nowrap">
+                          <CelluleFacture
+                            vente={v}
+                            facture={facturesLocales[v.id] ?? v.facture}
+                            lectureSeule={lectureSeule}
+                            onFacturer={setAFacturer}
+                            onRenvoyer={renvoyer}
+                            renvoiEnCours={renvoi === v.id}
+                          />
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -834,6 +913,14 @@ function Ventes({ appId }) {
             </div>
           </div>
         </ContenuEstompe>
+      )}
+      {aFacturer && (
+        <FacturerVente
+          appId={appId}
+          vente={aFacturer}
+          onClose={() => setAFacturer(null)}
+          onFacturee={noterFacture}
+        />
       )}
     </Section>
   );
@@ -949,7 +1036,7 @@ function FinancesContent() {
       <Synthese appId={currentApp} lectureSeule={!ecriture} />
       <Tendance appId={currentApp} />
       <CoutsParMois appId={currentApp} />
-      <Ventes appId={currentApp} />
+      <Ventes appId={currentApp} lectureSeule={!ecriture} />
       <Partenariat appId={currentApp} />
       <ChargesRecurrentes appId={currentApp} lectureSeule={!ecriture} />
       <ChargesPonctuelles appId={currentApp} lectureSeule={!ecriture} />

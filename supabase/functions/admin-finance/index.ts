@@ -12,6 +12,11 @@
 //   ponctuelles          { appId }            → charges ponctuelles
 //   ponctuelle-creer     { appId, libelle, montant, jour }
 //   ponctuelle-supprimer { id }
+//   facture-preparer { appId, venteId }       → montants + payeur lu dans Stripe
+//   facture-emettre  { appId, venteId, client, designation?, essai? }
+//                                             → facture definitive dans Pennylane, envoyee
+//   facture-renvoyer { appId, venteId }       → rejoue le seul envoi
+//   facture-diagnostic                        → cron uniquement : jeton et comptes, lecture seule
 //
 // La page ne lit QUE l'archive : aucun appel Stripe en lecture d'ecran.
 // Droits par site appliques partout, comme admin-seo.
@@ -21,12 +26,22 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ErreurAcces, droitsModules, exigerModule, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 import { captureJour, capturePeriode } from "./capture.ts";
 import { enrichirSite, sitesAvecVue } from "./enrichissement.ts";
+import {
+  diagnosticFacturation,
+  emettreFacture,
+  ErreurPennylane,
+  facturesDesVentes,
+  preparerFacture,
+  RefusFacture,
+  renvoyerFacture,
+} from "./factures.ts";
 // Meme cascade que la page Clients (admin-dossiers/canal.ts) : l'origine
 // affichee dans /finances doit se lire comme celle de la fiche client. Le
 // canal SQL de l'archive (admin.canal_vente) reste stocke mais n'est plus
 // affiche : il ne connait ni GEO ni Direct. L'archive ne porte pas
 // l'apporteur : portail_pro n'est donc pas detectable ici.
 import { canalVente, domaineVente } from "../admin-dossiers/canal.ts";
+import { venteFacturable } from "../_shared/facturation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -242,6 +257,17 @@ serve(async (req) => {
       return json({ data: r, error: null });
     }
 
+    // Controle de la facturation, en lecture seule (jeton Pennylane, comptes
+    // de produits) : meme porte que la capture.
+    if (action === "facture-diagnostic") {
+      const attendu = Deno.env.get("ADMIN_FINANCE_CRON_SECRET") ??
+        Deno.env.get("ADMIN_SEO_CRON_SECRET");
+      if (!attendu || req.headers.get("x-cron-secret") !== attendu) {
+        return json({ data: null, error: "Secret de cron invalide" }, 401);
+      }
+      return json({ data: await diagnosticFacturation(admin), error: null });
+    }
+
     // --- Chemin utilisateur : droits par site.
     const authHeader = req.headers.get("Authorization") ?? "";
     const caller = createClient(supabaseUrl, anonKey, {
@@ -256,7 +282,12 @@ serve(async (req) => {
     // en ecriture. Les actions par identifiant verifient le module apres
     // avoir resolu le site de la ligne.
     const droits = await droitsModules(caller);
-    const ecritures = ["rafraichir", "charge-creer", "ponctuelle-creer"];
+    // Les trois actions de facturation sont des ecritures : meme la preparation,
+    // qui lit le nom et l'e-mail du payeur dans Stripe.
+    const ecritures = [
+      "rafraichir", "charge-creer", "ponctuelle-creer",
+      "facture-preparer", "facture-emettre", "facture-renvoyer",
+    ];
     if (!parId.includes(action)) {
       exigerModule(droits, appId, "finances", ecritures.includes(action) ? "ecriture" : "lecture");
     }
@@ -330,12 +361,59 @@ serve(async (req) => {
         .gte("paid_at", debut.toISOString()).lte("paid_at", fin.toISOString())
         .order("paid_at", { ascending: false }).limit(500);
       if (error) throw new Error(error.message);
+      // Facturation : ouverte si le site a un compte de produits ; l'etat de
+      // chaque vente vient de admin.factures (aucune donnee nominative).
+      const { data: site } = await admin.schema("config").from("apps")
+        .select("compte_produit, tva_taux").eq("id", appId).maybeSingle();
+      const siteFacturation = {
+        compte_produit: site?.compte_produit ?? null,
+        tva_taux: site?.tva_taux === null || site?.tva_taux === undefined ? null : Number(site.tva_taux),
+      };
+      const factures = await facturesDesVentes(
+        admin,
+        appId,
+        (data ?? []).map((v: any) => String(v.stripe_payment_intent_id)),
+      );
       const lignes = (data ?? []).map((v: any) => ({
         ...v,
         canal: canalVente(v.attribution ?? null),
         domaine: domaineVente(v.attribution ?? null) || null,
+        facture: factures[String(v.stripe_payment_intent_id)] ?? null,
+        // La regle est dans _shared/facturation.ts : l'ecran n'en decide rien.
+        facturable: venteFacturable({
+          stripe_payment_intent_id: String(v.stripe_payment_intent_id),
+          paid_at: v.paid_at,
+          montant_ttc: Number(v.montant_ttc),
+          montant_rembourse: Number(v.montant_rembourse ?? 0),
+          offre: String(v.offre ?? ""),
+          exclue: Boolean(v.exclue),
+        }, siteFacturation),
       }));
-      return json({ data: { lignes }, error: null });
+      return json({
+        data: { lignes, facturation_ouverte: Boolean(site?.compte_produit) },
+        error: null,
+      });
+    }
+
+    if (action === "facture-preparer") {
+      return json({ data: await preparerFacture(admin, appId, String(body.venteId ?? "")), error: null });
+    }
+
+    if (action === "facture-emettre") {
+      const { data: qui } = await caller.auth.getUser();
+      const r = await emettreFacture(admin, {
+        appId,
+        venteId: String(body.venteId ?? ""),
+        client: body.client,
+        designation: typeof body.designation === "string" ? body.designation : undefined,
+        essai: body.essai === true,
+        userId: qui?.user?.id ?? null,
+      });
+      return json({ data: r, error: null });
+    }
+
+    if (action === "facture-renvoyer") {
+      return json({ data: await renvoyerFacture(admin, appId, String(body.venteId ?? "")), error: null });
     }
 
     if (action === "partenariat") {
@@ -457,6 +535,11 @@ serve(async (req) => {
     return json({ data: null, error: `Action inconnue: ${action}` }, 400);
   } catch (e) {
     if (e instanceof ErreurAcces) return json({ data: null, error: e.message }, 403);
+    if (e instanceof RefusFacture) return json({ data: null, error: e.message }, e.statut);
+    if (e instanceof ErreurPennylane) {
+      console.error("[admin-finance] pennylane", e.etape, e.statut);
+      return json({ data: null, error: e.message }, 502);
+    }
     console.error("[admin-finance]", e);
     return json({ data: null, error: (e as Error).message }, 500);
   }

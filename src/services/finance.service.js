@@ -71,6 +71,18 @@ export const financeService = {
   supprimerPonctuelle(id) {
     return appelerEdge('admin-finance', { action: 'ponctuelle-supprimer', id });
   },
+  // Facture a la demande d'une vente, emise dans Pennylane.
+  preparerFacture(appId, venteId) {
+    return appelerEdge('admin-finance', { action: 'facture-preparer', appId, venteId });
+  },
+  emettreFacture(appId, venteId, client, designation, essai = false) {
+    return appelerEdge('admin-finance', {
+      action: 'facture-emettre', appId, venteId, client, designation, essai,
+    });
+  },
+  renvoyerFacture(appId, venteId) {
+    return appelerEdge('admin-finance', { action: 'facture-renvoyer', appId, venteId });
+  },
 };
 
 export { appelerEdge };
