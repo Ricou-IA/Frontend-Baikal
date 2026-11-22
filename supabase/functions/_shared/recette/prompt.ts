@@ -43,7 +43,10 @@ export interface OptionsPrompt {
 }
 
 export function fabriquerPrompt(options: OptionsPrompt): string {
-  const { diagnostic: d, manifestes, contrats, rapport, urlTest } = options;
+  const { diagnostic: d, contrats, rapport, urlTest } = options;
+  // Le chemin manuel s'en tient au niveau 1 : les modules optionnels passent
+  // par le prompt d'agent.
+  const manifestes = options.manifestes.filter((m) => !m.optionnel);
   const schema = d.schema_contrat ?? d.table_principale?.schema ?? "public";
   const vues = manifestes.flatMap((m) => m.vues.filter((v) => v.obligatoire).map((v) => `\`${schema}.${v.nom}\``));
 
@@ -146,7 +149,11 @@ export interface OptionsPromptAgent {
 }
 
 export function fabriquerPromptAgent(options: OptionsPromptAgent): string {
-  const { site, jeton, urlApi, urlResultat, manifestes, contrats } = options;
+  const { site, jeton, urlApi, urlResultat, contrats } = options;
+  // Les contrats obligatoires font le niveau 1 ; les optionnels (Comptes) se
+  // publient si l'app a de quoi les remplir, dans une étape à part.
+  const manifestes = options.manifestes.filter((m) => !m.optionnel);
+  const optionnels = options.manifestes.filter((m) => m.optionnel);
   const vues = manifestes.flatMap((m) => m.vues.filter((v) => v.obligatoire).map((v) => `\`${v.nom}\``));
   const controles = manifestes.flatMap((m) =>
     m.controles.filter((k) => k.niveau === 1 && !k.type).map((k) => `-- ${k.titre} (${m.contrat} ${k.ref}). Doit rendre zéro ligne.\n${k.sql};`)
@@ -155,7 +162,7 @@ export function fabriquerPromptAgent(options: OptionsPromptAgent): string {
   const [role, droits] = scriptRole("@SCHEMA@").split("\n\n-- 2.");
   const appel = (connexion: string) =>
     `curl -s -X POST '${urlApi}' \\\n  -H 'content-type: application/json' \\\n  -d '{"action":"tester","reponse":"courte","garder":true,"site":"${site.domaine}","jeton":"${jeton}","connexion":"${connexion}"}'`;
-  const n = manifestes.length;
+  const n = manifestes.length + (optionnels.length ? 1 : 0);
 
   const parties = [
     `# Brancher ${site.domaine} à Baikal
@@ -202,6 +209,8 @@ Si le rôle existe déjà, ne le recrée pas : \`alter role baikal_reader passwo
       "```sql\n" + (contrats[m.contrat] ?? `-- Texte du contrat ${m.contrat} indisponible.`).trimEnd() + "\n```"
     ),
 
+    ...(optionnels.length ? [etapeOptionnels(optionnels, contrats, manifestes.length + 2)] : []),
+
     `## Étape ${n + 2} — Les droits
 
 Dans la même migration, après les vues, pour CHAQUE table que tes vues lisent :
@@ -241,6 +250,7 @@ La réponse est un JSON :
 - \`data.a_corriger\` : un élément par contrôle en échec, avec ce qui est faux (\`si_echec\`), la correction attendue (\`correction\`) et jusqu'à trois exemples. Corrige la vue ou les droits, réapplique, relance le MÊME appel.
 - \`data.non_mesures\` : un contrôle non mesuré n'est pas un succès. Si c'est une requête trop lente, allège la vue ou indexe la colonne de jointure.
 - \`data.niveau1_pret\` : ton objectif est \`true\`.
+- Un module optionnel que tu as publié est contrôlé lui aussi : ses échecs (niveau 2) reviennent dans \`a_corriger\`. Corrige-les dans la même boucle ; ils ne bloquent pas \`niveau1_pret\`.
 - \`data.ouvrable\` : \`true\` quand le fondateur peut ouvrir son site dans Baikal depuis le lien.
 
 Dix tests par heure : corrige tout ce que le rapport montre avant de relancer.`,
@@ -256,6 +266,7 @@ Puis, en dix lignes au plus :
 1. Le projet que tu as branché : le dépôt, la base, le schéma.
 2. Ce que tu as créé : le rôle, les vues, la migration.
 3. Les choix que tu as faits à sa place : ce que tu as pris pour un dossier, pour un paiement, pour un compte de test.
+4. Les modules optionnels : ceux que tu as publiés, ceux que tu as écartés et pourquoi.
 
 Ce lien est privé et reste valable trente jours. C'est la seule chose qu'il a besoin d'ouvrir : dis-le-lui, et dis-lui d'y cliquer sur « Ouvrir mon site dans Baikal ».
 
@@ -263,4 +274,20 @@ Si tu n'arrives pas à \`niveau1_pret\` après trois corrections, arrête-toi : 
   ];
 
   return parties.join("\n\n") + "\n";
+}
+
+// L'étape des contrats optionnels du prompt d'entrée : chacun « si l'app a de
+// quoi le remplir », avec son texte et ses contrôles à jouer soi-même.
+function etapeOptionnels(optionnels: Manifeste[], contrats: Record<string, string>, numero: number): string {
+  const blocs = optionnels.map((m) => {
+    const verifs = m.controles.filter((k) => !k.type).map((k) => `-- ${k.titre} (${m.contrat} ${k.ref}). Doit rendre zéro ligne.\n${k.sql};`);
+    return `### ${m.titre}\n\nPublie-la ${m.quand ?? "si l'app a de quoi la remplir."} Sinon ne crée pas la vue : le module reste fermé, ce n'est pas une erreur.\n\n` +
+      "```sql\n" + (contrats[m.contrat] ?? `-- Texte du contrat ${m.contrat} indisponible.`).trimEnd() + "\n```" +
+      (verifs.length ? "\n\nVérifie-toi, chaque requête doit rendre zéro ligne :\n\n```sql\n" + verifs.join("\n\n") + "\n```" : "");
+  });
+  return `## Étape ${numero} — Les modules optionnels
+
+Ils ne bloquent pas l'ouverture du site, mais un fondateur qui ouvre sa console s'attend à les voir. Publie chacun dans la même migration si l'app a de quoi le remplir, sinon ne crée pas la vue. Mêmes règles qu'au-dessus : la forme est figée, le corps t'appartient.
+
+${blocs.join("\n\n")}`;
 }
