@@ -50,7 +50,7 @@ sur un téléphone (usage « compagnon »).
     `adresse.ts` ; manifestes `docs/contrats/manifestes/*.json`) ; la page importe ces modules tels
     quels, sans recopie. Aucun mot de passe n'entre dans un prompt.
   - Essai local : `VITE_BAIKAL_TEST_URL` fait parler la page à un service joué sur un Postgres
-    jetable. Pack vendeur est l'étalon (15/11/2026) : niveau 1 = dossiers ET mesures.
+    jetable. Pack vendeur est l'étalon (15/11/2026) : niveau 1 = dossiers ET mesures. Depuis le 23/11, le prompt fait aussi publier Comptes (`comptes-pro-v1`, `comptes-historique-v1`) si l'app a des comptes : contrats `optionnel: true`, absents = aucun contrôle, publiés = niveau 2 qui ne bloque pas l'ouverture.
   - La fonction atteint l'adresse directe de Supabase (`db.<référence>.supabase.co:5432`) : un
     agent déduit l'adresse de `SUPABASE_URL`, sans passer par le tableau de bord.
   - **Ouvrir le site dans la console, sans secret posé à la main** (16/11/2026, « le vrai
@@ -59,7 +59,7 @@ sur un téléphone (usage « compagnon »).
     `admin.tests_site`. Sur la page de résultat, « Ouvrir mon site dans Baikal » (action `ouvrir`
     de `baikal-test`) crée le compte — ou prend la session en cours — puis `admin.ouvrir_site`
     fait tout d'un bloc : ligne du registre (`db_ro_secret_ref = 'coffre:<id>'`, modèle clients,
-    schéma des vues), connexion renommée `site_ro_dsn_<id>`, droit `{"clients":"lecture"}` dans
+    schéma des vues), connexion renommée `site_ro_dsn_<id>`, droit `{"clients":"lecture","comptes_pro":"lecture"}` (migration `20261123100000`) dans
     `admin.droits_sites`. Un lien ne s'ouvre qu'une fois ; un domaine déjà au registre est refusé.
     `_shared/sites.ts` lit la connexion d'un site `coffre:` par `admin.connexion_site` dans
     `chargerSite` (les EF qui lisent un site doivent être redéployées pour le savoir). Compte créé
