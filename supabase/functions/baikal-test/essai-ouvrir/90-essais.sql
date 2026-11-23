@@ -59,8 +59,8 @@ insert into bilan (essai, ok, detail) select 'la connexion gardée est devenue c
   admin.connexion_site('monsaas-2') like '%:deux@db.exemple.com%'
   and not exists (select 1 from vault.secrets where name = 'test_ro_dsn_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
   and admin.connexion_site('pack-vendeur') is null, 'relue par admin.connexion_site';
-insert into bilan (essai, ok, detail) select 'le compte a ce site, le chapitre Clients, en lecture — rien d''autre',
-  count(*) = 1 and max(modules::text) = '{"clients": "lecture"}' and max(app_id) = 'monsaas-2', count(*) || ' droit(s) : ' || max(modules::text)
+insert into bilan (essai, ok, detail) select 'le compte a ce site, les chapitres Clients et Comptes, en lecture — rien d''autre',
+  count(*) = 1 and max(modules::text) = '{"clients": "lecture", "comptes_pro": "lecture"}' and max(app_id) = 'monsaas-2', count(*) || ' droit(s) : ' || max(modules::text)
   from admin.droits_sites where user_id = '00000000-0000-4000-8000-0000000000a1';
 insert into bilan (essai, ok, detail) select 'le lien est marqué ouvert', ouvert_le is not null and app_id = 'monsaas-2', app_id from admin.tests_site where jeton = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 

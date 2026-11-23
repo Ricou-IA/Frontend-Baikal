@@ -5,11 +5,13 @@
 -- types sont figés, le corps appartient au site.
 --
 -- Deux populations, jamais mélangées. Le chapitre CLIENTS liste les dossiers,
--- c'est-à-dire l'acte commercial : baikal_dossiers. Le chapitre COMPTES PRO
--- liste les entreprises qui achètent au site : l'agence immobilière de
+-- c'est-à-dire l'acte commercial : baikal_dossiers. Le chapitre COMPTES (id de
+-- module comptes_pro, libellé « Comptes » depuis le 06/10/2026) liste ceux qui
+-- ont un compte chez le site, pro ou particulier : l'agence immobilière de
 -- Pré-état-daté, le diagnostiqueur abonné de MonsieurDPE, l'installateur de
--- Conseil Solaire. Un compte pro vit dans le temps, un dossier est un
--- événement.
+-- Conseil Solaire, et l'inscrit d'une app grand public. Chez un particulier,
+-- raison_sociale vaut son nom, à défaut son email. Un compte vit dans le
+-- temps, un dossier est un événement.
 --
 -- Les tuiles qui coiffent la liste ne sont PAS ici : elles viennent de
 -- baikal_mesures avec chapitre = 'comptes_pro'. Une vue de liste ne porte pas
@@ -110,8 +112,8 @@ select
 from @SCHEMA@.pro_accounts p;
 
 comment on view @SCHEMA@.baikal_comptes_pro is
-  'Contrat Comptes pro v1 lu par Baikal (admin-comptes-pro). Les entreprises '
-  'qui achètent au site, une ligne par compte. Les agrégats ne sont PAS ici : '
+  'Contrat Comptes pro v1 lu par Baikal (admin-comptes-pro). Ceux qui ont '
+  'un compte chez le site, pro ou particulier, une ligne par compte. Les agrégats ne sont PAS ici : '
   'ils viennent de baikal_mesures, chapitre comptes_pro.';
 
 

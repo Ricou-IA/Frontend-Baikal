@@ -1,0 +1,65 @@
+{
+  "contrat": "comptes-historique-v1",
+  "source": "docs/contrats/comptes-historique-v1.sql",
+  "titre": "Comptes : l'historique d'un compte, sur sa fiche",
+  "optionnel": true,
+  "quand": "si tu publies baikal_comptes_pro et que l'app garde ce que fait ou achète un compte (achats, crédits, factures, changements de plan).",
+  "types": "Types attendus : text, int (smallint, integer, bigint), numeric (et entiers, réels), timestamptz.",
+  "vues": [
+    {
+      "nom": "baikal_compte_historique",
+      "obligatoire": true,
+      "niveau": 2,
+      "role": "La fiche d'un compte : une ligne par événement, achat ou consommation.",
+      "colonnes": [
+        { "nom": "compte_id", "type": "text", "obligatoire": true },
+        { "nom": "evenement_id", "type": "text", "obligatoire": true },
+        { "nom": "survenu_le", "type": "timestamptz", "obligatoire": true },
+        { "nom": "nature", "type": "text", "obligatoire": true },
+        { "nom": "libelle", "type": "text", "obligatoire": false },
+        { "nom": "quantite", "type": "int", "obligatoire": false },
+        { "nom": "montant_ttc", "type": "numeric", "obligatoire": false },
+        { "nom": "devise", "type": "text", "obligatoire": false },
+        { "nom": "solde_apres", "type": "int", "obligatoire": false },
+        { "nom": "dossier_id", "type": "text", "obligatoire": false }
+      ]
+    }
+  ],
+  "controles": [
+    {
+      "id": "historique.noyau_complet",
+      "ref": "§2 (1)",
+      "niveau": 2,
+      "vue": "baikal_compte_historique",
+      "titre": "Chaque événement a son compte, son identifiant, sa date et sa nature",
+      "requiert": ["compte_id", "evenement_id", "survenu_le", "nature"],
+      "sql": "select evenement_id, compte_id from @SCHEMA@.baikal_compte_historique where compte_id is null or evenement_id is null or survenu_le is null or nature is null",
+      "si_echec": "Un événement sans compte ou sans date n'apparaît sur aucune fiche, ou à la mauvaise place.",
+      "correction": "Écarter les lignes orphelines (where compte_id is not null) et poser la date de l'événement, pas celle d'une mise à jour."
+    },
+    {
+      "id": "historique.identifiant_unique",
+      "ref": "§2 (2)",
+      "niveau": 2,
+      "vue": "baikal_compte_historique",
+      "titre": "Un événement n'apparaît qu'une fois",
+      "requiert": ["evenement_id"],
+      "sql": "select evenement_id, count(*)::int as lignes from @SCHEMA@.baikal_compte_historique group by 1 having count(*) > 1",
+      "si_echec": "Un achat compté deux fois sur la fiche : le client croit avoir payé le double.",
+      "correction": "Préfixer l'identifiant par sa source quand la vue unit plusieurs tables (achat:<id>, credit:<id>)."
+    },
+    {
+      "id": "historique.compte_connu",
+      "ref": "§2 (3)",
+      "niveau": 2,
+      "vue": "baikal_compte_historique",
+      "titre": "Chaque événement cite un compte de la liste",
+      "requiert": ["compte_id"],
+      "sql": "select distinct h.compte_id from @SCHEMA@.baikal_compte_historique h where not exists (select 1 from @SCHEMA@.baikal_comptes_pro c where c.compte_id = h.compte_id)",
+      "si_echec": "Ces événements citent un compte absent de la liste : ils n'apparaissent sur aucune fiche, sans erreur.",
+      "correction": "Construire compte_id exactement comme dans baikal_comptes_pro (même source, même cast ::text)."
+    }
+  ],
+  "concordances": [],
+  "verifications_manuelles": []
+}

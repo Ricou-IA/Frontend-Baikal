@@ -65,7 +65,7 @@ Deno.test("le contrôle de parité voit une colonne inventée", async () => {
   ]);
 });
 
-for (const nom of ["dossiers-v1.json", "mesures-v1.json"]) {
+for (const nom of ["dossiers-v1.json", "mesures-v1.json", "comptes-pro-v1.json", "comptes-historique-v1.json"]) {
   Deno.test(`${nom} : chaque vue et chaque colonne figurent dans le contrat`, async () => {
     const { m, sql } = await charger(nom);
     assertEquals(ecarts(m, sql), []);
@@ -79,4 +79,20 @@ Deno.test("la copie embarquée (contrats.gen.ts) est à jour — sinon : deno ru
   const { contenuGenere, SORTIE } = await import("./generer.ts");
   const surDisque = (await Deno.readTextFile(SORTIE)).replaceAll("\r\n", "\n");
   assertEquals(surDisque, await contenuGenere());
+});
+
+// Les exemples d'un contrôle sont gardés 30 jours dans admin.tests_site et
+// affichés sur la page de résultat : un contrôle de Comptes ne sort jamais un
+// nom ni une adresse (masquage.ts ne masque que les emails).
+Deno.test("les contrôles de Comptes ne sortent ni nom ni adresse", async () => {
+  for (const nom of ["comptes-pro-v1.json", "comptes-historique-v1.json"]) {
+    const { m } = await charger(nom);
+    for (const k of m.controles) {
+      // « colonne is null » rend un booléen, pas la valeur : il est permis.
+      const select = k.sql.slice(0, k.sql.toLowerCase().indexOf(" from ")).toLowerCase().replace(/[a-z_]+ is null/g, "");
+      for (const interdit of ["raison_sociale", "email", "contact_nom", "telephone", "libelle"]) {
+        assert(!select.includes(interdit), `${k.id} sélectionne ${interdit}`);
+      }
+    }
+  }
 });

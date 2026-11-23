@@ -431,6 +431,9 @@ export async function recetter(options: OptionsRecette): Promise<Rapport> {
   }];
 
   for (const manifeste of options.manifestes) {
+    // Un contrat optionnel que le site ne publie pas n'a rien à dire : ni
+    // absence signalée, ni contrôle (le module reste fermé, c'est voulu).
+    if (manifeste.optionnel && !manifeste.vues.some((v) => structure.has(v.nom))) continue;
     const liste = manifeste.vues.find((v) => v.obligatoire);
     for (const vue of manifeste.vues) {
       const trouvees = structure.get(vue.nom);

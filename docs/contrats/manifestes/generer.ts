@@ -8,7 +8,7 @@
 const ici = new URL(".", import.meta.url);
 const racine = new URL("../../../", import.meta.url);
 
-export const MANIFESTES = ["dossiers-v1.json", "mesures-v1.json"];
+export const MANIFESTES = ["dossiers-v1.json", "mesures-v1.json", "comptes-pro-v1.json", "comptes-historique-v1.json"];
 export const SORTIE = new URL("supabase/functions/_shared/recette/contrats.gen.ts", racine);
 
 const lire = async (url: URL) => (await Deno.readTextFile(url)).replaceAll("\r\n", "\n");

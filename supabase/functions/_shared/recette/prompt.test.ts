@@ -136,3 +136,16 @@ Deno.test("« Ailleurs » ne garde que les tables qui portent un email, un paiem
   assertEquals(texte.includes("`app.liste_12`"), false);
   assert(texte.includes("… et 2 autre(s) table(s)."));
 });
+
+Deno.test("chemin manuel : les contrats optionnels n'entrent pas dans le niveau 1", async () => {
+  const optionnel = await lire("comptes-pro-v1.json");
+  const p = fabriquerPrompt({
+    diagnostic: diagnostiquer(TABLES, { role: false }),
+    manifestes: [...MANIFESTES, optionnel],
+    contrats: CONTRATS,
+    rapport: null,
+    urlTest: URL_TEST,
+  });
+  assertEquals(p.includes("baikal_comptes_pro"), false);
+  assert(p.includes("Le niveau 1 tient en deux vues"));
+});

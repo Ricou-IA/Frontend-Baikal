@@ -48,7 +48,8 @@ Deno.test("l'agent lance le test lui-même, sur le jeton de la page, et rend un 
 Deno.test("les deux contrats entiers, sans schéma deviné, et jamais de mot de passe", () => {
   const p = prompt();
   for (const m of MANIFESTES) {
-    assert(p.includes(`Le contrat ${m.contrat}`), m.contrat);
+    // Les obligatoires ont leur étape ; les optionnels sont dans l'étape commune.
+    if (!m.optionnel) assert(p.includes(`Le contrat ${m.contrat}`), m.contrat);
     assert(p.includes(CONTRATS[m.contrat].trimEnd().slice(0, 200)), `texte de ${m.contrat}`);
   }
   // Le schéma n'est pas connu : il reste à substituer, et le prompt le dit.
@@ -99,4 +100,26 @@ Deno.test("même entrée, même prompt ; un autre site, un autre prompt", () => 
   });
   assert(autre.includes("« app-devis.io »"));
   assertEquals(autre.includes("monsaas"), false);
+});
+
+Deno.test("Comptes : l'agent le publie si l'app a des comptes, sans toucher au niveau 1", () => {
+  const p = prompt();
+  assert(p.includes("Le niveau 1 tient en deux vues : `baikal_dossiers` et `baikal_mesures`."), "le niveau 1 ne cite que dossiers et mesures");
+  const optionnels = p.slice(p.indexOf("## Étape 4 — Les modules optionnels"), p.indexOf("## Étape 5"));
+  assert(optionnels.length > 0, "une étape pour les modules optionnels, après les contrats obligatoires");
+  assert(optionnels.includes("baikal_comptes_pro") && optionnels.includes("baikal_compte_historique"));
+  assert(optionnels.includes("sinon ne crée pas la vue"));
+  assert(optionnels.includes("à défaut le nom, à défaut l'email"), "un compte particulier a aussi sa ligne");
+  assert(optionnels.includes("comptes.identifiant_unique") || optionnels.includes("Un compte n'apparaît qu'une fois"), "ses contrôles, à jouer soi-même");
+  // L'auto-vérification du niveau 1 ne mêle pas les contrôles optionnels.
+  const droits = p.slice(p.indexOf("## Étape 5"), p.indexOf("## Étape 6"));
+  assert(!droits.includes("baikal_comptes_pro"), "les contrôles de niveau 1 ne citent pas Comptes");
+  // La réponse finale dit quels modules sont publiés ou écartés.
+  assert(p.slice(p.lastIndexOf("## Étape")).includes("modules optionnels"));
+});
+
+Deno.test("Comptes : le contrat recopié ne contredit pas la consigne (pro ou particulier)", () => {
+  const texte = CONTRATS["comptes-pro-v1"];
+  assert(texte.includes("pro ou particulier"), "l'en-tête du contrat dit qui a une ligne");
+  assert(!/liste les entreprises qui achètent/.test(texte), "plus de restriction aux seules entreprises");
 });
