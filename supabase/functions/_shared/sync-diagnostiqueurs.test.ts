@@ -1,5 +1,5 @@
-import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { type LigneDiag, prospectsDepuisDiag } from "./sync-diagnostiqueurs.ts";
+import { assertEquals, assertThrows } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { ErreurSync, exigerLignes, type LigneDiag, prospectsDepuisDiag } from "./sync-diagnostiqueurs.ts";
 
 // Meme mapping que la fonction SQL admin.sync_diagnostiqueurs (migration
 // 20260825010000) : email normalise, dedoublonnage par email, entreprise =
@@ -22,6 +22,22 @@ function ligne(partiel: Partial<LigneDiag>): LigneDiag {
 Deno.test("normalise l'email : minuscules, sans espaces autour", () => {
   const [p] = prospectsDepuisDiag("monsieurdpe", [ligne({ email: "  Jean@X.FR " })]);
   assertEquals(p.email, "jean@x.fr");
+});
+
+Deno.test("ne retire que les espaces, comme trim() de Postgres", () => {
+  // String.prototype.trim enleverait aussi l'espace insecable : la fonction
+  // SQL l'a garde, et normaliser autrement creerait un second prospect a cote
+  // d'un premier peut-etre desinscrit.
+  const [p] = prospectsDepuisDiag("monsieurdpe", [ligne({ email: " a@x.fr " })]);
+  assertEquals(p.email, "a@x.fr ");
+});
+
+Deno.test("une lecture vide leve au lieu de passer pour un site sans diagnostiqueur", () => {
+  assertThrows(() => exigerLignes("monsieurdpe", []), ErreurSync, "aucune ligne");
+});
+
+Deno.test("une lecture non vide passe", () => {
+  exigerLignes("monsieurdpe", [ligne({})]);
 });
 
 Deno.test("ecarte un email nul et un email sans arobase", () => {

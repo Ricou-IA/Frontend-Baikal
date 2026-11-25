@@ -46,7 +46,9 @@ function comparer(a: string | null, b: string | null): number {
 export function prospectsDepuisDiag(appId: string, lignes: LigneDiag[]): ProspectDiag[] {
   const valides = lignes
     .filter((l) => l.email !== null)
-    .map((l) => ({ ...l, email: (l.email as string).trim().toLowerCase() }))
+    // trim() de Postgres ne retire que les espaces : String.prototype.trim
+    // retirerait aussi l'espace insecable et creerait un second prospect.
+    .map((l) => ({ ...l, email: (l.email as string).replace(/^ +| +$/g, "").toLowerCase() }))
     .filter((l) => l.email.includes("@"))
     .sort((a, b) =>
       comparer(a.email, b.email) || comparer(a.nom_affiche, b.nom_affiche) ||
@@ -75,6 +77,18 @@ export function prospectsDepuisDiag(appId: string, lignes: LigneDiag[]): Prospec
 
 export class ErreurSync extends Error {}
 
+// Une lecture vide n'est jamais un site sans diagnostiqueur : c'est une RLS
+// sans policy pour baikal_reader, qui sert une table vide sans erreur
+// (CLAUDE.md de MonsieurDPE, §8). La fonction SQL levait sur une table absente ;
+// la synchro TS leve sur une table muette.
+export function exigerLignes(appId: string, lignes: LigneDiag[]): void {
+  if (lignes.length === 0) {
+    throw new ErreurSync(
+      `Synchro ${appId} : aucune ligne lue dans diag_certifie / diag_site (droits de baikal_reader ?)`,
+    );
+  }
+}
+
 export async function synchroniserDiagnostiqueurs(
   admin: SupabaseClient,
   site: Site,
@@ -95,10 +109,14 @@ export async function synchroniserDiagnostiqueurs(
   } finally {
     await sql.end();
   }
+  exigerLignes(site.id, lignes);
   const prospects = prospectsDepuisDiag(site.id, lignes);
   let inseres = 0;
   // Par lots : un upsert de plusieurs milliers de lignes depasse la taille de
-  // requete de PostgREST.
+  // requete de PostgREST. La synchro n'est donc plus atomique comme la
+  // fonction SQL : un lot en echec laisse les precedents ecrits, et la relance
+  // suivante ne compte comme inseres que les lignes restantes. Sans effet sur
+  // les donnees (ignoreDuplicates), seuls les compteurs de cette passe mentent.
   for (let i = 0; i < prospects.length; i += 500) {
     const { data, error } = await admin.schema("admin").from("prospects")
       .upsert(prospects.slice(i, i + 500), { onConflict: "app_id,email", ignoreDuplicates: true })
