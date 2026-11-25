@@ -2,6 +2,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { buildUnsubscribeUrl, renderTemplate, sendOneEmail } from "./envoi.ts";
 import { ErreurAcces, droitsModules, exigerModule, exigerSite, sitesAutorises } from "../_shared/droits.ts";
+import { chargerSite, ErreurSite } from "../_shared/sites.ts";
+import { ErreurSync, synchroniserDiagnostiqueurs } from "../_shared/sync-diagnostiqueurs.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -45,6 +47,24 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+    // Porte du cron admin-sync-diag-prospects : secret commun des crons admin
+    // (X-Cron-Secret = ADMIN_SEO_CRON_SECRET, comme admin-finance), une seule
+    // action. La passerelle (verify_jwt = true) a deja verifie le JWT anon.
+    const secretCron = req.headers.get("x-cron-secret");
+    if (secretCron !== null) {
+      const attendu = Deno.env.get("ADMIN_SEO_CRON_SECRET");
+      if (!attendu || secretCron !== attendu) return json({ data: null, error: "Non autorise" }, 401);
+      const corps = await req.json();
+      if (corps.action !== "sync-diagnostiqueurs-cron" || typeof corps.appId !== "string") {
+        return json({ data: null, error: "Action cron inconnue" }, 400);
+      }
+      const admin = createClient(supabaseUrl, serviceKey, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
+      const site = await chargerSite(admin, corps.appId);
+      return json({ data: await synchroniserDiagnostiqueurs(admin, site), error: null });
+    }
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return json({ data: null, error: "Non authentifie" }, 401);
@@ -219,16 +239,20 @@ serve(async (req) => {
       }
 
       case "sync-diagnostiqueurs": {
-        // Le mapping vit dans admin.sync_diagnostiqueurs, partage avec le
-        // cron nocturne admin-sync-diag-prospects (03h30).
+        // Le mapping vit dans _shared/sync-diagnostiqueurs.ts, partage avec le
+        // cron nocturne admin-sync-diag-prospects (03h30, porte x-cron-secret
+        // ci-dessus). Il remplace la fonction SQL admin.sync_diagnostiqueurs,
+        // qui ne lisait que la base partagee.
         // Reponse : {lus, avecEmail, inseres, doublons}.
-        const { data, error } = await admin.schema("admin")
-          .rpc("sync_diagnostiqueurs", { p_app_id: appId });
-        if (error) {
-          if (error.code === "P0001") return json({ data: null, error: error.message }, 400);
-          throw error;
+        try {
+          const site = await chargerSite(admin, appId);
+          return json({ data: await synchroniserDiagnostiqueurs(admin, site), error: null });
+        } catch (e) {
+          if (e instanceof ErreurSite || e instanceof ErreurSync) {
+            return json({ data: null, error: e.message }, 400);
+          }
+          throw e;
         }
-        return json({ data, error: null });
       }
 
       case "list-campagnes": {
