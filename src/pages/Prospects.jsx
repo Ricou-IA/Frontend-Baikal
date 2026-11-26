@@ -380,6 +380,12 @@ function ProspectsContent() {
 
       <p className="text-sm text-baikal-text">
         <span className="text-baikal-cyan font-semibold tabular-nums">{fmtNombre(donnees.total)}</span> prospects correspondent à ces filtres
+        {donnees.desinscrits_masques > 0 && (
+          <span className="opacity-70">
+            {' '}· {fmtNombre(donnees.desinscrits_masques)} désinscrit{donnees.desinscrits_masques > 1 ? 's' : ''} masqué{donnees.desinscrits_masques > 1 ? 's' : ''}
+            {' '}(soit {fmtNombre(donnees.total + donnees.desinscrits_masques)} adresses ; cochez le statut « Désinscrit » pour les voir)
+          </span>
+        )}
       </p>
       <BandeauSelection selection={selection} population="prospects" />
 

@@ -484,6 +484,19 @@ serve(async (req) => {
           ORDER BY coalesce(envoye_le, reserve_le) DESC, email
           LIMIT ${parPage} OFFSET ${(page - 1) * parPage}`;
         const [compteurs] = Object.values(await compteursCampagnes(sql, schema, [c.id]));
+        // Reponses : le statut « repondu » du prospect, saisi depuis la fiche
+        // ou ici (prospect_action du site), ou constate par le site. Une seule
+        // lecture de la vue (elle est lourde), restreinte aux destinataires.
+        const repondus: string[] = populations.prospects?.has("statut")
+          ? (await sql`
+              SELECT DISTINCT e.email
+              FROM ${sql(schema)}.mail_envoi e
+              JOIN (SELECT email FROM ${sql(schema)}.baikal_prospects WHERE statut = 'repondu') p
+                ON p.email = e.email
+              WHERE e.campagne_id = ${c.id}::uuid AND e.envoye_le IS NOT NULL`)
+            .map((r: { email: string }) => r.email)
+          : [];
+        const reponses = populations.prospects?.has("statut") ? repondus.length : null;
         const parMail = await sql`
           SELECT touche, count(envoye_le)::int AS envoyes, count(delivre_le)::int AS delivres,
                  count(ouvert_le)::int AS ouverts, count(clique_le)::int AS cliques,
@@ -502,10 +515,15 @@ serve(async (req) => {
         return json({
           data: {
             campagne: c,
-            compteurs: compteurs ?? null,
+            compteurs: compteurs ? { ...compteurs, reponses } : null,
             par_mail: parMail,
             restants,
-            lignes: rows.map(({ total_lignes: _t, ...r }: Record<string, unknown>) => r),
+            // null = le site ne publie pas de statut prospect : pas de KPI.
+            reponses_dispo: reponses !== null,
+            lignes: rows.map(({ total_lignes: _t, ...r }: Record<string, unknown>) => ({
+              ...r,
+              repondu: repondus.includes(String(r.email)),
+            })),
             total: rows.length ? Number(rows[0].total_lignes) : 0,
             page,
             parPage,

@@ -9,6 +9,8 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeft, ChevronLeft, ChevronRight, Pause, Pencil, Play } from 'lucide-react';
 import { mailingService } from '../../../services/mailing.service';
+import { prospectsService } from '../../../services/prospects.service';
+import { useDroitModule } from '../../../hooks/useDroitModule';
 import KpiCarte from '../KpiCarte';
 import { Chargement, ContenuEstompe, Erreur, LigneVide } from '../etats';
 import {
@@ -41,6 +43,18 @@ export default function DetailCampagne({ appId, campagneId, ecriture, onFerme, o
     const t = setInterval(() => setVersion((v) => v + 1), 20000);
     return () => clearInterval(t);
   }, [enCours]);
+
+  // Reponse recue (boite mail) : saisie a la main, par l'action « statut » du
+  // module prospects du site. Pas de rapprochement automatique de la boite.
+  const { ecriture: ecritureProspects } = useDroitModule('prospects');
+  const [marquage, setMarquage] = useState(null);
+  async function marquerRepondu(email) {
+    setMarquage(email);
+    const { error } = await prospectsService.executerAction(appId, email, 'statut', { valeur: 'repondu' });
+    setMarquage(null);
+    if (error) { setErreur(error.message); return; }
+    setVersion((v) => v + 1);
+  }
 
   async function agir(fn) {
     const { error } = await fn(appId, campagneId);
@@ -102,7 +116,7 @@ export default function DetailCampagne({ appId, campagneId, ecriture, onFerme, o
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
         <KpiCarte label="Envoyés" valeur={fmtNombre(envoyes)} />
         <KpiCarte label="Délivrés" valeur={fmtTaux(k?.delivres, envoyes)}
           sous={`${fmtNombre(k?.delivres)} ${BASE_ENVOIS}`} accent="info" />
@@ -115,6 +129,11 @@ export default function DetailCampagne({ appId, campagneId, ecriture, onFerme, o
         <KpiCarte label="Désinscrits" valeur={fmtNombre(k?.desinscrits)} sous={`${fmtNombre(k?.plaintes)} spam`}
           accent={(k?.plaintes ?? 0) > 0 ? 'danger' : 'default'} />
         <KpiCarte label="Erreurs" valeur={fmtNombre(k?.erreurs)} accent={(k?.erreurs ?? 0) > 0 ? 'danger' : 'default'} />
+        {donnees.reponses_dispo && (
+          <KpiCarte label="Réponses" valeur={fmtNombre(k?.reponses)}
+            sous={`${fmtTaux(k?.reponses, envoyes)} ${BASE_ENVOIS} · statut « A répondu »`}
+            accent={(k?.reponses ?? 0) > 0 ? 'success' : 'default'} />
+        )}
       </div>
       {(noteSuspects(k) || noteDelivresManquants(k)) && (
         <div className="text-xs text-amber-300 space-y-0.5">
@@ -209,6 +228,14 @@ export default function DetailCampagne({ appId, campagneId, ecriture, onFerme, o
                     )}
                   </td>
                   <td className="px-4 py-2 text-xs opacity-80 max-w-[320px] truncate" title={l.erreur || ''}>
+                    {l.repondu && <span className="text-emerald-300">A répondu · </span>}
+                    {!l.repondu && ecritureProspects && donnees.reponses_dispo && l.population === 'prospects' && l.envoye_le && (
+                      <button type="button" onClick={() => marquerRepondu(l.email)} disabled={marquage === l.email}
+                        className="mr-1 px-1.5 py-0.5 rounded border border-baikal-border hover:text-baikal-cyan hover:border-baikal-cyan disabled:opacity-40"
+                        title="Pose le statut « A répondu » sur le prospect (comme depuis sa fiche)">
+                        {marquage === l.email ? '…' : 'A répondu'}
+                      </button>
+                    )}
                     {l.desinscrit_le ? 'Désinscrit · ' : ''}
                     {l.rebond_type ? `Rebond ${l.rebond_type === 'Permanent' ? 'définitif' : 'temporaire'} · ` : ''}
                     {l.erreur || ''}
