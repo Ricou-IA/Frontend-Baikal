@@ -201,8 +201,8 @@ export function estJourOuvre(fuseau: string, maintenant = new Date()): boolean {
 // ------ Plage d'envoi ------
 //
 // Les campagnes ne partent que le matin, 08:30-11:00 dans le fuseau du site
-// (audit du 26/11/2026 : apres le premier lot de 09:09, les lots suivants
-// partaient a minuit, des que le plafond du jour se rouvrait). Debut inclus,
+// (audit du 26/11/2026 : sans plage, les lots partaient a minuit, des que le
+// plafond du jour se rouvrait). Debut inclus,
 // fin exclue : 08:30:00 envoie, 11:00:00 n'envoie plus.
 
 export interface PlageEnvoi {
