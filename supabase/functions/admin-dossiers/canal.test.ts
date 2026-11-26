@@ -221,3 +221,21 @@ Deno.test("attribution de type nombre -> pas de crash, unattributed", () => {
 Deno.test("attribution de type tableau -> pas de crash, unattributed", () => {
   assertEquals(canalVente([] as unknown as Record<string, unknown>), "unattributed");
 });
+
+// --- Archive financiere (audit du 26/11/2026) ---------------------------
+
+import { canalVenteArchivee } from "./canal.ts";
+
+Deno.test("archive : channel direct lu depuis la vue -> direct, plus « Sans origine »", () => {
+  const archivee = { a_gclid: false, capture_site: "live", channel: "direct", landing_page: "/", porte_entree: "/" };
+  assertEquals(canalVenteArchivee(archivee, "b2c"), "direct");
+});
+Deno.test("archive : vente b2b sans attribution -> portail_pro", () => {
+  assertEquals(canalVenteArchivee({}, "b2b"), "portail_pro");
+});
+Deno.test("archive : vente b2c sans aucun signal reste unattributed", () => {
+  assertEquals(canalVenteArchivee({ a_gclid: false, capture_site: "live", landing_page: "/" }, "b2c"), "unattributed");
+});
+Deno.test("archive : perimetre absent -> meme cascade que canalVente", () => {
+  assertEquals(canalVenteArchivee({ referrer_domaine: "google.fr" }), "organic");
+});

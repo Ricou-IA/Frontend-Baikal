@@ -54,7 +54,12 @@ const CHAMPS_ATTRIBUTION = [
 export function attributionDepuisLigne(ligne: Record<string, unknown>): Record<string, unknown> {
   const attribution: Record<string, unknown> = {};
   for (const champ of CHAMPS_ATTRIBUTION) {
-    const valeur = ligne[champ];
+    // La vue au contrat publie le canal calcule par le site sous le nom
+    // `acquisition_channel` (docs/contrats/ventes-v1.sql) ; l'attribution de
+    // l'archive le range sous `channel`, comme baikal_dossiers. Jusqu'au
+    // 26/11/2026 seul `channel` etait lu : le canal n'entrait jamais dans
+    // l'archive et toute vente « direct » s'affichait « Sans origine ».
+    const valeur = champ === "channel" ? (ligne.channel ?? ligne.acquisition_channel) : ligne[champ];
     if (valeur === null || valeur === undefined) continue;
     if (typeof valeur === "string" && valeur === "") continue;
     attribution[champ] = valeur;
