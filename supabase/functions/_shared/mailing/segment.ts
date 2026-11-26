@@ -177,7 +177,20 @@ function fragmentWhere(sql: Sql, o: OptionsRequete) {
         ${departement && col.has("code_postal")
           ? s`AND left(v.code_postal, ${departement.length}) = ${departement}` : s``}
         ${c.exclureClients && col.has("client_depuis") ? s`AND v.client_depuis IS NULL` : s``}
-        ${c.jamaisContactes && col.has("dernier_contact_le") ? s`AND v.dernier_contact_le IS NULL` : s``}
+        ${c.jamaisContactes && col.has("dernier_contact_le")
+          // « Jamais contacte » = avant CETTE campagne. Depuis que la vue du
+          // site compte aussi mail_envoi dans dernier_contact_le (contrat
+          // prospects-v1, 26/11/2026), le mail 1 de la campagne rend
+          // l'adresse « contactee » : sans cette exception ses relances ne
+          // seraient plus jamais dues. Un contact posterieur au dernier envoi
+          // de la campagne la fait toujours sortir de la sequence.
+          ? (o.campagneId
+            ? s`AND (v.dernier_contact_le IS NULL
+                 OR v.dernier_contact_le <= (SELECT max(e3.envoye_le) FROM ${s(schema)}.mail_envoi e3
+                                             WHERE e3.campagne_id = ${o.campagneId}
+                                               AND e3.email = lower(trim(v.email))))`
+            : s`AND v.dernier_contact_le IS NULL`)
+          : s``}
       ` : s``}
       ${population === "audience" && !liste ? s`
         ${c.etapes.length > 0 ? s`AND v.etape = ANY(${c.etapes})` : s``}

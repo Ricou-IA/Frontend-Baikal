@@ -197,3 +197,77 @@ export function estJourOuvre(fuseau: string, maintenant = new Date()): boolean {
   const jour = new Intl.DateTimeFormat("en-US", { timeZone: fuseau, weekday: "short" }).format(maintenant);
   return jour !== "Sat" && jour !== "Sun";
 }
+
+// ------ Plage d'envoi ------
+//
+// Les campagnes ne partent que le matin, 08:30-11:00 dans le fuseau du site
+// (audit du 26/11/2026 : apres le premier lot de 09:09, les lots suivants
+// partaient a minuit, des que le plafond du jour se rouvrait). Debut inclus,
+// fin exclue : 08:30:00 envoie, 11:00:00 n'envoie plus.
+
+export interface PlageEnvoi {
+  /** Minutes depuis minuit, heure murale du site. */
+  debut: number;
+  fin: number;
+}
+
+export const PLAGE_ENVOI: PlageEnvoi = { debut: 8 * 60 + 30, fin: 11 * 60 };
+
+function heureMurale(fuseau: string, instant: Date) {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: fuseau, year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+    }).formatToParts(instant).map((x) => [x.type, x.value]),
+  );
+  return { an: +p.year, mois: +p.month, jour: +p.day, minutes: +p.hour * 60 + +p.minute, secondes: +p.second };
+}
+
+/** L'instant UTC d'une heure murale du fuseau (changements d'heure compris). */
+function instantMural(fuseau: string, an: number, mois: number, jour: number, minutes: number): Date {
+  const voulu = Date.UTC(an, mois - 1, jour, Math.floor(minutes / 60), minutes % 60);
+  let t = voulu;
+  // Deux passes : le decalage lu a l'instant devine, puis a l'instant corrige.
+  for (let i = 0; i < 2; i++) {
+    const m = heureMurale(fuseau, new Date(t));
+    const lu = Date.UTC(m.an, m.mois - 1, m.jour, Math.floor(m.minutes / 60), m.minutes % 60, m.secondes);
+    t += voulu - lu;
+  }
+  return new Date(t);
+}
+
+export function dansPlageEnvoi(fuseau: string, maintenant = new Date(), plage: PlageEnvoi = PLAGE_ENVOI): boolean {
+  const { minutes } = heureMurale(fuseau, maintenant);
+  return minutes >= plage.debut && minutes < plage.fin;
+}
+
+/** Peut-on envoyer maintenant ? Plage du matin, et jours ouvres si demande. */
+export function peutEnvoyer(
+  fuseau: string,
+  joursOuvres: boolean,
+  maintenant = new Date(),
+  plage: PlageEnvoi = PLAGE_ENVOI,
+): boolean {
+  return dansPlageEnvoi(fuseau, maintenant, plage) && (!joursOuvres || estJourOuvre(fuseau, maintenant));
+}
+
+/** Le prochain debut de plage (instant UTC) ou l'envoi sera permis. Rendu
+ *  tel quel si l'envoi est deja permis. */
+export function prochainCreneau(
+  fuseau: string,
+  joursOuvres: boolean,
+  maintenant = new Date(),
+  plage: PlageEnvoi = PLAGE_ENVOI,
+): Date {
+  if (peutEnvoyer(fuseau, joursOuvres, maintenant, plage)) return maintenant;
+  const m = heureMurale(fuseau, maintenant);
+  // Aujourd'hui si la plage n'a pas encore commence, sinon demain ; puis on
+  // saute le week-end quand la campagne est en jours ouvres.
+  let decalageJours = m.minutes < plage.debut ? 0 : 1;
+  for (let i = 0; i < 8; i++, decalageJours++) {
+    const j = new Date(Date.UTC(m.an, m.mois - 1, m.jour + decalageJours));
+    const candidat = instantMural(fuseau, j.getUTCFullYear(), j.getUTCMonth() + 1, j.getUTCDate(), plage.debut);
+    if (!joursOuvres || estJourOuvre(fuseau, candidat)) return candidat;
+  }
+  throw new Error("prochainCreneau : aucun créneau dans les huit jours");
+}

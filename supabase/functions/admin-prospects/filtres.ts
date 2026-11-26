@@ -46,6 +46,11 @@ function listeProfils(brut: unknown): string[] {
     typeof v === "string" && /^[a-z0-9_]{1,40}$/.test(v)))].slice(0, 20);
 }
 
+// Le compteur « Professionnels contactes » (audit du 26/11/2026) : sans ces
+// metiers, les particuliers et les DIY (metier « autre ») et la presse
+// gonflaient le nombre de prospects pros touches (256 DIY chez pack-vendeur).
+export const METIERS_NON_PROS = ["autre", "presse"];
+
 // Un desinscrit n'est plus un prospect (Eric, 17/10/2026) : hors de la
 // liste et de l'entonnoir, sauf si on le demande en cochant le statut.
 export function exclureDesinscrits(c: Pick<Criteres, "statuts">): boolean {

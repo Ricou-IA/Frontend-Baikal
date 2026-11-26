@@ -217,8 +217,8 @@ function MailingContent() {
                       <th className="px-4 py-2">Cible</th>
                       <th className="px-4 py-2">Statut</th>
                       <th className="px-4 py-2 text-right">Envoyés</th>
-                      <th className="px-4 py-2 text-right">Ouverts</th>
-                      <th className="px-4 py-2 text-right">Cliqués</th>
+                      <th className="px-4 py-2 text-right" title="Taux sur les délivrés">Ouverts / délivrés</th>
+                      <th className="px-4 py-2 text-right" title="Taux sur les délivrés">Cliqués / délivrés</th>
                       <th className="px-4 py-2 text-right">Bounce</th>
                       <th className="px-4 py-2 text-right">Désabos</th>
                       <th className="px-4 py-2 whitespace-nowrap">Lancée</th>
@@ -247,8 +247,8 @@ function MailingContent() {
                           <td className="px-4 py-3 text-xs">{libelleCible(c)}</td>
                           <td className="px-4 py-3"><BadgeCampagne statut={c.statut} /></td>
                           <td className="px-4 py-3 text-right tabular-nums">{fmtNombre(k.envoyes)}</td>
-                          <td className="px-4 py-3 text-right tabular-nums">{fmtTaux(k.ouverts, k.envoyes)}</td>
-                          <td className="px-4 py-3 text-right tabular-nums">{fmtTaux(k.cliques, k.envoyes)}</td>
+                          <td className="px-4 py-3 text-right tabular-nums" title="Sur les délivrés">{fmtTaux(k.ouverts, k.delivres)}</td>
+                          <td className="px-4 py-3 text-right tabular-nums" title="Sur les délivrés">{fmtTaux(k.cliques, k.delivres)}</td>
                           <td className="px-4 py-3 text-right tabular-nums">{fmtNombre(k.rebonds)}</td>
                           <td className="px-4 py-3 text-right tabular-nums">{fmtNombre(k.desinscrits)}</td>
                           <td className="px-4 py-3 whitespace-nowrap">{fmtDateHeure(c.lancee_le)}</td>
