@@ -138,7 +138,18 @@ export interface Compteurs {
   desinscrits: number;
   erreurs: number;
   en_attente: number;
+  // Signaux de robots (Apple MPP, scanners de messagerie) : comptes dans
+  // ouverts / cliques, montres a part, jamais retranches d'office.
+  ouverts_suspects: number;
+  cliques_suspects: number;
+  // Ouvert sans delivre_le : webhook « delivered » perdu (P0 webhook).
+  ouverts_sans_delivrance: number;
 }
+
+// Suspect (meme regle partout ou elle est comptee : compteursCampagnes,
+// actions stats et detail d'admin-mailing) : une ouverture moins de 30 s apres
+// la delivrance (ou l'envoi), un clic moins de 30 s apres l'envoi. Un humain
+// n'a pas eu le temps de lire.
 
 export async function compteursCampagnes(
   sql: Sql,
@@ -158,7 +169,13 @@ export async function compteursCampagnes(
            count(plainte_le)::int                                     AS plaintes,
            count(desinscrit_le)::int                                  AS desinscrits,
            count(*) FILTER (WHERE statut = 'erreur')::int             AS erreurs,
-           count(*) FILTER (WHERE statut = 'reserve')::int            AS en_attente
+           count(*) FILTER (WHERE statut = 'reserve')::int            AS en_attente,
+           count(*) FILTER (WHERE ouvert_le - coalesce(delivre_le, envoye_le) < interval '30 seconds')::int
+                                                                      AS ouverts_suspects,
+           count(*) FILTER (WHERE clique_le - envoye_le < interval '30 seconds')::int
+                                                                      AS cliques_suspects,
+           count(*) FILTER (WHERE ouvert_le IS NOT NULL AND delivre_le IS NULL)::int
+                                                                      AS ouverts_sans_delivrance
     FROM ${sql(schema)}.mail_envoi
     WHERE campagne_id = ANY(${ids}::uuid[])
     GROUP BY campagne_id`;

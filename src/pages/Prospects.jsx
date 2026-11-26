@@ -277,8 +277,13 @@ function ProspectsContent() {
             valeur={<span className="tabular-nums">{fmtNombre(donnees.kpi?.adressables)}</span>} />
           <KpiCarte label="Nouveaux"
             valeur={<span className="tabular-nums">{fmtNombre(donnees.kpi?.nouveaux)}</span>} accent="info" />
-          <KpiCarte label="Contactés"
-            valeur={<span className="tabular-nums">{fmtNombre(donnees.kpi?.contactes)}</span>} />
+          {/* Pros seulement : les particuliers, DIY (métier « autre ») et la
+              presse sont comptés à part, sinon ils gonflent la prospection. */}
+          <KpiCarte label="Professionnels contactés"
+            valeur={<span className="tabular-nums">{fmtNombre(donnees.kpi?.contactes_pros ?? donnees.kpi?.contactes)}</span>}
+            sous={donnees.kpi?.contactes_pros !== undefined && donnees.kpi.contactes > donnees.kpi.contactes_pros
+              ? `+ ${fmtNombre(donnees.kpi.contactes - donnees.kpi.contactes_pros)} particuliers, DIY ou presse`
+              : null} />
           <KpiCarte label="Convertis"
             valeur={<span className="tabular-nums">{fmtNombre(donnees.kpi?.convertis)}</span>} accent="success" />
           <KpiCarte label="Désinscrits"

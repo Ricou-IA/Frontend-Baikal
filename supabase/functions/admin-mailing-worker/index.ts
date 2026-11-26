@@ -19,7 +19,9 @@ import {
   chargerConfigMailing, cleResend, compteursCampagnes, ecrivain, envoyesDepuis, expediteur,
   populationsDisponibles, schemaMailing,
 } from "../_shared/mailing/site.ts";
-import { debutJourLocal, envoyerResend, estJourOuvre, evaluerDisjoncteur, tailleLot } from "../_shared/mailing/envoi.ts";
+import {
+  debutJourLocal, envoyerResend, estJourOuvre, evaluerDisjoncteur, peutEnvoyer, prochainCreneau, tailleLot,
+} from "../_shared/mailing/envoi.ts";
 import { fabriquerMessage } from "../_shared/mailing/message.ts";
 
 const PAUSE_MS = 250; // Resend : 5 requetes/s par defaut, on reste a ~3/s.
@@ -89,6 +91,17 @@ serve(async (req) => {
       if (disj.coupe) { await arreter("suspendue", disj.motif); rapport.push({ id: c.id, coupe: disj.motif }); continue; }
 
       // 3. Quota du jour du site.
+      // Plage du matin, 08:30-11:00 dans le fuseau du site, et jours ouvres si
+      // la campagne le demande. Hors plage, rien ne part : la campagne attend
+      // le prochain creneau (sinon le plafond rouvert a minuit envoyait un lot
+      // a 00:00). Un envoi direct, declenche a la main depuis une fiche, part
+      // a l'heure ou on l'a demande.
+      if (!c.direct && !peutEnvoyer(site.fuseau || "Europe/Paris", Boolean(c.jours_ouvres))) {
+        const reprise = prochainCreneau(site.fuseau || "Europe/Paris", Boolean(c.jours_ouvres));
+        await table().update({ attente_jusqu_au: reprise.toISOString() }).eq("id", c.id).eq("statut", "en_cours");
+        rapport.push({ id: c.id, saute: "hors plage", reprise: reprise.toISOString() });
+        continue;
+      }
       // Jours ouvres seulement (parite pv-email-cron) : rien le samedi ni le
       // dimanche, dans le fuseau du site.
       if (c.jours_ouvres && !estJourOuvre(site.fuseau || "Europe/Paris")) {

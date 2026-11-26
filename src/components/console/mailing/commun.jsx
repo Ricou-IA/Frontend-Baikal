@@ -70,11 +70,37 @@ export function BadgeEnvoi({ statut }) {
 
 export const fmtNombre = (n) => new Intl.NumberFormat('fr-FR').format(n ?? 0);
 
-// Taux sur les ENVOYES (pas sur les delivres) : c'est la base que Resend et
-// Pack Vendeur affichent, pour que les chiffres se comparent.
+// Bases des taux (audit du 26/11/2026, alignees sur Resend) :
+//   delivrance, rebonds, desinscriptions, plaintes -> sur les ENVOIS ;
+//   ouvertures, clics                              -> sur les DELIVRES.
+// L'appelant passe la base ; les libelles BASE_* disent laquelle a l'ecran.
 export function fmtTaux(n, base) {
   if (!base) return '—';
   return `${((100 * (n ?? 0)) / base).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %`;
+}
+
+export const BASE_ENVOIS = 'sur les envois';
+export const BASE_DELIVRES = 'sur les délivrés';
+
+// Ouvertures < 30 s apres la delivrance, clics < 30 s apres l'envoi : robots
+// (Apple MPP, scanners). Comptes dans le total, signales a part.
+export function noteSuspects(k) {
+  const o = k?.ouverts_suspects ?? 0;
+  const c = k?.cliques_suspects ?? 0;
+  if (!o && !c) return null;
+  const morceaux = [];
+  if (o) morceaux.push(`${fmtNombre(o)} ouverture${o > 1 ? 's' : ''} en moins de 30 s`);
+  if (c) morceaux.push(`${fmtNombre(c)} clic${c > 1 ? 's' : ''} dans les 30 s de l'envoi`);
+  return `Suspects (robots, MPP) : ${morceaux.join(', ')}. Comptés dans les totaux.`;
+}
+
+// Un mail ouvert ou cliqué sans délivrance enregistrée : le webhook « delivered »
+// a été perdu, les délivrés sont sous-estimés et le taux d'ouverture surestimé.
+export function noteDelivresManquants(k) {
+  const n = k?.ouverts_sans_delivrance ?? 0;
+  return n > 0
+    ? `${fmtNombre(n)} ouvert${n > 1 ? 's' : ''} sans délivrance enregistrée : délivrés sous-estimés.`
+    : null;
 }
 
 export function fmtDateHeure(iso) {

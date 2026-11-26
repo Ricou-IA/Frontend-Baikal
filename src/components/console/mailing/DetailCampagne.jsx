@@ -12,7 +12,8 @@ import { mailingService } from '../../../services/mailing.service';
 import KpiCarte from '../KpiCarte';
 import { Chargement, ContenuEstompe, Erreur, LigneVide } from '../etats';
 import {
-  BadgeCampagne, BadgeEnvoi, Bouton, Chip, fmtDateHeure, fmtNombre, fmtTaux, POPULATIONS, STATUTS_ENVOI,
+  BadgeCampagne, BadgeEnvoi, BASE_DELIVRES, BASE_ENVOIS, Bouton, Chip, fmtDateHeure, fmtNombre, fmtTaux,
+  noteDelivresManquants, noteSuspects, POPULATIONS, STATUTS_ENVOI,
 } from './commun';
 
 export default function DetailCampagne({ appId, campagneId, ecriture, onFerme, onModifier, onChange }) {
@@ -103,15 +104,24 @@ export default function DetailCampagne({ appId, campagneId, ecriture, onFerme, o
 
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
         <KpiCarte label="Envoyés" valeur={fmtNombre(envoyes)} />
-        <KpiCarte label="Délivrés" valeur={fmtTaux(k?.delivres, envoyes)} sous={fmtNombre(k?.delivres)} accent="info" />
-        <KpiCarte label="Ouverts" valeur={fmtTaux(k?.ouverts, envoyes)} sous={fmtNombre(k?.ouverts)} />
-        <KpiCarte label="Cliqués" valeur={fmtTaux(k?.cliques, envoyes)} sous={fmtNombre(k?.cliques)} accent="success" />
+        <KpiCarte label="Délivrés" valeur={fmtTaux(k?.delivres, envoyes)}
+          sous={`${fmtNombre(k?.delivres)} ${BASE_ENVOIS}`} accent="info" />
+        <KpiCarte label="Ouverts" valeur={fmtTaux(k?.ouverts, k?.delivres)}
+          sous={`${fmtNombre(k?.ouverts)} ${BASE_DELIVRES}`} />
+        <KpiCarte label="Cliqués" valeur={fmtTaux(k?.cliques, k?.delivres)}
+          sous={`${fmtNombre(k?.cliques)} ${BASE_DELIVRES}`} accent="success" />
         <KpiCarte label="Rebonds" valeur={fmtNombre(k?.rebonds)} sous={`${fmtNombre(k?.rebonds_durs)} définitifs`}
           accent={(k?.rebonds_durs ?? 0) > 0 ? 'warning' : 'default'} />
         <KpiCarte label="Désinscrits" valeur={fmtNombre(k?.desinscrits)} sous={`${fmtNombre(k?.plaintes)} spam`}
           accent={(k?.plaintes ?? 0) > 0 ? 'danger' : 'default'} />
         <KpiCarte label="Erreurs" valeur={fmtNombre(k?.erreurs)} accent={(k?.erreurs ?? 0) > 0 ? 'danger' : 'default'} />
       </div>
+      {(noteSuspects(k) || noteDelivresManquants(k)) && (
+        <div className="text-xs text-amber-300 space-y-0.5">
+          {noteSuspects(k) && <p>{noteSuspects(k)}</p>}
+          {noteDelivresManquants(k) && <p>{noteDelivresManquants(k)}</p>}
+        </div>
+      )}
 
       {(donnees.par_mail || []).length > 1 && (
         <div className="bg-baikal-surface border border-baikal-border rounded-lg overflow-x-auto">
@@ -121,8 +131,8 @@ export default function DetailCampagne({ appId, campagneId, ecriture, onFerme, o
                 <th className="px-4 py-2 text-left">Mail de la séquence</th>
                 <th className="px-4 py-2 text-right">Envoyés</th>
                 <th className="px-4 py-2 text-right">Délivrés</th>
-                <th className="px-4 py-2 text-right">Ouverts</th>
-                <th className="px-4 py-2 text-right">Cliqués</th>
+                <th className="px-4 py-2 text-right" title="Sur les délivrés">Ouverts / délivrés</th>
+                <th className="px-4 py-2 text-right" title="Sur les délivrés">Cliqués / délivrés</th>
                 <th className="px-4 py-2 text-right">Rebonds</th>
                 <th className="px-4 py-2 text-right">Désinscrits</th>
               </tr>
@@ -136,8 +146,12 @@ export default function DetailCampagne({ appId, campagneId, ecriture, onFerme, o
                   </td>
                   <td className="px-4 py-2 text-right tabular-nums">{fmtNombre(m.envoyes)}</td>
                   <td className="px-4 py-2 text-right tabular-nums">{fmtTaux(m.delivres, m.envoyes)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{fmtTaux(m.ouverts, m.envoyes)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{fmtTaux(m.cliques, m.envoyes)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums" title={noteSuspects(m) || ''}>
+                    {fmtTaux(m.ouverts, m.delivres)}{m.ouverts_suspects ? <span className="text-amber-300"> *</span> : null}
+                  </td>
+                  <td className="px-4 py-2 text-right tabular-nums" title={noteSuspects(m) || ''}>
+                    {fmtTaux(m.cliques, m.delivres)}{m.cliques_suspects ? <span className="text-amber-300"> *</span> : null}
+                  </td>
                   <td className="px-4 py-2 text-right tabular-nums">{fmtNombre(m.rebonds)}</td>
                   <td className="px-4 py-2 text-right tabular-nums">{fmtNombre(m.desinscrits)}</td>
                 </tr>
@@ -182,9 +196,17 @@ export default function DetailCampagne({ appId, campagneId, ecriture, onFerme, o
                   <td className="px-4 py-2 whitespace-nowrap">{fmtDateHeure(l.envoye_le)}</td>
                   <td className="px-4 py-2 whitespace-nowrap">
                     {fmtDateHeure(l.ouvert_le)}{l.nb_ouvertures > 1 ? ` (×${l.nb_ouvertures})` : ''}
+                    {l.ouverture_suspecte && (
+                      <span className="ml-1 text-[10px] px-1 rounded bg-amber-500/15 text-amber-300"
+                        title="Ouvert moins de 30 s après la délivrance : robot ou Apple MPP probable">robot ?</span>
+                    )}
                   </td>
                   <td className="px-4 py-2 whitespace-nowrap">
                     {fmtDateHeure(l.clique_le)}{l.nb_clics > 1 ? ` (×${l.nb_clics})` : ''}
+                    {l.clic_suspect && (
+                      <span className="ml-1 text-[10px] px-1 rounded bg-amber-500/15 text-amber-300"
+                        title="Cliqué moins de 30 s après l'envoi : scanner de messagerie probable">robot ?</span>
+                    )}
                   </td>
                   <td className="px-4 py-2 text-xs opacity-80 max-w-[320px] truncate" title={l.erreur || ''}>
                     {l.desinscrit_le ? 'Désinscrit · ' : ''}

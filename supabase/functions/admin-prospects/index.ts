@@ -9,7 +9,7 @@ import { chargerSite, ErreurSite, lecteurSite } from "../_shared/sites.ts";
 import { ErreurAcces, droitsModules, exigerModule, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 import { appelerRelais, ErreurRelais, relaisConfigure } from "../_shared/relais.ts";
 import { preparerActionProspect } from "./actions.ts";
-import { exclureDesinscrits, normaliserCriteres } from "./filtres.ts";
+import { exclureDesinscrits, METIERS_NON_PROS, normaliserCriteres } from "./filtres.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -218,6 +218,10 @@ serve(async (req) => {
         SELECT count(*)::int AS adressables,
                count(*) FILTER (WHERE statut = 'nouveau')::int AS nouveaux,
                count(*) FILTER (WHERE dernier_contact_le IS NOT NULL)::int AS contactes,
+               ${colonnes.has("metier")
+                 ? sql`count(*) FILTER (WHERE dernier_contact_le IS NOT NULL
+                                          AND metier <> ALL(${METIERS_NON_PROS}))::int`
+                 : sql`count(*) FILTER (WHERE dernier_contact_le IS NOT NULL)::int`} AS contactes_pros,
                count(*) FILTER (WHERE statut = 'desinscrit')::int AS desinscrits
         FROM ${sql(schemaVues)}.baikal_prospects
         ${c.exclureTests && colonnes.has("est_test") ? sql`WHERE est_test IS NOT TRUE` : sql`WHERE true`}`;

@@ -269,3 +269,56 @@ Deno.test("liste : adresses normalisees, dedoublonnees, plafonnees", () => {
   assertEquals(normaliserCriteres({}).emails, []);
   assertEquals(normaliserCriteres({ emails: ["X@Y.FR"] }).emails, ["x@y.fr"]);
 });
+
+// ------ Plage d'envoi 08:30-11:00 (audit du 26/11/2026) ------
+import { dansPlageEnvoi, peutEnvoyer, prochainCreneau } from "./envoi.ts";
+
+const PARIS = "Europe/Paris";
+// Jeudi 26/11/2026, heure d'hiver : Paris = UTC+1.
+const aParis = (hhmm: string, jour = "2026-11-26") => new Date(`${jour}T${hhmm}:00+01:00`);
+
+Deno.test("plage : 08:29 non, 08:30 oui, 10:59 oui, 11:00 non", () => {
+  assertEquals(dansPlageEnvoi(PARIS, aParis("08:29")), false);
+  assertEquals(dansPlageEnvoi(PARIS, aParis("08:30")), true);
+  assertEquals(dansPlageEnvoi(PARIS, aParis("10:59")), true);
+  assertEquals(dansPlageEnvoi(PARIS, aParis("11:00")), false);
+});
+
+Deno.test("plage : minuit (les lots du 25 et du 26/11) est refuse", () => {
+  assertEquals(dansPlageEnvoi(PARIS, aParis("00:00")), false);
+  assertEquals(dansPlageEnvoi(PARIS, aParis("00:02")), false);
+});
+
+Deno.test("plage : lundi minuit attend le lundi 08:30", () => {
+  const lundiMinuit = aParis("00:00", "2026-11-30");
+  assertEquals(peutEnvoyer(PARIS, true, lundiMinuit), false);
+  assertEquals(prochainCreneau(PARIS, true, lundiMinuit).toISOString(), "2026-11-30T07:30:00.000Z");
+});
+
+Deno.test("plage : apres 11:00 un jeudi, reprise le vendredi 08:30", () => {
+  assertEquals(prochainCreneau(PARIS, true, aParis("11:00")).toISOString(), "2026-11-27T07:30:00.000Z");
+});
+
+Deno.test("plage : vendredi 11:00 en jours ouvres saute le week-end", () => {
+  const vendredi = aParis("11:00", "2026-11-27");
+  assertEquals(prochainCreneau(PARIS, true, vendredi).toISOString(), "2026-11-30T07:30:00.000Z");
+  // Sans jours ouvres, le samedi matin.
+  assertEquals(prochainCreneau(PARIS, false, vendredi).toISOString(), "2026-11-28T07:30:00.000Z");
+});
+
+Deno.test("plage : samedi 09:00 dans la plage mais refuse en jours ouvres", () => {
+  const samedi = aParis("09:00", "2026-11-28");
+  assertEquals(peutEnvoyer(PARIS, false, samedi), true);
+  assertEquals(peutEnvoyer(PARIS, true, samedi), false);
+});
+
+Deno.test("plage : dans la plage, le creneau est maintenant", () => {
+  const t = aParis("09:15");
+  assertEquals(prochainCreneau(PARIS, true, t).getTime(), t.getTime());
+});
+
+Deno.test("plage : passage a l'heure d'ete, 08:30 reste 08:30 murale", () => {
+  // Samedi 27/03/2027 midi (UTC+1) ; dimanche 28/03 08:30 est en UTC+2.
+  const samedi = new Date("2027-03-27T12:00:00+01:00");
+  assertEquals(prochainCreneau(PARIS, false, samedi).toISOString(), "2027-03-28T06:30:00.000Z");
+});

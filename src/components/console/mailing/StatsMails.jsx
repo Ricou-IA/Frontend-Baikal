@@ -4,7 +4,9 @@
  * Delivrabilite de TOUS les mails du site (Eric, 14/10/2026) : ceux qu'il
  * envoie lui-meme (vue agregee baikal_mail_stats, contrat mail-stats-v1) et
  * les campagnes Baikal (journal mail_envoi), un tableau par groupe, les
- * colonnes du /admin de pre-etat-date. Taux rapportes aux ENVOIS.
+ * colonnes du /admin de pre-etat-date. Delivrance, rebonds, desinscriptions
+ * et plaintes rapportes aux ENVOIS ; ouvertures et clics aux DELIVRES, comme
+ * Resend (audit du 26/11/2026).
  * Fenetre en jours civils (fuseau du site), quand PV compte une fenetre
  * glissante de 24 h x N : les deux different de quelques mails en bordure.
  * ============================================================================
@@ -13,17 +15,19 @@ import { useEffect, useMemo, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { mailingService } from '../../../services/mailing.service';
 import { Chargement, Erreur, Vide } from '../etats';
-import { Chip, fmtNombre } from './commun';
+import { BASE_DELIVRES, BASE_ENVOIS, Chip, fmtNombre, noteSuspects } from './commun';
 
 const PERIODES = [[7, '7 jours'], [30, '30 jours'], [90, '90 jours']];
 // Libelle de groupe pose par admin-mailing (action stats) sur ses campagnes.
 const GROUPE_BAIKAL = 'Campagnes Baikal';
 
-function Cellule({ n, base, couleur = 'text-white', alerte }) {
+function Cellule({ n, base, couleur = 'text-white', alerte, suspects }) {
   const pct = base ? (100 * (n || 0)) / base : null;
   return (
-    <td className="px-3 py-2.5 text-right whitespace-nowrap">
+    <td className="px-3 py-2.5 text-right whitespace-nowrap"
+      title={suspects ? `dont ${suspects} en moins de 30 s (robots, MPP probables)` : undefined}>
       <span className={`tabular-nums ${alerte ? 'text-red-400' : couleur}`}>{fmtNombre(n)}</span>
+      {suspects > 0 && <span className="text-amber-300 text-[11px]">*</span>}
       {pct !== null && (
         <span className="text-[11px] text-baikal-text opacity-60 ml-1 tabular-nums">
           ({pct.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %)
@@ -64,9 +68,11 @@ export default function StatsMails({ appId }) {
   }, [donnees]);
 
   const total = (donnees?.lignes || []).reduce((acc, l) => {
-    for (const k of ['envois', 'delivres', 'ouverts', 'cliques', 'rebonds', 'desinscrits', 'plaintes']) acc[k] = (acc[k] || 0) + (l[k] || 0);
+    for (const k of ['envois', 'delivres', 'ouverts', 'cliques', 'rebonds', 'desinscrits', 'plaintes',
+      'ouverts_suspects', 'cliques_suspects']) acc[k] = (acc[k] || 0) + (l[k] || 0);
     return acc;
   }, {});
+  const pct = (n, base) => (base ? `${((100 * n) / base).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %` : '—');
 
   return (
     <div className="space-y-4">
@@ -90,17 +96,21 @@ export default function StatsMails({ appId }) {
       {donnees && groupes.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            ['Envois', fmtNombre(total.envois)],
-            ['Délivrés', total.envois ? `${((100 * total.delivres) / total.envois).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %` : '—'],
-            ['Ouverts', total.envois ? `${((100 * total.ouverts) / total.envois).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %` : '—'],
-            ['Cliqués', total.envois ? `${((100 * total.cliques) / total.envois).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %` : '—'],
-          ].map(([l, v]) => (
+            ['Envois', fmtNombre(total.envois), null],
+            ['Délivrés', pct(total.delivres, total.envois), BASE_ENVOIS],
+            ['Ouverts', pct(total.ouverts, total.delivres), BASE_DELIVRES],
+            ['Cliqués', pct(total.cliques, total.delivres), BASE_DELIVRES],
+          ].map(([l, v, base]) => (
             <div key={l} className="bg-baikal-surface border border-baikal-border rounded-lg p-4">
               <p className="text-xs font-mono text-baikal-text uppercase">{l}</p>
               <p className="text-xl font-semibold text-white mt-1 tabular-nums">{v}</p>
+              {base && <p className="text-xs text-baikal-text opacity-60 mt-1">{base}</p>}
             </div>
           ))}
         </div>
+      )}
+      {donnees && noteSuspects(total) && (
+        <p className="text-xs text-amber-300">{noteSuspects(total)} Campagnes Baikal seulement : les mails du site ne publient pas ce détail.</p>
       )}
 
       {groupes.map(([groupe, lignes], k) => (
@@ -138,8 +148,8 @@ export default function StatsMails({ appId }) {
                     <td className="px-3 py-2.5 text-white max-w-[260px] truncate" title={l.type}>{l.libelle}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-white">{fmtNombre(l.envois)}</td>
                     <Cellule n={l.delivres} base={l.envois} />
-                    <Cellule n={l.ouverts} base={l.envois} couleur="text-emerald-400" />
-                    <Cellule n={l.cliques} base={l.envois} couleur="text-sky-400" />
+                    <Cellule n={l.ouverts} base={l.delivres} couleur="text-emerald-400" suspects={l.ouverts_suspects} />
+                    <Cellule n={l.cliques} base={l.delivres} couleur="text-sky-400" suspects={l.cliques_suspects} />
                     <Cellule n={l.rebonds} base={l.envois} couleur="text-amber-400" alerte={l.envois >= 50 && l.rebonds / l.envois > 0.05} />
                     <Cellule n={l.desinscrits} base={l.envois} />
                     <Cellule n={l.plaintes} base={l.envois} couleur="text-white" alerte={l.plaintes > 0} />
