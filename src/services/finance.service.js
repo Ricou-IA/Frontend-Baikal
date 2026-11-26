@@ -44,8 +44,10 @@ export const financeService = {
   getSerie(appId, mois = 12) {
     return appelerEdge('admin-finance', { action: 'serie', appId, mois });
   },
-  getVentes(appId, debut, fin) {
-    return appelerEdge('admin-finance', { action: 'ventes', appId, debut, fin });
+  // periode : 'annee' (defaut, annee civile du site) | '3m' | '6m' | '12m' ;
+  // ou jours libres du / au (AAAA-MM-JJ). rembourse : toutes | remboursees | non_remboursees.
+  getVentes(appId, { periode = 'annee', du = null, au = null, rembourse = 'toutes' } = {}) {
+    return appelerEdge('admin-finance', { action: 'ventes', appId, periode, du, au, rembourse });
   },
   getPartenariat(appId, assiette = null, prixUnitaire = null) {
     return appelerEdge('admin-finance', { action: 'partenariat', appId, assiette, prixUnitaire });

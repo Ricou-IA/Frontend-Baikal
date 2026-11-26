@@ -11,8 +11,14 @@
  *   5. Partenariat au resultat (mois par mois, sans report).
  *   6. Charges recurrentes (saisie, edition, revocation) et ponctuelles.
  *
- * Une vente remboursee reste comptee dans les ventes : le remboursement est
- * un cout affiche a part, pas une annulation de chiffre d'affaires.
+ * Une vente remboursee reste comptee dans les ventes et dans le CA BRUT ; le CA
+ * NET en deduit les remboursements, et le resultat les retranche en HT.
+ *
+ * Une seule regle de temps (audit du 26/11/2026) : toutes les fenetres sont des
+ * jours civils du fuseau du site, celle du bandeau des mesures. L'ecran ne
+ * calcule aucune borne ni aucun total : tout vient de admin-finance/fenetres.ts.
+ * Chaque bloc porte sa legende : brut ou net, gratuites comptees ou non, TTC
+ * ou HT, stock ou flux.
  * ============================================================================
  */
 import { useMemo, useState } from 'react';
@@ -42,21 +48,38 @@ const FENETRES = [
   ['annee', 'Année en cours'],
 ];
 
+// [cle, libelle, format, sous-ligne]. Une cle pointee (ventilation.payantes)
+// se lit dans l'objet de la fenetre.
 const POSTES = [
   ['ventes', 'Ventes', 'nombre'],
-  ['ca_ttc', 'CA TTC', 'eur'],
-  ['ca_ht', 'CA HT', 'eur'],
+  ['ventilation.payantes', 'dont payantes (particuliers)', 'nombre', true],
+  ['ventilation.gratuites', 'dont gratuités (0 €)', 'nombre', true],
+  ['ventilation.packs', 'dont packs de crédits pro', 'nombre', true],
+  ['ca_ttc', 'CA brut TTC', 'eur'],
+  ['ca_ht', 'CA brut HT', 'eur'],
+  ['remboursements', 'Remboursements TTC', 'eur'],
+  ['ca_net_ttc', 'CA net TTC', 'eur'],
+  ['ca_net_ht', 'CA net HT', 'eur'],
   ['frais_stripe', 'Frais Stripe', 'eur'],
-  ['remboursements', 'Remboursements', 'eur'],
   ['cout_ia', 'Coût IA', 'eur'],
   ['ads', 'Google Ads', 'eur'],
   ['charges_fixes', 'Charges fixes', 'eur'],
   ['charges_ponctuelles', 'Charges ponctuelles', 'eur'],
-  ['resultat', 'Résultat', 'eur'],
+  ['resultat', 'Résultat (HT)', 'eur'],
 ];
 
-// Le mois en cours est le seul mis en avant dans les tableaux mensuels.
-const MOIS_COURANT = new Date().toISOString().slice(0, 7);
+const lire = (objet, cle) => cle.split('.').reduce((o, k) => (o == null ? o : o[k]), objet);
+
+// Le mois en cours est le seul mis en avant dans les tableaux mensuels. Mois
+// civil de Paris, comme la serie (jamais la date UTC, fausse le soir du 31).
+const MOIS_COURANT = new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Paris' }).format(new Date()).slice(0, 7);
+
+// Legende d'un bloc : ce que les nombres comptent (brut / net, gratuites,
+// TTC / HT, stock / flux). Section n'affiche pas de sous-titre : la legende
+// est sous le bloc.
+function Legende({ children }) {
+  return <p className="text-xs text-baikal-text opacity-70 leading-relaxed">{children}</p>;
+}
 const classeMois = (mois) => (String(mois).slice(0, 7) === MOIS_COURANT
   ? 'bg-baikal-cyan/10 text-white'
   : '');
@@ -110,6 +133,11 @@ function Synthese({ appId, lectureSeule = false }) {
 
   const fenetres = donnees?.fenetres;
   const rienEncore = Boolean(donnees) && FENETRES.every(([cle]) => (fenetres?.[cle]?.ventes ?? 0) === 0);
+  // Google Ads n'est montre que si au moins une journee de l'archive en porte
+  // un montant : jamais alimente, il est absent, pas « a zero ».
+  const postes = POSTES.filter(([cle]) => cle !== 'ads' || donnees?.ads_renseigne);
+  const fuseau = donnees?.fuseau ?? 'Europe/Paris';
+  const tva = donnees?.tva_taux;
 
   return (
     <Section
@@ -145,16 +173,19 @@ function Synthese({ appId, lectureSeule = false }) {
                 </tr>
               </thead>
               <tbody>
-                {POSTES.map(([cle, libelle, format]) => (
-                  <tr key={cle} className={`border-t border-baikal-border/50 ${cle === 'resultat' ? 'font-semibold text-white' : ''}`}>
-                    <td className="px-4 py-2">{libelle}</td>
+                {postes.map(([cle, libelle, format, sousLigne]) => (
+                  <tr
+                    key={cle}
+                    className={`${sousLigne ? 'text-xs opacity-70' : 'border-t border-baikal-border/50'} ${cle === 'resultat' ? 'font-semibold text-white' : ''} ${cle === 'ca_net_ttc' ? 'border-t border-baikal-border' : ''}`}
+                  >
+                    <td className={sousLigne ? 'pl-8 pr-4 py-1' : 'px-4 py-2'}>{libelle}</td>
                     {FENETRES.map(([f]) => {
-                      const v = fenetres?.[f]?.[cle];
+                      const v = lire(fenetres?.[f], cle);
                       const classe = cle === 'resultat'
                         ? (v > 0 ? 'text-emerald-400' : v < 0 ? 'text-red-400' : '')
                         : '';
                       return (
-                        <td key={f} className={`text-right px-4 py-2 tabular-nums ${classe}`}>
+                        <td key={f} className={`text-right tabular-nums ${sousLigne ? 'px-4 py-1' : 'px-4 py-2'} ${classe}`}>
                           {format === 'nombre' ? fmtNombre(v) : fmtEur(v)}
                         </td>
                       );
@@ -164,6 +195,16 @@ function Synthese({ appId, lectureSeule = false }) {
               </tbody>
             </table>
           </div>
+          <Legende>
+            Flux de chaque période, en jours civils ({fuseau}) : « 7 derniers jours » = aujourd&apos;hui et
+            les six jours précédents, comme le bandeau. « Ventes » compte toutes les ventes encaissées,
+            gratuités à 0 € et packs de crédits pro compris (détail en retrait). CA brut = avant
+            remboursements ; CA net = remboursements déduits ; un remboursement compte dans la période
+            de la vente qu&apos;il rembourse. Résultat en HT : CA brut HT − frais Stripe − remboursements
+            HT{tva !== undefined ? ` (TVA ${String(Math.round(tva * 1000) / 10).replace('.', ',')} %)` : ''} − IA
+            − charges{donnees?.ads_renseigne ? ' − Google Ads' : ''}.
+            {!donnees?.ads_renseigne && ' Google Ads est masqué tant qu’aucune journée n’en porte le montant.'}
+          </Legende>
         </ContenuEstompe>
       )}
     </Section>
@@ -178,10 +219,12 @@ function Tendance({ appId }) {
     appId,
   );
 
+  // Couts = tout ce que le resultat retranche du CA HT (remboursements en HT
+  // compris) : CA HT − couts = resultat, sans ecart entre les trois courbes.
   const points = useMemo(() => (donnees?.lignes ?? []).map((l) => ({
     mois: l.mois,
     ca_ht: l.ca_ht,
-    couts: Number((l.frais_stripe + l.remboursements + l.cout_ia + l.charges_fixes).toFixed(2)),
+    couts: Number((l.ca_ht - l.resultat).toFixed(2)),
     resultat: l.resultat,
   })), [donnees]);
 
@@ -231,14 +274,24 @@ function Tendance({ appId }) {
           </ResponsiveContainer>
         </div>
       )}
+      {donnees && !vide && (
+        <Legende>
+          Flux par mois civil ({donnees.fuseau ?? 'Europe/Paris'}), tout en HT : CA brut HT, coûts
+          (frais Stripe, remboursements HT, IA, charges) et résultat = CA HT − coûts. Le mois en cours
+          s&apos;arrête à aujourd&apos;hui.
+        </Legende>
+      )}
     </Section>
   );
 }
 
+// Les remboursements y sont en HT, comme dans le resultat : la somme des postes
+// est exactement CA HT − resultat.
 const POSTES_COUTS = [
   ['frais_stripe', 'Stripe'],
   ['cout_ia', 'IA'],
-  ['remboursements', 'Remboursements'],
+  ['remboursements_ht', 'Remb. HT'],
+  ['ads', 'Google Ads'],
   ['charges_fixes', 'Charges fixes'],
   ['charges_ponctuelles', 'Charges ponctuelles'],
 ];
@@ -251,10 +304,14 @@ function CoutsParMois({ appId }) {
     appId,
   );
 
+  // Google Ads : colonne masquee tant qu'aucun mois n'en porte (NULL partout).
+  const postesCouts = useMemo(() => POSTES_COUTS.filter(([c]) => c !== 'ads'
+    || (donnees?.lignes ?? []).some((l) => l.ads !== null && l.ads !== undefined)), [donnees]);
+
   // Les mois sans la moindre activite alourdissent le tableau sans rien dire.
   const lignes = useMemo(() => (donnees?.lignes ?? [])
-    .filter((l) => l.ventes > 0 || POSTES_COUTS.some(([c]) => Number(l[c]) > 0))
-    .reverse(), [donnees]);
+    .filter((l) => l.ventes > 0 || postesCouts.some(([c]) => Number(l[c]) > 0))
+    .reverse(), [donnees, postesCouts]);
 
   return (
     <Section
@@ -288,7 +345,7 @@ function CoutsParMois({ appId }) {
                   <th className="px-4 py-2">Mois</th>
                   <th className="text-right px-2 py-2">Ventes</th>
                   <th className="text-right px-2 py-2">CA HT</th>
-                  {POSTES_COUTS.map(([cle, libelle]) => (
+                  {postesCouts.map(([cle, libelle]) => (
                     <th key={cle} className="text-right px-2 py-2">{libelle}</th>
                   ))}
                   <th className="text-right px-2 py-2">Total coûts</th>
@@ -297,16 +354,16 @@ function CoutsParMois({ appId }) {
               </thead>
               <tbody>
                 {lignes.length === 0 && (
-                  <LigneVide colonnes={5 + POSTES_COUTS.length} message="Aucun mois archivé sur cette période." />
+                  <LigneVide colonnes={5 + postesCouts.length} message="Aucun mois archivé sur cette période." />
                 )}
                 {lignes.map((l) => {
-                  const total = POSTES_COUTS.reduce((acc, [c]) => acc + Number(l[c] || 0), 0);
+                  const total = postesCouts.reduce((acc, [c]) => acc + Number(l[c] || 0), 0);
                   return (
                     <tr key={l.mois} className={`border-t border-baikal-border/50 ${classeMois(l.mois)}`}>
                       <td className="px-4 py-2 font-mono text-xs">{l.mois}</td>
                       <td className="text-right px-2 py-2 tabular-nums">{fmtNombre(l.ventes)}</td>
                       <td className="text-right px-2 py-2 tabular-nums">{fmtEur(l.ca_ht)}</td>
-                      {POSTES_COUTS.map(([cle]) => (
+                      {postesCouts.map(([cle]) => (
                         <td key={cle} className={`text-right px-2 py-2 tabular-nums ${Number(l[cle]) > 0 ? '' : 'opacity-40'}`}>
                           {Number(l[cle]) > 0 ? `− ${fmtEur(l[cle])}` : '—'}
                         </td>
@@ -321,6 +378,12 @@ function CoutsParMois({ appId }) {
               </tbody>
             </table>
           </div>
+          <Legende>
+            Flux par mois civil ({donnees.fuseau ?? 'Europe/Paris'}), en HT. Les remboursements sont
+            retranchés en HT, au mois de la vente remboursée ; les charges fixes au prorata des jours
+            (12 mois / 365 jours). Total coûts = CA HT − résultat.
+            {!postesCouts.some(([c]) => c === 'ads') && ' Google Ads est masqué tant qu’aucune journée n’en porte le montant.'}
+          </Legende>
         </ContenuEstompe>
       )}
     </Section>
@@ -785,16 +848,39 @@ function CelluleFacture({ vente, facture, lectureSeule, onFacturer, onRenvoyer, 
   );
 }
 
+const PERIODES_VENTES = [
+  ['annee', 'Année en cours'],
+  ['3m', '3 mois'],
+  ['6m', '6 mois'],
+  ['12m', '12 mois'],
+  ['libre', 'Dates…'],
+];
+
+const FILTRES_REMBOURSEMENT = [
+  ['toutes', 'Toutes'],
+  ['remboursees', 'Remboursées'],
+  ['non_remboursees', 'Non remboursées'],
+];
+
+function fmtJourCourt(iso) {
+  if (!iso) return '';
+  const [a, m, j] = String(iso).slice(0, 10).split('-');
+  return `${j}/${m}/${a}`;
+}
+
 function Ventes({ appId, lectureSeule = false }) {
-  const debut = useMemo(() => {
-    const d = new Date();
-    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 2, 1)).toISOString();
-  }, []);
-  const fin = useMemo(() => new Date().toISOString(), []);
+  // Les bornes se calculent dans la fonction, dans le fuseau du site : l'ecran
+  // ne transmet que le choix.
+  const [periode, setPeriode] = useState('annee');
+  const [libre, setLibre] = useState({ du: '', au: '' });
+  const [rembourse, setRembourse] = useState('toutes');
+  const options = periode === 'libre'
+    ? (libre.du && libre.au ? { du: libre.du, au: libre.au, rembourse } : null)
+    : { periode, rembourse };
 
   const { donnees, erreur, enCours } = useDonneesCachees(
-    `ventes:${appId}`,
-    () => financeService.getVentes(appId, debut, fin),
+    `ventes:${appId}:${JSON.stringify(options)}`,
+    () => financeService.getVentes(appId, options ?? { periode: 'annee', rembourse }),
     appId,
   );
 
@@ -842,15 +928,68 @@ function Ventes({ appId, lectureSeule = false }) {
     return [...m.values()].sort((a, b) => b.ca - a.ca);
   }, [lignes]);
 
+  const nbRemboursees = lignes.filter((v) => Number(v.montant_rembourse) > 0).length;
+
   return (
     <Section
       titre="Ventes"
-      sousTitre="Trois derniers mois — chaque ligne est ouvrable, c'est ce qui rend le calcul auditable"
+      action={(
+        <div className="flex gap-2 items-center flex-wrap text-sm">
+          {PERIODES_VENTES.map(([cle, libelle]) => (
+            <button
+              key={cle}
+              onClick={() => setPeriode(cle)}
+              disabled={enCours}
+              className={`px-3 py-1 rounded border disabled:opacity-50 ${periode === cle
+                ? 'border-baikal-cyan text-baikal-cyan'
+                : 'border-baikal-border text-baikal-text'}`}
+            >
+              {libelle}
+            </button>
+          ))}
+          <select
+            value={rembourse}
+            onChange={(e) => setRembourse(e.target.value)}
+            className={CHAMP}
+            aria-label="Filtre des remboursements"
+          >
+            {FILTRES_REMBOURSEMENT.map(([cle, libelle]) => <option key={cle} value={cle}>{libelle}</option>)}
+          </select>
+        </div>
+      )}
     >
+      {periode === 'libre' && (
+        <div className="flex items-end gap-3 flex-wrap text-xs text-baikal-text">
+          <label className="block">
+            Du
+            <input type="date" className={`${CHAMP} block mt-1 font-mono`} value={libre.du} max={libre.au || undefined}
+              onChange={(e) => setLibre({ ...libre, du: e.target.value })} />
+          </label>
+          <label className="block">
+            au
+            <input type="date" className={`${CHAMP} block mt-1 font-mono`} value={libre.au} min={libre.du || undefined}
+              onChange={(e) => setLibre({ ...libre, au: e.target.value })} />
+          </label>
+          {!options && <span className="opacity-60">Choisissez les deux dates.</span>}
+        </div>
+      )}
       {erreur && <Erreur message={erreur} />}
       {!donnees && !erreur && <Chargement />}
       {donnees && (
         <ContenuEstompe enCours={enCours}>
+          <Legende>
+            Du {fmtJourCourt(donnees.du)} au {fmtJourCourt(donnees.au)} (jours civils, {donnees.fuseau ?? 'Europe/Paris'})
+            · {fmtNombre(lignes.length)} vente{lignes.length > 1 ? 's' : ''}
+            {rembourse === 'toutes' && nbRemboursees > 0 && `, dont ${nbRemboursees} remboursée${nbRemboursees > 1 ? 's' : ''}`}.
+            Montants bruts TTC par vente, gratuités à 0 € comprises ; le remboursement est à part, dans sa colonne.
+            Chaque ligne est ouvrable : c&apos;est ce qui rend le calcul auditable.
+          </Legende>
+          {donnees.tronque && (
+            <div className="p-3 bg-amber-900/20 border border-amber-500/50 rounded-md flex items-start gap-3 text-amber-300 text-sm">
+              <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <span>Plus de {fmtNombre(lignes.length)} ventes sur la période : la liste est coupée. Réduisez la période.</span>
+            </div>
+          )}
           {parOffre.length > 0 && (
             <div className="flex gap-2 flex-wrap">
               {parOffre.map((o) => (
@@ -893,18 +1032,25 @@ function Ventes({ appId, lectureSeule = false }) {
                 </thead>
                 <tbody>
                   {lignes.length === 0 && (
-                    <LigneVide colonnes={facturationOuverte ? 8 : 7} message="Aucune vente archivée sur les trois derniers mois." />
+                    <LigneVide colonnes={facturationOuverte ? 8 : 7} message="Aucune vente archivée sur cette période." />
                   )}
                   {lignes.map((v) => (
                     <tr key={v.id} className="border-t border-baikal-border/50">
-                      <td className="px-4 py-1.5 font-mono text-xs">{v.paid_at?.slice(0, 10)}</td>
+                      <td className="px-4 py-1.5 font-mono text-xs">{v.jour_local ?? v.paid_at?.slice(0, 10)}</td>
                       <td className="px-2 py-1.5">{v.offre}</td>
                       <td className="px-2 py-1.5">
                         {CANAUX[v.canal]?.[0]
                           ? <BadgeCanal canal={v.canal} attribution={v.attribution} />
                           : <span className="opacity-40">—</span>}
                       </td>
-                      <td className="text-right px-2 py-1.5 tabular-nums">{fmtEur(Number(v.montant_ttc))}</td>
+                      <td className="text-right px-2 py-1.5 tabular-nums whitespace-nowrap">
+                        {Number(v.montant_ttc) <= 0 && (
+                          <span className="mr-1.5 px-1.5 py-0.5 rounded border border-baikal-border text-[10px] opacity-70" title="Vente à 0 € (coupon 100 %) : comptée dans les ventes, non facturable">
+                            gratuite
+                          </span>
+                        )}
+                        {fmtEur(Number(v.montant_ttc))}
+                      </td>
                       <td className="text-right px-2 py-1.5 tabular-nums opacity-70">{fmtEur(Number(v.montant_ht))}</td>
                       <td className="text-right px-2 py-1.5 tabular-nums opacity-70">{fmtEur(Number(v.frais_stripe_eur))}</td>
                       <td className={`text-right py-1.5 tabular-nums ${facturationOuverte ? 'px-2' : 'px-4'} ${Number(v.montant_rembourse) > 0 ? 'text-red-400' : 'opacity-40'}`}>
@@ -1032,6 +1178,13 @@ function Partenariat({ appId }) {
               </tbody>
             </table>
           </div>
+          <Legende>
+            Décompte du contrat, flux par mois, montants HT. « Ventes » = ventes encaissées à plus de 0 €
+            (particuliers et packs de crédits pro ; gratuités exclues), « Remb. » = celles qui ont été
+            remboursées, « Nettes » = ventes − remboursées. Le CA HT ne compte que les ventes non
+            remboursées. La franchise s&apos;applique aux ventes nettes du mois et ne se reporte pas ;
+            seul un résultat négatif passe au mois suivant (« Report »).
+          </Legende>
         </ContenuEstompe>
       )}
     </Section>
@@ -1048,7 +1201,18 @@ function FinancesContent() {
       {/* Mesures que le SITE publie, à distinguer de la synthèse ci-dessous,
           qui vient de admin.ventes et de Stripe. Rien ne s'affiche tant que le
           site ne publie pas sa vue baikal_mesures. */}
-      <BandeauMesures appId={currentApp} chapitre="finances" />
+      <BandeauMesures
+        appId={currentApp}
+        chapitre="finances"
+        legende={(
+          <Legende>
+            Tuiles publiées par le site (vue baikal_mesures), en jours civils de son fuseau. Une tuile de
+            flux compte la fenêtre choisie ; une tuile de cumul est un stock depuis l&apos;ouverture, qui
+            ne change pas avec la fenêtre et ne déduit pas les remboursements. Pour le net de la période,
+            voir la synthèse.
+          </Legende>
+        )}
+      />
       <Synthese appId={currentApp} lectureSeule={!ecriture} />
       <Tendance appId={currentApp} />
       <CoutsParMois appId={currentApp} />
