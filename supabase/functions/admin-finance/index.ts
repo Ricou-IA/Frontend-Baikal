@@ -57,8 +57,9 @@ import {
 // affichee dans /finances doit se lire comme celle de la fiche client. Le
 // canal SQL de l'archive (admin.canal_vente) reste stocke mais n'est plus
 // affiche : il ne connait ni GEO ni Direct. L'archive ne porte pas
-// l'apporteur : portail_pro n'est donc pas detectable ici.
-import { canalVente, domaineVente } from "../admin-dossiers/canal.ts";
+// l'apporteur : une vente b2b (pack du compte pro) est lue portail_pro par
+// son perimetre (canalVenteArchivee).
+import { canalVenteArchivee, domaineVente } from "../admin-dossiers/canal.ts";
 import { venteFacturable } from "../_shared/facturation.ts";
 import { corrigerLibelleEcriture } from "../_shared/pennylane.ts";
 
@@ -454,7 +455,7 @@ serve(async (req) => {
       );
       const lignes = (data ?? []).map((v: any) => ({
         ...v,
-        canal: canalVente(v.attribution ?? null),
+        canal: canalVenteArchivee(v.attribution ?? null, v.perimetre),
         domaine: domaineVente(v.attribution ?? null) || null,
         facture: factures[String(v.stripe_payment_intent_id)] ?? null,
         // La regle est dans _shared/facturation.ts : l'ecran n'en decide rien.

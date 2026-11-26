@@ -1,0 +1,60 @@
+-- ---------------------------------------------------------------------------
+-- Contrat Ventes v1 — contrat de FORME (écrit le 26/11/2026).
+--
+-- Une ligne par vente PAYÉE au grand public (B2C), sans aucune donnée
+-- nominative. Lue par l'enrichissement quotidien du module Finances de Baikal
+-- (supabase/functions/admin-finance/enrichissement.ts) : Stripe dit l'argent,
+-- cette vue dit le reste (identifiant métier, date de création, origine
+-- FIGÉE à la capture côté site). Baikal ne recalcule jamais l'origine : la
+-- purge RGPD du site efface referrer et gclid, la vue doit publier ce qui a
+-- été figé avant.
+--
+-- Ce contrat existait de fait depuis le 25/08/2026 (vue pv_ventes_baikal de
+-- pack-vendeur, nommée en dur dans enrichissement.ts). Il est écrit ici parce
+-- qu'un nom de colonne lu de travers (`channel` côté Baikal, publié
+-- `acquisition_channel`) a fait passer pour « Sans origine » toutes les ventes
+-- directes de l'archive.
+--
+-- Colonnes (toutes obligatoires ; texte inconnu = '' et non NULL) :
+--   app_id                    text         id du site au registre de Baikal
+--   vente_id                  text         identifiant de la vente chez le site
+--   created_at                timestamptz  création du dossier
+--   paid_at                   timestamptz  paiement (même définition que « Payé »)
+--   montant_ttc               numeric      payé, 0 pour un coupon de 100 %
+--   devise                    text         'EUR'
+--   offre                     text         identifiant stable du produit
+--   perimetre                 text         'b2c' (les ventes aux pros n'y sont pas)
+--   stripe_payment_intent_id  text         NULL pour une vente à 0 € sans PaymentIntent
+--   acquisition_channel       text         canal calculé par le site : organic_search,
+--                                          direct, email, campaign, referral,
+--                                          paid_search, paid_social, organic_social ;
+--                                          '' si non capté. Vocabulaire FIGÉ.
+--                                          Baikal le range sous la clé `channel`.
+--   referrer_domaine          text         domaine du référent, minuscules, sans www
+--   a_gclid                   boolean      un gclid a été capté (jamais le gclid)
+--   utm_source|utm_medium|utm_campaign text
+--   landing_page              text         page d'atterrissage, sans paramètres
+--   porte_entree              text         première page vue, sans paramètres
+--   capture                   text         live | backfill | backfill_partiel
+--   origine_declaree          text         ce que le client a déclaré, '' sinon
+--   est_test                  boolean      toujours false (tests filtrés à la source)
+--   rembourse_le              timestamptz  NULL si non remboursée
+--   montant_rembourse         numeric      0 si non remboursée
+--
+-- Règles :
+--   - une vente absente de la vue mais archivée côté Stripe est marquée
+--     exclue par Baikal (test filtré à la source) : la vue ne doit donc
+--     JAMAIS perdre une vraie vente, ni rendre zéro ligne par défaut de droit ;
+--   - « direct » est un signal capté, pas un manque : ne jamais publier ''
+--     quand le site a calculé « direct » ;
+--   - une vente remboursée reste une vente (rembourse_le, montant_rembourse).
+--
+-- Recette (lecture seule, sur la vue du site) :
+--   select count(*) filter (where acquisition_channel = '') as sans_canal,
+--          count(*) as ventes
+--     from @SCHEMA@.<vue des ventes>;
+--   -> sans_canal ne compte que les ventes réellement captées sans canal
+--      (backfill) ; une vente captée en direct a acquisition_channel = 'direct'.
+--   select count(*) from @SCHEMA@.<vue des ventes>
+--    where referrer_domaine ~ '^www\.|[A-Z]' or landing_page like '%?%';  -> 0
+-- ---------------------------------------------------------------------------

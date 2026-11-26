@@ -83,6 +83,7 @@ deux vues, vérifier qu'elles s'accordent ligne à ligne.
 | `mailing-v1.1-sequences.sql` | module (mise à jour) | 1.1 | monsieurdpe, pack-vendeur (une ligne par mail de séquence : colonne `touche`) |
 | `audience-v1.sql` | forme | 1 | pack-vendeur (matérialisée, rafraîchie chaque heure) |
 | `mail-stats-v1.sql` | forme | 1 | pack-vendeur |
+| `ventes-v1.sql` | forme | 1 | pack-vendeur (`public.pv_ventes_baikal`, écrit le 26/11/2026 ; lu par `admin-finance/enrichissement.ts`) |
 | `evenements-v1.sql` + `evenements-relais-v1.ts` + `evenements-v1.js` | module | 1 | aucun site encore (guide : `evenements-v1.md`) |
 | `membres-relais-v1.ts` | relais (sites en modèle « organisations » sur base dédiée) | 1 | majordhome en cours (écrit, pas encore déployé) : lister, créer, mot de passe, bloquer |
 

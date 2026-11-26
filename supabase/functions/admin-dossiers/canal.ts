@@ -8,12 +8,14 @@
 // ne "corrige" pas en realignant -- lis les deux raisons ci-dessous.
 //
 //  1. L'archive financiere (admin.ventes, alimentee par
-//     admin-finance/enrichissement.ts) ne porte pas de champ "channel" au
-//     sens ou ce fichier l'entend : sa vue source ne l'expose pas comme un
-//     signal de repli exploitable de la meme facon que referrer_domaine ou
-//     les utm_*. Les categories "direct" et le repli "organic_search" sont
-//     donc IMPOSSIBLES a calculer depuis l'archive -- pas un choix, une
-//     limite de la donnee source.
+//     admin-finance/enrichissement.ts) ne portait pas de champ "channel".
+//     On l'a cru une limite de la donnee source ; c'etait une erreur de
+//     lecture (audit du 26/11/2026) : la vue du site publie bien le canal,
+//     sous le nom `acquisition_channel`, et l'enrichissement ne lisait que
+//     `channel`. Corrige ce jour-la : "direct" et le repli "organic_search"
+//     se calculent depuis l'archive pour toute vente enrichie depuis. Les
+//     ventes archivees avant restent sans canal tant qu'un nouvel
+//     enrichissement ne les a pas relues (action `enrichir`, a la main).
 //  2. Le proprietaire a arbitre que la CONSOLE (ce fichier) est desormais la
 //     reference pour l'attribution. Le module Finances sert a la
 //     reconciliation des MONTANTS, pas des canaux : les deux ecrans peuvent
@@ -296,4 +298,16 @@ export function canalVente(
 
   // 9. Aucun signal exploitable.
   return "unattributed";
+}
+
+// Canal d'une vente de l'ARCHIVE financiere (admin.ventes). L'archive ne
+// porte pas l'apporteur, mais elle porte le perimetre : une vente b2b est un
+// achat du compte pro (pack de credits), jamais une visite du site -- la vue
+// B2C du site ne la connait pas et son attribution est vide. Sans ce test,
+// chaque pack pro tombait en "unattributed" (« Sans origine »).
+export function canalVenteArchivee(
+  attribution: Record<string, unknown> | null,
+  perimetre?: unknown,
+): string {
+  return canalVente(attribution, texte(perimetre) === "b2b" ? "compte pro" : undefined);
 }
