@@ -17,6 +17,19 @@
 -- "Supprimer" que si elle est vraie ; colonne absente, elle se replie sur la
 -- provenance import|scrape (juste quand les scrapes vivent dans le receptacle,
 -- faux des qu'un site les garde dans son annuaire : pack-vendeur).
+--
+-- Regle de projection (26/11/2026, audit Baikal de pre-etat-date.ai) : un
+-- site qui a AUSSI le module mailing (mailing-v1.sql) compte les envois de
+-- @SCHEMA@.mail_envoi comme des contacts, par adresse normalisee :
+--   dernier_contact_le = greatest(contacts du site, max(mail_envoi.envoye_le))
+--   nb_contacts        = contacts du site + count(mail_envoi envoyes)
+--   statut             = un envoi Baikal sort l'adresse de « nouveau »
+--                        (contacte ; relance des 2 touches) ; desinscrit,
+--                        l'etat pose depuis Baikal, repondu et refus priment.
+-- Sans elle, une adresse ecrite par une campagne Baikal reste « nouveau » et
+-- la console annonce des contactes qui ne comptent que les envois du site.
+-- Le ciblage « jamais contactes » d'une campagne (segment.ts) ignore les
+-- envois de la campagne elle-meme, pour que ses relances restent dues.
 -- ---------------------------------------------------------------------------
 
 -- ------ 1. Le receptacle standard ------

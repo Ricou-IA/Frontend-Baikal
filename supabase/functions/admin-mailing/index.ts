@@ -239,7 +239,10 @@ serve(async (req) => {
                  count(envoye_le)::int AS envois, count(delivre_le)::int AS delivres,
                  count(ouvert_le)::int AS ouverts, count(clique_le)::int AS cliques,
                  count(rebond_le)::int AS rebonds, count(desinscrit_le)::int AS desinscrits,
-                 count(plainte_le)::int AS plaintes, max(envoye_le)::date::text AS dernier
+                 count(plainte_le)::int AS plaintes, max(envoye_le)::date::text AS dernier,
+                 count(*) FILTER (WHERE ouvert_le - coalesce(delivre_le, envoye_le) < interval '30 seconds')::int
+                   AS ouverts_suspects,
+                 count(*) FILTER (WHERE clique_le - envoye_le < interval '30 seconds')::int AS cliques_suspects
           FROM ${sql(schema)}.mail_envoi
           WHERE envoye_le >= ${depuis.toISOString()}::timestamptz
           GROUP BY campagne_id, touche
@@ -474,18 +477,38 @@ serve(async (req) => {
         const rows = await sql`
           SELECT email, touche, population, destinataire_id, statut, erreur, rebond_type,
                  envoye_le, delivre_le, ouvert_le, clique_le, rebond_le, plainte_le, desinscrit_le,
-                 nb_ouvertures, nb_clics, count(*) OVER() AS total_lignes
+                 nb_ouvertures, nb_clics,
+                 coalesce(ouvert_le - coalesce(delivre_le, envoye_le) < interval '30 seconds', false)
+                   AS ouverture_suspecte,
+                 coalesce(clique_le - envoye_le < interval '30 seconds', false) AS clic_suspect,
+                 count(*) OVER() AS total_lignes
           FROM ${sql(schema)}.mail_envoi
           WHERE campagne_id = ${c.id}::uuid
             ${statut ? sql`AND statut = ${statut}` : sql``}
           ORDER BY coalesce(envoye_le, reserve_le) DESC, email
           LIMIT ${parPage} OFFSET ${(page - 1) * parPage}`;
         const [compteurs] = Object.values(await compteursCampagnes(sql, schema, [c.id]));
+        // Reponses : le statut « repondu » du prospect, saisi depuis la fiche
+        // ou ici (prospect_action du site), ou constate par le site. Une seule
+        // lecture de la vue (elle est lourde), restreinte aux destinataires.
+        const repondus: string[] = populations.prospects?.has("statut")
+          ? (await sql`
+              SELECT DISTINCT e.email
+              FROM ${sql(schema)}.mail_envoi e
+              JOIN (SELECT email FROM ${sql(schema)}.baikal_prospects WHERE statut = 'repondu') p
+                ON p.email = e.email
+              WHERE e.campagne_id = ${c.id}::uuid AND e.envoye_le IS NOT NULL`)
+            .map((r: { email: string }) => r.email)
+          : [];
+        const reponses = populations.prospects?.has("statut") ? repondus.length : null;
         const parMail = await sql`
           SELECT touche, count(envoye_le)::int AS envoyes, count(delivre_le)::int AS delivres,
                  count(ouvert_le)::int AS ouverts, count(clique_le)::int AS cliques,
                  count(rebond_le)::int AS rebonds, count(desinscrit_le)::int AS desinscrits,
-                 count(*) FILTER (WHERE statut = 'reserve')::int AS en_attente
+                 count(*) FILTER (WHERE statut = 'reserve')::int AS en_attente,
+                 count(*) FILTER (WHERE ouvert_le - coalesce(delivre_le, envoye_le) < interval '30 seconds')::int
+                   AS ouverts_suspects,
+                 count(*) FILTER (WHERE clique_le - envoye_le < interval '30 seconds')::int AS cliques_suspects
           FROM ${sql(schema)}.mail_envoi WHERE campagne_id = ${c.id}::uuid
           GROUP BY touche ORDER BY touche`;
         const restants = c.statut === "terminee"
@@ -496,10 +519,15 @@ serve(async (req) => {
         return json({
           data: {
             campagne: c,
-            compteurs: compteurs ?? null,
+            compteurs: compteurs ? { ...compteurs, reponses } : null,
             par_mail: parMail,
             restants,
-            lignes: rows.map(({ total_lignes: _t, ...r }: Record<string, unknown>) => r),
+            // null = le site ne publie pas de statut prospect : pas de KPI.
+            reponses_dispo: reponses !== null,
+            lignes: rows.map(({ total_lignes: _t, ...r }: Record<string, unknown>) => ({
+              ...r,
+              repondu: repondus.includes(String(r.email)),
+            })),
             total: rows.length ? Number(rows[0].total_lignes) : 0,
             page,
             parPage,

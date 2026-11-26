@@ -9,7 +9,7 @@ import { chargerSite, ErreurSite, lecteurSite } from "../_shared/sites.ts";
 import { ErreurAcces, droitsModules, exigerModule, exigerSite, sitesAutorises } from "../_shared/droits.ts";
 import { appelerRelais, ErreurRelais, relaisConfigure } from "../_shared/relais.ts";
 import { preparerActionProspect } from "./actions.ts";
-import { exclureDesinscrits, normaliserCriteres } from "./filtres.ts";
+import { exclureDesinscrits, METIERS_NON_PROS, normaliserCriteres } from "./filtres.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -143,14 +143,14 @@ serve(async (req) => {
       // et total affiches) et sans (compteurs des chips et de l'entonnoir,
       // voir plus bas). Une seule fonction pour ne jamais laisser les deux
       // usages diverger.
-      const fragmentFiltres = (avecMetier: boolean) => requete`
+      const fragmentFiltres = (avecMetier: boolean, garderDesinscrits = false) => requete`
         WHERE true
           ${c.exclureTests && colonnes.has("est_test") ? requete`AND est_test IS NOT TRUE` : requete``}
           ${!avecAudience && c.exclureClients && colonnes.has("client_depuis") ? requete`AND client_depuis IS NULL` : requete``}
           ${!avecAudience && avecMetier && c.metiers.length > 0 ? requete`AND metier = ANY(${c.metiers})` : requete``}
           ${avecAudience && avecMetier && c.etapes.length > 0 ? requete`AND etape = ANY(${c.etapes})` : requete``}
           ${avecAudience && avecMetier && c.profils.length > 0 ? requete`AND profil = ANY(${c.profils})` : requete``}
-          ${exclureDesinscrits(c) && colonnes.has("statut")
+          ${!garderDesinscrits && exclureDesinscrits(c) && colonnes.has("statut")
             ? requete`AND statut IS DISTINCT FROM 'desinscrit'`
             : requete``}
           ${c.statuts.length > 0 ? requete`AND statut = ANY(${c.statuts})` : requete``}
@@ -192,6 +192,15 @@ serve(async (req) => {
         total = Number(compte.total);
       }
 
+      // Les desinscrits masques par defaut, comptes avec les MEMES filtres :
+      // l'ecran dit « N prospects · M desinscrits masques » au lieu de laisser
+      // le total N + M lu ailleurs (audience, liste mail) passer pour un ecart.
+      const [masques] = exclureDesinscrits(c) && colonnes.has("statut")
+        ? await requete`
+          SELECT count(*)::int AS n FROM ${source}
+          ${fragmentFiltres(true, true)} AND statut = 'desinscrit'`
+        : [{ n: 0 }];
+
       // Compteurs des chips metier : semantique de facette -- chaque chip
       // affiche combien de lignes il ramenerait compte tenu des AUTRES
       // filtres actifs (statut, provenance, departement...), jamais du
@@ -218,6 +227,10 @@ serve(async (req) => {
         SELECT count(*)::int AS adressables,
                count(*) FILTER (WHERE statut = 'nouveau')::int AS nouveaux,
                count(*) FILTER (WHERE dernier_contact_le IS NOT NULL)::int AS contactes,
+               ${colonnes.has("metier")
+                 ? sql`count(*) FILTER (WHERE dernier_contact_le IS NOT NULL
+                                          AND metier <> ALL(${METIERS_NON_PROS}))::int`
+                 : sql`count(*) FILTER (WHERE dernier_contact_le IS NOT NULL)::int`} AS contactes_pros,
                count(*) FILTER (WHERE statut = 'desinscrit')::int AS desinscrits
         FROM ${sql(schemaVues)}.baikal_prospects
         ${c.exclureTests && colonnes.has("est_test") ? sql`WHERE est_test IS NOT TRUE` : sql`WHERE true`}`;
@@ -237,6 +250,7 @@ serve(async (req) => {
           disponible: true,
           prospects: rows.map(({ total_lignes: _t, ...p }: Record<string, unknown>) => p),
           total,
+          desinscrits_masques: Number(masques?.n ?? 0),
           page: c.page,
           parPage: c.parPage,
           metiers: metiers ?? [],
