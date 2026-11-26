@@ -143,14 +143,14 @@ serve(async (req) => {
       // et total affiches) et sans (compteurs des chips et de l'entonnoir,
       // voir plus bas). Une seule fonction pour ne jamais laisser les deux
       // usages diverger.
-      const fragmentFiltres = (avecMetier: boolean) => requete`
+      const fragmentFiltres = (avecMetier: boolean, garderDesinscrits = false) => requete`
         WHERE true
           ${c.exclureTests && colonnes.has("est_test") ? requete`AND est_test IS NOT TRUE` : requete``}
           ${!avecAudience && c.exclureClients && colonnes.has("client_depuis") ? requete`AND client_depuis IS NULL` : requete``}
           ${!avecAudience && avecMetier && c.metiers.length > 0 ? requete`AND metier = ANY(${c.metiers})` : requete``}
           ${avecAudience && avecMetier && c.etapes.length > 0 ? requete`AND etape = ANY(${c.etapes})` : requete``}
           ${avecAudience && avecMetier && c.profils.length > 0 ? requete`AND profil = ANY(${c.profils})` : requete``}
-          ${exclureDesinscrits(c) && colonnes.has("statut")
+          ${!garderDesinscrits && exclureDesinscrits(c) && colonnes.has("statut")
             ? requete`AND statut IS DISTINCT FROM 'desinscrit'`
             : requete``}
           ${c.statuts.length > 0 ? requete`AND statut = ANY(${c.statuts})` : requete``}
@@ -191,6 +191,15 @@ serve(async (req) => {
           SELECT count(*) AS total FROM ${source} ${filtres}`;
         total = Number(compte.total);
       }
+
+      // Les desinscrits masques par defaut, comptes avec les MEMES filtres :
+      // l'ecran dit « N prospects · M desinscrits masques » au lieu de laisser
+      // le total N + M lu ailleurs (audience, liste mail) passer pour un ecart.
+      const [masques] = exclureDesinscrits(c) && colonnes.has("statut")
+        ? await requete`
+          SELECT count(*)::int AS n FROM ${source}
+          ${fragmentFiltres(true, true)} AND statut = 'desinscrit'`
+        : [{ n: 0 }];
 
       // Compteurs des chips metier : semantique de facette -- chaque chip
       // affiche combien de lignes il ramenerait compte tenu des AUTRES
@@ -241,6 +250,7 @@ serve(async (req) => {
           disponible: true,
           prospects: rows.map(({ total_lignes: _t, ...p }: Record<string, unknown>) => p),
           total,
+          desinscrits_masques: Number(masques?.n ?? 0),
           page: c.page,
           parPage: c.parPage,
           metiers: metiers ?? [],
