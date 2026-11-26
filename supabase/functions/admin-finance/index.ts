@@ -2,9 +2,11 @@
 //
 // Actions :
 //   capture          { jour?, rattrapage? }   → cron uniquement (X-Cron-Secret)
-//   synthese         { appId }                → 7 jours / mois / annee en cours
-//   serie            { appId, mois }          → serie mensuelle CA / couts / resultat
-//   ventes           { appId, debut, fin }    → lignes de vente de la periode
+//   synthese         { appId }                → 7 jours / mois / annee en cours (jours civils du site)
+//   serie            { appId, mois }          → serie mensuelle CA / couts / resultat (mois civils du site)
+//   ventes           { appId, periode?, du?, au?, rembourse? }
+//                                             → lignes de vente de la periode (defaut : annee civile),
+//                                               rembourse = toutes | remboursees | non_remboursees
 //   charges          { appId }                → charges recurrentes
 //   charge-creer     { appId, ... }
 //   charge-modifier  { id, libelle, montant, debut, fin }
@@ -65,6 +67,20 @@ import {
 // son perimetre (canalVenteArchivee).
 import { canalVenteArchivee, domaineVente } from "../admin-dossiers/canal.ts";
 import { venteFacturable } from "../_shared/facturation.ts";
+import {
+  agregerVentes,
+  arrondi,
+  bornes,
+  chargesSurPeriode,
+  type Fenetre,
+  fenetresSynthese,
+  filtreRemboursement,
+  jourLocal,
+  moisSerie,
+  periodeVentes,
+  ponctuellesSurPeriode,
+  resultat,
+} from "./fenetres.ts";
 import { corrigerLibelleEcriture } from "../_shared/pennylane.ts";
 
 const corsHeaders = {
@@ -80,89 +96,63 @@ function json(payload: unknown, status = 200): Response {
   });
 }
 
-function arrondi(n: number): number {
-  return Number(n.toFixed(2));
+interface SiteFinance {
+  fuseau: string;
+  tva_taux: number;
 }
 
-function debutMois(d: Date): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
-}
-
-// Jours civils inclus entre deux instants, comptes sur la date UTC de chacun.
-// La fin d'une fenetre est a 23 h 59 : arrondir l'ecart puis ajouter 1 comptait
-// un jour de trop sur chaque mois clos (septembre sortait a 31 jours).
-function joursEntre(a: Date, b: Date): number {
-  const jourA = Math.floor(a.getTime() / 86_400_000);
-  const jourB = Math.floor(b.getTime() / 86_400_000);
-  return Math.max(0, jourB - jourA + 1);
-}
-
-// Prorata journalier d'une charge mensuelle : 12 mois / 365 jours. Une charge
-// de 30 EUR/mois ne creuse donc pas un trou le 1er, elle coute 0,99 EUR/jour.
-function chargesSurPeriode(charges: any[], debut: Date, fin: Date): number {
-  let total = 0;
-  for (const c of charges) {
-    const cDebut = new Date(`${c.debut}T00:00:00Z`);
-    const cFin = c.fin ? new Date(`${c.fin}T00:00:00Z`) : null;
-    const d = cDebut > debut ? cDebut : debut;
-    const f = cFin && cFin < fin ? cFin : fin;
-    if (f < d) continue;
-    total += (Number(c.montant_mensuel_eur) * 12 / 365) * joursEntre(d, f);
-  }
-  return arrondi(total);
-}
-
-// Une charge ponctuelle tombe le jour ou elle est datee, sans prorata.
-function ponctuellesSurPeriode(ponctuelles: any[], debut: Date, fin: Date): number {
-  const d = debut.toISOString().slice(0, 10);
-  const f = fin.toISOString().slice(0, 10);
-  let total = 0;
-  for (const c of ponctuelles) {
-    if (c.jour >= d && c.jour <= f) total += Number(c.montant_eur);
-  }
-  return arrondi(total);
-}
-
-function agregerVentes(ventes: any[]) {
-  const t = {
-    ventes: ventes.length,
-    ca_ttc: 0,
-    ca_ht: 0,
-    frais_stripe: 0,
-    remboursements: 0,
+async function lireSiteFinance(admin: any, appId: string): Promise<SiteFinance> {
+  const { data } = await admin.schema("config").from("apps")
+    .select("fuseau, tva_taux").eq("id", appId).maybeSingle();
+  return {
+    fuseau: data?.fuseau || "Europe/Paris",
+    tva_taux: data?.tva_taux === null || data?.tva_taux === undefined ? 0.2 : Number(data.tva_taux),
   };
-  for (const v of ventes) {
-    t.ca_ttc += Number(v.montant_ttc);
-    t.ca_ht += Number(v.montant_ht);
-    t.frais_stripe += Number(v.frais_stripe_eur);
-    t.remboursements += Number(v.montant_rembourse);
-  }
-  t.ca_ttc = arrondi(t.ca_ttc);
-  t.ca_ht = arrondi(t.ca_ht);
-  t.frais_stripe = arrondi(t.frais_stripe);
-  t.remboursements = arrondi(t.remboursements);
-  return t;
 }
 
+// PostgREST tronque a 1 000 lignes sans le dire : toute lecture qui peut les
+// depasser pagine, avec un ordre stable. Rend aussi si le plafond a coupe.
+async function lireToutes(
+  page: (de: number, a: number) => any,
+  plafond = 20_000,
+): Promise<{ lignes: any[]; tronque: boolean }> {
+  const lignes: any[] = [];
+  for (let de = 0; de < plafond; de += 1000) {
+    const { data, error } = await page(de, de + 999);
+    if (error) throw new Error(`lecture des ventes: ${error.message}`);
+    lignes.push(...(data ?? []));
+    if (!data || data.length < 1000) return { lignes, tronque: false };
+  }
+  return { lignes, tronque: true };
+}
+
+// Une fenetre = des jours civils du fuseau du site (fenetres.ts). Les ventes
+// se bornent par instants (minuit local -> minuit local du lendemain du
+// dernier jour), les couts par jours.
 async function fenetre(
-  admin: any, appId: string, debut: Date, fin: Date, charges: any[], ponctuelles: any[] = [],
+  admin: any, appId: string, site: SiteFinance, f: Fenetre, charges: any[], ponctuelles: any[] = [],
 ) {
-  const [{ data: ventes }, { data: jours }] = await Promise.all([
-    admin.schema("admin").from("ventes_enrichies")
-      .select("montant_ttc, montant_ht, frais_stripe_eur, montant_rembourse, canal, perimetre")
-      // Les ventes que la vue du site ignore sont des tests : hors agregats.
-      .eq("app_id", appId).eq("exclue", false)
-      .gte("paid_at", debut.toISOString()).lte("paid_at", fin.toISOString()),
+  const b = bornes(f, site.fuseau);
+  const [{ lignes: ventes }, { data: jours, error: errJours }] = await Promise.all([
+    lireToutes((de, a) =>
+      admin.schema("admin").from("ventes_enrichies")
+        .select("montant_ttc, montant_ht, frais_stripe_eur, montant_rembourse, canal, perimetre, offre")
+        // Les ventes que la vue du site ignore sont des tests : hors agregats.
+        .eq("app_id", appId).eq("exclue", false)
+        .gte("paid_at", b.debut).lt("paid_at", b.fin)
+        .order("paid_at").order("id").range(de, a)
+    ),
     admin.schema("admin").from("finance_jours")
       .select("jour, cout_ia_eur, ads_eur, complet")
       .eq("app_id", appId)
-      .gte("jour", debut.toISOString().slice(0, 10))
-      .lte("jour", fin.toISOString().slice(0, 10)),
+      .gte("jour", f.du)
+      .lte("jour", f.au),
   ]);
+  if (errJours) throw new Error(`lecture des journées: ${errJours.message}`);
 
-  const t = agregerVentes(ventes ?? []);
+  const t = agregerVentes(ventes, site.tva_taux);
   const parCanal: Record<string, { ventes: number; ca_ttc: number }> = {};
-  for (const v of ventes ?? []) {
+  for (const v of ventes) {
     const c = String(v.canal ?? "unattributed");
     const cur = parCanal[c] ?? { ventes: 0, ca_ttc: 0 };
     cur.ventes += 1;
@@ -177,19 +167,19 @@ async function fenetre(
     if (j.ads_eur !== null) ads = arrondi((ads ?? 0) + Number(j.ads_eur));
     if (!j.complet) incomplets.push(j.jour);
   }
-  const chargesFixes = chargesSurPeriode(charges, debut, fin);
-  const chargesPonctuelles = ponctuellesSurPeriode(ponctuelles, debut, fin);
-
-  return {
-    ...t,
+  const couts = {
     cout_ia: arrondi(coutIa),
     ads,
-    charges_fixes: chargesFixes,
-    charges_ponctuelles: chargesPonctuelles,
-    resultat: arrondi(
-      t.ca_ht - t.frais_stripe - t.remboursements - coutIa - chargesFixes -
-        chargesPonctuelles - (ads ?? 0),
-    ),
+    charges_fixes: chargesSurPeriode(charges, f),
+    charges_ponctuelles: ponctuellesSurPeriode(ponctuelles, f),
+  };
+
+  return {
+    du: f.du,
+    au: f.au,
+    ...t,
+    ...couts,
+    resultat: resultat(t, couts),
     complet: incomplets.length === 0,
     jours_incomplets: incomplets,
     par_canal: parCanal,
@@ -409,55 +399,66 @@ serve(async (req) => {
       return json({ data: { capture, attribution }, error: null });
     }
 
+    // Toutes les fenetres de Finances sont des jours civils du fuseau du site,
+    // la regle du bandeau des mesures (fenetres.ts).
     if (action === "synthese") {
       const maintenant = new Date();
       const [charges, ponctuelles] = await chargesDuSite(admin, appId);
-      const { data: app } = await admin.schema("config").from("apps")
-        .select("tva_taux").eq("id", appId).maybeSingle();
+      const site = await lireSiteFinance(admin, appId);
+      const f = fenetresSynthese(maintenant, site.fuseau);
 
-      const sept = new Date(maintenant.getTime() - 6 * 86_400_000);
-      const mois = debutMois(maintenant);
-      const annee = new Date(Date.UTC(maintenant.getUTCFullYear(), 0, 1));
-
-      const [f7, fMois, fAnnee] = await Promise.all([
-        fenetre(admin, appId, sept, maintenant, charges, ponctuelles),
-        fenetre(admin, appId, mois, maintenant, charges, ponctuelles),
-        fenetre(admin, appId, annee, maintenant, charges, ponctuelles),
+      const [f7, fMois, fAnnee, { count: joursAds, error: errAds }] = await Promise.all([
+        fenetre(admin, appId, site, f["7j"], charges, ponctuelles),
+        fenetre(admin, appId, site, f.mois, charges, ponctuelles),
+        fenetre(admin, appId, site, f.annee, charges, ponctuelles),
+        // Google Ads n'est affiche que si au moins une journee en porte un
+        // montant : jamais alimente, il n'est pas « a zero », il est absent.
+        admin.schema("admin").from("finance_jours")
+          .select("jour", { count: "exact", head: true })
+          .eq("app_id", appId).not("ads_eur", "is", null),
       ]);
+      if (errAds) throw new Error(`lecture des journées: ${errAds.message}`);
 
       return json({
         data: {
           fenetres: { "7j": f7, mois: fMois, annee: fAnnee },
           devise: "EUR",
-          tva_taux: Number(app?.tva_taux ?? 0.2),
+          tva_taux: site.tva_taux,
+          fuseau: site.fuseau,
+          ads_renseigne: (joursAds ?? 0) > 0,
         },
         error: null,
       });
     }
 
     if (action === "serie") {
-      const nbMois = Math.min(Number(body.mois ?? 12), 36);
-      const maintenant = new Date();
+      const nbMois = Math.max(1, Math.min(Number(body.mois ?? 12) || 12, 36));
       const [charges, ponctuelles] = await chargesDuSite(admin, appId);
+      const site = await lireSiteFinance(admin, appId);
 
       const lignes = [];
-      for (let i = nbMois - 1; i >= 0; i--) {
-        const d = new Date(Date.UTC(maintenant.getUTCFullYear(), maintenant.getUTCMonth() - i, 1));
-        const f = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0, 23, 59, 59));
-        const r = await fenetre(admin, appId, d, f > maintenant ? maintenant : f, charges, ponctuelles);
-        lignes.push({ mois: d.toISOString().slice(0, 7), ...r });
+      for (const m of moisSerie(new Date(), site.fuseau, nbMois)) {
+        const r = await fenetre(admin, appId, site, m, charges, ponctuelles);
+        lignes.push({ ...r, mois: m.mois });
       }
-      return json({ data: { lignes: lignes }, error: null });
+      return json({ data: { lignes, fuseau: site.fuseau }, error: null });
     }
 
     if (action === "ventes") {
-      const debut = new Date(String(body.debut));
-      const fin = new Date(String(body.fin));
-      const { data, error } = await admin.schema("admin").from("ventes_enrichies")
-        .select("*").eq("app_id", appId).eq("exclue", false)
-        .gte("paid_at", debut.toISOString()).lte("paid_at", fin.toISOString())
-        .order("paid_at", { ascending: false }).limit(500);
-      if (error) throw new Error(error.message);
+      // Periode par defaut : l'annee civile en cours dans le fuseau du site.
+      // `periode` (3m | 6m | 12m | annee) ou des jours libres `du` / `au`.
+      const siteTemps = await lireSiteFinance(admin, appId);
+      const p = periodeVentes(body, new Date(), siteTemps.fuseau);
+      const b = bornes(p, siteTemps.fuseau);
+      const filtre = filtreRemboursement(body.rembourse);
+      const { lignes: data, tronque } = await lireToutes((de, a) => {
+        let q = admin.schema("admin").from("ventes_enrichies")
+          .select("*").eq("app_id", appId).eq("exclue", false)
+          .gte("paid_at", b.debut).lt("paid_at", b.fin);
+        if (filtre === "remboursees") q = q.gt("montant_rembourse", 0);
+        if (filtre === "non_remboursees") q = q.lte("montant_rembourse", 0);
+        return q.order("paid_at", { ascending: false }).order("id").range(de, a);
+      }, 10_000);
       // Facturation : ouverte si le site a un compte de produits ; l'etat de
       // chaque vente vient de admin.factures (aucune donnee nominative).
       const { data: site } = await admin.schema("config").from("apps")
@@ -473,6 +474,8 @@ serve(async (req) => {
       );
       const lignes = (data ?? []).map((v: any) => ({
         ...v,
+        // Le jour affiche est celui du site, pas la date UTC de paid_at.
+        jour_local: v.paid_at ? jourLocal(new Date(v.paid_at), siteTemps.fuseau) : null,
         canal: canalVenteArchivee(v.attribution ?? null, v.perimetre),
         domaine: domaineVente(v.attribution ?? null) || null,
         facture: factures[String(v.stripe_payment_intent_id)] ?? null,
@@ -487,7 +490,17 @@ serve(async (req) => {
         }, siteFacturation),
       }));
       return json({
-        data: { lignes, facturation_ouverte: Boolean(site?.compte_produit) },
+        data: {
+          lignes,
+          facturation_ouverte: Boolean(site?.compte_produit),
+          du: p.du,
+          au: p.au,
+          rembourse: filtre,
+          fuseau: siteTemps.fuseau,
+          // Plafond de 10 000 lignes : au-dela la liste le dit, elle ne coupe
+          // plus en silence (l'ancienne limite etait 500).
+          tronque,
+        },
         error: null,
       });
     }
