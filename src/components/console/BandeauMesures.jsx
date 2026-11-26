@@ -170,7 +170,9 @@ function Entonnoir({ groupe, jours }) {
   );
 }
 
-export default function BandeauMesures({ appId, chapitre }) {
+// `legende` : ce que les tuiles comptent (flux / stock, brut / net), fourni par
+// le chapitre qui porte le bandeau ; affichee seulement s'il y a des tuiles.
+export default function BandeauMesures({ appId, chapitre, legende = null }) {
   const [jours, setJours] = useState(30);
   const { donnees, erreur } = useDonneesCachees(
     `mesures:${appId}:${chapitre}:${jours}`,
@@ -242,6 +244,7 @@ export default function BandeauMesures({ appId, chapitre }) {
             )}
         </div>
       ))}
+      {legende}
     </div>
   );
 }
