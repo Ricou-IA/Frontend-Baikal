@@ -7,7 +7,8 @@
 //  2. coupe-circuit sur le journal du site (rebonds definitifs, plaintes) ;
 //  3. quota du jour du SITE (toutes campagnes, fuseau du site) ;
 //  4. candidats (segment.ts, meme WHERE que le compteur de la console) ;
-//  5. reserver chez le site -> envoyer -> marquer chez le site ;
+//  5. reserver chez le site -> envoyer -> marquer chez le site, envoi par
+//     envoi ; puis rejouer les evenements Resend arrives avant leur marquage ;
 //  6. plus aucun candidat ni envoi en attente -> terminee.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -21,6 +22,7 @@ import {
 } from "../_shared/mailing/site.ts";
 import { debutJourLocal, envoyerResend, estJourOuvre, evaluerDisjoncteur, tailleLot } from "../_shared/mailing/envoi.ts";
 import { fabriquerMessage } from "../_shared/mailing/message.ts";
+import { envoyerEtMarquer, fileSupabase, type LigneMarquage, rejouerAttente } from "../_shared/mailing/attente.ts";
 
 const PAUSE_MS = 250; // Resend : 5 requetes/s par defaut, on reste a ~3/s.
 const BUDGET_MS = 100_000; // sous le delai de l'Edge Function, marge pour marquer.
@@ -88,6 +90,18 @@ serve(async (req) => {
       });
       if (disj.coupe) { await arreter("suspendue", disj.motif); rapport.push({ id: c.id, coupe: disj.motif }); continue; }
 
+      // Evenements Resend arrives avant le marquage de leur envoi : rejoues a
+      // chaque passage (avant les sauts de week-end et de quota), puis apres
+      // les envois de ce passage. Une panne de la file ne bloque pas l'envoi.
+      const ecr = ecrivain(admin, site, cfg);
+      const rejouer = () =>
+        rejouerAttente(fileSupabase(admin), site.id, (e) => ecr.evenement(e.resend_id, e.type, e.le, e.detail))
+          .catch((e) => {
+            console.error("[admin-mailing-worker] file d'attente", c.id, e);
+            return null;
+          });
+      await rejouer();
+
       // 3. Quota du jour du site.
       // Jours ouvres seulement (parite pv-email-cron) : rien le samedi ni le
       // dimanche, dans le fuseau du site.
@@ -120,8 +134,7 @@ serve(async (req) => {
       // mail 1 ; une campagne simple n'a que le mail 1. Chaque mail prend sa
       // part du lot dans cet ordre.
       const criteres = normaliserCriteres(c.criteres);
-      const ecr = ecrivain(admin, site, cfg);
-      const marques: Record<string, unknown>[] = [];
+      const marques: LigneMarquage[] = [];
       let fatale: string | null = null;
       let reste = lot;
       let candidatsVus = 0;
@@ -163,24 +176,36 @@ serve(async (req) => {
           ...nouveaux.filter((n) => reserves.has(n.email)),
         ];
 
-        const marquesMail: Record<string, unknown>[] = [];
-        for (const d of aEnvoyer) {
-          if (Date.now() - debut > BUDGET_MS) break;
-          const m = await fabriquerMessage({
-            site, nomPublic: cfg.nom_public, from, replyTo: cfg.reply_to, contenu: { objet: mail.objet, corps_html: mail.corps_html },
-            destinataire: d, campagneId: c.id, touche: mail.rang,
-          });
-          const res = await envoyerResend(cle, m);
-          marquesMail.push(res.ok
-            ? { email: d.email, touche: mail.rang, resend_id: res.id }
-            : { email: d.email, touche: mail.rang, erreur: res.erreur });
-          if (res.fatale) { fatale = res.erreur ?? "Erreur Resend"; break; }
-          await attendre(PAUSE_MS);
-        }
-        if (marquesMail.length) await ecr.marquer(c.id, marquesMail);
-        marques.push(...marquesMail);
-        reste -= marquesMail.length;
+        // Chaque envoi est marque chez le site des que Resend a rendu son id,
+        // pendant la pause : un webhook `delivered` peut arriver en moins
+        // d'une seconde, il doit trouver la ligne (attente.ts).
+        const r = await envoyerEtMarquer(aEnvoyer, {
+          envoyer: async (d) => {
+            const m = await fabriquerMessage({
+              site, nomPublic: cfg.nom_public, from, replyTo: cfg.reply_to,
+              contenu: { objet: mail.objet, corps_html: mail.corps_html },
+              destinataire: d, campagneId: c.id, touche: mail.rang,
+            });
+            const res = await envoyerResend(cle, m);
+            return {
+              ligne: res.ok
+                ? { email: d.email, touche: mail.rang, resend_id: res.id }
+                : { email: d.email, touche: mail.rang, erreur: res.erreur },
+              fatale: res.fatale ? res.erreur ?? "Erreur Resend" : undefined,
+            };
+          },
+          marquer: (lignes) => ecr.marquer(c.id, lignes),
+          pause: () => attendre(PAUSE_MS),
+          budgetDepasse: () => Date.now() - debut > BUDGET_MS,
+        });
+        if (r.fatale) fatale = r.fatale;
+        marques.push(...r.lignes);
+        reste -= r.lignes.length;
       }
+
+      // Evenements arrives pendant ce passage : rejoues maintenant que les
+      // envois sont au journal (fenetre de 15 min, puis `expire`).
+      const file = await rejouer();
 
       if (fatale) await arreter("suspendue", `Envoi refusé par Resend : ${fatale}`);
 
@@ -202,7 +227,7 @@ serve(async (req) => {
       await table().update({ dernier_lot_le: new Date().toISOString() }).eq("id", c.id);
       rapport.push({
         id: c.id, envoyes: marques.filter((x) => x.resend_id).length,
-        erreurs: marques.filter((x) => x.erreur).length, fatale,
+        erreurs: marques.filter((x) => x.erreur).length, fatale, file,
         par_mail: Object.fromEntries([...new Set(marques.map((x) => x.touche))]
           .map((t) => [`mail_${t}`, marques.filter((x) => x.touche === t && x.resend_id).length])),
       });

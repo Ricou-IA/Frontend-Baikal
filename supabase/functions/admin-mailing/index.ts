@@ -14,12 +14,15 @@ import {
 } from "../_shared/mailing/segment.ts";
 import { redigerMail } from "../_shared/mailing/redaction.ts";
 import {
-  chargerConfigMailing, cleResend, compteursCampagnes, ecritureConfiguree, envoyesDepuis, expediteur,
+  chargerConfigMailing, cleResend, compteursCampagnes, ecritureConfiguree, ecrivain, envoyesDepuis, expediteur,
   populationsDisponibles, schemaMailing,
 } from "../_shared/mailing/site.ts";
 import { debutJourLocal, envoyerResend, PLAFOND_JOUR_DEFAUT } from "../_shared/mailing/envoi.ts";
 import { ErreurMessage, fabriquerMessage } from "../_shared/mailing/message.ts";
 import { nettoyerCorps, VARIABLES } from "../_shared/mailing/rendu.ts";
+import {
+  ajouterAuBilan, bilanVide, type EtatResend, evenementsManquants, type LigneJournal,
+} from "../_shared/mailing/rattrapage.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -67,7 +70,8 @@ serve(async (req) => {
     if (!appId) return json({ data: null, error: "appId requis" }, 400);
     exigerSite(sites, appId);
     const droits = await droitsModules(caller);
-    exigerModule(droits, appId, "mailing", ECRITURE.includes(String(action)) ? "ecriture" : "lecture");
+    const ecrit = ECRITURE.includes(String(action)) || (action === "rattrapage" && body.appliquer === true);
+    exigerModule(droits, appId, "mailing", ecrit ? "ecriture" : "lecture");
 
     const admin = createClient(supabaseUrl, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
     const site = await chargerSite(admin, appId);
@@ -499,6 +503,66 @@ serve(async (req) => {
             total: rows.length ? Number(rows[0].total_lignes) : 0,
             page,
             parPage,
+          },
+          error: null,
+        });
+      }
+
+      // Rattrapage des evenements Resend perdus avant le marquage envoi par
+      // envoi (constat du 26/11/2026). ESSAI par defaut : Resend est relu, le
+      // bilan dit ce qui serait applique, rien n'est ecrit. `appliquer: true`
+      // (droit mailing en ecriture) passe par mail_evenement, comme un webhook.
+      // Ne touche jamais au statut de la campagne. Par pages de 50.
+      case "rattrapage": {
+        const c = await campagne(body.campagneId);
+        if (!resend.cle) throw new ErreurSite(`Secret ${resend.source} absent`);
+        const appliquer = body.appliquer === true;
+        const limite = Math.min(50, Math.max(1, Number(body.limite) || 50));
+        const depuis = Math.max(0, Number(body.depuis) || 0);
+        const lignes = await sql`
+          SELECT resend_id, statut, delivre_le, ouvert_le, clique_le, rebond_le, plainte_le,
+                 count(*) OVER() AS total_lignes
+          FROM ${sql(schema)}.mail_envoi
+          WHERE campagne_id = ${c.id}::uuid AND resend_id IS NOT NULL
+          ORDER BY envoye_le, resend_id
+          LIMIT ${limite} OFFSET ${depuis}`;
+        const ecr = ecrivain(admin, site, cfg);
+        const bilan = bilanVide();
+        let appliques = 0;
+        for (const l of lignes as unknown as LigneJournal[]) {
+          let etat: EtatResend | null = null;
+          try {
+            const res = await fetch(`https://api.resend.com/emails/${encodeURIComponent(l.resend_id)}`, {
+              headers: { Authorization: `Bearer ${resend.cle}` },
+              signal: AbortSignal.timeout(10000),
+            });
+            if (res.ok) {
+              const d = await res.json();
+              etat = { last_event: d.last_event ?? null, created_at: d.created_at ?? null };
+            }
+          } catch { /* compte comme illisible */ }
+          const m = etat ? evenementsManquants(l, etat) : null;
+          ajouterAuBilan(bilan, etat, m);
+          if (appliquer && m) {
+            for (const p of m.appliquer) {
+              await ecr.evenement(p.resend_id, p.type, p.le, { rattrapage: true });
+              appliques++;
+            }
+          }
+          await new Promise((r) => setTimeout(r, 300)); // Resend : ~3 requetes/s
+        }
+        const total = lignes.length ? Number((lignes[0] as Record<string, unknown>).total_lignes) : 0;
+        return json({
+          data: {
+            essai: !appliquer,
+            campagne_id: c.id,
+            depuis,
+            lus: lignes.length,
+            total,
+            suivant: depuis + lignes.length < total ? depuis + lignes.length : null,
+            bilan,
+            appliques,
+            note: "Heures approchées (heure d'envoi) pour délivré, rebond et plainte ; ouvertures et clics jamais inventés.",
           },
           error: null,
         });

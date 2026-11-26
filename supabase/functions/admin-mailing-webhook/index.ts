@@ -8,13 +8,17 @@
 //    (MAILING_RESEND_WEBHOOK_SECRET), le site est lu dans le tag app_id.
 //
 // Un compte Resend envoie TOUS ses evenements, transactionnels du site
-// compris : un resend_id inconnu du journal est ignore (200, sans bruit),
-// sinon Resend rejouerait l'evenement indefiniment.
+// compris : un resend_id inconnu du journal repond 200 (sinon Resend
+// rejouerait l'evenement indefiniment). S'il porte le tag `campagne`, c'est
+// un envoi Baikal pas encore marque : il est garde dans
+// admin.mail_evenements_attente et rejoue par le worker (15 min). Seule une
+// panne de la base ou du relais (y compris de la file) repond 500.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { chargerSite } from "../_shared/sites.ts";
 import { chargerConfigMailing, ecrivain } from "../_shared/mailing/site.ts";
 import { lireTag, typeEvenement, verifierSvix } from "../_shared/mailing/envoi.ts";
+import { aGarder, fileSupabase } from "../_shared/mailing/attente.ts";
 
 function json(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), { status, headers: { "Content-Type": "application/json" } });
@@ -64,10 +68,18 @@ serve(async (req) => {
     const site = await chargerSite(admin, appId);
     const cfg = await chargerConfigMailing(admin, appId);
     const bounce = evt.data?.bounce as { type?: string; subType?: string } | undefined;
-    const r = await ecrivain(admin, site, cfg).evenement(
-      resendId, type, evt.created_at ?? new Date().toISOString(),
-      bounce ? { bounce_type: bounce.type ?? null, bounce_subtype: bounce.subType ?? null } : {},
-    );
+    const le = evt.created_at ?? new Date().toISOString();
+    const detail = bounce ? { bounce_type: bounce.type ?? null, bounce_subtype: bounce.subType ?? null } : {};
+    const r = await ecrivain(admin, site, cfg).evenement(resendId, type, le, detail);
+    // Envoi de campagne pas encore marque au journal : l'evenement est garde
+    // et le worker le rejouera apres ses marquages (attente.ts). Toujours 200.
+    const campagne = lireTag(evt.data?.tags, "campagne");
+    if (aGarder(r, campagne)) {
+      await fileSupabase(admin).garder({
+        app_id: site.id, campagne_id: campagne!, resend_id: resendId, type, le, detail,
+      });
+      return json({ ok: true, ...r, en_attente: true });
+    }
     return json({ ok: true, ...r });
   } catch (e) {
     const msg = (e as Error).message;
