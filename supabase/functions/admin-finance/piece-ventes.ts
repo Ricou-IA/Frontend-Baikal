@@ -8,15 +8,24 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { choisirCompte, codeTva, referenceFacture } from "../_shared/facturation.ts";
 import {
+  type Anomalie,
+  aucunPorte,
   calculerPiece,
   corpsPiece,
+  type DejaPortes,
   ecartAdmis,
+  ecartsFactures,
   moisPrecedent,
   type FactureIndividuelle,
+  type Mouvement,
   periode,
   type Piece,
+  type PieceEnregistree,
+  porter,
+  rattacherPiece,
   seRecouvrent,
   type VenteMois,
+  ventesHorsPiece,
 } from "../_shared/piece-ventes.ts";
 import { corpsEcriture, declinaison, type LigneDemandee, validerEcriture } from "../_shared/ecriture.ts";
 import {
@@ -93,21 +102,104 @@ async function lireVentes(admin: SupabaseClient, site: SitePiece): Promise<Vente
 
 async function lireFactures(admin: SupabaseClient, appId: string): Promise<FactureIndividuelle[]> {
   const { data, error } = await admin.schema("admin").from("factures")
-    .select("stripe_payment_intent_id, date_facture, numero")
+    .select("stripe_payment_intent_id, date_facture, numero, montant_ttc, cree_le")
     .eq("app_id", appId).eq("statut", "emise").order("date_facture").limit(1000);
   if (error) throw new Error(`lecture des factures: ${error.message}`);
   return (data ?? []).map((f: any) => ({
     stripe_payment_intent_id: String(f.stripe_payment_intent_id),
     date_facture: String(f.date_facture),
     numero: String(f.numero),
+    montant_ttc: f.montant_ttc === null ? undefined : Number(f.montant_ttc),
+    cree_le: f.cree_le ? String(f.cree_le) : undefined,
   }));
 }
 
 async function lirePieces(admin: SupabaseClient, appId: string): Promise<any[]> {
   const { data, error } = await admin.schema("admin").from("pieces_ventes")
-    .select("id, du, au, montant_ttc, nb_ventes, cree_le").eq("app_id", appId).order("au", { ascending: false });
+    .select("id, du, au, montant_ttc, nb_ventes, cree_le, numero, pennylane_invoice_id")
+    .eq("app_id", appId).order("au", { ascending: false });
   if (error) throw new Error(`lecture des pièces: ${error.message}`);
   return data ?? [];
+}
+
+interface LigneEnregistree extends Mouvement {
+  piece_id: string;
+}
+
+async function lireLignes(admin: SupabaseClient, appId: string): Promise<LigneEnregistree[]> {
+  const lignes: LigneEnregistree[] = [];
+  for (let debut = 0;; debut += 1000) {
+    const { data, error } = await admin.schema("admin").from("pieces_ventes_lignes")
+      .select("piece_id, stripe_payment_intent_id, nature, montant_ttc")
+      .eq("app_id", appId).order("id").range(debut, debut + 999);
+    if (error) throw new Error(`lecture des lignes de pièces: ${error.message}`);
+    for (const l of data ?? []) {
+      lignes.push({
+        piece_id: String(l.piece_id),
+        stripe_payment_intent_id: String(l.stripe_payment_intent_id),
+        nature: l.nature,
+        montant_ttc: Number(l.montant_ttc),
+      });
+    }
+    if (!data || data.length < 1000) break;
+  }
+  return lignes;
+}
+
+function enregistree(x: any): PieceEnregistree {
+  return {
+    id: String(x.id),
+    du: String(x.du),
+    au: String(x.au),
+    montant_ttc: Number(x.montant_ttc),
+    nb_ventes: Number(x.nb_ventes),
+    cree_le: String(x.cree_le),
+  };
+}
+
+function jj(iso: string): string {
+  return String(iso).slice(0, 10).split("-").reverse().join("/");
+}
+
+/** Ce que les pieces du site portent deja. Une piece rattachee (lignes en
+ *  base) donne ses lignes ; une piece d'avant le rattachement est rejouee
+ *  telle qu'elle a ete calculee le jour de sa creation, pour qu'aucune de ses
+ *  ventes ne soit proposee une seconde fois en attendant. */
+function portesDesPieces(
+  ventes: VenteMois[],
+  factures: FactureIndividuelle[],
+  pieces: any[],
+  lignes: LigneEnregistree[],
+  produit: string | null,
+) {
+  const portes: DejaPortes = porter(aucunPorte(), lignes);
+  const rattachees = new Set(lignes.map((l) => l.piece_id));
+  const anomalies: Anomalie[] = [];
+  const virtuels = new Map<string, { concorde: boolean; nb_ventes: number; ttc: number }>();
+  const anciennes = pieces.filter((x) => !rattachees.has(String(x.id)))
+    .sort((a, b) => String(a.cree_le).localeCompare(String(b.cree_le)));
+  for (const x of anciennes) {
+    const r = rattacherPiece(ventes, factures, enregistree(x), produit, portes);
+    porter(portes, r.mouvements);
+    virtuels.set(String(x.id), { concorde: r.concorde, ...r.recalcul });
+    anomalies.push(
+      r.concorde
+        ? {
+          type: "piece_non_rattachee",
+          piece_id: String(x.id),
+          message: `Pièce du ${jj(x.du)} au ${jj(x.au)} pas encore rattachée vente par vente : son contenu est ` +
+            `reconstitué (${r.recalcul.nb_ventes} ventes, ${r.recalcul.ttc.toFixed(2)} €, conforme aux totaux enregistrés).`,
+        }
+        : {
+          type: "piece_sans_concordance",
+          piece_id: String(x.id),
+          message: `Pièce du ${jj(x.du)} au ${jj(x.au)} : le recalcul donne ${r.recalcul.nb_ventes} ventes / ` +
+            `${r.recalcul.ttc.toFixed(2)} € pour ${x.nb_ventes} / ${Number(x.montant_ttc).toFixed(2)} € enregistrés. ` +
+            `À rapprocher à la main dans Pennylane.`,
+        },
+    );
+  }
+  return { portes, anomalies, virtuels };
 }
 
 async function preparer(admin: SupabaseClient, appId: string, du: string, au: string) {
@@ -118,28 +210,108 @@ async function preparer(admin: SupabaseClient, appId: string, du: string, au: st
     throw new RefusFacture((e as Error).message, 400);
   }
   const site = await lireSite(admin, appId);
-  const [ventes, factures, pieces] = await Promise.all([
+  const [ventes, factures, pieces, lignes] = await Promise.all([
     lireVentes(admin, site),
     lireFactures(admin, appId),
     lirePieces(admin, appId),
+    lireLignes(admin, appId),
   ]);
-  const piece = calculerPiece(ventes, factures, p, site.facture_libelle);
+  const { portes, anomalies, virtuels } = portesDesPieces(ventes, factures, pieces, lignes, site.facture_libelle);
+  const piece = calculerPiece(ventes, factures, p, site.facture_libelle, portes);
   const recouvre = pieces.find((x) =>
     seRecouvrent({ du: String(x.du), au: String(x.au) }, { du: p.premierJour, au: p.dernierJour })
   ) ?? null;
-  return { site, piece, pieces, recouvre };
+  anomalies.push(
+    ...ecartsFactures(ventes, factures),
+    ...ventesHorsPiece(
+      ventes,
+      factures,
+      pieces.map((x) => ({ id: String(x.id), du: String(x.du), au: String(x.au) })),
+      portes,
+    ),
+  );
+  const parPiece = new Map<string, number>();
+  for (const l of lignes) parPiece.set(l.piece_id, (parPiece.get(l.piece_id) ?? 0) + 1);
+  const piecesVues = pieces.map((x) => ({
+    ...x,
+    lignes_rattachees: parPiece.get(String(x.id)) ?? 0,
+    reconstituee: virtuels.get(String(x.id)) ?? null,
+  }));
+  return { site, piece, pieces: piecesVues, recouvre, anomalies };
+}
+
+/** Le numero et l'etat reels, dans Pennylane, des pieces qui n'ont pas encore
+ *  leur numero en base. Lecture seule : rien n'est ecrit, ni ici ni chez
+ *  Pennylane. Une piece ne porte jamais le numero d'une facture individuelle. */
+async function etatsPennylane(pieces: any[]) {
+  return await Promise.all(pieces.map(async (x) => {
+    if (x.numero) return { ...x, pennylane: { numero: x.numero, brouillon: false } };
+    try {
+      const f = await lireFacture(Number(x.pennylane_invoice_id));
+      return { ...x, pennylane: f ? { numero: f.numero ?? null, brouillon: f.brouillon } : null };
+    } catch {
+      return { ...x, pennylane: null };
+    }
+  }));
 }
 
 /** Ce que serait la piece de la periode. Lecture seule, rien n'est ecrit. */
 export async function calculerPieceVentes(admin: SupabaseClient, appId: string, du: string, au: string) {
-  const { site, piece, pieces, recouvre } = await preparer(admin, appId, du, au);
+  const { site, piece, pieces, recouvre, anomalies } = await preparer(admin, appId, du, au);
   return {
     ouverte: Boolean(site.compte_produit),
     compte_produit: site.compte_produit,
     piece,
-    pieces,
+    pieces: await etatsPennylane(pieces),
+    anomalies,
     deja_faite: recouvre ? { du: recouvre.du, au: recouvre.au } : null,
   };
+}
+
+/** Rattachement des pieces enregistrees avant la table des lignes. ESSAI par
+ *  defaut : rien n'est ecrit, le rendu dit ce qui serait rattache. Avec
+ *  `appliquer`, seules les pieces sans ligne et dont le recalcul concorde sont
+ *  rattachees. Aucun appel a Pennylane. */
+export async function rattacherPieces(admin: SupabaseClient, appId: string, appliquer: boolean) {
+  const site = await lireSite(admin, appId);
+  const [ventes, factures, pieces, lignes] = await Promise.all([
+    lireVentes(admin, site),
+    lireFactures(admin, appId),
+    lirePieces(admin, appId),
+    lireLignes(admin, appId),
+  ]);
+  const portes = porter(aucunPorte(), lignes);
+  const rattachees = new Set(lignes.map((l) => l.piece_id));
+  const resultats = [];
+  for (const x of [...pieces].sort((a, b) => String(a.cree_le).localeCompare(String(b.cree_le)))) {
+    if (rattachees.has(String(x.id))) {
+      resultats.push({ piece_id: String(x.id).slice(0, 8), du: x.du, au: x.au, deja_rattachee: true });
+      continue;
+    }
+    const r = rattacherPiece(ventes, factures, enregistree(x), site.facture_libelle, portes);
+    porter(portes, r.mouvements);
+    const compte = { vente: 0, remboursement: 0, retrait_facture: 0 };
+    for (const m of r.mouvements) compte[m.nature]++;
+    let ecrites = 0;
+    if (appliquer && r.concorde && r.mouvements.length > 0) {
+      const { error } = await admin.schema("admin").from("pieces_ventes_lignes").insert(
+        r.mouvements.map((m) => ({ piece_id: x.id, app_id: appId, ...m })),
+      );
+      if (error) throw new Error(`rattachement de la pièce ${String(x.id).slice(0, 8)}: ${error.message}`);
+      ecrites = r.mouvements.length;
+    }
+    resultats.push({
+      piece_id: String(x.id).slice(0, 8),
+      du: x.du,
+      au: x.au,
+      enregistre: { nb_ventes: Number(x.nb_ventes), ttc: Number(x.montant_ttc) },
+      recalcul: r.recalcul,
+      concorde: r.concorde,
+      mouvements: compte,
+      ecrites,
+    });
+  }
+  return { essai: !appliquer, resultats };
 }
 
 /** Le client « Clients particuliers » du site : celui du registre, sinon il est
@@ -206,7 +378,7 @@ export async function creerPieceVentes(
           `au lieu de ${piece.ttc.toFixed(2)} €. Le brouillon a été supprimé.`,
       );
     }
-    const { error } = await admin.schema("admin").from("pieces_ventes").insert({
+    const { data: creee, error } = await admin.schema("admin").from("pieces_ventes").insert({
       app_id: site.id,
       du: piece.periode.premierJour,
       au: piece.periode.dernierJour,
@@ -214,10 +386,25 @@ export async function creerPieceVentes(
       montant_ttc: rendu,
       nb_ventes: piece.nb_ventes,
       cree_par: d.userId,
-    });
+    }).select("id").single();
     if (error) {
       if (error.code === "23505") throw new RefusFacture("Cette pièce vient d'être créée par un autre clic.");
       throw new Error(`enregistrement de la pièce: ${error.message}`);
+    }
+    // Chaque mouvement de la piece est rattache : la base refuse qu'une vente
+    // entre dans deux pieces, ou qu'une vente deja facturee seule y entre. Un
+    // refus retire la piece, puis son brouillon (catch ci-dessous).
+    const { error: errLignes } = await admin.schema("admin").from("pieces_ventes_lignes").insert(
+      piece.mouvements.map((m) => ({ piece_id: creee.id, app_id: site.id, ...m })),
+    );
+    if (errLignes) {
+      await admin.schema("admin").from("pieces_ventes").delete().eq("id", creee.id);
+      if (errLignes.code === "23505" || errLignes.code === "23514") {
+        throw new RefusFacture(
+          "Une vente de cette période est déjà portée par une autre pièce ou facturée seule. Le brouillon a été supprimé.",
+        );
+      }
+      throw new Error(`rattachement des ventes de la pièce: ${errLignes.message}`);
     }
     const rendus = {
       ttc: rendu,
@@ -320,6 +507,12 @@ export async function validerPieces(admin: SupabaseClient, appId?: string) {
       if (!facture) throw new Error("brouillon introuvable dans Pennylane");
       const dejaValidee = !facture.brouillon;
       if (facture.brouillon) facture = await finaliser(facture.id);
+      // Le numero reel du document, garde pour l'affichage : jamais celui
+      // d'une facture individuelle.
+      if (facture.numero) {
+        await admin.schema("admin").from("pieces_ventes")
+          .update({ numero: facture.numero }).eq("id", p.id).is("numero", null);
+      }
       resultats.push({
         app_id: p.app_id,
         du: p.du,
