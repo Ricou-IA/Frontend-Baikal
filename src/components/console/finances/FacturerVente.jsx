@@ -167,6 +167,13 @@ export default function FacturerVente({ appId, vente, onClose, onFacturee }) {
                 <Check className="w-4 h-4" />
                 Facture émise : <span className="font-mono text-white">{facture.numero}</span>
               </p>
+              {facture.montant_ttc != null && Math.abs(Number(facture.montant_ttc) - Number(vente.montant_ttc)) >= 0.005 && (
+                <p className="text-xs text-amber-300 flex items-start gap-2">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  La facture porte {fmtEur(Number(facture.montant_ttc))} TTC pour {fmtEur(Number(vente.montant_ttc))} encaissés
+                  (arrondi du HT d’avant le correctif). Constat seulement : une facture émise se corrige par un avoir, dans Pennylane.
+                </p>
+              )}
               <p className="text-sm text-baikal-text">
                 {etat === 'emise_envoyee'
                   ? 'Elle est partie par e-mail au client, PDF en pièce jointe.'

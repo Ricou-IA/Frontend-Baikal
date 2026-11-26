@@ -79,6 +79,38 @@ export interface FactureIndividuelle {
   /** AAAA-MM-JJ. */
   date_facture: string;
   numero: string;
+  /** TTC porte par la facture (pour l'ecart avec l'encaissement). */
+  montant_ttc?: number;
+  /** Instant de creation de la ligne dans Baikal (ISO). Sert a rejouer une
+   *  piece telle qu'elle a ete calculee le jour de sa creation. */
+  cree_le?: string;
+}
+
+export type NatureMouvement = "vente" | "remboursement" | "retrait_facture";
+
+/** Un mouvement porte par une piece : ce qui devient une ligne de
+ *  admin.pieces_ventes_lignes (unique par vente et par nature). */
+export interface Mouvement {
+  stripe_payment_intent_id: string;
+  nature: NatureMouvement;
+  montant_ttc: number;
+}
+
+/** Ce que les pieces existantes portent deja, par nature. */
+export interface DejaPortes {
+  vente: Set<string>;
+  remboursement: Set<string>;
+  retrait_facture: Set<string>;
+}
+
+export function aucunPorte(): DejaPortes {
+  return { vente: new Set(), remboursement: new Set(), retrait_facture: new Set() };
+}
+
+/** Range des mouvements dans un DejaPortes. */
+export function porter(portes: DejaPortes, mouvements: Mouvement[]): DejaPortes {
+  for (const m of mouvements) portes[m.nature].add(m.stripe_payment_intent_id);
+  return portes;
 }
 
 export interface LignePiece {
@@ -95,11 +127,15 @@ export interface Piece {
   lignes: LignePiece[];
   ttc: number;
   nb_ventes: number;
+  /** Chaque vente, remboursement ou retrait que la piece porte. */
+  mouvements: Mouvement[];
   /** Ce qui n'entre pas dans la piece, pour que rien ne disparaisse sans le dire. */
   hors_piece: {
     gratuites: number;
     facturees_individuellement: { nombre: number; ttc: number };
     exclues: number;
+    /** Deja portees par une autre piece : jamais comptees deux fois. */
+    deja_sur_une_piece: { nombre: number; ttc: number };
   };
 }
 
@@ -118,13 +154,16 @@ export function calculerPiece(
   factures: FactureIndividuelle[],
   p: Periode,
   produit: string | null,
+  dejaPortes: DejaPortes = aucunPorte(),
 ): Piece {
   const facturees = new Map(factures.map((f) => [f.stripe_payment_intent_id, f]));
   const hors = {
     gratuites: 0,
     facturees_individuellement: { nombre: 0, ttc: 0 },
     exclues: 0,
+    deja_sur_une_piece: { nombre: 0, ttc: 0 },
   };
+  const mouvements: Mouvement[] = [];
   const groupes = new Map<string, { offre: string; ttc: number; n: number; pro: boolean }>();
   let rembourse = 0;
   let nbRemboursements = 0;
@@ -142,7 +181,11 @@ export function calculerPiece(
       else if (facture) {
         hors.facturees_individuellement.nombre++;
         hors.facturees_individuellement.ttc = arrondi2(hors.facturees_individuellement.ttc + v.montant_ttc);
+      } else if (dejaPortes.vente.has(v.stripe_payment_intent_id)) {
+        hors.deja_sur_une_piece.nombre++;
+        hors.deja_sur_une_piece.ttc = arrondi2(hors.deja_sur_une_piece.ttc + v.montant_ttc);
       } else {
+        mouvements.push({ stripe_payment_intent_id: v.stripe_payment_intent_id, nature: "vente", montant_ttc: v.montant_ttc });
         const cle = `${pro ? "pro" : "part"}|${v.offre}|${v.montant_ttc.toFixed(2)}`;
         const g = groupes.get(cle) ?? { offre: v.offre, ttc: v.montant_ttc, n: 0, pro };
         g.n++;
@@ -153,19 +196,33 @@ export function calculerPiece(
 
     // Une vente facturee individuellement se rembourse par un avoir, dans
     // Pennylane : son remboursement n'entre pas ici.
-    if (!v.exclue && !facture && v.montant_rembourse > 0 && dans(v.jour_remboursement, p)) {
+    if (
+      !v.exclue && !facture && v.montant_rembourse > 0 && dans(v.jour_remboursement, p) &&
+      !dejaPortes.remboursement.has(v.stripe_payment_intent_id)
+    ) {
       rembourse = arrondi2(rembourse + v.montant_rembourse);
       nbRemboursements++;
+      mouvements.push({
+        stripe_payment_intent_id: v.stripe_payment_intent_id,
+        nature: "remboursement",
+        montant_ttc: -v.montant_rembourse,
+      });
     }
 
     // Facturee individuellement pendant la periode, mais vendue AVANT : la
     // piece de son mois l'avait comptee, celle-ci la retire.
     if (
       facture && !v.exclue && v.montant_ttc > 0 && dans(facture.date_facture, p) &&
-      v.jour_paiement !== null && v.jour_paiement < p.premierJour
+      v.jour_paiement !== null && v.jour_paiement < p.premierJour &&
+      !dejaPortes.retrait_facture.has(v.stripe_payment_intent_id)
     ) {
       retire = arrondi2(retire + v.montant_ttc);
       numerosRetires.push(facture.numero);
+      mouvements.push({
+        stripe_payment_intent_id: v.stripe_payment_intent_id,
+        nature: "retrait_facture",
+        montant_ttc: -v.montant_ttc,
+      });
     }
   }
 
@@ -206,6 +263,7 @@ export function calculerPiece(
     lignes,
     ttc: arrondi2(lignes.reduce((s, l) => s + l.ttc, 0)),
     nb_ventes: nbVentes,
+    mouvements,
     hors_piece: hors,
   };
 }
@@ -259,4 +317,121 @@ export function ecartAdmis(piece: Piece): number {
 export function moisPrecedent(jour: string): string {
   const [an, mois] = jour.split("-").map(Number);
   return mois === 1 ? `${an - 1}-12` : `${an}-${String(mois - 1).padStart(2, "0")}`;
+}
+
+// --- Pieces deja faites : rattachement et anomalies ----------------------------
+
+/** Une piece deja enregistree, telle que admin.pieces_ventes la garde. */
+export interface PieceEnregistree {
+  id: string;
+  du: string;
+  au: string;
+  montant_ttc: number;
+  nb_ventes: number;
+  cree_le: string;
+}
+
+export interface Rattachement {
+  piece_id: string;
+  /** Les mouvements que la piece portait le jour de sa creation. */
+  mouvements: Mouvement[];
+  /** Ce que le recalcul retrouve, a comparer aux totaux enregistres. */
+  recalcul: { nb_ventes: number; ttc: number };
+  /** Le recalcul retrouve le nombre de ventes et le total de la piece. */
+  concorde: boolean;
+}
+
+/** Rejoue une piece enregistree telle qu'elle a ete calculee le jour de sa
+ *  creation : seules les factures individuelles deja connues ce jour-la en
+ *  sont sorties. Ne tranche rien : si le recalcul ne retrouve pas les totaux
+ *  enregistres, `concorde` est faux et rien ne doit etre rattache. */
+export function rattacherPiece(
+  ventes: VenteMois[],
+  factures: FactureIndividuelle[],
+  piece: PieceEnregistree,
+  produit: string | null,
+  dejaPortes: DejaPortes = aucunPorte(),
+): Rattachement {
+  const p = periode(piece.du.slice(0, 7), piece.au.slice(0, 7));
+  const alors = factures.filter((f) => !f.cree_le || f.cree_le < piece.cree_le);
+  const calc = calculerPiece(ventes, alors, p, produit, dejaPortes);
+  const concorde = calc.nb_ventes === piece.nb_ventes &&
+    Math.abs(calc.ttc - Number(piece.montant_ttc)) <= ecartAdmis(calc) + 1e-9;
+  return {
+    piece_id: piece.id,
+    mouvements: calc.mouvements,
+    recalcul: { nb_ventes: calc.nb_ventes, ttc: calc.ttc },
+    concorde,
+  };
+}
+
+export type Anomalie =
+  | {
+    type: "facture_ecart_montant";
+    vente: string;
+    numero: string;
+    facture_ttc: number;
+    encaisse_ttc: number;
+    message: string;
+  }
+  | { type: "piece_non_rattachee"; piece_id: string; message: string }
+  | { type: "piece_sans_concordance"; piece_id: string; message: string }
+  | { type: "vente_hors_piece"; vente: string; jour: string; ttc: number; piece_id: string; message: string };
+
+function court(pi: string): string {
+  return pi.replace(/^pi_/, "").slice(0, 8);
+}
+
+/** Les factures individuelles dont le TTC differe de ce que Stripe a encaisse.
+ *  Constat seulement : une facture emise se corrige par un avoir, dans
+ *  Pennylane, jamais d'ici. */
+export function ecartsFactures(ventes: VenteMois[], factures: FactureIndividuelle[]): Anomalie[] {
+  const parPi = new Map(ventes.map((v) => [v.stripe_payment_intent_id, v]));
+  const res: Anomalie[] = [];
+  for (const f of factures) {
+    const v = parPi.get(f.stripe_payment_intent_id);
+    if (!v || f.montant_ttc === undefined) continue;
+    const ecart = arrondi2(f.montant_ttc - v.montant_ttc);
+    if (Math.abs(ecart) < 0.005) continue;
+    res.push({
+      type: "facture_ecart_montant",
+      vente: court(f.stripe_payment_intent_id),
+      numero: f.numero,
+      facture_ttc: f.montant_ttc,
+      encaisse_ttc: v.montant_ttc,
+      message: `${f.numero} porte ${eur(f.montant_ttc)} € TTC pour ${eur(v.montant_ttc)} € encaissés ` +
+        `(écart ${ecart > 0 ? "+" : ""}${eur(ecart)} €). À régulariser dans Pennylane si besoin, rien n'est réécrit d'ici.`,
+    });
+  }
+  return res;
+}
+
+/** Les ventes facturables d'une periode deja couverte par une piece, que
+ *  cette piece ne porte pas (ni aucune autre) : un oubli a signaler, jamais a
+ *  completer d'ici. */
+export function ventesHorsPiece(
+  ventes: VenteMois[],
+  factures: FactureIndividuelle[],
+  pieces: Array<{ id: string; du: string; au: string }>,
+  portes: DejaPortes,
+): Anomalie[] {
+  const facturees = new Set(factures.map((f) => f.stripe_payment_intent_id));
+  const res: Anomalie[] = [];
+  for (const v of ventes) {
+    if (v.exclue || v.montant_ttc <= 0 || !v.jour_paiement) continue;
+    if (facturees.has(v.stripe_payment_intent_id) || portes.vente.has(v.stripe_payment_intent_id)) continue;
+    const couvrante = pieces.find((x) => v.jour_paiement! >= x.du && v.jour_paiement! <= x.au);
+    if (!couvrante) continue;
+    res.push({
+      type: "vente_hors_piece",
+      vente: court(v.stripe_payment_intent_id),
+      jour: v.jour_paiement,
+      ttc: v.montant_ttc,
+      piece_id: couvrante.id,
+      message: `Vente du ${v.jour_paiement.split("-").reverse().join("/")} (${eur(v.montant_ttc)} €) absente de la pièce ` +
+        `du ${couvrante.du.split("-").reverse().join("/")} au ${couvrante.au.split("-").reverse().join("/")}. ` +
+        `Signalée seulement : aucune pièce ni avoir n'est créé.`,
+    });
+  }
+  return res;
 }

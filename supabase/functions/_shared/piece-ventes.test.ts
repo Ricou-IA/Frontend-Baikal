@@ -76,6 +76,7 @@ Deno.test("piece : gratuites, exclues et facturees une a une restent dehors ; le
     gratuites: 1,
     facturees_individuellement: { nombre: 1, ttc: 10 },
     exclues: 1,
+    deja_sur_une_piece: { nombre: 0, ttc: 0 },
   });
   assertEquals(piece.lignes[1].libelle, "Ventes aux professionnels octobre 2026 : offre-a à 50,00 € TTC (factures Stripe)");
   // Sans nom de produit, le nom interne de l'offre.
@@ -156,4 +157,133 @@ Deno.test("corps : un rattrapage se date du jour ou il est passe", () => {
 Deno.test("cron : le mois precedent, y compris en janvier", () => {
   assertEquals(moisPrecedent("2026-12-01"), "2026-11");
   assertEquals(moisPrecedent("2027-01-01"), "2026-12");
+});
+
+// --- Pieces deja faites : une vente n'est jamais portee deux fois ------------
+
+import {
+  aucunPorte,
+  ecartsFactures,
+  porter,
+  rattacherPiece,
+  ventesHorsPiece,
+} from "./piece-ventes.ts";
+
+Deno.test("piece : chaque vente, remboursement et retrait devient un mouvement", () => {
+  const p = periode("2026-10", "2026-10");
+  const piece = calculerPiece(
+    [
+      v({ stripe_payment_intent_id: "pi_a" }),
+      v({ stripe_payment_intent_id: "pi_b", jour_paiement: "2026-09-10", montant_rembourse: 10, jour_remboursement: "2026-10-02" }),
+      v({ stripe_payment_intent_id: "pi_c", jour_paiement: "2026-09-12" }),
+    ],
+    [{ stripe_payment_intent_id: "pi_c", date_facture: "2026-10-05", numero: "F-1" }],
+    p,
+    null,
+  );
+  assertEquals(piece.mouvements, [
+    { stripe_payment_intent_id: "pi_a", nature: "vente", montant_ttc: 10 },
+    { stripe_payment_intent_id: "pi_b", nature: "remboursement", montant_ttc: -10 },
+    { stripe_payment_intent_id: "pi_c", nature: "retrait_facture", montant_ttc: -10 },
+  ]);
+});
+
+Deno.test("piece : les ventes deja portees par une piece ne sont plus proposees", () => {
+  // Le cas d'octobre 2026 en petit : 3 ventes, 1 facturee seule, 2 deja sur
+  // une piece de mars a octobre. Le brouillon d'octobre ne propose plus rien.
+  const p = periode("2026-10", "2026-10");
+  const ventes = [
+    v({ stripe_payment_intent_id: "pi_1", jour_paiement: "2026-10-03" }),
+    v({ stripe_payment_intent_id: "pi_2", jour_paiement: "2026-10-12" }),
+    v({ stripe_payment_intent_id: "pi_3", jour_paiement: "2026-10-31" }),
+  ];
+  const factures = [{ stripe_payment_intent_id: "pi_2", date_facture: "2026-10-15", numero: "F-1" }];
+  const portes = porter(aucunPorte(), [
+    { stripe_payment_intent_id: "pi_1", nature: "vente", montant_ttc: 10 },
+    { stripe_payment_intent_id: "pi_3", nature: "vente", montant_ttc: 10 },
+  ]);
+  const piece = calculerPiece(ventes, factures, p, null, portes);
+  assertEquals(piece.lignes.length, 0);
+  assertEquals(piece.nb_ventes, 0);
+  assertEquals(piece.hors_piece.deja_sur_une_piece, { nombre: 2, ttc: 20 });
+  assertEquals(piece.hors_piece.facturees_individuellement.nombre, 1);
+});
+
+Deno.test("piece : un remboursement ou un retrait deja passe ne revient pas", () => {
+  const p = periode("2026-11", "2026-11");
+  const ventes = [
+    v({ stripe_payment_intent_id: "pi_r", jour_paiement: "2026-10-03", montant_rembourse: 10, jour_remboursement: "2026-11-02" }),
+    v({ stripe_payment_intent_id: "pi_f", jour_paiement: "2026-10-04" }),
+  ];
+  const factures = [{ stripe_payment_intent_id: "pi_f", date_facture: "2026-11-05", numero: "F-2" }];
+  const portes = porter(aucunPorte(), [
+    { stripe_payment_intent_id: "pi_r", nature: "remboursement", montant_ttc: -10 },
+    { stripe_payment_intent_id: "pi_f", nature: "retrait_facture", montant_ttc: -10 },
+  ]);
+  const piece = calculerPiece(ventes, factures, p, null, portes);
+  assertEquals(piece.lignes.length, 0);
+  assertEquals(piece.mouvements.length, 0);
+});
+
+const enregistreeEssai = {
+  id: "00000000-0000-4000-8000-0000000000aa",
+  du: "2026-03-01",
+  au: "2026-10-31",
+  montant_ttc: 20,
+  nb_ventes: 2,
+  cree_le: "2026-11-22T16:06:49Z",
+};
+
+Deno.test("rattachement : la piece est rejouee avec les seules factures connues a sa creation", () => {
+  const ventes = [
+    v({ stripe_payment_intent_id: "pi_1", jour_paiement: "2026-04-03" }),
+    v({ stripe_payment_intent_id: "pi_2", jour_paiement: "2026-10-12" }),
+    v({ stripe_payment_intent_id: "pi_3", jour_paiement: "2026-10-31" }),
+  ];
+  const factures = [
+    // connue avant la piece : la vente en etait sortie
+    { stripe_payment_intent_id: "pi_2", date_facture: "2026-10-15", numero: "F-1", cree_le: "2026-10-15T09:00:00Z" },
+    // facturee APRES la piece : la vente y etait bien comptee
+    { stripe_payment_intent_id: "pi_3", date_facture: "2026-11-24", numero: "F-2", cree_le: "2026-11-24T09:00:00Z" },
+  ];
+  const r = rattacherPiece(ventes, factures, { ...enregistreeEssai }, null);
+  assert(r.concorde);
+  assertEquals(r.recalcul, { nb_ventes: 2, ttc: 20 });
+  assertEquals(r.mouvements.map((m) => m.stripe_payment_intent_id), ["pi_1", "pi_3"]);
+});
+
+Deno.test("rattachement : un recalcul qui ne retrouve pas les totaux ne concorde pas", () => {
+  const ventes = [v({ stripe_payment_intent_id: "pi_1", jour_paiement: "2026-04-03" })];
+  const r = rattacherPiece(ventes, [], { ...enregistreeEssai }, null);
+  assertEquals(r.concorde, false);
+  assertEquals(r.recalcul, { nb_ventes: 1, ttc: 10 });
+});
+
+Deno.test("anomalie : une facture individuelle qui ne porte pas le montant encaisse", () => {
+  const ventes = [v({ stripe_payment_intent_id: "pi_exemple_ecart", montant_ttc: 24.99 })];
+  const a = ecartsFactures(ventes, [
+    { stripe_payment_intent_id: "pi_exemple_ecart", date_facture: "2026-10-15", numero: "F-1", montant_ttc: 25 },
+  ]);
+  assertEquals(a.length, 1);
+  assertEquals(a[0].type, "facture_ecart_montant");
+  assert(a[0].message.includes("25,00 € TTC pour 24,99 €"));
+  assert(a[0].message.includes("+0,01"));
+  // Pas d'ecart, pas d'anomalie.
+  assertEquals(ecartsFactures(ventes, [
+    { stripe_payment_intent_id: "pi_exemple_ecart", date_facture: "2026-10-15", numero: "F-1", montant_ttc: 24.99 },
+  ]).length, 0);
+});
+
+Deno.test("anomalie : une vente d'une periode couverte que la piece ne porte pas", () => {
+  const ventes = [
+    v({ stripe_payment_intent_id: "pi_1", jour_paiement: "2026-10-03" }),
+    v({ stripe_payment_intent_id: "pi_2", jour_paiement: "2026-10-31" }),
+    v({ stripe_payment_intent_id: "pi_3", jour_paiement: "2026-11-02" }),
+    v({ stripe_payment_intent_id: "pi_4", jour_paiement: "2026-10-20", montant_ttc: 0 }),
+  ];
+  const portes = porter(aucunPorte(), [{ stripe_payment_intent_id: "pi_1", nature: "vente", montant_ttc: 10 }]);
+  const a = ventesHorsPiece(ventes, [], [{ id: "p1", du: "2026-03-01", au: "2026-10-31" }], portes);
+  assertEquals(a.length, 1);
+  assertEquals(a[0].type, "vente_hors_piece");
+  assert(a[0].message.startsWith("Vente du 31/10/2026"));
 });

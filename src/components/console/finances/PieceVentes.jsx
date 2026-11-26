@@ -10,7 +10,7 @@
  * ============================================================================
  */
 import { useCallback, useEffect, useState } from 'react';
-import { FilePlus, Trash2 } from 'lucide-react';
+import { AlertTriangle, FilePlus, Trash2 } from 'lucide-react';
 import { financeService } from '../../../services/finance.service';
 import { Chargement, Erreur, Section } from '../etats';
 
@@ -80,6 +80,7 @@ export default function PieceVentes({ appId, lectureSeule = false }) {
   const piece = donnees?.piece;
   const hors = piece?.hors_piece;
   const pieces = donnees?.pieces ?? [];
+  const anomalies = donnees?.anomalies ?? [];
 
   return (
     <Section titre="Pièce de ventes">
@@ -135,7 +136,11 @@ export default function PieceVentes({ appId, lectureSeule = false }) {
 
             <p className="text-xs text-baikal-text opacity-70">
               Hors pièce sur la période : {hors.facturees_individuellement.nombre} vente(s) facturée(s) une à une
-              ({fmtEur(hors.facturees_individuellement.ttc)}), {hors.gratuites} vente(s) gratuite(s), {hors.exclues} exclue(s).
+              ({fmtEur(hors.facturees_individuellement.ttc)}), {hors.gratuites} vente(s) gratuite(s), {hors.exclues} exclue(s)
+              {hors.deja_sur_une_piece?.nombre > 0 && (
+                <>, {hors.deja_sur_une_piece.nombre} déjà portée(s) par une pièce ({fmtEur(hors.deja_sur_une_piece.ttc)})</>
+              )}.
+              {' '}Seules les ventes encore libres entrent dans un nouveau brouillon.
             </p>
 
             {donnees.deja_faite && !cree && (
@@ -167,16 +172,39 @@ export default function PieceVentes({ appId, lectureSeule = false }) {
           </>
         )}
 
+        {anomalies.length > 0 && (
+          <div className="border-t border-baikal-border pt-3 space-y-1">
+            <p className="text-xs text-amber-300 flex items-center gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5" />
+              À vérifier ({anomalies.length}) — constats seulement, rien n’est créé ni réécrit dans Pennylane
+            </p>
+            <ul className="text-xs text-baikal-text space-y-1 list-disc pl-5">
+              {anomalies.map((a, i) => <li key={`${a.type}-${i}`}>{a.message}</li>)}
+            </ul>
+          </div>
+        )}
+
         {pieces.length > 0 && (
           <div className="border-t border-baikal-border pt-3 space-y-1">
             <p className="text-xs text-baikal-text opacity-70">Pièces déjà préparées</p>
             {pieces.map((p) => (
               <div key={p.id} className="flex items-center justify-between gap-3 text-sm text-baikal-text">
                 <span>
+                  {p.pennylane?.numero && (
+                    <span className="font-mono text-white mr-1">{p.pennylane.numero}</span>
+                  )}
                   Du {fmtJour(p.du)} au {fmtJour(p.au)} · {p.nb_ventes} vente(s) ·{' '}
                   <span className="text-white tabular-nums">{fmtEur(Number(p.montant_ttc))}</span>
+                  <span className="text-xs opacity-60">
+                    {' · '}
+                    {p.pennylane === null ? 'état Pennylane illisible' : p.pennylane?.brouillon ? 'brouillon' : 'finalisée'}
+                    {' · '}
+                    {p.lignes_rattachees > 0
+                      ? `${p.lignes_rattachees} mouvement(s) rattaché(s)`
+                      : p.reconstituee?.concorde ? 'contenu reconstitué' : 'contenu à rapprocher'}
+                  </span>
                 </span>
-                {!lectureSeule && (
+                {!lectureSeule && p.pennylane?.brouillon && (
                   <button
                     type="button"
                     onClick={() => supprimer(p.id)}

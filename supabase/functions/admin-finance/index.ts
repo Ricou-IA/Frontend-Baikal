@@ -23,6 +23,9 @@
 //   piece-supprimer  { appId, id }            → brouillon de piece efface
 //   pieces-planifiees { appId?, du?, au?, date? } → cron uniquement : brouillon de la piece du mois
 //                                               precedent de chaque site (ou de la periode demandee)
+//   pieces-rattacher { appId, appliquer? }    → cron uniquement : rattache vente par vente les pieces
+//                                               enregistrees avant admin.pieces_ventes_lignes
+//                                               (ESSAI par defaut ; aucun appel a Pennylane)
 //   ecriture { date, libelle, journal, lignes, essai? } → cron uniquement : ecriture au journal
 //                                               dans Pennylane (essai par defaut : rien n'est ecrit)
 //   facture-diagnostic                        → cron uniquement : jeton et comptes, lecture seule
@@ -50,6 +53,7 @@ import {
   creerPieceVentes,
   passerEcriture,
   piecesPlanifiees,
+  rattacherPieces,
   supprimerPieceVentes,
   validerPieces,
 } from "./piece-ventes.ts";
@@ -293,6 +297,20 @@ serve(async (req) => {
         remplacer: body.remplacer === true,
       });
       return json({ data: r, error: null });
+    }
+
+    // Rattachement des pieces d'avant la table des lignes : meme porte que le
+    // cron, jamais planifie. Essai tant que `appliquer` n'est pas `true`.
+    if (action === "pieces-rattacher") {
+      const attendu = Deno.env.get("ADMIN_FINANCE_CRON_SECRET") ??
+        Deno.env.get("ADMIN_SEO_CRON_SECRET");
+      if (!attendu || req.headers.get("x-cron-secret") !== attendu) {
+        return json({ data: null, error: "Secret de cron invalide" }, 401);
+      }
+      if (typeof body.appId !== "string" || !body.appId) {
+        return json({ data: null, error: "appId requis" }, 400);
+      }
+      return json({ data: await rattacherPieces(admin, body.appId, body.appliquer === true), error: null });
     }
 
     // Validation des pieces en brouillon, sur demande explicite du comptable :
