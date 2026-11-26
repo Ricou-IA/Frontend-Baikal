@@ -5,8 +5,8 @@
 // mesures.ts). Une fenetre est un couple de jours locaux {du, au}, bornes
 // comprises ; elle ne devient un intervalle d'instants qu'au moment de
 // requeter (`bornes`). Avant ce correctif, la synthese « 7 jours » etait un
-// glissant UTC (maintenant - 144 h) et sortait 6 ventes la ou le bandeau en
-// comptait 7 : la vente du premier jour, avant l'heure courante, tombait.
+// glissant UTC (maintenant - 144 h) et comptait une vente de moins que le
+// bandeau : celle du premier jour, avant l'heure courante, tombait.
 //
 // Tout ce qui decide d'un nombre affiche est ici, pur et teste ; index.ts ne
 // fait que lire l'archive et appeler ces fonctions.
@@ -245,9 +245,8 @@ export function agregerVentes(ventes: VenteArchive[], tva: number): Agregat {
 }
 
 /** Resultat HT : le CA HT moins des couts tous HT. Le remboursement entre en
- *  HT ; le retrancher en TTC d'un CA HT ote la TVA deux fois (8,34 EUR sur
- *  l'annee 2026 de Pack vendeur, deux remboursements a 24,99). Google Ads
- *  absent (NULL) = 0, jamais estime. */
+ *  HT ; le retrancher en TTC d'un CA HT ote sa TVA une seconde fois. Google
+ *  Ads absent (NULL) = 0, jamais estime. */
 export function resultat(
   t: Pick<Agregat, "ca_ht" | "frais_stripe" | "remboursements_ht">,
   couts: { cout_ia: number; charges_fixes: number; charges_ponctuelles: number; ads: number | null },
